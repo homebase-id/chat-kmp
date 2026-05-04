@@ -75,15 +75,26 @@ object LocalCallbackServer {
                             /**
                              * Owner-console "Extend Permissions" return URL. Fires the
                              * registered callback (which broadcasts a backend event so
-                             * any ExtendPermissionViewModel re-runs its check) and serves
-                             * the permission-update confirmation HTML, which focuses the
-                             * desktop app on user click.
+                             * any ExtendPermissionViewModel re-runs its check). Serves
+                             * either the success or canceled confirmation HTML based on
+                             * the `status` query param the owner console appends.
+                             *
+                             * Note: we always invoke onPermissionCallback regardless of
+                             * status — on cancel, the recheck still detects perms are
+                             * missing and re-shows the dialog when the app gets focus,
+                             * giving the user a one-click path to retry.
                              */
                             get("/permission-callback") {
-                                Logger.d(tag = TAG) { "Permission-extend return hit" }
+                                val status = call.request.queryParameters["status"]
+                                val canceled = status.equals("canceled", ignoreCase = true) ||
+                                    status.equals("cancelled", ignoreCase = true)
+                                Logger.d(tag = TAG) {
+                                    "Permission-extend return hit (status=$status canceled=$canceled)"
+                                }
                                 LocalCallbackServer.onPermissionCallback?.invoke()
                                 call.respondText(
-                                    text = PERMISSION_CALLBACK_HTML,
+                                    text = if (canceled) PERMISSION_CANCELED_HTML
+                                    else PERMISSION_CALLBACK_HTML,
                                     contentType = ContentType.Text.Html
                                 )
                             }
@@ -315,6 +326,100 @@ object LocalCallbackServer {
 
     <p>
       You can now return to the application.
+    </p>
+
+    <button id="returnBtn" autofocus onclick="openApp()">Return to Homebase Chat</button>
+
+    <p class="hint">
+      You may also close this browser tab if it doesn’t close automatically.
+    </p>
+  </div>
+
+  <script>
+    function openApp() {
+      fetch('/focus')
+        .finally(() => {
+          try { window.close(); } catch (_) {}
+        });
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        openApp();
+      }
+    });
+  </script>
+</body>
+</html>
+"""
+
+    private const val PERMISSION_CANCELED_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Homebase Chat — Permissions Not Updated</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #ffffff;
+      color: #171717;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      border: 1px solid #eaeaea;
+      border-radius: 14px;
+      padding: 2.25rem;
+      text-align: center;
+      max-width: 440px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+    p {
+      color: #555;
+      margin: 0.5rem 0;
+      line-height: 1.5;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #777;
+      margin-top: 1.25rem;
+    }
+    button {
+      margin-top: 1.75rem;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+      background: #171717;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #000000;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Permissions not updated</h1>
+
+    <p>
+      You canceled the permission update. <strong>Homebase&nbsp;Chat</strong> still
+      doesn't have all the permissions it needs.
+    </p>
+
+    <p>
+      Return to the app to try again — the permissions dialog will reappear so you
+      can retry or close it for now.
     </p>
 
     <button id="returnBtn" autofocus onclick="openApp()">Return to Homebase Chat</button>

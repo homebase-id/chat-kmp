@@ -27,7 +27,10 @@ import org.jetbrains.compose.resources.stringResource
  * startup.
  */
 @Composable
-fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
+fun ExtendPermissionDialog(
+    viewModel: ExtendPermissionViewModel,
+    onCancel: (() -> Unit)? = null,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
 
@@ -45,7 +48,10 @@ fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
                 }
             }
             AlertDialog(
-                onDismissRequest = { viewModel.dismissDialog() },
+                onDismissRequest = {
+                    viewModel.dismissDialog()
+                    onCancel?.invoke()
+                },
                 title = { Text(stringResource(MR.string.permissions_missing_title)) },
                 text = {
                     Text(stringResource(MR.string.permissions_missing_body, state.appName))
@@ -59,7 +65,10 @@ fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissDialog() }) {
+                    TextButton(onClick = {
+                        viewModel.dismissDialog()
+                        onCancel?.invoke()
+                    }) {
                         Text(stringResource(MR.string.cancel))
                     }
                 }
