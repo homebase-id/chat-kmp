@@ -103,6 +103,18 @@ class ConversationStream(
     private val placeholderIds = mutableSetOf<Uuid>()
     // endregion
 
+    // region Orphan-recovery: read-path dedup of recover attempts
+    // [loadBasicConversations] triggers [onRecoverConversation] for any row
+    // that mapped to [ConversationState.Invalid] (the mapper's catch-all for
+    // unmappable conversation files — e.g. a 1:1 whose other participant is
+    // gone, leaving recipients=[self], which crashes the
+    // `participants.first { it != domain }` deref). Recovery is local-only and
+    // idempotent; the set is session-scoped so a fresh app launch retries.
+    // Within a session the set prevents a recovery → reload → recovery loop
+    // if the placeholder write somehow fails silently.
+    private val recoveryAttemptedIds = mutableSetOf<Uuid>()
+    // endregion
+
     // region Auto-unarchive: incoming message for archived conversation
     /** Called when a message arrives for an archived conversation.
      *  Wired in AppModule to ConversationService.unarchiveConversation(). */
@@ -632,7 +644,7 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val basic = files
+        val basicWithSource = files
             // Locally-deleted conversations stay on disk (soft-deleted) until the
             // outbox processes the server-side delete; without this filter the
             // mapper would resurrect a "deleted conversation" placeholder for them
@@ -640,10 +652,13 @@ class ConversationStream(
             .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
             .map { file ->
                 val ui = mapper.mapToBasic(file)
-                if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+                val finalUi = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
+                finalUi to file
             }
+
+        val basic = basicWithSource.map { it.first }
 
         _conversations.value = ConversationsData(
             dataReady = true,
@@ -655,6 +670,42 @@ class ConversationStream(
             "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
                     "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
                     "items=${basic.size}"
+        }
+
+        // Trigger orphan recovery for any row that landed in the Invalid
+        // placeholder. Fire-and-forget on the existing scope: do NOT block
+        // the basic emit, do NOT await — recoverConversation writes a local
+        // placeholder file and re-syncs the row, which arrives back via the
+        // normal drive-sync → reload path.
+        triggerRecoveryForInvalidRows(basicWithSource)
+    }
+
+    private fun triggerRecoveryForInvalidRows(
+        basicWithSource: List<Pair<ConversationUiModel, id.homebase.api.client.drives.HomebaseFile>>,
+    ) {
+        val recover = onRecoverConversation ?: return
+        val toRecover = mutableListOf<Pair<Uuid, OdinId?>>()
+        for ((ui, file) in basicWithSource) {
+            if (ui.conversationState != ConversationState.Invalid) continue
+            val convoId = file.fileMetadata.appData.uniqueId ?: continue
+            if (!recoveryAttemptedIds.add(convoId)) continue
+            toRecover.add(convoId to file.fileMetadata.originalAuthor)
+        }
+        for ((convoId, originalAuthor) in toRecover) {
+            scope.launch {
+                try {
+                    Logger.w(tag = "OrphanRecovery") {
+                        "loadBasicConversations: triggering recoverConversation for Invalid row " +
+                                "convoId=$convoId originalAuthor=${originalAuthor?.domainName}"
+                    }
+                    recover(convoId, originalAuthor)
+                } catch (t: Throwable) {
+                    Logger.e(throwable = t, tag = "OrphanRecovery") {
+                        "loadBasicConversations: recoverConversation failed for convoId=$convoId — " +
+                                "placeholder will keep showing until next session retry"
+                    }
+                }
+            }
         }
     }
 

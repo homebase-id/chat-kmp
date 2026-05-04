@@ -174,6 +174,61 @@ class ConversationServiceRecoveryTest {
         }
     }
 
+    /**
+     * Regression: an orphaned 1:1 with `recipients=[self]` crashes the
+     * mapper at line 151 (`participants.first { it != domain }`). The
+     * recovery path (ConversationService.kt:1583–1597) is explicitly designed
+     * to handle this — it forces the placeholder to the group branch so the
+     * mapper takes the safe path instead of crashing. Without an active caller
+     * invoking `recoverConversation` this row stays broken on every list load,
+     * which is what `ConversationStream.loadBasicConversations` now wires up.
+     *
+     * Pins the local-only recovery contract: after recovery the placeholder
+     * file carries the group tag (so the mapper's group branch fires) and
+     * no outbox work was enqueued.
+     */
+    @Test
+    fun recoverConversation_oneOnOne_existingInvalidSelfOnly_revivesAsGroupPlaceholder() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            // The orphan shape: recipients=[testDomain only]. The conversationId
+            // doesn't matter for the crash — what matters is that the stored
+            // recipients list contains only the current user.
+            val convoId = fixture.seedOrphanedOneOnOneSelfOnly()
+            val rowsBefore = fixture.outboxRowCount()
+
+            service.recoverConversation(
+                conversationId = convoId,
+                originalAuthor = OdinId(fixture.testDomain),
+            )
+
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
+            )
+
+            val file = fixture.getConversationFile(convoId)
+            assertNotNull(file, "post-recovery placeholder file must exist")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker (versionTag=null)")
+
+            // The placeholder MUST carry the group tag so the mapper takes the
+            // group branch — the whole point of the forced-group recovery is to
+            // avoid the `participants.first { it != domain }` deref.
+            val tags = file.fileMetadata.appData.tags ?: emptyList()
+            assertTrue(
+                tags.contains(ChatProtocol.ConversationGroupTag),
+                "self-only 1:1 must be revived with the group tag so the mapper " +
+                        "takes the safe (group) branch; got tags=$tags",
+            )
+
+            assertTrue(
+                fixture.conversationLoader.loaded.contains(convoId),
+                "recoverConversation should refresh the in-memory model via loadConversation",
+            )
+        }
+    }
+
     @Test
     fun recoverConversation_group_noFile_writesLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
