@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import id.homebase.core.ui.screens.defragmenter.InFlightMove
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
 import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
+import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_MESSAGE_CONTENT
 import id.homebase.core.ui.screens.defragmenter.model.CELL_HEALTHY
 import id.homebase.core.ui.screens.defragmenter.model.CELL_ORPHAN_CHAT_MESSAGE
 import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
@@ -296,6 +297,7 @@ private fun DrawScope.drawIssueOverlay(
             CELL_LEGACY_USERDATE_ZERO -> Win98Palette.IssueLegacyUserDateZeroFill
             CELL_SOFT_DELETE_ARCHIVAL_MISMATCH -> Win98Palette.IssueArchivalMismatchFill
             CELL_CORRUPT_JSON_HEADER -> Win98Palette.IssueCorruptJsonFill
+            CELL_CORRUPT_MESSAGE_CONTENT -> Win98Palette.IssueCorruptMessageContentFill
             CELL_UNMAPPABLE_CONVERSATION -> Win98Palette.IssueUnmappableConvoFill
             CELL_ORPHAN_CHAT_MESSAGE -> Win98Palette.IssueOrphanMessageFill
             else -> continue
@@ -572,11 +574,17 @@ private val OrphanMessageClassicPalette = ClassicPalette(
     light = Win98Palette.IssueOrphanMessageLight,
     shadow = Win98Palette.IssueOrphanMessageShadow,
 )
+private val CorruptMessageContentClassicPalette = ClassicPalette(
+    fill = Win98Palette.IssueCorruptMessageContentFill,
+    light = Win98Palette.IssueCorruptMessageContentLight,
+    shadow = Win98Palette.IssueCorruptMessageContentShadow,
+)
 
 private fun classicPaletteFor(code: Byte): ClassicPalette = when (code) {
     CELL_LEGACY_USERDATE_ZERO -> LegacyClassicPalette
     CELL_SOFT_DELETE_ARCHIVAL_MISMATCH -> ArchivalMismatchClassicPalette
     CELL_CORRUPT_JSON_HEADER -> CorruptJsonClassicPalette
+    CELL_CORRUPT_MESSAGE_CONTENT -> CorruptMessageContentClassicPalette
     CELL_UNMAPPABLE_CONVERSATION -> UnmappableConvoClassicPalette
     CELL_ORPHAN_CHAT_MESSAGE -> OrphanMessageClassicPalette
     else -> HealthyClassicPalette

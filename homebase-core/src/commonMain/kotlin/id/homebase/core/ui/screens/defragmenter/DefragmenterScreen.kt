@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.ui.screens.defragmenter.ui.CorruptFileReviewDialog
 import id.homebase.core.ui.screens.defragmenter.ui.DefragGridCanvas
 import id.homebase.core.ui.screens.defragmenter.ui.Win98BeveledPanel
 import id.homebase.core.ui.screens.defragmenter.ui.Win98Button
@@ -61,6 +62,7 @@ import id.homebase.resources.defragmenter_status_paused
 import id.homebase.resources.defragmenter_status_ready
 import id.homebase.resources.defragmenter_status_repairing
 import id.homebase.resources.defragmenter_status_running
+import id.homebase.resources.defragmenter_review_button
 import id.homebase.resources.defragmenter_status_vacuuming
 import id.homebase.resources.defragmenter_title_format
 import org.jetbrains.compose.resources.stringResource
@@ -204,6 +206,27 @@ private fun DefragmenterContent(
             val isWide = maxWidth >= 600.dp
             if (isWide) WideControls(state, onAction) else NarrowControls(state, onAction)
         }
+
+        val reviewTotal =
+            state.corruptHeaderCandidates.size + state.corruptMessageCandidates.size
+        if (reviewTotal > 0) {
+            Win98Button(
+                text = stringResource(MR.string.defragmenter_review_button, reviewTotal),
+                enabled = true,
+                onClick = { onAction(DefragmenterUiAction.OpenReview) },
+            )
+        }
+    }
+
+    if (state.showReviewDialog) {
+        CorruptFileReviewDialog(
+            headerCandidates = state.corruptHeaderCandidates,
+            messageCandidates = state.corruptMessageCandidates,
+            reviewIndex = state.reviewIndex,
+            onSkip = { onAction(DefragmenterUiAction.ReviewSkip) },
+            onDelete = { onAction(DefragmenterUiAction.ReviewDelete) },
+            onClose = { onAction(DefragmenterUiAction.DismissReview) },
+        )
     }
 }
 
@@ -297,6 +320,12 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
                 Win98Label(
                     text = "Orphan messages: ${state.issueCountOrphanMessage}",
                     color = Win98Palette.IssueOrphanMessageFill,
+                )
+            }
+            if (state.issueCountCorruptMessageContent > 0) {
+                Win98Label(
+                    text = "Corrupt message content: ${state.issueCountCorruptMessageContent}",
+                    color = Win98Palette.IssueCorruptMessageContentFill,
                 )
             }
         }

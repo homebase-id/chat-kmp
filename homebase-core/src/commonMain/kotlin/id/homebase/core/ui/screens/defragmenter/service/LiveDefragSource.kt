@@ -38,6 +38,12 @@ import kotlin.uuid.Uuid
  *   tests inject any predicate. Null disables the conversation-mapper check
  *   entirely (rows are then always classified as Healthy on the conversation
  *   axis).
+ * @param decodeMessageContentProbe Optional probe that returns null when a
+ *   chat-message file's `appData.content` decodes successfully as the
+ *   payload type the chat layer would use, non-null when it throws.
+ *   Production wires this through DI to mirror `ChatMessageStream.mapToMessageData`'s
+ *   runtime decoding; tests can leave it null. Null disables corrupt-content
+ *   detection entirely.
  */
 class LiveDefragSource(
     private val driveSyncManager: DriveSyncManager,
@@ -46,6 +52,7 @@ class LiveDefragSource(
     private val driveFileProvider: DriveFileProvider,
     private val conversationService: ConversationService,
     private val mapToBasicProbe: (suspend (HomebaseFile) -> Throwable?)? = null,
+    private val decodeMessageContentProbe: (suspend (HomebaseFile) -> Throwable?)? = null,
 ) : DefragSource {
 
     private val tag = "Defrag"
@@ -67,6 +74,7 @@ class LiveDefragSource(
                     cellMap = emptyMap(),
                     gapMap = emptyMap(),
                     corruptCandidates = emptyList(),
+                    corruptMessageContentCandidates = emptyList(),
                 )
             )
             return@flow
@@ -84,6 +92,7 @@ class LiveDefragSource(
                     cellMap = emptyMap(),
                     gapMap = emptyMap(),
                     corruptCandidates = emptyList(),
+                    corruptMessageContentCandidates = emptyList(),
                 )
             )
             return@flow
@@ -114,6 +123,7 @@ class LiveDefragSource(
                     cellMap = emptyMap(),
                     gapMap = emptyMap(),
                     corruptCandidates = emptyList(),
+                    corruptMessageContentCandidates = emptyList(),
                 )
             )
             return@flow
@@ -155,6 +165,7 @@ class LiveDefragSource(
         val accCells = HashMap<Int, CellState>()
         val accGaps = HashMap<Int, DeletedFileRef>()
         val accCorrupt = ArrayList<QuarantineCandidate>()
+        val accCorruptMessages = ArrayList<MessageContentQuarantineCandidate>()
         // Cumulative per-state counters for the final summary.
         val totals = StateCounters()
         // Per-issue first-occurrence dedup, drive-scoped — so the log gets one
@@ -191,6 +202,7 @@ class LiveDefragSource(
                         row = row,
                         mapToBasicProbe = mapToBasicProbe,
                         healthyConversationIds = healthyConversationIds,
+                        decodeMessageContentProbe = decodeMessageContentProbe,
                     )
                     chunkCells[pos] = state
                     chunkCounters.bump(state)
@@ -207,6 +219,9 @@ class LiveDefragSource(
                                 .deserialize<HomebaseFile>(row.jsonHeader)
                         }.exceptionOrNull()
                         accCorrupt.add(buildQuarantineCandidate(slot.driveId, row, err))
+                    }
+                    if (state is CellState.CorruptMessageContent) {
+                        accCorruptMessages.add(MessageContentQuarantineCandidate.from(state))
                     }
                     logFirstOccurrence(state, slot.driveId, row, firstSeen)
                     indexInDrive += 1
@@ -251,6 +266,7 @@ class LiveDefragSource(
                 cellMap = accCells,
                 gapMap = accGaps,
                 corruptCandidates = accCorrupt,
+                corruptMessageContentCandidates = accCorruptMessages,
             )
         )
     }.flowOn(Dispatchers.Default)
@@ -413,6 +429,7 @@ class LiveDefragSource(
                         row = row,
                         mapToBasicProbe = mapToBasicProbe,
                         healthyConversationIds = healthyConversationIds,
+                        decodeMessageContentProbe = decodeMessageContentProbe,
                     )
                     analyzed += 1
                     when (state) {
@@ -547,6 +564,12 @@ class LiveDefragSource(
                             // Not auto-repairable here.
                             skipped += 1
                         }
+                        is CellState.CorruptMessageContent -> {
+                            // Not auto-repairable here — the file's bytes are
+                            // actually broken, no SQL re-projection can fix it.
+                            // The corrupt-content review dialog handles delete.
+                            skipped += 1
+                        }
                         is CellState.SoftDeleted, is CellState.Healthy -> Unit
                     }
                     indexInDrive += 1
@@ -586,6 +609,7 @@ class LiveDefragSource(
             is CellState.LegacyUserDateZero -> "legacy_userDate_zero"
             is CellState.SoftDeleteArchivalMismatch -> "softdelete_archival_mismatch"
             is CellState.CorruptJsonHeader -> "corrupt_jsonheader"
+            is CellState.CorruptMessageContent -> "corrupt_message_content"
             is CellState.UnmappableConversation -> "unmappable_conversation"
             is CellState.OrphanChatMessage -> "orphan_chat_message"
             // Healthy and SoftDeleted are not "issues" — no per-occurrence detail line.
@@ -604,6 +628,12 @@ class LiveDefragSource(
             is CellState.CorruptJsonHeader -> Logger.w(tag = tag) {
                 "issue=corrupt_jsonheader drive=$driveId fileId=${row.fileId} " +
                         "rowId=${row.rowId} header.take(120)=${row.jsonHeader.take(120)}"
+            }
+            is CellState.CorruptMessageContent -> Logger.w(tag = tag) {
+                "issue=corrupt_message_content drive=$driveId fileId=${row.fileId} " +
+                        "rowId=${row.rowId} convoId=${state.conversationId} " +
+                        "decodeError=${state.decodeError} " +
+                        "content.take(80)=${state.rawContentPrefix.take(80)}"
             }
             is CellState.UnmappableConversation -> Logger.w(tag = tag) {
                 "issue=unmappable_conversation drive=$driveId fileId=${row.fileId} " +
@@ -626,6 +656,7 @@ class LiveDefragSource(
         var legacyUserDateZero = 0
         var softDeleteArchivalMismatch = 0
         var corruptJsonHeader = 0
+        var corruptMessageContent = 0
         var unmappableConversation = 0
         var orphanChatMessage = 0
 
@@ -636,6 +667,7 @@ class LiveDefragSource(
                 is CellState.LegacyUserDateZero -> legacyUserDateZero += 1
                 is CellState.SoftDeleteArchivalMismatch -> softDeleteArchivalMismatch += 1
                 is CellState.CorruptJsonHeader -> corruptJsonHeader += 1
+                is CellState.CorruptMessageContent -> corruptMessageContent += 1
                 is CellState.UnmappableConversation -> unmappableConversation += 1
                 is CellState.OrphanChatMessage -> orphanChatMessage += 1
             }
@@ -647,6 +679,7 @@ class LiveDefragSource(
             legacyUserDateZero += other.legacyUserDateZero
             softDeleteArchivalMismatch += other.softDeleteArchivalMismatch
             corruptJsonHeader += other.corruptJsonHeader
+            corruptMessageContent += other.corruptMessageContent
             unmappableConversation += other.unmappableConversation
             orphanChatMessage += other.orphanChatMessage
         }
@@ -656,6 +689,7 @@ class LiveDefragSource(
                     "legacy_userDate_zero=$legacyUserDateZero " +
                     "softdelete_archival_mismatch=$softDeleteArchivalMismatch " +
                     "corrupt_jsonheader=$corruptJsonHeader " +
+                    "corrupt_message_content=$corruptMessageContent " +
                     "unmappable_conversation=$unmappableConversation " +
                     "orphan_chat_message=$orphanChatMessage"
     }

@@ -23,13 +23,17 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
+import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
@@ -256,6 +260,27 @@ val appModule = module {
                 t
             }
         }
+        // Detects whether a chat-message file's appData.content can be decoded
+        // as the runtime payload type ChatMessageStream.mapToMessageData would
+        // pick (StatusMessageData for status messages, MessageAppData
+        // otherwise). Returns null on success, the throwable on failure.
+        // Mirrors ChatMessageStream.kt:449-466 so the Defragmenter agrees with
+        // what the conversation list actually tries to render.
+        val decodeMessageContentProbe: suspend (HomebaseFile) -> Throwable? = { file ->
+            val appData = file.fileMetadata.appData
+            val content = appData.content
+            when {
+                content.isNullOrEmpty() -> null
+                appData.dataType == ChatProtocol.ChatStatusMessageDataType ->
+                    runCatching {
+                        OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                    }.exceptionOrNull()
+                else ->
+                    runCatching {
+                        OdinSystemSerializer.deserialize<MessageAppData>(content)
+                    }.exceptionOrNull()
+            }
+        }
         LiveDefragSource(
             driveSyncManager = get(),
             credentialsManager = get(),
@@ -263,6 +288,7 @@ val appModule = module {
             driveFileProvider = get(),
             conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
+            decodeMessageContentProbe = decodeMessageContentProbe,
         )
     }
 

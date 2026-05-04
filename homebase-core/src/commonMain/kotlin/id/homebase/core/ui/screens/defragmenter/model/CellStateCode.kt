@@ -15,6 +15,7 @@ package id.homebase.core.ui.screens.defragmenter.model
  *  - CorruptJsonHeader          → [CELL_CORRUPT_JSON_HEADER]
  *  - UnmappableConversation     → [CELL_UNMAPPABLE_CONVERSATION]
  *  - OrphanChatMessage          → [CELL_ORPHAN_CHAT_MESSAGE]
+ *  - CorruptMessageContent      → [CELL_CORRUPT_MESSAGE_CONTENT]
  */
 const val CELL_HEALTHY: Byte = 0
 const val CELL_LEGACY_USERDATE_ZERO: Byte = 1
@@ -22,3 +23,4 @@ const val CELL_SOFT_DELETE_ARCHIVAL_MISMATCH: Byte = 2
 const val CELL_CORRUPT_JSON_HEADER: Byte = 3
 const val CELL_UNMAPPABLE_CONVERSATION: Byte = 4
 const val CELL_ORPHAN_CHAT_MESSAGE: Byte = 5
+const val CELL_CORRUPT_MESSAGE_CONTENT: Byte = 6

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
 import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
+import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_MESSAGE_CONTENT
 import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
 import id.homebase.core.ui.screens.defragmenter.model.CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
 import id.homebase.core.ui.screens.defragmenter.model.CELL_ORPHAN_CHAT_MESSAGE
@@ -15,6 +16,7 @@ import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragRepairEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -75,6 +77,10 @@ class DefragmenterViewModel(
             DefragmenterUiAction.Close -> viewModelScope.launch {
                 _events.emit(DefragmenterUiEvent.CloseRequested)
             }
+            DefragmenterUiAction.OpenReview -> openReview()
+            DefragmenterUiAction.DismissReview -> dismissReview()
+            DefragmenterUiAction.ReviewSkip -> reviewSkip()
+            DefragmenterUiAction.ReviewDelete -> reviewDelete()
         }
     }
 
@@ -106,6 +112,11 @@ class DefragmenterViewModel(
                     issueCountCorruptJson = 0,
                     issueCountUnmappableConvo = 0,
                     issueCountOrphanMessage = 0,
+                    issueCountCorruptMessageContent = 0,
+                    corruptHeaderCandidates = emptyList(),
+                    corruptMessageCandidates = emptyList(),
+                    reviewIndex = 0,
+                    showReviewDialog = false,
                 )
             }
             val accGaps = HashMap<Int, DeletedFileRef>()
@@ -116,6 +127,7 @@ class DefragmenterViewModel(
             var corruptCount = 0
             var unmappableCount = 0
             var orphanCount = 0
+            var corruptMessageContentCount = 0
             source.analyze().collect { ev ->
                 when (ev) {
                     is DefragAnalyzeEvent.Sized -> {
@@ -174,6 +186,10 @@ class DefragmenterViewModel(
                                         states[pos] = CELL_ORPHAN_CHAT_MESSAGE
                                         orphanCount++
                                     }
+                                    is CellState.CorruptMessageContent -> {
+                                        states[pos] = CELL_CORRUPT_MESSAGE_CONTENT
+                                        corruptMessageContentCount++
+                                    }
                                     is CellState.Healthy, is CellState.SoftDeleted -> Unit
                                 }
                             }
@@ -187,6 +203,7 @@ class DefragmenterViewModel(
                                 issueCountCorruptJson = corruptCount,
                                 issueCountUnmappableConvo = unmappableCount,
                                 issueCountOrphanMessage = orphanCount,
+                                issueCountCorruptMessageContent = corruptMessageContentCount,
                             )
                         }
                     }
@@ -199,7 +216,9 @@ class DefragmenterViewModel(
                         Logger.d(tag = tag) {
                             "Analyze complete: total=$total, gaps=${accGaps.size}, " +
                                     "legacy=$legacyCount archival=$archivalCount " +
-                                    "corrupt=$corruptCount unmappable=$unmappableCount"
+                                    "corrupt=$corruptCount unmappable=$unmappableCount " +
+                                    "corruptMessageContent=$corruptMessageContentCount " +
+                                    "reviewQueue=${ev.corruptCandidates.size + ev.corruptMessageContentCandidates.size}"
                         }
                         _uiState.update {
                             it.copy(
@@ -217,6 +236,11 @@ class DefragmenterViewModel(
                                 issueCountCorruptJson = corruptCount,
                                 issueCountUnmappableConvo = unmappableCount,
                                 issueCountOrphanMessage = orphanCount,
+                                issueCountCorruptMessageContent = corruptMessageContentCount,
+                                corruptHeaderCandidates = ev.corruptCandidates,
+                                corruptMessageCandidates = ev.corruptMessageContentCandidates,
+                                reviewIndex = 0,
+                                showReviewDialog = false,
                             )
                         }
                     }
@@ -297,6 +321,11 @@ class DefragmenterViewModel(
                     issueCountCorruptJson = 0,
                     issueCountUnmappableConvo = 0,
                     issueCountOrphanMessage = 0,
+                    issueCountCorruptMessageContent = 0,
+                    corruptHeaderCandidates = emptyList(),
+                    corruptMessageCandidates = emptyList(),
+                    reviewIndex = 0,
+                    showReviewDialog = false,
                 )
             }
             return
@@ -654,6 +683,106 @@ class DefragmenterViewModel(
         for (i in inFlight.indices) arr[i] = inFlight[i].toIndex
         return arr
     }
+
+    // region Corrupt-file review walk
+    //
+    // The review queue is the concatenation of corruptHeaderCandidates +
+    // corruptMessageCandidates, in that order. reviewIndex points into the
+    // combined sequence; helpers below translate between index and queue
+    // segment so the dialog can render the right kind of card.
+
+    private fun reviewQueueSize(s: DefragmenterUiState): Int =
+        s.corruptHeaderCandidates.size + s.corruptMessageCandidates.size
+
+    private fun openReview() {
+        val s = _uiState.value
+        if (reviewQueueSize(s) == 0) return
+        _uiState.update { it.copy(showReviewDialog = true, reviewIndex = 0) }
+    }
+
+    private fun dismissReview() {
+        _uiState.update { it.copy(showReviewDialog = false) }
+    }
+
+    private fun reviewSkip() {
+        advanceReviewIndex()
+    }
+
+    private fun reviewDelete() {
+        val s = _uiState.value
+        val driveId: Uuid
+        val fileId: Uuid
+        val isMessageContent: Boolean
+        val headerSize = s.corruptHeaderCandidates.size
+        when {
+            s.reviewIndex < headerSize -> {
+                val c = s.corruptHeaderCandidates[s.reviewIndex]
+                driveId = c.driveId
+                fileId = c.fileId
+                isMessageContent = false
+            }
+            s.reviewIndex < headerSize + s.corruptMessageCandidates.size -> {
+                val c = s.corruptMessageCandidates[s.reviewIndex - headerSize]
+                driveId = c.driveId
+                fileId = c.fileId
+                isMessageContent = true
+            }
+            else -> return
+        }
+        viewModelScope.launch {
+            val ok = runCatching { source.hardDelete(driveId, fileId) }
+                .getOrElse {
+                    Logger.w(tag = tag, throwable = it) {
+                        "review hardDelete threw drive=$driveId file=$fileId"
+                    }
+                    false
+                }
+            if (!ok) {
+                Logger.w(tag = tag) {
+                    "review hardDelete returned false drive=$driveId file=$fileId — skipping"
+                }
+            }
+        }
+        // Best-effort cell-byte flip: scan cellStates for any position with the
+        // matching code (we don't track fileId↔position) and clear the FIRST
+        // one matching the candidate's kind. The next Analyze fully reconciles.
+        val targetCode: Byte =
+            if (isMessageContent) CELL_CORRUPT_MESSAGE_CONTENT else CELL_CORRUPT_JSON_HEADER
+        val states = s.cellStates
+        for (i in states.indices) {
+            if (states[i] == targetCode) {
+                states[i] = CELL_HEALTHY
+                break
+            }
+        }
+        _uiState.update {
+            val tally = if (isMessageContent) {
+                it.copy(
+                    issueCountCorruptMessageContent =
+                        (it.issueCountCorruptMessageContent - 1).coerceAtLeast(0),
+                )
+            } else {
+                it.copy(
+                    issueCountCorruptJson = (it.issueCountCorruptJson - 1).coerceAtLeast(0),
+                )
+            }
+            tally.copy(gridVersion = it.gridVersion + 1)
+        }
+        advanceReviewIndex()
+    }
+
+    private fun advanceReviewIndex() {
+        _uiState.update {
+            val next = it.reviewIndex + 1
+            if (next >= reviewQueueSize(it)) {
+                it.copy(reviewIndex = 0, showReviewDialog = false)
+            } else {
+                it.copy(reviewIndex = next)
+            }
+        }
+    }
+
+    // endregion
 
     companion object {
         const val BASE_MOVES_PER_SECOND: Float = 6f

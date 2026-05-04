@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.defragmenter
 
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
+import id.homebase.core.ui.screens.defragmenter.service.MessageContentQuarantineCandidate
+import id.homebase.core.ui.screens.defragmenter.service.QuarantineCandidate
 
 sealed interface DefragmenterPhase {
     data object Idle : DefragmenterPhase
@@ -53,6 +55,15 @@ data class DefragmenterUiState(
     val issueCountCorruptJson: Int = 0,
     val issueCountUnmappableConvo: Int = 0,
     val issueCountOrphanMessage: Int = 0,
+    val issueCountCorruptMessageContent: Int = 0,
+    // Review-walk state. corruptHeaderCandidates + corruptMessageCandidates
+    // form a single unified queue (header candidates first); reviewIndex is
+    // a pointer into that combined sequence. showReviewDialog gates the
+    // CorruptFileReviewDialog mount in the screen.
+    val corruptHeaderCandidates: List<QuarantineCandidate> = emptyList(),
+    val corruptMessageCandidates: List<MessageContentQuarantineCandidate> = emptyList(),
+    val reviewIndex: Int = 0,
+    val showReviewDialog: Boolean = false,
 ) {
     /** True during Vacuuming and Complete — canvas tints filled blocks green. */
     val celebratory: Boolean
@@ -84,7 +95,12 @@ data class DefragmenterUiState(
             issueCountArchivalMismatch == other.issueCountArchivalMismatch &&
             issueCountCorruptJson == other.issueCountCorruptJson &&
             issueCountUnmappableConvo == other.issueCountUnmappableConvo &&
-            issueCountOrphanMessage == other.issueCountOrphanMessage
+            issueCountOrphanMessage == other.issueCountOrphanMessage &&
+            issueCountCorruptMessageContent == other.issueCountCorruptMessageContent &&
+            corruptHeaderCandidates === other.corruptHeaderCandidates &&
+            corruptMessageCandidates === other.corruptMessageCandidates &&
+            reviewIndex == other.reviewIndex &&
+            showReviewDialog == other.showReviewDialog
     }
 
     override fun hashCode(): Int {
@@ -102,6 +118,9 @@ data class DefragmenterUiState(
         result = 31 * result + issueCountCorruptJson
         result = 31 * result + issueCountUnmappableConvo
         result = 31 * result + issueCountOrphanMessage
+        result = 31 * result + issueCountCorruptMessageContent
+        result = 31 * result + reviewIndex
+        result = 31 * result + showReviewDialog.hashCode()
         return result
     }
 }
@@ -113,6 +132,18 @@ sealed interface DefragmenterUiAction {
     data object Resume : DefragmenterUiAction
     data object Cancel : DefragmenterUiAction
     data object Close : DefragmenterUiAction
+
+    /** Open the corrupt-file review dialog at index 0. */
+    data object OpenReview : DefragmenterUiAction
+
+    /** Dismiss the dialog without changing the queue position. */
+    data object DismissReview : DefragmenterUiAction
+
+    /** Advance to the next candidate without deleting; close if past end. */
+    data object ReviewSkip : DefragmenterUiAction
+
+    /** Hard-delete the current candidate, advance, decrement matching tally. */
+    data object ReviewDelete : DefragmenterUiAction
 }
 
 sealed interface DefragmenterUiEvent {

@@ -53,6 +53,15 @@ internal suspend fun classifyRow(
      * entirely (rows are then never classified as [CellState.OrphanChatMessage]).
      */
     healthyConversationIds: Set<Uuid>? = null,
+    /**
+     * Returns null if the chat-message file's `appData.content` decodes
+     * successfully as the expected payload type; non-null (the throwable)
+     * when deserialisation throws. Only invoked for `appData.fileType == 7878`
+     * rows whose header parsed cleanly and that didn't already classify as
+     * orphan. Null disables corrupt-content detection (probe-disabled mode);
+     * tests can also leave this null to focus on header-level checks.
+     */
+    decodeMessageContentProbe: (suspend (HomebaseFile) -> Throwable?)? = null,
 ): CellState {
     // 1. Strict deserialise: failure → CorruptJsonHeader.
     val header: HomebaseFile = try {
@@ -150,7 +159,30 @@ internal suspend fun classifyRow(
         )
     }
 
-    // 6. Default.
+    // 6. Chat message (7878) whose appData.content fails strict deserialise.
+    //    Placed AFTER the OrphanChatMessage branch so an orphan that *also*
+    //    has corrupt content stays classified as orphan — recovering the
+    //    parent may resolve both at once. Probe is null in tests / when
+    //    the caller doesn't want runtime-typed decode (e.g. probe-disabled).
+    if (fileType == MESSAGE_FILE_TYPE && decodeMessageContentProbe != null) {
+        val err = decodeMessageContentProbe(header)
+        if (err != null) {
+            val content = header.fileMetadata.appData.content
+            return CellState.CorruptMessageContent(
+                driveId = driveId,
+                fileId = row.fileId,
+                rowId = row.rowId,
+                conversationId = header.fileMetadata.appData.groupId,
+                originalAuthor = header.fileMetadata.originalAuthor,
+                sender = header.fileMetadata.senderOdinId,
+                createdMs = header.fileMetadata.created.milliseconds,
+                decodeError = err.message?.take(200),
+                rawContentPrefix = content?.take(200) ?: "",
+            )
+        }
+    }
+
+    // 7. Default.
     return CellState.Healthy
 }
 

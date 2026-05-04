@@ -66,12 +66,18 @@ sealed interface DefragAnalyzeEvent {
      * [corruptCandidates] are rows whose `jsonHeader` failed strict
      * deserialisation; the UI walks these one at a time via the corrupt-JSON
      * prompt flow so the user can choose to hard-delete or skip each one.
+     *
+     * [corruptMessageContentCandidates] are chat-message rows whose outer
+     * jsonHeader parsed cleanly but whose inner `appData.content` couldn't
+     * be deserialised as the expected payload type. The same review dialog
+     * walks both lists so the user can hard-delete or skip.
      */
     data class Done(
         val totalBlocks: Int,
         val cellMap: Map<Int, CellState>,
         val gapMap: Map<Int, DeletedFileRef>,
         val corruptCandidates: List<QuarantineCandidate>,
+        val corruptMessageContentCandidates: List<MessageContentQuarantineCandidate>,
     ) : DefragAnalyzeEvent
 }
 
@@ -87,7 +93,8 @@ sealed interface DefragAnalyzeEvent {
  *     else                                  → [SoftDeleted] (existing semantic)
  *  4. fileType=7878 + appData.groupId not in known/healthy conversation set → [OrphanChatMessage]
  *  5. fileType=7878 + userDate=0 + appData.userDate=null + created>0 → [LegacyUserDateZero]
- *  6. otherwise → [Healthy]
+ *  6. fileType=7878 + appData.content fails strict deserialise → [CorruptMessageContent]
+ *  7. otherwise → [Healthy]
  */
 sealed interface CellState {
     object Healthy : CellState
@@ -148,6 +155,27 @@ sealed interface CellState {
         val originalAuthor: OdinId?,
         val sender: OdinId?,
     ) : CellState
+
+    /**
+     * Chat message (7878) whose outer jsonHeader parsed cleanly but whose
+     * inner `appData.content` couldn't be deserialised as the expected
+     * payload type (MessageAppData, or StatusMessageData for status
+     * messages). UI: violet. Surfaced via the corrupt-content review
+     * dialog so the user can confirm hard-delete or skip — same prompt UX
+     * as [CorruptJsonHeader]. Not auto-repairable: the file's bytes are
+     * actually broken, no SQL re-projection can fix it.
+     */
+    data class CorruptMessageContent(
+        val driveId: Uuid,
+        val fileId: Uuid,
+        val rowId: Long,
+        val conversationId: Uuid?,
+        val originalAuthor: OdinId?,
+        val sender: OdinId?,
+        val createdMs: Long,
+        val decodeError: String?,
+        val rawContentPrefix: String,
+    ) : CellState
 }
 
 /**
@@ -169,6 +197,40 @@ data class QuarantineCandidate(
     val uniqueId: Uuid?,
     val rawHeaderPrefix: String,
 )
+
+/**
+ * Salvaged metadata for a [CellState.CorruptMessageContent] row — the file's
+ * outer header parsed cleanly so all fields are reliable (no lenient pass
+ * needed). Used by the corrupt-content review dialog to render the file's
+ * identity + the decode failure + a snippet of the bad JSON so the user
+ * can decide whether to hard-delete.
+ */
+data class MessageContentQuarantineCandidate(
+    val driveId: Uuid,
+    val fileId: Uuid,
+    val rowId: Long,
+    val conversationId: Uuid?,
+    val originalAuthor: String?,
+    val sender: String?,
+    val createdMs: Long,
+    val decodeError: String?,
+    val rawContentPrefix: String,
+) {
+    companion object {
+        fun from(state: CellState.CorruptMessageContent): MessageContentQuarantineCandidate =
+            MessageContentQuarantineCandidate(
+                driveId = state.driveId,
+                fileId = state.fileId,
+                rowId = state.rowId,
+                conversationId = state.conversationId,
+                originalAuthor = state.originalAuthor?.domainName,
+                sender = state.sender?.domainName,
+                createdMs = state.createdMs,
+                decodeError = state.decodeError,
+                rawContentPrefix = state.rawContentPrefix,
+            )
+    }
+}
 
 sealed interface DefragRepairEvent {
     /** Emitted once before the repair scan starts. */

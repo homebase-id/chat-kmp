@@ -98,4 +98,12 @@ object Win98Palette {
     val IssueOrphanMessageFill: Color = Color(0xFFFF4D88)
     val IssueOrphanMessageLight: Color = Color(0xFFFF95B8)
     val IssueOrphanMessageShadow: Color = Color(0xFFA82050)
+
+    // Violet — chat message (7878) whose outer header parsed but whose
+    // appData.content can't be deserialised as MessageAppData /
+    // StatusMessageData. Not auto-repairable; surfaced via the corrupt-content
+    // review dialog so the user can confirm hard-delete.
+    val IssueCorruptMessageContentFill: Color = Color(0xFF7030C0)
+    val IssueCorruptMessageContentLight: Color = Color(0xFFB070FF)
+    val IssueCorruptMessageContentShadow: Color = Color(0xFF401870)
 }
