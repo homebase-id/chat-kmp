@@ -116,7 +116,7 @@ class PublicProfileProviderCachedTest {
 
         // Truncate every file under the image cache dir to simulate a corrupted
         // on-disk entry. readFromDisk will throw (EOF) when it tries to parse it.
-        val imageDir = Path.of(tempDir, "homebase-public-images")
+        val imageDir = Path.of(tempDir, "homebase-public-images-v2")
         Files.walk(imageDir).use { stream ->
             stream.filter { Files.isRegularFile(it) }.forEach { Files.write(it, ByteArray(0)) }
         }
@@ -244,7 +244,7 @@ class PublicProfileProviderCachedTest {
      */
     @Test
     fun `getCacheStats returns sentinel for broken cache without hiding the healthy one`() = runTest {
-        Files.write(Path.of(tempDir, "homebase-public-profiles"), ByteArray(0))
+        Files.write(Path.of(tempDir, "homebase-public-profiles-v2"), ByteArray(0))
 
         val stats = provider.getCacheStats()
 

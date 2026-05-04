@@ -1,7 +1,7 @@
 package id.homebase.api.client.drives.cache
 
 import co.touchlab.kermit.Logger
-import com.mayakapps.kache.FileKache
+import coil3.disk.DiskCache
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.KeyHeader
@@ -23,6 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import okio.ByteString.Companion.encodeUtf8
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
@@ -32,12 +33,12 @@ import okio.SYSTEM
  * [DriveFileHttpProvider] so callers get transparent read-through caching
  * for payloads and thumbnails.
  *
- * Two underlying [com.mayakapps.kache.FileKache] instances back the two
+ * Two underlying [coil3.disk.DiskCache] instances back the two
  * Storage-screen rows:
  * - `drive_payloads`   — media payload bytes (attachments). Directory
- *   `homebase-payloads`, cap 200 MB. Fetches are gated by
+ *   `homebase-payloads-v2`, cap 200 MB. Fetches are gated by
  *   [payloadSemaphore] (1 concurrent network request).
- * - `drive_thumbnails` — thumbnail bytes. Directory `homebase-thumbs`,
+ * - `drive_thumbnails` — thumbnail bytes. Directory `homebase-thumbs-v2`,
  *   cap 300 MB. Fetches are gated by [thumbnailSemaphore] (30 concurrent).
  *
  * The payload/thumbnail split follows the same "small-hot vs large-cold"
@@ -60,10 +61,10 @@ import okio.SYSTEM
  * A new version lands under a new key, which gets fetched fresh; the old
  * key ages out through LRU eviction.
  *
- * Both FileKache instances are created lazily through mutex-gated
- * accessors; [clearCaches] deletes the directories recursively and nulls
- * the refs, so concurrent readers cannot end up with a disposed
- * FileKache reference — they re-create it on next access.
+ * Both DiskCache instances are constructed eagerly. Coil's DiskCache
+ * (a Kotlin port of OkHttp's DiskLruCache) is thread-safe by contract,
+ * so concurrent get/put/clear are all safe and no lifecycle mutex is
+ * needed. [clearCaches] calls [coil3.disk.DiskCache.clear] on each.
  */
 class DriveFileProviderCached(
         httpClient: HttpClient,
@@ -79,8 +80,6 @@ class DriveFileProviderCached(
     private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
 
-    private val thumbnailKacheWriteMutex = Mutex()
-
     // TODO: unbounded growth — keyLocks gains one entry per unique cacheKey
     //  ever touched and never drops any. Over a long session this leaks
     //  memory. Same shape in PublicProfileProviderCached. Fix with a
@@ -95,90 +94,35 @@ class DriveFileProviderCached(
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
-    private var _payloadDiskKache: FileKache? = null
-    private var _thumbDiskKache: FileKache? = null
-    @Volatile private var payloadKacheFailure: Throwable? = null
-    @Volatile private var thumbKacheFailure: Throwable? = null
-    private val kacheMutex = Mutex()
+    private val payloadDir = "$directory/homebase-payloads-v2"
+    private val thumbDir = "$directory/homebase-thumbs-v2"
 
-    // Always acquires kacheMutex — the previous lock-free fast path let a
-    // reader hand out a reference to a FileKache instance that clearCaches()
-    // was simultaneously disposing, producing a NPE inside FileKache's
-    // internals when the reader resumed and called .get() on it.
-    //
-    // createDirectories + tombstone on construction failure: observed on one
-    // real device that FileKache(…) itself throws `getClass() on null` from
-    // mayakapps/kache internals when the managed directory is missing.
-    // We pre-create the dir to avoid the library's fragile init path, and
-    // record any construction exception so we don't spam retries for the
-    // rest of the session. clearCaches() resets the tombstone.
-    private suspend fun payloadDiskKache(): FileKache = kacheMutex.withLock {
-        _payloadDiskKache?.let { return@withLock it }
-        payloadKacheFailure?.let { throw it }
+    // Coil's DiskCache (DiskLruCache descendant) is thread-safe; no lifecycle
+    // mutex, no write serialization, no construction tombstones — concurrent
+    // get()/put()/clear() are all safe per the Coil contract.
+    private val payloadDiskCache: DiskCache = DiskCache.Builder()
+            .directory(payloadDir.toPath())
+            .maxSizeBytes(200L * 1024L * 1024L) // 200MB
+            .build()
 
-        val dir = "$directory/homebase-payloads"
-        try {
-            fileSystem.createDirectories(dir.toPath())
-            FileKache(directory = dir, maxSize = 200L * 1024L * 1024L) // 200MB
-                    .also { _payloadDiskKache = it }
-        } catch (e: Throwable) {
-            Logger.e(tag = "DriveFileProviderCached", throwable = e) {
-                "FileKache construction FAILED (payload) — disabling disk cache for this session"
-            }
-            payloadKacheFailure = e
-            throw e
-        }
+    private val thumbDiskCache: DiskCache = DiskCache.Builder()
+            .directory(thumbDir.toPath())
+            .maxSizeBytes(300L * 1024L * 1024L) // 300MB
+            .build()
+
+    init {
+        // Reclaim disk from the pre-migration mayakapps/kache cache directories.
+        // Best-effort — a missing dir is fine, and any failure here is purely
+        // a missed cleanup, not a correctness issue.
+        runCatching { fileSystem.deleteRecursively("$directory/homebase-payloads".toPath()) }
+        runCatching { fileSystem.deleteRecursively("$directory/homebase-thumbs".toPath()) }
     }
 
-    private suspend fun thumbDiskKache(): FileKache = kacheMutex.withLock {
-        _thumbDiskKache?.let { return@withLock it }
-        thumbKacheFailure?.let { throw it }
-
-        val dir = "$directory/homebase-thumbs"
-        try {
-            fileSystem.createDirectories(dir.toPath())
-            FileKache(directory = dir, maxSize = 300L * 1024L * 1024L) // 300MB
-                    .also { _thumbDiskKache = it }
-        } catch (e: Throwable) {
-            Logger.e(tag = "DriveFileProviderCached", throwable = e) {
-                "FileKache construction FAILED (thumb) — disabling disk cache for this session"
-            }
-            thumbKacheFailure = e
-            throw e
-        }
-    }
-
-    // Drop the live FileKache reference under the lifecycle mutex so the next
-    // accessor reconstructs from the on-disk journal. Use this only for
-    // exceptions that look like internal-state corruption (NPE, ISE) — observed
-    // on real Android devices where a single mayakapps/kache failure leaves
-    // the instance with a null internal sink/source and every subsequent
-    // get()/put() fires the same `getClass() on null` NPE for the rest of the
-    // session (90k+ identical errors in one user log). Not for IOException /
-    // disk-full, which are per-operation and recover on their own.
-    private fun isKacheInstanceCorrupt(e: Throwable): Boolean =
-            e is NullPointerException || e is IllegalStateException
-
-    // Internal so jvmTest can drive the recovery path directly. The on-disk
-    // journal survives — a fresh FileKache built over the same dir picks up
-    // existing entries.
-    internal suspend fun discardThumbKache() = kacheMutex.withLock {
-        if (_thumbDiskKache != null) {
-            Logger.w(tag = "DriveFileProviderCached") {
-                "discarding broken thumb FileKache — next access will reconstruct"
-            }
-            _thumbDiskKache = null
-        }
-    }
-
-    internal suspend fun discardPayloadKache() = kacheMutex.withLock {
-        if (_payloadDiskKache != null) {
-            Logger.w(tag = "DriveFileProviderCached") {
-                "discarding broken payload FileKache — next access will reconstruct"
-            }
-            _payloadDiskKache = null
-        }
-    }
+    // Coil's DiskLruCache enforces `[a-z0-9_-]{1,120}` on keys. Our logical
+    // cache keys (`payload:driveId:fileId:…`) contain colons and overflow that
+    // length, so hash to a fixed-width hex digest. SHA-256 → 64 hex chars,
+    // collision-resistant.
+    private fun String.toDiskKey(): String = encodeUtf8().sha256().hex()
 
     // ================================================================
     // -------------------- CACHED PAYLOAD METHODS --------------------
@@ -223,16 +167,7 @@ class DriveFileProviderCached(
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    try {
-                        payloadDiskKache().put(cacheKey) { filePath ->
-                            writeBytesResponse(filePath, result)
-                        }
-                    } catch (e: Exception) {
-                        // A write failure should not prevent the caller from getting the fetched bytes.
-                        // Surface it loudly so we can spot corrupted journals or full disks.
-                        Logger.e(tag = "PayloadIO", throwable = e) { "payload cache-write FAILED key=$cacheKey" }
-                        if (isKacheInstanceCorrupt(e)) discardPayloadKache()
-                    }
+                    writeToDiskCache(payloadDiskCache, cacheKey, "PayloadIO", result)
                     result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
@@ -301,30 +236,32 @@ class DriveFileProviderCached(
             fileOps: FileOperationsProvider
     ): Boolean {
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
-        val cachedFilePath = payloadDiskKache().get(cacheKey)
+        val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
                 ?: return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
 
-        val encryptedFlow = channelFlow<ByteArray> {
-            val channel = this
-            fileSystem.read(cachedFilePath.toPath()) {
-                readInt() // skip status
-                val ctLen = readInt()
-                readUtf8(ctLen.toLong()) // skip contentType
-                readByte() // skip payloadEncrypted flag
-                val chunkSize = 65_536L
-                while (true) {
-                    if (!request(chunkSize)) {
-                        if (!exhausted()) channel.send(readByteArray())
-                        break
+        return snapshot.use { snap ->
+            val encryptedFlow = channelFlow<ByteArray> {
+                val channel = this
+                fileSystem.read(snap.data) {
+                    readInt() // skip status
+                    val ctLen = readInt()
+                    readUtf8(ctLen.toLong()) // skip contentType
+                    readByte() // skip payloadEncrypted flag
+                    val chunkSize = 65_536L
+                    while (true) {
+                        if (!request(chunkSize)) {
+                            if (!exhausted()) channel.send(readByteArray())
+                            break
+                        }
+                        channel.send(readByteArray(chunkSize))
                     }
-                    channel.send(readByteArray(chunkSize))
                 }
             }
-        }
 
-        val decryptedFlow = AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv)
-        fileOps.writeStream(outputPath, decryptedFlow)
-        return true
+            val decryptedFlow = AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv)
+            fileOps.writeStream(outputPath, decryptedFlow)
+            true
+        }
     }
 
     // ==============================================================
@@ -373,22 +310,10 @@ class DriveFileProviderCached(
                             )
 
                     // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else).
-                    // Serialise writes to avoid corrupting FileKache's journal file.
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    try {
-                        thumbnailKacheWriteMutex.withLock {
-                            thumbDiskKache().put(cacheKey) { filePath ->
-                                writeBytesResponse(filePath, result)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // A write failure should not prevent the caller from getting the fetched bytes.
-                        // Surface it loudly so we can spot corrupted journals or full disks.
-                        Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-write FAILED key=$cacheKey" }
-                        if (isKacheInstanceCorrupt(e)) discardThumbKache()
-                    }
+                    writeToDiskCache(thumbDiskCache, cacheKey, "ThumbIO", result)
                     result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
@@ -405,34 +330,32 @@ class DriveFileProviderCached(
 
     /**
      * Read a thumb from the disk cache. Returns null on cache miss OR when the
-     * cached file cannot be parsed (corrupted entry, truncated write, etc.) OR
-     * when the underlying FileKache throws (e.g. a concurrent clearCaches()
-     * on another thread). All exceptions are logged as errors so the caller
-     * can fall through to the network cleanly.
+     * cached file cannot be parsed (corrupted entry, truncated write, etc.).
+     * All exceptions are logged as errors so the caller can fall through to
+     * the network cleanly.
      */
-    private suspend fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
+    private fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
         return try {
-            val filePath = thumbDiskKache().get(cacheKey) ?: return null
-            readBytesResponse(filePath)
+            thumbDiskCache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
+                readBytesResponse(snap.data.toString())
+            }
         } catch (e: Exception) {
             Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey" }
-            if (isKacheInstanceCorrupt(e)) discardThumbKache()
             null
         }
     }
 
     /**
      * Payload-cache analog of [readCachedThumbOrLog]. Defense-in-depth against
-     * FileKache internal errors and parse failures.
+     * parse failures.
      */
-    private suspend fun readCachedPayloadOrLog(cacheKey: String): ByteApiResponse? {
+    private fun readCachedPayloadOrLog(cacheKey: String): ByteApiResponse? {
         return try {
-            val filePath = payloadDiskKache().get(cacheKey) ?: return null
-            val result = readBytesResponse(filePath)
-            result
+            payloadDiskCache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
+                readBytesResponse(snap.data.toString())
+            }
         } catch (e: Exception) {
             Logger.e(tag = "PayloadIO", throwable = e) { "payload cache-read FAILED key=$cacheKey" }
-            if (isKacheInstanceCorrupt(e)) discardPayloadKache()
             null
         }
     }
@@ -480,6 +403,28 @@ class DriveFileProviderCached(
     // =================================================
     // -------------------- FILE IO --------------------
     // =================================================
+
+    /**
+     * Write a ByteApiResponse to a Coil DiskCache entry. Surface failures
+     * loudly (corrupt journal, full disk) but never propagate them to the
+     * caller — a cache-write failure must not poison the fresh bytes the
+     * caller already paid the network round-trip for.
+     */
+    private fun writeToDiskCache(
+            cache: DiskCache,
+            cacheKey: String,
+            logTag: String,
+            value: ByteApiResponse
+    ) {
+        val editor = cache.openEditor(cacheKey.toDiskKey()) ?: return
+        try {
+            writeBytesResponse(editor.data.toString(), value)
+            editor.commit()
+        } catch (e: Exception) {
+            try { editor.abort() } catch (_: Exception) {}
+            Logger.e(tag = logTag, throwable = e) { "cache-write FAILED key=$cacheKey" }
+        }
+    }
 
     private fun writeBytesResponse(filePath: String, value: ByteApiResponse): Boolean {
         val path = filePath.toPath()
@@ -548,43 +493,19 @@ class DriveFileProviderCached(
                     .joinToString(":")
 
     suspend fun clearCaches() {
-        val payloadDir = "$directory/homebase-payloads".toPath()
-        val thumbDir = "$directory/homebase-thumbs".toPath()
         val preloadDir = "$directory/hbvid_preload".toPath()
 
-        // Serialised with the accessor functions: any in-flight payload/thumb
-        // reader either completed before we took the mutex (so its reference
-        // is no longer reachable from us) or is still waiting for it (so it
-        // will observe the post-teardown null and construct a fresh kache).
-        //
-        // We intentionally do NOT call FileKache.clear() — on at least one
-        // Android device that call raced with concurrent .get() calls and
-        // nulled internal FileKache state under a reader's feet, producing
-        // the `getClass() on null` NPE that fired 335× after logout.
-        // Deleting the directory directly achieves the same outcome and the
-        // next accessor reconstructs a clean FileKache on top of an empty dir.
-        kacheMutex.withLock {
-            _payloadDiskKache = null
-            _thumbDiskKache = null
-            // Reset the ctor tombstones. This is the recovery path for a
-            // FileKache-ctor NPE (observed on real devices with a populated
-            // homebase-thumbs dir from a prior install): the Storage-screen
-            // "Clear caches" button deletes the directory and clears the
-            // tombstone so the next access builds a fresh FileKache on top
-            // of an empty dir.
-            payloadKacheFailure = null
-            thumbKacheFailure = null
-
-            try {
-                fileSystem.deleteRecursively(payloadDir)
-            } catch (e: Exception) {
-                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache dir delete failed" }
-            }
-            try {
-                fileSystem.deleteRecursively(thumbDir)
-            } catch (e: Exception) {
-                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache dir delete failed" }
-            }
+        // Coil's DiskCache.clear() is documented as thread-safe; it serialises
+        // internally against in-flight readers/writers.
+        try {
+            payloadDiskCache.clear()
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache clear failed" }
+        }
+        try {
+            thumbDiskCache.clear()
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
 
         try {
@@ -596,26 +517,20 @@ class DriveFileProviderCached(
         notFoundCache = emptySet()
     }
 
-    // Per-cache try/catch: one broken FileKache (e.g. ctor tombstoned after a
-    // mayakapps/kache NPE on this device's pre-existing cache state) must not
-    // hide the other row. A thrown `payloadDiskKache()` used to propagate up
-    // through the ViewModel's outer runCatching and wipe *both* drive rows
-    // from the Storage screen, leaving the user with no indication that a
-    // cache was unhealthy. Return sentinel `sizeBytes = CacheStats.UNAVAILABLE`
-    // (-1L) so the UI can render a visible "Unavailable" row and point the
-    // user at the Clear caches button — which resets the tombstone.
+    // Per-cache try/catch as defense-in-depth: a thrown size read on one cache
+    // must not hide the other row. Returns sentinel `sizeBytes = CacheStats.UNAVAILABLE`
+    // (-1L) so the UI can render a visible "Unavailable" row when one cache is
+    // unhealthy.
     suspend fun getCacheStats(): List<CacheStats> {
         val out = ArrayList<CacheStats>(2)
         try {
-            val payload = payloadDiskKache()
-            out.add(CacheStats(id = "drive_payloads", sizeBytes = payload.size, maxBytes = payload.maxSize))
+            out.add(CacheStats(id = "drive_payloads", sizeBytes = payloadDiskCache.size, maxBytes = payloadDiskCache.maxSize))
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_payloads stats unavailable" }
             out.add(CacheStats(id = "drive_payloads", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         try {
-            val thumb = thumbDiskKache()
-            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumb.size, maxBytes = thumb.maxSize))
+            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumbDiskCache.size, maxBytes = thumbDiskCache.maxSize))
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
             out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
