@@ -442,5 +442,8 @@
     <string name="emoji_none_found">Ingen emojis fundet</string>
 
     <string name="crop">Beskær</string>
+    <string name="trim_start_handle">Beskær start</string>
+    <string name="trim_end_handle">Beskær slut</string>
+    <string name="trim_position">Afspilningsposition</string>
 
 </resources>
