@@ -89,11 +89,13 @@ fun FullScreenVideoPlayer(
         // Video player surface - prefer local file when available, and clip to the
         // sender-chosen trim range so the bubble matches what the receiver gets.
         if (isLocalPlayback) {
+            // data.localFilePath is smart-cast to non-null here via isLocalPlayback,
+            // so localPath is inferred as String. No explicit null check needed.
             val localPath = data.localFilePath
             val hasTrim = localCtx != null &&
                 (localCtx.trimStartMs != null || localCtx.trimEndMs != null)
             val clipDuration = localCtx?.durationMs ?: 0L
-            if (hasTrim && clipDuration > 0L && localPath != null) {
+            if (hasTrim && clipDuration > 0L) {
                 val clipStart = localCtx.trimStartMs ?: 0L
                 val clipEnd = localCtx.trimEndMs ?: clipDuration
                 TrimmableVideoPlayerSurface(
