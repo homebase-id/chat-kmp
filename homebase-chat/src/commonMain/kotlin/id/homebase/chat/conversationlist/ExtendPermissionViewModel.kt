@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.youauth.MissingPermissionsResult
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
@@ -60,6 +61,14 @@ class ExtendPermissionViewModel(
      */
     private val _navigateAwayRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateAwayRequest: SharedFlow<Unit> = _navigateAwayRequest.asSharedFlow()
+
+    /**
+     * Latest result from [PermissionExtensionManager.getMissingPermissions]. Held so the
+     * dialog's confirm-click can rebuild the extend-permission URL with a freshly
+     * resolved `returnUrl` (which on JVM may need to start a new callback server if
+     * the previous one was stopped).
+     */
+    private var lastMissingResult: MissingPermissionsResult? = null
 
     init {
         viewModelScope.launch { checkPermissions() }
@@ -121,14 +130,13 @@ class ExtendPermissionViewModel(
                 Logger.i(tag = TAG) {
                     "Missing permissions detected: drives=${result.missingDrives.size}, permissions=${result.missingPermissions.size}, allConnected=${result.missingAllConnectedCircle}"
                 }
+                lastMissingResult = result
                 _permissionsGranted.value = false
                 _uiState.value =
-                    ExtendPermissionUiState.ShowDialog(
-                        extendPermissionUrl = result.extendPermissionUrl,
-                        appName = config.appName
-                    )
+                    ExtendPermissionUiState.ShowDialog(appName = config.appName)
             } else {
                 Logger.d(tag = TAG) { "All permissions are granted" }
+                lastMissingResult = null
                 _permissionsGranted.value = true
             }
             _permissionsChecked.value = true
@@ -151,6 +159,15 @@ class ExtendPermissionViewModel(
         _uiState.value = ExtendPermissionUiState.Dismissed
     }
 
+    /**
+     * Builds the extend-permission URL freshly at the moment of the user's click —
+     * this re-evaluates [PermissionExtensionConfig.returnUrl] so the URL carries the
+     * live callback-server port (and, on JVM, restarts the server if it was stopped).
+     * Returns null if no missing-permissions result is cached (shouldn't happen while
+     * the dialog is shown).
+     */
+    fun buildExtendPermissionUrl(): String? = lastMissingResult?.buildExtendPermissionUrl?.invoke()
+
     companion object {
         private const val TAG = "ExtendPermissionViewModel"
     }
@@ -162,8 +179,7 @@ sealed interface ExtendPermissionUiState {
     data object Idle : ExtendPermissionUiState
 
     /** Missing permissions detected, dialog should be shown. */
-    data class ShowDialog(val extendPermissionUrl: String, val appName: String) :
-            ExtendPermissionUiState
+    data class ShowDialog(val appName: String) : ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState
