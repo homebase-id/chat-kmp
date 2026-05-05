@@ -113,7 +113,9 @@ actual fun VideoPlayerSurface(
                         )
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
-                                strippedPlaylist = content.strippedPlaylist,
+                                strippedPlaylist = content.originalPlaylist.lines()
+                                    .filter { !it.startsWith("#EXT-X-KEY") }
+                                    .joinToString("\n"),
                                 driveFileProvider = driveFileProvider,
                                 driveId = data.driveId,
                                 fileId = data.fileId,

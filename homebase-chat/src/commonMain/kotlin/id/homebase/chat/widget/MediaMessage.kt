@@ -24,22 +24,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
-import id.homebase.resources.upload_preparing
 import id.homebase.resources.upload_compressing
-import id.homebase.resources.upload_segmenting
+import id.homebase.resources.upload_done
 import id.homebase.resources.upload_encrypting
+import id.homebase.resources.upload_finalizing
+import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_segmenting
 import id.homebase.resources.upload_sending
 import id.homebase.resources.upload_uploading
-import id.homebase.resources.upload_finalizing
-import id.homebase.resources.upload_done
 import kotlinx.collections.immutable.ImmutableMap
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -187,6 +187,7 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
 
                 is UploadStatus.Processing -> {
                     if (status.progress > 0f) {
+                        val progressText = "${(status.progress * 100).toInt()}%"
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
                                 progress = { status.progress },
@@ -195,7 +196,7 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                                 trackColor = Color.White.copy(alpha = 0.2f),
                             )
                             Text(
-                                text = "${(status.progress * 100).toInt()}%",
+                                text = progressText,
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelSmall,
                             )
@@ -233,6 +234,7 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                             style = MaterialTheme.typography.labelSmall,
                         )
                     } else {
+                        val progressText = "${(status.progress * 100).toInt()}%"
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
                                 progress = { status.progress },
@@ -241,7 +243,7 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                                 trackColor = Color.White.copy(alpha = 0.2f),
                             )
                             Text(
-                                text = "${(status.progress * 100).toInt()}%",
+                                text = progressText,
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelSmall,
                             )

@@ -1,13 +1,13 @@
 package id.homebase.api.di
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
-import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
-import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
+import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
@@ -17,22 +17,20 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
-import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.api.video.VideoPreloader
-import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPrefetchDriveAccess
+import id.homebase.api.video.VideoPreloadService
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
-import id.homebase.api.youauth.YouAuthFlowManager
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +52,7 @@ val apiModule = module {
 
     // this creates the HttpClient
     single { HttpClientProvider.create() }
+
     singleOf(::VideoPayloadProcessor)
     singleOf(::VideoPreloader)
     singleOf(::VideoPreloadService)

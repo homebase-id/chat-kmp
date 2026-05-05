@@ -118,10 +118,6 @@ class EditConversationGroupViewModel(
         _uiState.update { it.copy(uiEvent = null) }
     }
 
-    fun dialogConsumed() {
-        _uiState.update { it.copy(uiDialog = null) }
-    }
-
     private fun sendEvent(event: EditConversationGroupUiEvent) {
         _uiState.update { it.copy(uiEvent = event, isLoading = false) }
     }
@@ -166,17 +162,12 @@ data class EditConversationGroupUiState(
     val groupImage: PlatformFile? = null,
     val saveAllowed: Boolean = false,
     val uiEvent: EditConversationGroupUiEvent? = null,
-    val uiDialog: EditConversationGroupUiDialog? = null
 )
 
 sealed interface EditConversationGroupUiEvent {
     data object Back : EditConversationGroupUiEvent
     data class Error(val errorMessage: String) : EditConversationGroupUiEvent
     data object PickGroupImage : EditConversationGroupUiEvent
-}
-
-sealed interface EditConversationGroupUiDialog {
-    data object TestDialog : EditConversationGroupUiDialog
 }
 
 sealed interface EditConversationGroupUiAction {

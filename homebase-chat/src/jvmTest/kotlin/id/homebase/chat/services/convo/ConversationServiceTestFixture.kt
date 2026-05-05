@@ -425,9 +425,32 @@ class ConversationServiceTestFixture : AutoCloseable {
 
 class FakeIntroductionSender : IntroductionSender {
     val calls = mutableListOf<IntroductionGroup>()
+    val preflightCalls = mutableListOf<IntroductionGroup>()
+    /** Override to drive preflight outcomes from individual tests; default returns
+     *  every recipient as Ready so tests that don't care about preflight semantics
+     *  proceed unchanged. */
+    var preflightResultProvider: (IntroductionGroup) -> id.homebase.api.client.connections.IntroductionPreflightResult =
+        { group ->
+            id.homebase.api.client.connections.IntroductionPreflightResult(
+                recipients = group.recipients.map { rcpt ->
+                    id.homebase.api.client.connections.RecipientPreflightStatus(
+                        recipient = rcpt,
+                        status = id.homebase.api.client.connections.IntroductionPreflightStatus.Ready,
+                    )
+                }
+            )
+        }
+
     override suspend fun sendIntroductions(group: IntroductionGroup): IntroductionResult {
         calls += group
         return IntroductionResult()
+    }
+
+    override suspend fun preflightIntroductions(
+        group: IntroductionGroup
+    ): id.homebase.api.client.connections.IntroductionPreflightResult {
+        preflightCalls += group
+        return preflightResultProvider(group)
     }
 }
 
@@ -461,8 +484,12 @@ class FakeStatusMessageSender : StatusMessageSender {
 
 class FakeConversationLoader : ConversationLoader {
     val loaded = mutableListOf<Uuid>()
+    val removed = mutableListOf<Uuid>()
     override suspend fun loadConversation(conversationId: Uuid) {
         loaded += conversationId
+    }
+    override suspend fun removeConversation(conversationId: Uuid) {
+        removed += conversationId
     }
 }
 

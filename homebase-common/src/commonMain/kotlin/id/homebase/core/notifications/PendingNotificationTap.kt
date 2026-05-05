@@ -47,6 +47,12 @@ class PendingNotificationTap(
      * Tests pass `backgroundScope` from `runTest` so virtual time advances expiries.
      */
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+    /**
+     * Time source for `createdAt` timestamps and the consume-dedup window. Defaults
+     * to wall clock; tests inject a virtual-time clock so the dedup window advances
+     * with `advanceTimeBy(...)` rather than real elapsed time.
+     */
+    private val now: () -> Instant = { Clock.System.now() },
 ) {
 
     data class Tap(
@@ -63,20 +69,50 @@ class PendingNotificationTap(
     private var expiryJob: Job? = null
 
     /**
+     * Last `(conv, msg, consumedAt)` tuple from a *user-resolved* tap (set then
+     * cleared via [clear] or [clearIfMatches] — NOT a TTL expiry). Within
+     * [DEDUP_WINDOW] of consumedAt, a duplicate `set(conv, msg)` for the same
+     * pair is treated as an Intent replay and dropped.
+     */
+    @Volatile
+    private var lastConsumed: ConsumeRecord? = null
+
+    private data class ConsumeRecord(
+        val conversationId: Uuid,
+        val messageId: Uuid,
+        val consumedAt: Instant,
+    )
+
+    /**
      * Set a fresh pending tap. Any previous tap is overwritten and its TTL timer
      * cancelled — the new tap starts a new countdown. Safe to call from any context;
      * non-suspend by design so action handlers (e.g. `onAction.ConversationClicked`)
      * can call it without a coroutine.
      */
     fun set(conversationId: Uuid, messageId: Uuid) {
+        val recent = lastConsumed
+        if (recent != null &&
+            recent.conversationId == conversationId &&
+            recent.messageId == messageId &&
+            now() - recent.consumedAt <= DEDUP_WINDOW
+        ) {
+            Logger.i(tag = TAG) {
+                "set ignored as duplicate within ${DEDUP_WINDOW.inWholeSeconds}s of consume " +
+                    "(conv=$conversationId msg=$messageId)"
+            }
+            return
+        }
+
         expiryJob?.cancel()
-        val tap = Tap(conversationId, messageId, Clock.System.now())
+        val tap = Tap(conversationId, messageId, now())
         _state.value = tap
         expiryJob = scope.launch {
             delay(ttl)
             // compareAndSet: only clear if THIS exact tap is still the active one.
             // A racing set() that landed between our delay and now would have
             // replaced _state.value already; we must not clobber the newer tap.
+            // TTL expiry intentionally does NOT seed `lastConsumed` — a tap the
+            // user never actually saw resolve shouldn't dedup their next try.
             if (_state.compareAndSet(tap, null)) {
                 Logger.i(tag = TAG) {
                     "expired after ${ttl.inWholeSeconds}s without resolution " +
@@ -93,6 +129,7 @@ class PendingNotificationTap(
             // case is "tap was set then cleared without resolving" — pair this with the
             // `Setting pendingNotificationTap` line at INFO to reconstruct what happened.
             Logger.d(tag = TAG) { "cleared (was conv=${previous.conversationId})" }
+            seedConsumed(previous)
         }
         expiryJob?.cancel()
         _state.value = null
@@ -111,8 +148,14 @@ class PendingNotificationTap(
             expiryJob?.cancel()
             // compareAndSet: another set() may have replaced the tap between our read
             // and now — leaving the newer tap intact is the correct behavior.
-            _state.compareAndSet(current, null)
+            if (_state.compareAndSet(current, null)) {
+                seedConsumed(current)
+            }
         }
+    }
+
+    private fun seedConsumed(tap: Tap) {
+        lastConsumed = ConsumeRecord(tap.conversationId, tap.messageId, now())
     }
 
     companion object {
@@ -124,5 +167,14 @@ class PendingNotificationTap(
          * won't surprise the user after they've moved on.
          */
         val DEFAULT_TTL: Duration = 10.seconds
+
+        /**
+         * After a `(conv, msg)` tap resolves, a duplicate `set(conv, msg)` for the
+         * same pair within this window is treated as a stale Intent replay
+         * (e.g. onCreate + onNewIntent both feeding the same payload) and ignored.
+         * A real new message in the same conv arrives with a different msgId and
+         * is unaffected.
+         */
+        val DEDUP_WINDOW: Duration = 30.seconds
     }
 }

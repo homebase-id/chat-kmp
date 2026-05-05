@@ -104,4 +104,8 @@ sealed class Route {
     @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String) : Route()
+
+    @Serializable
+    @SerialName("draw")
+    data class Draw(val requestId: String) : Route()
 }

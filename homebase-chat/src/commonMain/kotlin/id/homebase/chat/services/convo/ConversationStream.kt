@@ -15,7 +15,6 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -57,6 +56,17 @@ class ConversationStream(
     private var loadJob: Job? = null
     private var shareCacheJob: Job? = null
 
+    /**
+     * Conversation ids the user deleted in this app session. The file is still
+     * on disk (soft-deleted via archivalStatus=Removed) until the outbox processes
+     * the server-side delete, so [loadBasicConversations] would otherwise resurrect
+     * a "deleted conversation" placeholder via [ConversationMapper.mapDeletedConversation]
+     * on every reload. Tracking the ids here lets us filter them out for the rest
+     * of the session. Cleared on app restart (when the outbox should have already
+     * hard-deleted them).
+     */
+    private val deletedIds: MutableSet<Uuid> = mutableSetOf()
+
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
         dbm = dbm
@@ -76,7 +86,7 @@ class ConversationStream(
      *  sync, or transfer-to-self). The plumbing is retained so a future
      *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
      *  reconciliation pass) can wire in without touching DI. */
-    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -261,24 +271,24 @@ class ConversationStream(
             // endregion
 
             if (matchingConversation == null) {
-                // Determine 1:1 vs group so the placeholder has a useful avatar
+                // Determine 1:1 vs group so the placeholder has a useful avatar.
+                // Use sender (not originalAuthor) for the XOR test — for forwarded
+                // messages those differ and originalAuthor is content provenance,
+                // not the wire-level counterparty.
                 val activeDomain = credentialsManager.getActiveDomain()
-                val isOneToOne = activeDomain != null && m.originalAuthor != null
-                    && m.conversationId == XorIdUtil.getNewXorId(
-                        activeDomain.domainName, m.originalAuthor.domainName
-                    )
+                val isOneToOne = activeDomain != null && m.isOneToOne(activeDomain)
 
                 val placeholderAvatar = if (isOneToOne) {
                     ConversationAvatarModel(
                         type = ConversationAvatarModel.Type.Connection,
-                        odinId = m.originalAuthor
+                        odinId = m.sender,
                     )
                 } else {
                     ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
                 }
 
                 val placeholderParticipants = if (isOneToOne) {
-                    listOf(activeDomain, m.originalAuthor).distinct()
+                    listOfNotNull(activeDomain, m.sender).distinct()
                 } else {
                     emptyList()
                 }
@@ -380,6 +390,15 @@ class ConversationStream(
         } else {
             updateConversation(existing, incoming)
         }
+    }
+
+    override suspend fun removeConversation(conversationId: Uuid) {
+        val current = _conversations.value
+        if (current.items.none { it.id == conversationId }) return
+        _conversations.value = current.copy(
+            items = current.items.filterNot { it.id == conversationId }
+        )
+        placeholderIds -= conversationId
     }
 
     private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
@@ -590,12 +609,18 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val basic = files.map { file ->
-            val ui = mapper.mapToBasic(file)
-            if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
-                ui.copy(conversationState = ConversationState.Left)
-            } else ui
-        }
+        val basic = files
+            // Locally-deleted conversations stay on disk (soft-deleted) until the
+            // outbox processes the server-side delete; without this filter the
+            // mapper would resurrect a "deleted conversation" placeholder for them
+            // on every reload. See [onConversationDeleted].
+            .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
+            .map { file ->
+                val ui = mapper.mapToBasic(file)
+                if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+                    ui.copy(conversationState = ConversationState.Left)
+                } else ui
+            }
 
         _conversations.value = ConversationsData(
             dataReady = true,
@@ -866,6 +891,25 @@ class ConversationStream(
                     convo.copy(conversationState = ConversationState.Left)
                 else convo
             }
+        )
+    }
+
+    /**
+     * Drop the conversation from the in-memory list immediately. Called from the
+     * conversation-delete UI flow so the row disappears as soon as the service-side
+     * delete is enqueued, instead of lingering as a "deleted conversation" placeholder
+     * (the result of [ConversationMapper.mapDeletedConversation] firing on the soft-
+     * deleted file) until the next app start.
+     *
+     * Also records the id in [deletedIds] so [loadBasicConversations] keeps it out
+     * of the list across subsequent reloads; without this the row would be
+     * resurrected by the next DB read because the file is still on disk (soft-
+     * deleted) until the outbox processes the server-side delete.
+     */
+    fun onConversationDeleted(conversationId: Uuid) {
+        deletedIds += conversationId
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.filterNot { it.id == conversationId }
         )
     }
 

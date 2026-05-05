@@ -1,7 +1,7 @@
 package id.homebase.api.client.profile
 
 import co.touchlab.kermit.Logger
-import com.mayakapps.kache.FileKache
+import coil3.disk.DiskCache
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -13,9 +13,15 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okio.ByteString.Companion.encodeUtf8
 import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.SYSTEM
 import kotlin.time.Clock
@@ -26,19 +32,19 @@ import kotlin.time.Clock
  * and `https://{odinId}/pub/image`. Both endpoints are public HTTPS, so their
  * responses are stored on disk unencrypted.
  *
- * Two underlying [com.mayakapps.kache.FileKache] instances back the two
+ * Two underlying [coil3.disk.DiskCache] instances back the two
  * Storage-screen rows:
  * - `public_profiles` — serialized [ProfileCard] JSON (display name, bio,
  *   links, email list, avatar URL, etc.). Directory
- *   `homebase-public-profiles`, cap 10 MB.
+ *   `homebase-public-profiles-v2`, cap 10 MB.
  * - `public_images`   — raw avatar image bytes. Directory
- *   `homebase-public-images`, cap 200 MB.
+ *   `homebase-public-images-v2`, cap 200 MB.
  *
  * The split is deliberate, not incidental. Profile JSON is small (~1–10 KB)
  * and used as a sparse fallback for identities without a local contact-drive
  * record — push senders, forward-sheet targets, unmet-peer [id.homebase.core.widget.ContactName]
  * renders. Avatar bytes are an order of magnitude larger. A single merged
- * FileKache would let a burst of avatar loads evict profile JSON entries
+ * DiskCache would let a burst of avatar loads evict profile JSON entries
  * under shared-pool LRU pressure; separate caps (10 MB profiles, 200 MB
  * images) protect the small tier from the large one regardless of relative
  * request rates. It also lets the two caps be tuned independently and
@@ -48,11 +54,11 @@ import kotlin.time.Clock
  * lookups of missing identities skip the network. Transient failures
  * (5xx, network errors) are never cached.
  *
- * Both FileKache instances are created lazily through mutex-gated accessors
- * so that [clearCaches] cannot race with a reader: clears delete the
- * directory recursively and null the refs, and readers re-create the
- * FileKache on next access. See also [id.homebase.api.client.drives.cache.DriveFileProviderCached]
- * which follows the same lifecycle pattern.
+ * Both DiskCache instances are constructed eagerly. Coil's DiskCache
+ * (a Kotlin port of OkHttp's DiskLruCache) is thread-safe by contract,
+ * so concurrent get/put/clear are all safe and no lifecycle mutex is
+ * needed. See also [id.homebase.api.client.drives.cache.DriveFileProviderCached]
+ * which follows the same shape.
  */
 class PublicProfileProviderCached(
     private val httpClient: HttpClient,
@@ -78,57 +84,31 @@ class PublicProfileProviderCached(
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
-    private var _profileDiskKache: FileKache? = null
-    private var _imageDiskKache: FileKache? = null
-    @Volatile private var profileKacheFailure: Throwable? = null
-    @Volatile private var imageKacheFailure: Throwable? = null
-    private val kacheMutex = Mutex()
+    private val profileDir = "$directory/homebase-public-profiles-v2"
+    private val imageDir = "$directory/homebase-public-images-v2"
 
-    // Always acquires kacheMutex — the previous `by lazy { runBlocking { ... } }`
-    // handed out a permanent FileKache reference that a concurrent clearCaches()
-    // could poison with .clear(). Mirrors DriveFileProviderCached post-fix.
-    //
-    // createDirectories + tombstone on construction failure: observed on one
-    // Android device that FileKache(…) throws `getClass() on null` from
-    // mayakapps/kache internals when the managed directory is missing.
-    // Pre-create the dir and tombstone the first construction exception so we
-    // don't spam retries for the rest of the session. clearCaches() resets
-    // the tombstone.
-    private suspend fun profileDiskKache(): FileKache = kacheMutex.withLock {
-        _profileDiskKache?.let { return@withLock it }
-        profileKacheFailure?.let { throw it }
+    private val profileDiskCache: DiskCache = DiskCache.Builder()
+        .directory(profileDir.toPath())
+        .maxSizeBytes(10L * 1024L * 1024L)
+        .build()
 
-        val dir = "$directory/homebase-public-profiles"
-        try {
-            fileSystem.createDirectories(dir.toPath())
-            FileKache(directory = dir, maxSize = 10L * 1024L * 1024L)
-                .also { _profileDiskKache = it }
-        } catch (e: Throwable) {
-            Logger.e(tag = "PublicProfileIO", throwable = e) {
-                "FileKache construction FAILED (profile) — disabling disk cache for this session"
-            }
-            profileKacheFailure = e
-            throw e
+    private val imageDiskCache: DiskCache = DiskCache.Builder()
+        .directory(imageDir.toPath())
+        .maxSizeBytes(200L * 1024L * 1024L)
+        .build()
+
+    init {
+        // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
+        // directories — see DriveFileProviderCached.init for rationale.
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-profiles".toPath()) }
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-images".toPath()) }
         }
     }
 
-    private suspend fun imageDiskKache(): FileKache = kacheMutex.withLock {
-        _imageDiskKache?.let { return@withLock it }
-        imageKacheFailure?.let { throw it }
-
-        val dir = "$directory/homebase-public-images"
-        try {
-            fileSystem.createDirectories(dir.toPath())
-            FileKache(directory = dir, maxSize = 200L * 1024L * 1024L)
-                .also { _imageDiskKache = it }
-        } catch (e: Throwable) {
-            Logger.e(tag = "PublicProfileIO", throwable = e) {
-                "FileKache construction FAILED (image) — disabling disk cache for this session"
-            }
-            imageKacheFailure = e
-            throw e
-        }
-    }
+    // Coil's DiskLruCache enforces `[a-z0-9_-]{1,120}` on keys; SHA-256 hex
+    // gives a 64-char compliant digest with no collision risk in practice.
+    private fun String.toDiskKey(): String = encodeUtf8().sha256().hex()
 
     // =========================================================
     // PUBLIC API
@@ -137,20 +117,20 @@ class PublicProfileProviderCached(
     suspend fun getPublicProfile(odinId: OdinId): ProfileCard? =
         getCached(
             cacheKey = "profile:$odinId",
-            disk = { profileDiskKache() },
+            disk = profileDiskCache,
             fetch = { httpClient.get("https://${odinId}/pub/profile") },
             transform = { response ->
                 serializer.deserialize<ProfileCard>(response.bodyAsText())
             },
             readFromDisk = { path ->
-                fileSystem.read(path.toPath()) {
+                fileSystem.read(path) {
                     val expiry = readLong()
                     val json = readUtf8()
                     CachedEntry(expiry, serializer.deserialize<ProfileCard>(json))
                 }
             },
             writeToDisk = { path, expiry, value ->
-                fileSystem.write(path.toPath()) {
+                fileSystem.write(path) {
                     writeLong(expiry)
                     writeUtf8(serializer.serialize(value))
                 }
@@ -160,13 +140,13 @@ class PublicProfileProviderCached(
     suspend fun getPublicImage(odinId: OdinId): ByteArray? =
         getCached(
             cacheKey = "image:$odinId",
-            disk = { imageDiskKache() },
+            disk = imageDiskCache,
             fetch = { httpClient.get("https://${odinId}/pub/image") },
             transform = { response ->
                 response.bodyAsBytes()
             },
             readFromDisk = { path ->
-                fileSystem.read(path.toPath()) {
+                fileSystem.read(path) {
                     val expiry = readLong()
                     val size = readInt()
                     val bytes = readByteArray(size.toLong())
@@ -174,7 +154,7 @@ class PublicProfileProviderCached(
                 }
             },
             writeToDisk = { path, expiry, value ->
-                fileSystem.write(path.toPath()) {
+                fileSystem.write(path) {
                     writeLong(expiry)
                     writeInt(value.size)
                     write(value)
@@ -183,34 +163,15 @@ class PublicProfileProviderCached(
         )
 
     suspend fun clearCaches() {
-        val profileDir = "$directory/homebase-public-profiles".toPath()
-        val imageDir = "$directory/homebase-public-images".toPath()
-
-        // Serialised with the accessor functions: any in-flight reader either
-        // completed before we took the mutex or is still waiting for it (and
-        // will observe the post-teardown null and construct a fresh kache).
-        //
-        // We intentionally do NOT call FileKache.clear() — see the same-shape
-        // fix in DriveFileProviderCached.clearCaches for the reason.
-        kacheMutex.withLock {
-            _profileDiskKache = null
-            _imageDiskKache = null
-            // Reset the ctor tombstones — see DriveFileProviderCached.clearCaches
-            // for the full rationale. This is the Clear-caches-button recovery
-            // path for a tombstoned FileKache ctor failure.
-            profileKacheFailure = null
-            imageKacheFailure = null
-
-            try {
-                fileSystem.deleteRecursively(profileDir)
-            } catch (e: Exception) {
-                Logger.w(tag = "PublicProfileIO", throwable = e) { "profile cache dir delete failed" }
-            }
-            try {
-                fileSystem.deleteRecursively(imageDir)
-            } catch (e: Exception) {
-                Logger.w(tag = "PublicProfileIO", throwable = e) { "image cache dir delete failed" }
-            }
+        try {
+            profileDiskCache.clear()
+        } catch (e: Exception) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "profile cache clear failed" }
+        }
+        try {
+            imageDiskCache.clear()
+        } catch (e: Exception) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "image cache clear failed" }
         }
 
         notFoundCache = emptySet()
@@ -221,15 +182,13 @@ class PublicProfileProviderCached(
     suspend fun getCacheStats(): List<CacheStats> {
         val out = ArrayList<CacheStats>(2)
         try {
-            val profile = profileDiskKache()
-            out.add(CacheStats(id = "public_profiles", sizeBytes = profile.size, maxBytes = profile.maxSize))
+            out.add(CacheStats(id = "public_profiles", sizeBytes = profileDiskCache.size, maxBytes = profileDiskCache.maxSize))
         } catch (e: Throwable) {
             Logger.w(tag = "PublicProfileIO", throwable = e) { "public_profiles stats unavailable" }
             out.add(CacheStats(id = "public_profiles", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         try {
-            val image = imageDiskKache()
-            out.add(CacheStats(id = "public_images", sizeBytes = image.size, maxBytes = image.maxSize))
+            out.add(CacheStats(id = "public_images", sizeBytes = imageDiskCache.size, maxBytes = imageDiskCache.maxSize))
         } catch (e: Throwable) {
             Logger.w(tag = "PublicProfileIO", throwable = e) { "public_images stats unavailable" }
             out.add(CacheStats(id = "public_images", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
@@ -243,11 +202,11 @@ class PublicProfileProviderCached(
 
     private suspend fun <T> getCached(
         cacheKey: String,
-        disk: suspend () -> FileKache,
+        disk: DiskCache,
         fetch: suspend () -> HttpResponse,
         transform: suspend (HttpResponse) -> T,
-        readFromDisk: (String) -> CachedEntry<T>,
-        writeToDisk: (String, Long, T) -> Unit
+        readFromDisk: (Path) -> CachedEntry<T>,
+        writeToDisk: (Path, Long, T) -> Unit
     ): T? {
 
         if (cacheKey in notFoundCache) return null
@@ -255,7 +214,7 @@ class PublicProfileProviderCached(
         // Pre-mutex peek: pure read, no remove. A hit returns immediately;
         // a miss or expired entry falls through to the mutex where the
         // refresh (and any remove) is serialised.
-        readCachedOrLog(disk(), cacheKey, readFromDisk)?.let { cached ->
+        readCachedOrLog(disk, cacheKey, readFromDisk)?.let { cached ->
             if (!cached.isExpired(clock)) return cached.value
         }
 
@@ -265,12 +224,12 @@ class PublicProfileProviderCached(
 
             if (cacheKey in notFoundCache) return@withLock null
 
-            readCachedOrLog(disk(), cacheKey, readFromDisk)?.let { cached ->
+            readCachedOrLog(disk, cacheKey, readFromDisk)?.let { cached ->
                 if (!cached.isExpired(clock)) {
                     return@withLock cached.value
                 } else {
                     try {
-                        disk().remove(cacheKey)
+                        disk.remove(cacheKey.toDiskKey())
                     } catch (e: Exception) {
                         Logger.w(tag = "PublicProfileIO", throwable = e) { "remove expired entry failed key=$cacheKey" }
                     }
@@ -289,13 +248,15 @@ class PublicProfileProviderCached(
                     val value = transform(response)
 
                     if (shouldStore(cacheControl)) {
-                        try {
-                            disk().put(cacheKey) { path ->
-                                writeToDisk(path, expiry, value)
-                                true
+                        val editor = disk.openEditor(cacheKey.toDiskKey())
+                        if (editor != null) {
+                            try {
+                                writeToDisk(editor.data, expiry, value)
+                                editor.commit()
+                            } catch (e: Exception) {
+                                try { editor.abort() } catch (_: Exception) {}
+                                Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
                             }
-                        } catch (e: Exception) {
-                            Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
                         }
                     }
 
@@ -318,19 +279,17 @@ class PublicProfileProviderCached(
     }
 
     /**
-     * Read a cached entry from [disk]. Returns null on cache miss OR when the
-     * FileKache layer throws (e.g. concurrent clearCaches() on another thread)
-     * OR when [readFromDisk] fails (corrupted/truncated entry). Any failure is
-     * logged so the caller can fall through to the network cleanly.
+     * Read a cached entry from [disk]. Returns null on cache miss OR when
+     * [readFromDisk] fails (corrupted/truncated entry). Any failure is logged
+     * so the caller can fall through to the network cleanly.
      */
-    private suspend fun <T> readCachedOrLog(
-        disk: FileKache,
+    private fun <T> readCachedOrLog(
+        disk: DiskCache,
         cacheKey: String,
-        readFromDisk: (String) -> CachedEntry<T>
+        readFromDisk: (Path) -> CachedEntry<T>
     ): CachedEntry<T>? {
         return try {
-            val path = disk.get(cacheKey) ?: return null
-            readFromDisk(path)
+            disk.openSnapshot(cacheKey.toDiskKey())?.use { snap -> readFromDisk(snap.data) }
         } catch (e: Exception) {
             Logger.e(tag = "PublicProfileIO", throwable = e) { "cache-read FAILED key=$cacheKey" }
             null

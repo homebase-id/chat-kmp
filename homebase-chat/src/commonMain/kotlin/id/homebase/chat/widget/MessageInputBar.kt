@@ -44,13 +44,13 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -115,15 +115,14 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_camera
-import id.homebase.resources.chat_message_record_video
-import id.homebase.resources.chat_message_take_photo
-import id.homebase.resources.chat_message_camera
 import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_message_emoji
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_processing
+import id.homebase.resources.chat_message_record_video
+import id.homebase.resources.chat_message_take_photo
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
@@ -903,7 +902,7 @@ private fun BoxScope.RecordingInProgress(
             )
         } else {
             Text(
-                text = "< " + stringResource(MR.string.slide_to_cancel),
+                text = stringResource(MR.string.slide_to_cancel),
                 modifier = Modifier.offset {
                     IntOffset((dragOffset / 2).roundToInt(), 0)
                 },

@@ -1,6 +1,9 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
@@ -64,6 +67,39 @@ class OutboxSync(
     private val MAX_RETRIES = 20                // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
+
+    /**
+     * Returns true when the upload exception describes a state that won't be
+     * fixed by retrying (file not found server-side, missing version tag for
+     * an update, etc.). Drops these immediately instead of burning ~48h of
+     * exponential-backoff retries.
+     */
+    private fun isPermanentFailure(e: Throwable): Boolean {
+        if (e is NotFoundException) return true
+        if (e is ClientException) {
+            when (e.errorCode) {
+                OdinClientErrorCode.FileNotFound,
+                OdinClientErrorCode.MissingVersionTag,
+                OdinClientErrorCode.CannotOverwriteNonExistentFile,
+                OdinClientErrorCode.UnknownId -> return true
+                else -> Unit
+            }
+            // The server sometimes returns 400 with the structured errorCode
+            // collapsed to UnhandledScenario but the message text intact.
+            // Catch the two recurring local-only-placeholder failures we've
+            // seen so they don't loop in the outbox.
+            val msg = e.message ?: return false
+            if (msg.contains("Could not find file", ignoreCase = true)) return true
+            if (msg.contains("Missing version tag", ignoreCase = true)) return true
+        }
+        return false
+    }
+
+    private fun permanentFailureReason(e: Throwable): String = when {
+        e is NotFoundException -> "404 NotFound"
+        e is ClientException -> "errorCode=${e.errorCode} msg=${e.message}"
+        else -> e::class.simpleName ?: "unknown"
+    }
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
 
@@ -160,10 +196,15 @@ class OutboxSync(
             } catch (e: Exception) {
                 val attempts = outboxRecord.checkOutCount + 1
 
-                if (attempts >= MAX_RETRIES) {
+                if (attempts >= MAX_RETRIES || isPermanentFailure(e)) {
+                    val reason = if (attempts >= MAX_RETRIES) {
+                        "after $attempts failed attempts"
+                    } else {
+                        "permanent failure (${permanentFailureReason(e)})"
+                    }
                     Logger.e(
                         "OutboxSync: DROPPING uniqueId=${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadTypeLabel()} after $attempts failed attempts. " +
+                                "uploadType=${outboxRecord.uploadTypeLabel()} $reason. " +
                                 "Last error: ${e.message}",
                         e
                     )

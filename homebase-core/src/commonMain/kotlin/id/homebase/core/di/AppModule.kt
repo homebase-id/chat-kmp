@@ -30,13 +30,16 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
+import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
 import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
+import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -209,6 +212,10 @@ val appModule = module {
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
+    // One-shot bus for post-create introduction preflight: CreateConversationGroupViewModel
+    // emits after successful group creation, ConversationListViewModel collects and
+    // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
+    singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatMessageStream)
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
@@ -224,13 +231,75 @@ val appModule = module {
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
 
-    singleOf(::LiveDefragSource) bind DefragSource::class
+    single<DefragSource> {
+        // Probe for the Defragmenter's classifier: detects whether a
+        // conversation file (fileType=8888) is salvageable via
+        // ConversationMapper.mapToBasic. The mapper catches its own throws
+        // and returns a degraded `ConversationState.Invalid` model in that
+        // case, so we treat Invalid as the "unmappable" signal. An actual
+        // exception escaping the call (rare) is also treated as unmappable.
+        // ConversationMapper is a thin class with credentialsManager + dbm
+        // deps; we construct one here rather than wiring it into DI.
+        val mapper = ConversationMapper(
+            credentialsManager = get(),
+            dbm = get(),
+        )
+        val mapToBasicProbe: suspend (HomebaseFile) -> Throwable? = { file ->
+            try {
+                val ui = mapper.mapToBasic(file)
+                if (ui.conversationState == ConversationState.Invalid) {
+                    IllegalStateException("ConversationMapper returned Invalid state")
+                } else {
+                    null
+                }
+            } catch (t: Throwable) {
+                t
+            }
+        }
+        LiveDefragSource(
+            driveSyncManager = get(),
+            credentialsManager = get(),
+            databaseManager = get(),
+            driveFileProvider = get(),
+            mapToBasicProbe = mapToBasicProbe,
+        )
+    }
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
-    viewModelOf(::ConversationListViewModel)
+    // Manual `viewModel { ... }` rather than viewModelOf because the constructor
+    // exceeds Koin's reified-generic helper ceiling (22 params). Adding the 23rd
+    // (PostCreateIntroductionPreflightBus) overflowed the helpers; spelling the
+    // injections out works fine.
+    viewModel {
+        ConversationListViewModel(
+            conversationStream = get(),
+            chatMessageStream = get(),
+            chatMessageSenderService = get(),
+            chatMessageActionService = get(),
+            conversationService = get(),
+            userPreferences = get(),
+            fileOperationsProvider = get(),
+            ownerSessionRepository = get(),
+            credentialsManager = get(),
+            authConnectionCoordinator = get(),
+            audioRecorder = get(),
+            audioWaveFormGenerator = get(),
+            eventBus = get(),
+            contactService = get(),
+            connectionService = get(),
+            connectionRequestService = get(),
+            driveFileProvider = get(),
+            shareContentProcessor = get(),
+            localVideoContextStore = get(),
+            pendingNotificationTap = get(),
+            cropResultBus = get(),
+            drawResultBus = get(),
+            postCreateIntroductionPreflightBus = get(),
+        )
+    }
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
     viewModelOf(::CreateConversationGroupViewModel)

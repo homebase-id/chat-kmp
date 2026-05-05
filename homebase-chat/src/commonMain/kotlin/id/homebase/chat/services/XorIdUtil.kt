@@ -1,11 +1,23 @@
 package id.homebase.chat.services
 
+import id.homebase.api.common.OdinId
 import io.ktor.utils.io.core.toByteArray
 import kotlin.uuid.Uuid
 
 expect fun sha256(input: ByteArray): ByteArray
 
 object XorIdUtil {
+
+    /**
+     * True when [messageGroupId] is the deterministic 1:1 conversation id between
+     * [self] and [sender]. Use on a chat-message header to decide whether the
+     * message lives in a 1:1 with the sender (vs. a group whose id is a random Uuid).
+     *
+     * Pass `senderOdinId` from the message's fileMetadata — NOT `originalAuthor`,
+     * which is content provenance and may differ for forwarded messages.
+     */
+    fun isOneToOneWithSender(self: OdinId, sender: OdinId, messageGroupId: Uuid): Boolean =
+        getNewXorId(self.domainName, sender.domainName) == messageGroupId
 
     fun getNewXorId(a: String, b: String): Uuid {
         require(a.isNotBlank() && b.isNotBlank()) { "Both strings must be non-empty" }

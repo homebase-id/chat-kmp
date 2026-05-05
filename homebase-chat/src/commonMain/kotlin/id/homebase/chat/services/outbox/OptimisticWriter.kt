@@ -157,13 +157,14 @@ class OptimisticWriter(
         conversationId: Uuid,
         participants: List<OdinId>,
         isGroup: Boolean,
+        title: String = "",
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
         val created = UnixTimeUtc.now()
 
         val content = ConversationAppDataJson(
-            title = "",
+            title = title,
             recipients = participants,
             version = 1,
         )
@@ -248,9 +249,13 @@ class OptimisticWriter(
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
 
         val existing = existingFile.fileMetadata.localAppData
+        val existingTags = existing?.tags.orEmpty()
 
+        // Skip re-adding when present: a stuck pending row would otherwise produce
+        // a duplicate that violates DriveLocalTagIndex's UNIQUE constraint.
         val newLocalAppData = existing?.copy(
-            tags = existing.tags.orEmpty() + ChatProtocol.isPendingSendTag
+            tags = if (ChatProtocol.isPendingSendTag in existingTags) existingTags
+                   else existingTags + ChatProtocol.isPendingSendTag
         ) ?: LocalAppMetadata(
             tags = listOf(ChatProtocol.isPendingSendTag)
         )

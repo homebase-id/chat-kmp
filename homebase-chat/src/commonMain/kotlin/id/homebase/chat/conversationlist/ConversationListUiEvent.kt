@@ -25,4 +25,10 @@ sealed interface ConversationListUiEvent {
      * should navigate to the cropper.
      */
     data class NavigateToCropper(val requestId: kotlin.uuid.Uuid) : ConversationListUiEvent
+
+    /**
+     * Bytes have been posted to [DrawResultBus] under [requestId]; the screen
+     * should navigate to the draw editor.
+     */
+    data class NavigateToDrawer(val requestId: kotlin.uuid.Uuid) : ConversationListUiEvent
 }

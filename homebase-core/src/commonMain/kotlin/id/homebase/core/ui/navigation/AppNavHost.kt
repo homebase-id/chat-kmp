@@ -71,7 +71,6 @@ import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
-import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -84,7 +83,9 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
+import id.homebase.core.widget.UpdateAvailableBanner
 import id.homebase.imageeditor.ui.CropScreen
+import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -274,6 +275,12 @@ fun AppNavHost(
 
                 Column {
                     if (isOnTopLevelScreen) {
+                        if (uiState.updateAvailable) {
+                            UpdateAvailableBanner(
+                                versionName = uiState.updateAvailableVersion,
+                                onUpdateClick = { viewModel.triggerUpdate() }
+                            )
+                        }
                         if (uiState.incomingRequests.isNotEmpty()) {
                             ConnectionRequestHeaderBanner(
                                 requestCount = uiState.incomingRequests.size, onBannerClick = {
@@ -413,6 +420,9 @@ fun AppNavHost(
                                     onNavigateToCropper = { requestId ->
                                         navController.navigate(Route.Crop(requestId.toString()))
                                     },
+                                    onNavigateToDrawer = { requestId ->
+                                        navController.navigate(Route.Draw(requestId.toString()))
+                                    },
                                     onDetailPaneVisibilityChanged = {
                                         // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
                                         @Suppress("AssignedValueIsNeverRead")
@@ -522,16 +532,28 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ConversationSettings> {
-                            if (isAuthenticated) {
-                                ConversationSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
-                                    },
-                                )
-                            }
+                    composable<Route.Draw> {
+                        if (isAuthenticated) {
+                            DrawScreen(
+                                viewModel = koinViewModel(),
+                                onEvent = { _ ->
+                                    // Same shape as crop: bus delivers bytes,
+                                    // screen pops on any event.
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.ConversationSettings> {
+                        if (isAuthenticated) {
+                            ConversationSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                            )
                         }
 
                         composable<Route.GroupSettings> {

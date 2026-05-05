@@ -58,7 +58,7 @@ class IOSUpdateAppManager(
 
             UpdateAppModel(
                 updateAvailable = isUpdateAvailable,
-                canUpdate = isUpdateAvailable,
+                canUpdate = true,
                 versionName = appStoreVersion,
                 error = null
             )
