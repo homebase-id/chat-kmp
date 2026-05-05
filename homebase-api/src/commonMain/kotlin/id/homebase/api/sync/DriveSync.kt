@@ -163,12 +163,21 @@ class DriveSync(
                         val latestModified = searchResults.last().fileMetadata.updated
 
                         pendingDbJob = scope.async {
-                            fileHeaderProcessor.baseUpsertEntryZapZap(
-                                identityId = identityId,
-                                driveId = driveId,
-                                fileHeaders = searchResults,
-                                cursor = batchCursorToSave
-                            )
+                            val (_, upsertElapsed) = measureTimedValue {
+                                fileHeaderProcessor.baseUpsertEntryZapZap(
+                                    identityId = identityId,
+                                    driveId = driveId,
+                                    fileHeaders = searchResults,
+                                    cursor = batchCursorToSave
+                                )
+                            }
+                            // Wall-clock for the batch upsert (queue wait +
+                            // SQLite transaction). Lets us tell whether sync's
+                            // 100+-row catch-up batches are starving concurrent
+                            // UI reads on the shared DB dispatcher.
+                            Logger.i {
+                                "DriveSync: batch upsert drive=$driveId rows=${searchResults.size} took=$upsertElapsed"
+                            }
 
                             eventBus.emit(
                                 BackendEvent.DriveEvent.BatchReceived(
