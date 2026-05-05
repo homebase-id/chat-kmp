@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
@@ -16,6 +17,7 @@ import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
 import id.homebase.resources.chat_message_image
 import id.homebase.resources.chat_message_link
+import id.homebase.resources.chat_message_location
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import org.jetbrains.compose.resources.stringResource
@@ -76,6 +78,10 @@ fun messageContentLabel(
             firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
                 text = stringResource(MR.string.chat_message_link),
                 icon = Icons.Default.Description
+            )
+            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
+                text = stringResource(MR.string.chat_message_location),
+                icon = Icons.Default.LocationOn
             )
             else -> ContentLabel(
                 text = stringResource(MR.string.chat_message_file),

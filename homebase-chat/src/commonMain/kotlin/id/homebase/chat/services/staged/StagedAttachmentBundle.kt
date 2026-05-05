@@ -3,6 +3,7 @@ package id.homebase.chat.services.staged
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
+import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
 
 /**
  * Convert a list of staged attachments to a single combined [PayloadBundle] suitable for the
@@ -33,4 +34,5 @@ private suspend fun StagedAttachment.toPayloadBundle(
     fileOps: FileOperationsProvider,
 ): PayloadBundle = when (this) {
     is StagedLinkPreview -> LinkPreviewPayloadBuilder.build(preview, fileOps)
+    is StagedLocationPreview -> LocationPreviewPayloadBuilder.build(preview, fileOps)
 }

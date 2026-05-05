@@ -52,6 +52,7 @@ object ChatProtocol {
 
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"
+    const val PAYLOAD_KEY_LOCATION = "chat_location"
 
     const val DefaultPayloadKey = "dflt_key"
     const val MaxDescriptorContentLength = 1024
