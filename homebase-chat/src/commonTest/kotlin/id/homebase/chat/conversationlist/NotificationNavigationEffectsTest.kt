@@ -89,13 +89,45 @@ class NotificationNavigationEffectsTest {
     }
 
     @Test
+    fun compact_initial_selection_does_not_fire_clear_selection() = runComposeUiTest {
+        // Regression: notification-tap path lands on ChatList with selectedConversationId
+        // already set. The compact scaffold initialises in {List=Expanded, Detail=Hidden},
+        // which used to trip the cleanup effect on initial composition and wipe the VM
+        // selection before the swap effect could navigate to Detail. The
+        // `hadDetailVisible` latch in NotificationNavigationEffects gates the cleanup
+        // effect until the detail pane has actually been visible at least once.
+        val idA = Uuid.parse("cc0577d2-2c92-4843-b08d-166e05ad4c19")
+        val selected = mutableStateOf<Uuid?>(idA)
+        var clearCount = 0
+
+        setContent {
+            MaterialTheme {
+                TestHost(
+                    selectedId = selected,
+                    directive = compactDirective(),
+                    onClearSelection = { clearCount++ },
+                )
+            }
+        }
+        waitForIdle()
+
+        // Effect 2 should have driven the scaffold to Detail(A); Effect 1 must not have fired.
+        onNodeWithText("detail=$idA").assertExists()
+        assertEquals(
+            0,
+            clearCount,
+            "initial composition with pending selection must not fire ClearSelection — the hadDetailVisible latch should suppress the cleanup effect until Detail has been visible at least once"
+        )
+    }
+
+    @Test
     fun compact_warm_swap_does_not_fire_clear_selection() = runComposeUiTest {
         val idA = Uuid.parse("cc0577d2-2c92-4843-b08d-166e05ad4c19")
         val idB = Uuid.parse("37c7d258-e56c-4446-bf6c-0fcc12862577")
-        // Start with no selection — mirrors the production startup path where selection
-        // arrives as a state transition (user tap or notification) rather than on mount.
-        // Starting non-null would race the cleanup effect on initial composition because
-        // the scaffold's default history is list-only in compact mode.
+        // Start with no selection — selection arrives as a state transition (user tap
+        // or notification). The hadDetailVisible-latched cleanup effect makes the
+        // initial-non-null case safe too (see compact_initial_selection_*), but this
+        // test specifically exercises the swap path.
         val selected = mutableStateOf<Uuid?>(null)
         var clearCount = 0
 
