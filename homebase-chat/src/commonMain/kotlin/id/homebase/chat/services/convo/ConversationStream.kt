@@ -56,19 +56,6 @@ class ConversationStream(
     private var started = false
     private var shareCacheJob: Job? = null
 
-    // Coalesces concurrent enrich requests via an in-flight guard. Triggered
-    // from start()'s cold-boot pipeline AND from the chat-drive DriveStopped
-    // handler in init (the post-sync re-enrich, which always fires AFTER the
-    // sync round's batches have landed in ChatReadCount). Per-batch enrich
-    // after a conversation-file batch (further down) stays outside this guard
-    // — it has its own hasUnreadCounts gate.
-    private var enrichUnreadJob: Job? = null
-
-    private fun launchEnrichUnread() {
-        if (enrichUnreadJob?.isActive == true) return
-        enrichUnreadJob = scope.launch { enrichAllConversationsWithUnreadCounts() }
-    }
-
     /**
      * Conversation ids the user deleted in this app session. The file is still
      * on disk (soft-deleted via archivalStatus=Removed) until the outbox processes
@@ -183,7 +170,17 @@ class ConversationStream(
                             // old BackendEvent.ConnectionOnline trigger so the second
                             // cold-boot enrich (when there is one) now lands AFTER
                             // sync writes (deterministic order), not concurrent with them.
-                            if (event.totalCount > 0) launchEnrichUnread()
+                            if (event.totalCount > 0) {
+                                scope.launch {
+                                    try {
+                                        enrichAllConversationsWithUnreadCounts()
+                                    } catch (e: Exception) {
+                                        Logger.e(e) {
+                                            "ConversationStream: post-Stopped enrich failed: ${e.message}"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -960,9 +957,7 @@ class ConversationStream(
             // then admins (group-settings only), then unread counts.
             enrichWithLastMessages()
             enrichWithAdmins()
-            // launchEnrichUnread (not direct call) so the WS-online handler
-            // in init can see this enrich is in-flight and skip its own.
-            launchEnrichUnread()
+            enrichAllConversationsWithUnreadCounts()
         }
 
         // Reactively update share cache when conversations or contacts change,
