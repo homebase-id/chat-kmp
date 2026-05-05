@@ -98,6 +98,7 @@ import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.services.staged.StagedAttachment
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -211,6 +212,12 @@ fun ConversationContent(
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val coroutineScope = rememberCoroutineScope()
     var showScrollToBottom by remember { mutableStateOf(false) }
+
+    // Hoisted composer staging slot. Owned at this level so user-initiated attachments
+    // (location, contact, etc.) can be appended from outside the input bar (e.g. from the
+    // attachment sheet). Auto-detected attachments (link previews from typed URLs) write here
+    // too, via `MessageInputBar`'s onStagedAttachmentsChange callback.
+    var stagedAttachments by remember { mutableStateOf<List<StagedAttachment>>(emptyList()) }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -1028,8 +1035,12 @@ fun ConversationContent(
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
                                 isSendingMessage = uiState.isSendingMessage,
-                                onSendMessage = { text, linkPreview ->
-                                    if (text.isNotBlank()) {
+                                stagedAttachments = stagedAttachments,
+                                onStagedAttachmentsChange = { stagedAttachments = it },
+                                onSendMessage = { text, attachments ->
+                                    val hasContent = text.isNotBlank() ||
+                                        attachments.any { it !is id.homebase.chat.services.staged.StagedLinkPreview }
+                                    if (hasContent) {
                                         if (uiState.isEditingMessageId != null) {
                                             onUiAction(
                                                 ConversationListUiAction.EditMessageSave
@@ -1038,9 +1049,12 @@ fun ConversationContent(
                                             onUiAction(
                                                 ConversationListUiAction.SendMessage(
                                                     conversationId = conversation.conversation.id,
-                                                    linkPreview = linkPreview,
+                                                    stagedAttachments = attachments,
                                                 )
                                             )
+                                            // Clear the staged slot so the next message doesn't
+                                            // inherit the just-sent attachments.
+                                            stagedAttachments = emptyList()
                                         }
                                     }
                                 },
