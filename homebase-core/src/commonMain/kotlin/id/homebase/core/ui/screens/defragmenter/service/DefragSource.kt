@@ -92,7 +92,10 @@ sealed interface DefragAnalyzeEvent {
  *  3. isSoftDeleted + archivalStatus drift → [SoftDeleteArchivalMismatch] (msg only)
  *     else                                  → [SoftDeleted] (existing semantic)
  *  4. fileType=7878 + appData.groupId not in known/healthy conversation set → [OrphanChatMessage]
- *  5. fileType=7878 + userDate=0 + appData.userDate=null + created>0 → [LegacyUserDateZero]
+ *  5. fileType=7878 + appData.userDate=null + created>0 → [LegacyUserDateZero]
+ *     (re-flags rows whose SQL `userDate` column was patched in a prior
+ *     repair pass but whose JSON header still has the null — repair now
+ *     rewrites the jsonHeader column too)
  *  6. fileType=7878 + appData.content fails strict deserialise → [CorruptMessageContent]
  *  7. otherwise → [Healthy]
  */
@@ -109,7 +112,7 @@ sealed interface CellState {
         val rowId: Long,
     ) : CellState
 
-    /** Chat message with `appData.userDate = null` projected as 0. UI: amber. */
+    /** Chat message with `appData.userDate = null` in the JSON header. UI: amber. */
     data class LegacyUserDateZero(
         val driveId: Uuid,
         val fileId: Uuid,

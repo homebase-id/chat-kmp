@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
@@ -468,18 +472,38 @@ class LiveDefragSource(
                             }
                         }
                         is CellState.LegacyUserDateZero -> {
-                            val ok = runCatching {
+                            // Two writes: SQL `userDate` column projection AND
+                            // the `jsonHeader` text. The consumer (ChatMessageStream)
+                            // reads `appData.userDate` from the parsed header, so
+                            // patching the column alone leaves the cold-boot
+                            // "null userDate" debug log firing every load.
+                            val patchedHeader = patchHeaderUserDate(
+                                rawHeader = row.jsonHeader,
+                                createdMs = state.createdMs,
+                            )
+                            val sqlOk = patchedHeader != null && runCatching {
                                 mainIndex.repairUserDateByRowId(
                                     rowId = row.rowId,
                                     userDate = state.createdMs,
                                 )
                             }.getOrElse {
                                 Logger.w(tag = tag, throwable = it) {
-                                    "repair userDate failed rowId=${row.rowId}"
+                                    "repair userDate (SQL col) failed rowId=${row.rowId}"
                                 }
                                 false
                             }
-                            if (ok) {
+                            val headerOk = sqlOk && runCatching {
+                                mainIndex.repairJsonHeaderByRowId(
+                                    rowId = row.rowId,
+                                    jsonHeader = patchedHeader,
+                                )
+                            }.getOrElse {
+                                Logger.w(tag = tag, throwable = it) {
+                                    "repair userDate (jsonHeader) failed rowId=${row.rowId}"
+                                }
+                                false
+                            }
+                            if (headerOk) {
                                 repaired += 1
                                 repairedLegacy += 1
                                 emit(
@@ -742,4 +766,21 @@ class LiveDefragSource(
     private companion object {
         const val PAGE_SIZE = 500L
     }
+}
+
+/**
+ * Mutate the parsed jsonHeader so `fileMetadata.appData.userDate = createdMs`
+ * and re-serialise. Uses `kotlinx.serialization.json` tree manipulation so we
+ * preserve any header fields the typed `HomebaseFile` model doesn't capture.
+ * Returns null if the header doesn't have the expected nested shape.
+ */
+internal fun patchHeaderUserDate(rawHeader: String, createdMs: Long): String? {
+    val root = runCatching { Json.parseToJsonElement(rawHeader) as? JsonObject }.getOrNull()
+        ?: return null
+    val fileMetadata = root["fileMetadata"] as? JsonObject ?: return null
+    val appData = fileMetadata["appData"] as? JsonObject ?: return null
+    val newAppData = JsonObject(appData + ("userDate" to JsonPrimitive(createdMs)))
+    val newFileMetadata = JsonObject(fileMetadata + ("appData" to newAppData))
+    val newRoot = JsonObject(root + ("fileMetadata" to newFileMetadata))
+    return Json.encodeToString(JsonElement.serializer(), newRoot)
 }

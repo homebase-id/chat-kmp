@@ -242,7 +242,9 @@ class DriveSync(
 
         try {
             pendingDbJob?.await()
-            Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
+            if (totalCount > 0) {
+                Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
+            }
             eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
             Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {
