@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.services.staged.StagedAttachment
 import id.homebase.chat.services.staged.StagedLinkPreview
+import id.homebase.chat.services.staged.StagedLocationPreview
 
 /**
  * UI dispatcher for a single staged attachment shown above the chat input bar.
@@ -25,6 +26,12 @@ fun StagedAttachmentRow(
     when (attachment) {
         is StagedLinkPreview -> LinkPreviewCard(
             linkPreview = attachment.preview,
+            modifier = rowModifier,
+            isCompact = true,
+            onCancel = onCancel,
+        )
+        is StagedLocationPreview -> LocationPreviewCard(
+            locationPreview = attachment.preview,
             modifier = rowModifier,
             isCompact = true,
             onCancel = onCancel,

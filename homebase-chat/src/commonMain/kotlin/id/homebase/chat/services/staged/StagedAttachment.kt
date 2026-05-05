@@ -2,6 +2,7 @@ package id.homebase.chat.services.staged
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.client.location.LocationPreview
 
 /**
  * A piece of content the user has staged in the chat composer to be sent with the next message.
@@ -27,4 +28,9 @@ sealed interface StagedAttachment {
 @Immutable
 data class StagedLinkPreview(val preview: LinkPreview) : StagedAttachment {
     override val id: String get() = "link:${preview.url}"
+}
+
+@Immutable
+data class StagedLocationPreview(val preview: LocationPreview) : StagedAttachment {
+    override val id: String get() = "loc:${preview.lat},${preview.lon}"
 }

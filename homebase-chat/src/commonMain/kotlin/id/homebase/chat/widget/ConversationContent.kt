@@ -98,7 +98,10 @@ import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.api.client.location.LocationPreviewProvider
+import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.staged.StagedAttachment
+import id.homebase.chat.services.staged.StagedLocationPreview
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -218,6 +221,31 @@ fun ConversationContent(
     // attachment sheet). Auto-detected attachments (link previews from typed URLs) write here
     // too, via `MessageInputBar`'s onStagedAttachmentsChange callback.
     var stagedAttachments by remember { mutableStateOf<List<StagedAttachment>>(emptyList()) }
+
+    // Location-share flow. Triggered from the AttachmentOptions sheet → GPS launcher → fetch
+    // a static map preview from the (dev-stub) provider → append a StagedLocationPreview to
+    // the composer's staging slot. The composer renders/cancels it via the same path as link
+    // previews; nothing here knows the bubble shape.
+    val locationPreviewProvider: LocationPreviewProvider = koinInject()
+    var isFetchingLocation by remember { mutableStateOf(false) }
+    val currentLocationLauncher = rememberCurrentLocationLauncher { fix ->
+        if (fix == null) {
+            isFetchingLocation = false
+            return@rememberCurrentLocationLauncher
+        }
+        coroutineScope.launch {
+            try {
+                val preview = locationPreviewProvider.getLocationPreview(fix.latitude, fix.longitude)
+                if (preview != null) {
+                    // Replace any existing staged location (one location at a time).
+                    stagedAttachments = stagedAttachments.filterNot { it is StagedLocationPreview } +
+                        StagedLocationPreview(preview)
+                }
+            } finally {
+                isFetchingLocation = false
+            }
+        }
+    }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -1026,7 +1054,7 @@ fun ConversationContent(
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
-                                isSendingMessage = uiState.isSendingMessage,
+                                isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
                                 stagedAttachments = stagedAttachments,
                                 onStagedAttachmentsChange = { stagedAttachments = it },
                                 onSendMessage = { text, attachments ->
@@ -1168,6 +1196,8 @@ fun ConversationContent(
                         showAttachmentSheet = false
                     }, onLocationClick = {
                         showAttachmentSheet = false
+                        isFetchingLocation = true
+                        currentLocationLauncher.launch()
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
