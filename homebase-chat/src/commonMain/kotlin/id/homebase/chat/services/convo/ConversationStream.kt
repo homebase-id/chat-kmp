@@ -53,7 +53,7 @@ class ConversationStream(
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
     private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
-    private var loadJob: Job? = null
+    private var started = false
     private var shareCacheJob: Job? = null
 
     /**
@@ -129,15 +129,13 @@ class ConversationStream(
     // file notification — arrive as BatchReceived events and are applied incrementally.
     // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
     // incremental BatchReceived path is sufficient and avoids an expensive full reload
-    // on every incoming message.
+    // on every incoming message. We DO, however, re-enrich unread counts on Stopped —
+    // that's a small ChatReadCount scan and catches reads written by batches that
+    // landed during the sync round (and message-only batches, which the per-batch
+    // enrich path further down doesn't cover).
     init {
         scope.launch {
             eventBus.events.collect { event ->
-
-                if (event is BackendEvent.ConnectionOnline) {
-                    enrichAllConversationsWithUnreadCounts()
-                    return@collect
-                }
 
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
@@ -146,22 +144,40 @@ class ConversationStream(
 
                     is BackendEvent.DriveEvent.Stopped -> {
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
-                        // If placeholders remain after sync completion, the real
-                        // conversation files genuinely didn't arrive — persist
-                        // the placeholders to local DB so they survive restart.
-                        // Only on success: on failure we'd prefer to retry on the
-                        // next sync rather than commit a speculative placeholder.
-                        if (event.result is BackendEvent.DriveResult.Success &&
-                            placeholderIds.isNotEmpty()
-                        ) {
-                            val toReconcile = placeholderIds.toSet()
-                            placeholderIds.clear()
-                            scope.launch {
-                                try {
-                                    reconcileUnresolvedPlaceholders(toReconcile)
-                                } catch (e: Exception) {
-                                    Logger.e(e) {
-                                        "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
+                        if (event.result is BackendEvent.DriveResult.Success) {
+                            // If placeholders remain after sync completion, the real
+                            // conversation files genuinely didn't arrive — persist
+                            // the placeholders to local DB so they survive restart.
+                            // Only on success: on failure we'd prefer to retry on the
+                            // next sync rather than commit a speculative placeholder.
+                            if (placeholderIds.isNotEmpty()) {
+                                val toReconcile = placeholderIds.toSet()
+                                placeholderIds.clear()
+                                scope.launch {
+                                    try {
+                                        reconcileUnresolvedPlaceholders(toReconcile)
+                                    } catch (e: Exception) {
+                                        Logger.e(e) {
+                                            "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
+                                        }
+                                    }
+                                }
+                            }
+                            // Re-enrich unread counts after the chat-drive sync
+                            // completes — but only if the sync actually received
+                            // records. totalCount=0 means no batches, no writes to
+                            // ChatReadCount, so nothing to re-enrich. Replaces the
+                            // old BackendEvent.ConnectionOnline trigger so the second
+                            // cold-boot enrich (when there is one) now lands AFTER
+                            // sync writes (deterministic order), not concurrent with them.
+                            if (event.totalCount > 0) {
+                                scope.launch {
+                                    try {
+                                        enrichAllConversationsWithUnreadCounts()
+                                    } catch (e: Exception) {
+                                        Logger.e(e) {
+                                            "ConversationStream: post-Stopped enrich failed: ${e.message}"
+                                        }
                                     }
                                 }
                             }
@@ -821,9 +837,9 @@ class ConversationStream(
      * patched onto the model.
      *
      * Also invoked from message-read actions (see [ChatMessageActionService])
-     * and on `BackendEvent.ConnectionOnline`. Flips
-     * `enrichment.hasUnreadCounts` (first call only; subsequent calls just
-     * patch counts).
+     * and after every chat-drive `BackendEvent.DriveEvent.Stopped` that
+     * received at least one record. Flips `enrichment.hasUnreadCounts`
+     * (first call only; subsequent calls just patch counts).
      *
      * Safe to defer, safe to skip, safe to retry.
      */
@@ -915,7 +931,11 @@ class ConversationStream(
 
     // endregion
 
-    // Full conversation list load from local DB.  Idempotent (skips if already running).
+    // Full conversation list load from local DB.  One-shot — subsequent calls
+    // return immediately.  This is what allows the AppModule preload at
+    // onPostAuthenticated (the ~800ms cold-boot win) to coexist with
+    // unconditional start() calls from the various ViewModels' init blocks
+    // without re-running the whole load + enrichment pipeline.
     // Intended call sites — all user-initiated or startup:
     //   - AppModule onPostAuthenticated  (auth startup, preloads while UI composes)
     //   - ConversationListViewModel init (user navigates to list)
@@ -923,9 +943,10 @@ class ConversationStream(
     //   - GroupSettingsViewModel init     (user opens group settings)
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     fun start() {
-        if (loadJob?.isActive == true) return
+        if (started) return
+        started = true
         Logger.d("ConversationStream: start() — loading full conversation list from DB")
-        loadJob = scope.launch {
+        scope.launch {
             // MANDATORY — flips dataReady=true for the UI.
             loadBasicConversations()
 

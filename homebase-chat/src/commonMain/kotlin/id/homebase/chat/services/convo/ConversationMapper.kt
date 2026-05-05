@@ -118,7 +118,7 @@ class ConversationMapper(
                     val nullCount = rawRecipients.count { it == null }
                     val rawSize = rawRecipients.size
                     val droppedDistinct = rawRecipients.filterNotNull().size - participants.size
-                    Logger.i(tag = "ParticipantsAudit") {
+                    Logger.d(tag = "ParticipantsAudit") {
                         "ConversationMapper.mapToBasic READ for $conversationId: " +
                             "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
                             "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +

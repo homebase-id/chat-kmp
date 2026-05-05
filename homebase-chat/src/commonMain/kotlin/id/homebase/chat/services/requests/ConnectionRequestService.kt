@@ -17,6 +17,7 @@ import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.DriveContactService
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,10 +50,30 @@ class ConnectionRequestService(
      *  flag to decide whether to show "Unknown" vs. "Not connected" in the UI. */
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
 
+    // One-shot — prevents the AppModule preload and the ConversationListViewModel
+    // init from each running hydrate+refresh on cold boot. WS-reconnect refreshes
+    // go through the BackendEvent.ConnectionOnline handler in init (calls
+    // launchRefresh() below), not through start() — this flag does not block them.
+    private var started = false
+
+    // Coalesces the two automatic refresh triggers (start()'s post-hydrate path
+    // and BackendEvent.ConnectionOnline). On cold boot they fire ~ms apart and
+    // would otherwise both launch the same incoming + outgoing HTTP fetches.
+    // Direct refresh() calls (user actions, CircleNetworkEvents) bypass this
+    // guard so they always re-fetch.
+    private var refreshJob: Job? = null
+
+    private fun launchRefresh() {
+        if (refreshJob?.isActive == true) return
+        refreshJob = scope.launch { refresh() }
+    }
+
     fun start() {
+        if (started) return
+        started = true
         scope.launch {
             hydrateFromCache()
-            refresh()
+            launchRefresh()
         }
     }
 
@@ -84,7 +105,7 @@ class ConnectionRequestService(
                             refresh()
                         }
                     }
-                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
+                    is BackendEvent.ConnectionOnline -> launchRefresh()
                     else -> {}
                 }
             }
