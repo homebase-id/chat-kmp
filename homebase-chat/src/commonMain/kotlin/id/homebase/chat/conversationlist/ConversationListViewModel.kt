@@ -77,6 +77,7 @@ import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
@@ -1690,7 +1691,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.HideReactionDetails -> {
-                _messagesUiState.update { it.copy(messageReactions = null) }
+                _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false) }
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
@@ -2382,9 +2383,25 @@ class ConversationListViewModel(
     }
 
     private fun loadReactionDetails(messageId: Uuid) {
+        _messagesUiState.update { it.copy(isReactionsLoading = true, messageReactions = emptyList()) }
         viewModelScope.launch {
-            val messageReactions = chatMessageActionService.getReactions(messageId)
-            _messagesUiState.update { it.copy(messageReactions = messageReactions) }
+            try {
+                val rawReactions = chatMessageActionService.getReactions(messageId)
+                val reactions = rawReactions.map { reaction ->
+                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
+                        ?: reaction.odinId.domainName
+                    ReactionDisplayItem(
+                        odinId = reaction.odinId.domainName,
+                        displayName = displayName,
+                        emoji = reaction.emoji,
+                    )
+                }
+                _messagesUiState.update {
+                    it.copy(messageReactions = reactions, isReactionsLoading = false)
+                }
+            } catch (_: Exception) {
+                _messagesUiState.update { it.copy(isReactionsLoading = false, messageReactions = null) }
+            }
         }
     }
 

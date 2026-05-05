@@ -513,6 +513,8 @@
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
+    <string name="chat_reactions_title">Reactions</string>
+    <string name="chat_reactions_all">All</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
