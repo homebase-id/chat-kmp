@@ -62,7 +62,7 @@ class JvmUpdateAppManager(
             } else {
                 // No update available or current version is newer
                 Logger.i { "No update available. Current version: $currentVersion, Latest version: $latestVersion" }
-                return UpdateAppModel(updateAvailable = false, versionName = currentVersion.version)
+                return UpdateAppModel(updateAvailable = false, canUpdate = true, versionName = currentVersion.version)
             }
         } catch (e: UpdateCheckException) {
             Logger.e(e) { "Error checking for updates: ${e.message}" }
