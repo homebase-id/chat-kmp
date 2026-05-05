@@ -103,6 +103,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
@@ -156,9 +157,11 @@ fun MessageInputBar(
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
-    onSendMessage: (String, LinkPreview?) -> Unit,
+    onSendMessage: (String, LinkPreview?, LocationPreview?) -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
+    locationPreviewData: LocationPreview? = null,
+    onCancelLocationPreview: () -> Unit = {},
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -206,8 +209,10 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        if (!isSendingMessage && textFieldState.annotatedString.isNotBlank()) {
-            onSendMessage(textFieldState.toMarkdown(), linkPreviewData)
+        val hasText = textFieldState.annotatedString.isNotBlank()
+        val hasLocation = locationPreviewData != null
+        if (!isSendingMessage && (hasText || hasLocation)) {
+            onSendMessage(textFieldState.toMarkdown(), linkPreviewData, locationPreviewData)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
         }
@@ -250,6 +255,8 @@ fun MessageInputBar(
                     }
                     linkPreviewData = null
                 },
+                locationPreviewData = locationPreviewData,
+                onCancelLocationPreview = onCancelLocationPreview,
                 editExistingMode = editExistingMode,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -276,6 +283,8 @@ fun MessageInputBar(
                     }
                     linkPreviewData = null
                 },
+                locationPreviewData = locationPreviewData,
+                onCancelLocationPreview = onCancelLocationPreview,
                 showingEmojiSheet = showingEmojiSheet,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -305,6 +314,8 @@ fun MessageTextFieldExpanded(
     editExistingMode: Boolean,
     linkPreviewData: LinkPreview?,
     onCancelLinkPreview: () -> Unit,
+    locationPreviewData: LocationPreview? = null,
+    onCancelLocationPreview: () -> Unit = {},
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
@@ -332,6 +343,14 @@ fun MessageTextFieldExpanded(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 isCompact = true,
                 onCancel = onCancelLinkPreview
+            )
+        }
+        if (locationPreviewData != null) {
+            LocationPreviewCard(
+                locationPreview = locationPreviewData,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                isCompact = true,
+                onCancel = onCancelLocationPreview,
             )
         }
         val pasteModifier = if (onPasteImage != null) {
@@ -456,6 +475,8 @@ fun MessageTextFieldCompact(
     linkPreviewData: LinkPreview?,
     recordingData: RecordingData?,
     onCancelLinkPreview: () -> Unit,
+    locationPreviewData: LocationPreview? = null,
+    onCancelLocationPreview: () -> Unit = {},
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
@@ -473,7 +494,7 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val showSendButton = state.annotatedString.isNotBlank()
+    val showSendButton = state.annotatedString.isNotBlank() || locationPreviewData != null
     val showRecordingButton by remember(
         editExistingMode,
         showSendButton
@@ -558,6 +579,14 @@ fun MessageTextFieldCompact(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     isCompact = true,
                     onCancel = onCancelLinkPreview
+                )
+            }
+            if (locationPreviewData != null) {
+                LocationPreviewCard(
+                    locationPreview = locationPreviewData,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    isCompact = true,
+                    onCancel = onCancelLocationPreview,
                 )
             }
         } else {

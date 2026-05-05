@@ -94,10 +94,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.location.LocationPreview
+import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -211,6 +214,28 @@ fun ConversationContent(
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val coroutineScope = rememberCoroutineScope()
     var showScrollToBottom by remember { mutableStateOf(false) }
+
+    // Location-share state — driven by the user tapping the "Share location" attachment.
+    // The GPS fix → static map preview round-trip happens off the UI; once the preview is
+    // ready we surface it as a card above the input (parallel to link previews) so the
+    // user can add a caption or cancel before sending.
+    val locationPreviewProvider: LocationPreviewProvider = koinInject()
+    var locationPreviewData by remember { mutableStateOf<LocationPreview?>(null) }
+    var isFetchingLocation by remember { mutableStateOf(false) }
+    val currentLocationLauncher = rememberCurrentLocationLauncher { fix ->
+        if (fix == null) {
+            isFetchingLocation = false
+            return@rememberCurrentLocationLauncher
+        }
+        coroutineScope.launch {
+            try {
+                val preview = locationPreviewProvider.getLocationPreview(fix.latitude, fix.longitude)
+                if (preview != null) locationPreviewData = preview
+            } finally {
+                isFetchingLocation = false
+            }
+        }
+    }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -1019,9 +1044,12 @@ fun ConversationContent(
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
-                                isSendingMessage = uiState.isSendingMessage,
-                                onSendMessage = { text, linkPreview ->
-                                    if (text.isNotBlank()) {
+                                isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                                locationPreviewData = locationPreviewData,
+                                onCancelLocationPreview = { locationPreviewData = null },
+                                onSendMessage = { text, linkPreview, locationPreview ->
+                                    val hasContent = text.isNotBlank() || locationPreview != null
+                                    if (hasContent) {
                                         if (uiState.isEditingMessageId != null) {
                                             onUiAction(
                                                 ConversationListUiAction.EditMessageSave
@@ -1031,8 +1059,12 @@ fun ConversationContent(
                                                 ConversationListUiAction.SendMessage(
                                                     conversationId = conversation.conversation.id,
                                                     linkPreview = linkPreview,
+                                                    locationPreview = locationPreview,
                                                 )
                                             )
+                                            // Clear the staged preview so it doesn't ride along
+                                            // on the next, unrelated message.
+                                            locationPreviewData = null
                                         }
                                     }
                                 },
@@ -1154,6 +1186,8 @@ fun ConversationContent(
                         showAttachmentSheet = false
                     }, onLocationClick = {
                         showAttachmentSheet = false
+                        isFetchingLocation = true
+                        currentLocationLauncher.launch()
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box

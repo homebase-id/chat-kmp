@@ -77,6 +77,7 @@ kotlin {
             implementation(libs.androidx.media3.exoplayer.hls)
             implementation(libs.androidx.media3.ui)
             implementation(libs.androidx.ui.tooling)
+            implementation(libs.play.services.location)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)

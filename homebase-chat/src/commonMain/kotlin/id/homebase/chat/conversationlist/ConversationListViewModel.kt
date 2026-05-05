@@ -55,7 +55,9 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
+import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
@@ -749,7 +751,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
-                if (hasMessage) {
+                val hasLocation = action.locationPreview != null
+                if (hasMessage || hasLocation) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
                     val content = messageInputTextState.toMarkdown().trimEnd()
                     val replyTo = _messagesUiState.value.replyToMessage
@@ -758,13 +761,15 @@ class ConversationListViewModel(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
                             content = content,
-                            linkPreview = action.linkPreview
+                            linkPreview = action.linkPreview,
+                            locationPreview = action.locationPreview,
                         )
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
                             content = content,
-                            linkPreview = action.linkPreview
+                            linkPreview = action.linkPreview,
+                            locationPreview = action.locationPreview,
                         )
                     }
                     // Input is cleared inside addMessage/replyToMessage after
@@ -2787,6 +2792,32 @@ class ConversationListViewModel(
         }
     }
 
+    /**
+     * Combines optional link/location previews into a single [PayloadBundle]. At most one of each
+     * is allowed (per the composer UI), but both can coexist on a single message — they get
+     * separate payload keys (`PAYLOAD_KEY_LINKS`, `PAYLOAD_KEY_LOCATION`) and render
+     * independently on the receiver.
+     */
+    private suspend fun buildPreviewPayloadBundle(
+        linkPreview: LinkPreview?,
+        locationPreview: LocationPreview?,
+    ): id.homebase.chat.services.PayloadBundle? {
+        val link = linkPreview?.let {
+            LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
+        }
+        val location = locationPreview?.let {
+            LocationPreviewPayloadBuilder.build(it, fileOperationsProvider)
+        }
+        if (link == null && location == null) return null
+        if (link == null) return location
+        if (location == null) return link
+        return id.homebase.chat.services.PayloadBundle(
+            payloads = link.payloads + location.payloads,
+            thumbnails = link.thumbnails + location.thumbnails,
+            previewThumbs = link.previewThumbs + location.previewThumbs,
+        )
+    }
+
     private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {
         viewModelScope.launch {
             try {
@@ -2813,13 +2844,12 @@ class ConversationListViewModel(
     private fun addMessage(
         conversationId: Uuid,
         content: String,
-        linkPreview: LinkPreview? = null
+        linkPreview: LinkPreview? = null,
+        locationPreview: LocationPreview? = null,
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = linkPreview?.let {
-                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
-                }
+                val payloadBundle = buildPreviewPayloadBundle(linkPreview, locationPreview)
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
@@ -2850,13 +2880,12 @@ class ConversationListViewModel(
         conversationId: Uuid,
         replyTo: MessageUiModel,
         content: String,
-        linkPreview: LinkPreview? = null
+        linkPreview: LinkPreview? = null,
+        locationPreview: LocationPreview? = null,
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = linkPreview?.let {
-                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
-                }
+                val payloadBundle = buildPreviewPayloadBundle(linkPreview, locationPreview)
 
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
