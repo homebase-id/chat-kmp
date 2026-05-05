@@ -3,6 +3,7 @@ package id.homebase.api.client.drives.files
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.VideoMetadata
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -46,7 +47,18 @@ data class PayloadDescriptor(
 
             }
 
-            contentType?.startsWith("video/") == true -> DescriptorContent.Empty
+            contentType?.startsWith("video/") == true -> {
+                try {
+                    val meta = OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
+                    DescriptorContent.VideoFile(
+                        durationMs = meta.duration.toLong().takeIf { it > 0 },
+                        isSegmented = meta.isSegmented,
+                    )
+                } catch (e: Exception) {
+                    Logger.w("PayloadFile.descriptorInfo", e)
+                    DescriptorContent.Empty
+                }
+            }
 
             else -> DescriptorContent.File(name = descriptorContent)
         }
@@ -57,6 +69,7 @@ data class PayloadDescriptor(
             is DescriptorContent.AudioFile -> info.name
             DescriptorContent.Empty -> null
             is DescriptorContent.File -> info.name
+            is DescriptorContent.VideoFile -> null
         }
     }
 }
@@ -66,6 +79,8 @@ sealed interface DescriptorContent {
     data class File(val name: String) : DescriptorContent
     @Serializable
     data class AudioFile(val name: String?, val lengthSeconds: Int) : DescriptorContent
+    /** Surfaces the bits of a video's [VideoMetadata] that the UI cares about. */
+    data class VideoFile(val durationMs: Long?, val isSegmented: Boolean) : DescriptorContent
 
     companion object {
         fun descriptorContentFromAudioFile(name: String, lengthSeconds: Int): String {

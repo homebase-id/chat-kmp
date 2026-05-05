@@ -60,15 +60,37 @@ data class ConversationUiModel(
     }
 
     companion object {
+        /**
+         * Patches the conversation's last-message fields if [msg] is at least
+         * as recent as the current [latestMessageTimestamp].
+         *
+         * The "recency" comparison is driven by [latestTimestampOverrideMs]
+         * when the caller knows the SQL-side userDate (e.g. from
+         * `selectAllConversationPlusLastMessage`'s `msgUserDate` projection,
+         * or from `HomebaseFile.sqlUserDateMs()` for files just written to
+         * `DriveMainIndex`). This avoids the clamp inside
+         * `ChatMessageStream.mapToMessageData`, which can drop
+         * `MessageUiModel.userDate` below the SQL column when a peer's
+         * `appData.userDate` exceeds `metadata.transitCreated` — and that
+         * mismatch is what stuck Monica's unread badge at 1: the unread SQL
+         * counted the row using the SQL userDate, but every read code path
+         * advanced `lastReadTime` to the clamped (smaller) value.
+         *
+         * Falls back to `msg.userDate` when no override is supplied, matching
+         * legacy behaviour for callers that haven't been migrated.
+         */
         fun ConversationUiModel.updateWithLatestMessage(
             msg: MessageUiModel,
-            activeUserDomain: OdinId?
+            activeUserDomain: OdinId?,
+            latestTimestampOverrideMs: Long? = null,
         ): ConversationUiModel {
-            // TODO: Should we also increase unread count here if it's a new message?
-            if (msg.userDate >= latestMessageTimestamp) {
+            val candidate = latestTimestampOverrideMs
+                ?.let { Instant.fromEpochMilliseconds(it) }
+                ?: msg.userDate
+            if (candidate >= latestMessageTimestamp) {
                 return this.copy(
                     lastMessage = msg.content.truncateToCodePoints(40),
-                    latestMessageTimestamp = msg.userDate,
+                    latestMessageTimestamp = candidate,
                     lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
                     lastMessageIsDeleted = msg.isDeleted,
                     lastMessageFirstPayload = msg.payloads?.firstOrNull(),

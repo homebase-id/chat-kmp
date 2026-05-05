@@ -216,21 +216,35 @@ class ConversationListViewModel(
             runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
         }
         pendingThumbnails[attachmentId] = deferred
+        // Duration is needed by the trim screen and is cheap to read; kick it off in
+        // parallel with the poster extraction.
+        val durationDeferred = viewModelScope.async {
+            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
+                .getOrNull()
+        }
         viewModelScope.launch {
             val bytes = try {
                 deferred.await()
             } catch (_: CancellationException) {
                 null
             }
+            val durationMs = try {
+                durationDeferred.await()
+            } catch (_: CancellationException) {
+                null
+            }
             pendingThumbnails.remove(attachmentId)
-            if (bytes == null) return@launch
+            if (bytes == null && durationMs == null) return@launch
             _messagesUiState.update { state ->
                 val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
                     ?: return@update state
                 if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
                 val updated = overlay.attachments.map { a ->
                     if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
-                        a.copy(thumbnailBytes = bytes)
+                        a.copy(
+                            thumbnailBytes = bytes ?: a.thumbnailBytes,
+                            durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
+                        )
                     } else a
                 }
                 state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
@@ -2089,6 +2103,25 @@ class ConversationListViewModel(
                 }
             }
 
+            /* Inline trim scrubber result. */
+            is ConversationListUiAction.ApplyTrimResult -> {
+                val overlay = _messagesUiState.value.fullScreenOverlay
+                if (overlay !is FullScreenOverlay.AttachmentData) return
+                val newAttachments = overlay.attachments.map { existing ->
+                    if (existing.attachmentId == action.attachmentId &&
+                        existing is AttachmentPendingFile.FileVideo
+                    ) {
+                        existing.copy(
+                            trimStartMs = action.trimStartMs,
+                            trimEndMs = action.trimEndMs,
+                        )
+                    } else existing
+                }
+                _messagesUiState.update {
+                    it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+                }
+            }
+
             /* Audio recording */
             is ConversationListUiAction.ShowRecordingHelp -> {
                 sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
@@ -2392,6 +2425,18 @@ class ConversationListViewModel(
             )
         }
 
+        // Flip the selected id NOW, not after messages arrive. The scaffold's
+        // detail-pane navigation in NotificationNavigationEffects keys off this
+        // value via LaunchedEffect(selectedConversationId); waiting for the first
+        // ChatMessagesData.Messages emission held the navigation hostage to a
+        // potentially slow DB read on cold-start / post-reconnect. The detail pane
+        // already shows isLoadingMessages = true above; messages will fill in via
+        // the collect block below.
+        Logger.i(tag = "ConversationListViewModel") {
+            "selectedConversationId set id=$conversationId (pending messages)"
+        }
+        _uiState.update { it.copy(selectedConversationId = conversationId) }
+
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
@@ -2500,12 +2545,17 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            Logger.i(tag = "ConversationListViewModel") {
-                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                            if (setInitialScroll) {
+                                // Crisp proof that the detail pane is no longer
+                                // gated on messages: this is the gap between the
+                                // synchronous selectedConversationId flip and the
+                                // first messages payload landing in the UI. If
+                                // it's long, navigation already completed (tap →
+                                // detailPane render) without waiting for it.
+                                Logger.i(tag = "ConversationListViewModel") {
+                                    "messages first emission id=$conversationId messageCount=${messages.size} sinceSelected=${loadStart.elapsedNow()}"
+                                }
                             }
-                            _uiState.value = _uiState.value.copy(
-                                selectedConversationId = conversationId,
-                            )
 
                             _messagesUiState.update {
                                 it.copy(
@@ -3039,6 +3089,8 @@ class ConversationListViewModel(
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
                                 displayName = attachment.file.name,
+                                trimStartMs = attachment.trimStartMs,
+                                trimEndMs = attachment.trimEndMs,
                             )
                         )
                     }
@@ -3113,6 +3165,9 @@ class ConversationListViewModel(
                                 thumbnailBytes = bytes,
                                 localFilePath = file.file.toString(),
                                 aspectRatio = aspect,
+                                trimStartMs = file.trimStartMs,
+                                trimEndMs = file.trimEndMs,
+                                durationMs = file.durationMs,
                             )
                         } else null
                     }

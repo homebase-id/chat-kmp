@@ -105,7 +105,12 @@ suspend fun <T> withRetryResult(
             // Check if we should retry this specific exception
             val shouldRetry = config.retryOn?.invoke(e) ?: true
             if (!shouldRetry) {
-                Logger.e(tag = logTag) { "Non-retriable exception: ${e.message}" }
+                // Warn, not error: the caller's retryOn predicate has already
+                // classified this as an expected/handled failure mode (e.g.
+                // NotFoundException on a missing thumbnail). Logging at Error
+                // routes it through stderr on JVM and shows up red in the IDE
+                // console as if it were an uncaught crash.
+                Logger.w(tag = logTag) { "Non-retriable exception: ${e.message}" }
                 return RetryResult.Failure(e, attempt + 1)
             }
 

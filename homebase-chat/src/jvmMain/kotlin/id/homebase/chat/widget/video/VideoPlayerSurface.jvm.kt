@@ -228,6 +228,12 @@ internal fun VlcjPlayer(
     videoPath: String,
     modifier: Modifier,
     onFirstFrameRendered: () -> Unit = {},
+    showControls: Boolean = true,
+    clipStartMs: Long? = null,
+    clipEndMs: Long? = null,
+    externalIsPlaying: Boolean? = null,
+    seekRequestMs: Long? = null,
+    onPositionMs: ((Long) -> Unit)? = null,
 ) {
     val vlcFound = remember { NativeDiscovery().discover() }
 
@@ -284,13 +290,36 @@ internal fun VlcjPlayer(
                 }
             }
             if (atomicFinished.getAndSet(false)) {
-                mediaPlayer.controls().setTime(0)
-                position = 0f
-                isPlaying = false
+                // Loop within clip when present, else snap to 0 + pause.
+                if (clipStartMs != null) {
+                    mediaPlayer.controls().setTime(clipStartMs)
+                    position = clipStartMs.toFloat()
+                    isPlaying = mediaPlayer.status().isPlaying
+                } else {
+                    mediaPlayer.controls().setTime(0)
+                    position = 0f
+                    isPlaying = false
+                }
             } else {
                 isPlaying = mediaPlayer.status().isPlaying
             }
-            delay(100)
+            onPositionMs?.invoke(atomicPositionMs.get())
+            delay(33)
+        }
+    }
+
+    // External play/pause control (only when caller passes externalIsPlaying)
+    if (externalIsPlaying != null) {
+        LaunchedEffect(externalIsPlaying) {
+            if (externalIsPlaying) mediaPlayer.controls().play()
+            else mediaPlayer.controls().setPause(true)
+        }
+    }
+
+    // External seek requests
+    if (seekRequestMs != null) {
+        LaunchedEffect(seekRequestMs) {
+            mediaPlayer.controls().setTime(seekRequestMs)
         }
     }
 
@@ -344,7 +373,21 @@ internal fun VlcjPlayer(
 
         mediaPlayer.videoSurface().set(surface)
         mediaPlayer.events().addMediaPlayerEventListener(eventListener)
-        mediaPlayer.media().play(videoPath)
+
+        // VLC media options: :start-time and :stop-time accept seconds as floats.
+        val mediaOpts = buildList {
+            if (clipStartMs != null && clipStartMs > 0) {
+                add(":start-time=${clipStartMs / 1000.0}")
+            }
+            if (clipEndMs != null && clipEndMs > 0) {
+                add(":stop-time=${clipEndMs / 1000.0}")
+            }
+        }.toTypedArray()
+        if (mediaOpts.isNotEmpty()) {
+            mediaPlayer.media().play(videoPath, *mediaOpts)
+        } else {
+            mediaPlayer.media().play(videoPath)
+        }
 
         onDispose {
             mediaPlayer.events().removeMediaPlayerEventListener(eventListener)
@@ -371,7 +414,7 @@ internal fun VlcjPlayer(
             CircularProgressIndicator()
         }
 
-        Row(
+        if (showControls) Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)

@@ -22,9 +22,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.ProblemDetails
 
 class TestUploader : OutboxUploader {
     var shouldFail = false
+    var failureException: Throwable? = null
     val uploaded = mutableListOf<Outbox>()
 
     // For concurrency testing
@@ -43,6 +48,11 @@ class TestUploader : OutboxUploader {
             )
         )
 
+        failureException?.let {
+            currentActive.decrementAndGet()
+            throw it
+        }
+
         if (shouldFail) {
             currentActive.decrementAndGet()
             throw Exception("Test failure")
@@ -55,6 +65,18 @@ class TestUploader : OutboxUploader {
         currentActive.decrementAndGet()
     }
 }
+
+private fun clientException(
+    status: Int = 400,
+    errorCode: OdinClientErrorCode = OdinClientErrorCode.UnhandledScenario,
+    message: String,
+): ClientException = ClientException(
+    status = status,
+    errorCode = errorCode,
+    message = message,
+    correlationId = null,
+    problem = ProblemDetails(status = status, title = message),
+)
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -469,6 +491,160 @@ class OutboxSyncTest {
             val row = db.outbox.checkout()
             assertNotNull(row)
             assertEquals("fresh", row.json.decodeToString(), "new payload must win over the stale one")
+        }
+        db.close()
+    }
+
+    /**
+     * Regression: a `NotFoundException` from the uploader (e.g. local file no longer
+     * present when DriveOutboxUploader.updateLocalMetadataContent goes to look it up)
+     * is a permanent failure — must drop on the first attempt instead of burning
+     * 20 retries (~48h).
+     */
+    @Test
+    fun testPermanentFailure_NotFoundExceptionDroppedOnFirstAttempt() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.failureException = NotFoundException()
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val droppedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+            }
+            testScheduler.runCurrent()
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+
+            try { sync.send() } catch (_: Exception) {}
+            advanceUntilIdle()
+
+            val dropped = droppedDeferred.await()
+
+            assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+            assertEquals(uniqueId, dropped.uniqueId)
+            assertEquals(driveId, dropped.driveId)
+            assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        }
+        db.close()
+    }
+
+    /**
+     * Regression: a `ClientException` carrying `errorCode = VersionTagMismatch`
+     * (the structured server response) is permanent — drop on first attempt.
+     * This locks in the existing enum-based branch in `isPermanentFailure`.
+     */
+    @Test
+    fun testPermanentFailure_VersionTagMismatchByCodeDroppedOnFirstAttempt() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.failureException = clientException(
+                errorCode = OdinClientErrorCode.VersionTagMismatch,
+                message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
+            )
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val droppedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+            }
+            testScheduler.runCurrent()
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+
+            try { sync.send() } catch (_: Exception) {}
+            advanceUntilIdle()
+
+            val dropped = droppedDeferred.await()
+
+            assertEquals(0L, db.outbox.count())
+            assertEquals(uniqueId, dropped.uniqueId)
+            assertEquals(1, dropped.attempts)
+        }
+        db.close()
+    }
+
+    /**
+     * Regression for the actual user-reported scenario (homebase.log 2026-05-04):
+     * the server collapsed `errorCode` to `UnhandledScenario` while preserving the
+     * title `Mismatching version tag …`. Without a title-match fallback this loops
+     * for 20 retries / ~48h. The fallback in `isPermanentFailure` (and the
+     * symmetrical fallback in `DriveOutboxUploader.upload`) must drop on attempt 1.
+     */
+    @Test
+    fun testPermanentFailure_MismatchingVersionTagByTitleDroppedOnFirstAttempt() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.failureException = clientException(
+                errorCode = OdinClientErrorCode.UnhandledScenario,
+                message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
+            )
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val droppedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+            }
+            testScheduler.runCurrent()
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+
+            try { sync.send() } catch (_: Exception) {}
+            advanceUntilIdle()
+
+            val dropped = droppedDeferred.await()
+
+            assertEquals(0L, db.outbox.count())
+            assertEquals(uniqueId, dropped.uniqueId)
+            assertEquals(1, dropped.attempts)
         }
         db.close()
     }

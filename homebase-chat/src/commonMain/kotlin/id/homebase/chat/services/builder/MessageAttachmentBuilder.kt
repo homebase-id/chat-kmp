@@ -85,7 +85,9 @@ object MessageAttachmentBuilder {
                                         key = payloadKey,
                                         filePath = attachment.filePath,
                                         contentType = attachment.contentType,
-                                        descriptorContent = attachment.displayName
+                                        descriptorContent = attachment.displayName,
+                                        trimStartMs = attachment.trimStartMs,
+                                        trimEndMs = attachment.trimEndMs,
                                     )
                                 ),
                             thumbnails = emptyList(),

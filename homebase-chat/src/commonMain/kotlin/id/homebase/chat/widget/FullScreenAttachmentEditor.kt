@@ -20,6 +20,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -29,6 +30,8 @@ import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,10 +43,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,9 +58,13 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.video.IndexedFrame
+import id.homebase.api.video.VideoThumbnailExtractor
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
-import id.homebase.chat.widget.video.LocalVideoPlayerSurface
+import id.homebase.chat.widget.video.TrimDurationLabel
+import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
+import id.homebase.chat.widget.video.VideoTrimScrubber
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
@@ -85,6 +94,7 @@ fun FullScreenAttachmentEditor(
     onDismiss: () -> Unit,
     onCropImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
     onDrawImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
+    onTrimChange: (conversationId: Uuid, attachmentId: Uuid, startMs: Long?, endMs: Long?) -> Unit = { _, _, _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -103,6 +113,36 @@ fun FullScreenAttachmentEditor(
         }
     }
     val scope = rememberCoroutineScope()
+
+    // Per-video ephemeral state, persists across page swipes within this editor
+    // session. Trim handles' source-of-truth lives on the FileVideo model itself
+    // (trimStartMs / trimEndMs) so it survives navigation; only player state is
+    // local.
+    val playheadByAtt = remember { mutableStateMapOf<Uuid, Long>() }
+    val playingByAtt = remember { mutableStateMapOf<Uuid, Boolean>() }
+    val seekRequestByAtt = remember { mutableStateMapOf<Uuid, Long?>() }
+    val framesByAtt = remember { mutableStateMapOf<Uuid, SnapshotStateMap<Int, IndexedFrame>>() }
+    val frameStripCount = 10
+
+    val activeAttachment = data.attachments.getOrNull(pagerState.currentPage)
+    val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
+
+    // Extract the thumbnail strip for the currently-visible video. Persist across
+    // swipes by stashing in framesByAtt; cancellation happens automatically when
+    // the user swipes to another page (LaunchedEffect re-keys).
+    LaunchedEffect(activeVideo?.attachmentId, activeVideo?.durationMs) {
+        val v = activeVideo ?: return@LaunchedEffect
+        val dur = v.durationMs ?: return@LaunchedEffect
+        if (dur <= 0L) return@LaunchedEffect
+        val map = framesByAtt.getOrPut(v.attachmentId) { mutableStateMapOf() }
+        if (map.size >= frameStripCount) return@LaunchedEffect
+        VideoThumbnailExtractor.extractThumbnailStrip(
+            filePath = v.file.toString(),
+            durationMs = dur,
+            frameCount = frameStripCount,
+            targetHeightPx = 96,
+        ).collect { f -> map[f.index] = f }
+    }
 
     Column(
         modifier = modifier
@@ -143,41 +183,63 @@ fun FullScreenAttachmentEditor(
                         )
                     }
                     is AttachmentPendingFile.FileVideo -> {
-                        var isPlaying by remember(attachment.attachmentId) { mutableStateOf(false) }
-                        var firstFrameRendered by remember(attachment.attachmentId) { mutableStateOf(false) }
-                        // Show a Coil-decoded poster whenever we don't yet have the
-                        // pre-extracted bytes — Coil's VideoFrameDecoder pulls a frame
-                        // straight from the URI without our FFmpeg + temp-file dance.
-                        val posterModel: Any = attachment.thumbnailBytes ?: attachment.file.toString()
+                        val attId = attachment.attachmentId
+                        val durationMs = attachment.durationMs
+                        // Default to auto-play. VLCJ in particular doesn't decode a frame
+                        // when started paused, so a default of false leaves a perpetual
+                        // spinner until the user manually plays.
+                        val isPlaying = playingByAtt[attId] ?: true
+                        val seekRequest = seekRequestByAtt[attId]
+                        val clipStart = attachment.trimStartMs ?: 0L
+                        val clipEnd = attachment.trimEndMs ?: (durationMs ?: 0L)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Color.Black),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
-                            if (isPlaying) {
-                                LocalVideoPlayerSurface(
+                            if (durationMs != null && durationMs > 0L) {
+                                TrimmableVideoPlayerSurface(
                                     filePath = attachment.file.toString(),
+                                    clipStartMs = clipStart,
+                                    clipEndMs = clipEnd,
+                                    isPlaying = isPlaying,
+                                    seekRequestMs = seekRequest,
+                                    onPositionMs = { ms ->
+                                        // Use the locally-defaulted Boolean: until the user
+                                        // taps play/pause, the map has no entry for this
+                                        // attachment, so reading from it would yield null.
+                                        if (isPlaying) {
+                                            playheadByAtt[attId] = ms.coerceIn(clipStart, clipEnd)
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxSize(),
-                                    onFirstFrameRendered = { firstFrameRendered = true },
                                 )
-                            }
-                            if (!firstFrameRendered) {
+                            } else {
+                                // Duration not known yet — show poster while extractThumbnailAsync
+                                // resolves. Player mounts as soon as durationMs lands.
+                                val posterModel: Any = attachment.thumbnailBytes
+                                    ?: attachment.file.toString()
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = posterModel,
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxWidth(),
-                                    contentScale = ContentScale.Fit
+                                    contentScale = ContentScale.Fit,
                                 )
+                            }
+                            IconButton(
+                                onClick = { playingByAtt[attId] = !isPlaying },
+                                modifier = Modifier.background(
+                                    Color.Black.copy(alpha = 0.4f),
+                                    CircleShape,
+                                ),
+                            ) {
                                 Icon(
-                                    Icons.Default.PlayCircle,
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                     contentDescription = null,
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clickable { isPlaying = true },
-                                    tint = Color.White.copy(alpha = 0.85f)
+                                    tint = Color.White,
                                 )
                             }
                         }
@@ -228,6 +290,58 @@ fun FullScreenAttachmentEditor(
                 )
             }
 
+        }
+
+        // Inline trim bar — directly under the video player when the active
+        // attachment is a video. Trim applies live as the user drags; the
+        // FileVideo's trimStartMs/trimEndMs is the source-of-truth, and Send
+        // ships whatever range the handles are at. Hidden until durationMs is
+        // resolved (a few hundred ms after the editor opens).
+        if (activeVideo != null && activeVideo.durationMs != null && activeVideo.durationMs > 0L) {
+            val attId = activeVideo.attachmentId
+            val durationMs = activeVideo.durationMs
+            val startMs = activeVideo.trimStartMs ?: 0L
+            val endMs = activeVideo.trimEndMs ?: durationMs
+            val playheadMs = playheadByAtt[attId] ?: startMs
+            val frames = framesByAtt[attId] ?: emptyMap()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TrimDurationLabel(startMs = startMs, endMs = endMs, totalMs = durationMs)
+                }
+                VideoTrimScrubber(
+                    durationMs = durationMs,
+                    startMs = startMs,
+                    endMs = endMs,
+                    playheadMs = playheadMs,
+                    frames = frames,
+                    frameCount = frameStripCount,
+                    onTrimChange = { newStart, newEnd ->
+                        // A full-range result clears the trim.
+                        val (rs, re) = if (newStart == 0L && newEnd == durationMs)
+                            null to null
+                        else
+                            newStart to newEnd
+                        onTrimChange(data.conversationId, attId, rs, re)
+                        // Pause and seek so the user sees the new bound's frame.
+                        // Default-to-playing: if the user hasn't toggled yet, the map has
+                        // no entry, so we always write false to force pause on drag.
+                        playingByAtt[attId] = false
+                        seekRequestByAtt[attId] = playheadMs.coerceIn(newStart, newEnd)
+                    },
+                    onPlayheadChange = { ms ->
+                        playheadByAtt[attId] = ms
+                        seekRequestByAtt[attId] = ms
+                    },
+                )
+            }
         }
 
         // Attachment-strip row: thumbnails for every queued attachment with a

@@ -235,6 +235,25 @@
     <string name="defragmenter_status_cancelled">Cancelled</string>
     <string name="defragmenter_grid_description">Defragmenting %1$s. %2$d percent complete.</string>
 
+    <!-- Defragmenter — bad-block review dialog -->
+    <string name="defragmenter_review_button">Review %1$d bad block(s)…</string>
+    <string name="defragmenter_review_dialog_title">Bad block (%1$d of %2$d)</string>
+    <string name="defragmenter_review_kind_header">Header</string>
+    <string name="defragmenter_review_kind_message_content">Message content</string>
+    <string name="defragmenter_review_label_drive">Drive: %1$s</string>
+    <string name="defragmenter_review_label_file">File: %1$s</string>
+    <string name="defragmenter_review_label_filetype">File type: %1$s</string>
+    <string name="defragmenter_review_label_conversation">Conversation: %1$s</string>
+    <string name="defragmenter_review_label_author">Original author: %1$s</string>
+    <string name="defragmenter_review_label_sender">Sender: %1$s</string>
+    <string name="defragmenter_review_label_created">Created (ms): %1$s</string>
+    <string name="defragmenter_review_label_unique">Unique id: %1$s</string>
+    <string name="defragmenter_review_decode_error">Decode error: %1$s</string>
+    <string name="defragmenter_review_raw_json">Raw content (first 4000 chars):</string>
+    <string name="defragmenter_review_button_delete">Delete</string>
+    <string name="defragmenter_review_button_skip">Skip</string>
+    <string name="defragmenter_review_button_close">Close</string>
+
     <!-- Help screen -->
     <string name="help_support_center">Support Center</string>
     <string name="help_contact_us">Contact Us</string>
@@ -528,5 +547,8 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="trim_start_handle">Trim start</string>
+    <string name="trim_end_handle">Trim end</string>
+    <string name="trim_position">Playback position</string>
 
 </resources>

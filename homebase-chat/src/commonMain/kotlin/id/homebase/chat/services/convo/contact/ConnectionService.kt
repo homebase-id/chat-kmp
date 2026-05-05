@@ -35,7 +35,22 @@ class ConnectionService(
     val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
 
-    private var startJob: Job? = null
+    // One-shot — prevents the AppModule preload and the ConversationListViewModel
+    // init from each running hydrate+refresh on cold boot. WS-reconnect refreshes
+    // go through the BackendEvent.ConnectionOnline handler in init (calls
+    // launchRefresh() below), not through start() — this flag does not block them.
+    private var started = false
+
+    // Coalesces the two automatic refresh triggers (start()'s post-hydrate path
+    // and BackendEvent.ConnectionOnline). On cold boot they fire ~500ms apart
+    // and would otherwise both hit the network. Direct refresh() calls (user
+    // actions, CircleNetworkEvents) bypass this guard so they always re-fetch.
+    private var refreshJob: Job? = null
+
+    private fun launchRefresh() {
+        if (refreshJob?.isActive == true) return
+        refreshJob = scope.launch { refresh() }
+    }
 
     init {
         // Keep the connected-identity map in sync with websocket events so downstream UI
@@ -62,7 +77,7 @@ class ConnectionService(
                     }
                     // When the websocket comes back after an offline window, reconcile
                     // against the server — covers the airplane-mode-off case.
-                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
+                    is BackendEvent.ConnectionOnline -> launchRefresh()
                     else -> {}
                 }
             }
@@ -70,10 +85,11 @@ class ConnectionService(
     }
 
     fun start() {
-        if (startJob?.isActive == true) return
-        startJob = scope.launch {
+        if (started) return
+        started = true
+        scope.launch {
             hydrateFromCache()
-            refresh()
+            launchRefresh()
         }
     }
 

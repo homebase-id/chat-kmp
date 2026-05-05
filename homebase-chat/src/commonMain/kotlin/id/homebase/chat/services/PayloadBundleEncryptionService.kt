@@ -66,7 +66,9 @@ class PayloadBundleEncryptionService(
                     payload = payload,
                     keyHeader = keyHeader,
                     onProgress = progress,
-                    descriptorContentPayloadKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index"
+                    descriptorContentPayloadKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
+                    trimStartMs = payload.trimStartMs,
+                    trimEndMs = payload.trimEndMs,
                 )
 
                 newPayloads += result.payloads

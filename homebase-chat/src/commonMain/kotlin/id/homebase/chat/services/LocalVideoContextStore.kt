@@ -27,18 +27,29 @@ sealed interface LocalAttachmentContext {
         val thumbnailBytes: ByteArray,
         override val localFilePath: String,
         override val aspectRatio: Float?,
+        /** Trim metadata so local playback clips to the same range that gets uploaded. */
+        val trimStartMs: Long? = null,
+        val trimEndMs: Long? = null,
+        /** Source-file duration; needed to clip when trimEndMs is null but trimStartMs is set. */
+        val durationMs: Long? = null,
     ) : LocalAttachmentContext {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is Video) return false
             return thumbnailBytes.contentEquals(other.thumbnailBytes) &&
                     localFilePath == other.localFilePath &&
-                    aspectRatio == other.aspectRatio
+                    aspectRatio == other.aspectRatio &&
+                    trimStartMs == other.trimStartMs &&
+                    trimEndMs == other.trimEndMs &&
+                    durationMs == other.durationMs
         }
         override fun hashCode(): Int {
             var result = thumbnailBytes.contentHashCode()
             result = 31 * result + localFilePath.hashCode()
             result = 31 * result + (aspectRatio?.hashCode() ?: 0)
+            result = 31 * result + (trimStartMs?.hashCode() ?: 0)
+            result = 31 * result + (trimEndMs?.hashCode() ?: 0)
+            result = 31 * result + (durationMs?.hashCode() ?: 0)
             return result
         }
     }

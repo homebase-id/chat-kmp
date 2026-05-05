@@ -101,7 +101,12 @@ actual object FFmpegUtils {
     private val MAX_BITRATE = 3_000_000L
     private val MAX_WIDTH = 1280
 
-    actual suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)?): String? =
+    actual suspend fun compressVideo(
+        inputPath: String,
+        onProgress: ((Float) -> Unit)?,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
+    ): String? =
             withContext(Dispatchers.IO) {
                 val fileManager = NSFileManager.defaultManager
 
@@ -111,20 +116,11 @@ actual object FFmpegUtils {
                     return@withContext null
                 }
 
-                // Check if compression is needed
-                val mediaInfo = bridge.getMediaInformation(inputPath)
-                val videoStream = mediaInfo?.streams?.firstOrNull { it.type == "video" }
-                val codec = videoStream?.codec?.lowercase()
-                val bitrate = videoStream?.bitrate
-                val width = videoStream?.width
+                val hasTrim = trimStartMs != null || trimEndMs != null
 
-                val isH264 = codec == "h264"
-                val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
-                val widthOk = width != null && width <= MAX_WIDTH
-
-                if (isH264 && bitrateOk && widthOk) {
-                    println("Docs: Video already optimal (h264, ${bitrate}bps, ${width}px) — skipping compression")
-                    return@withContext null // null means "use original"
+                if (!hasTrim && isAlreadyOptimal(inputPath)) {
+                    println("Docs: Video already optimal — skipping compression")
+                    return@withContext null
                 }
 
                 val cacheDir = getCacheDirectory()
@@ -135,9 +131,21 @@ actual object FFmpegUtils {
                     fileManager.removeItemAtPath(outputPath, null)
                 }
 
+                // Build optional trim args. -ss before -i for fast input seek; -t for duration.
+                val trimPre = if (trimStartMs != null && trimStartMs > 0) {
+                    "-ss ${formatSecondsForCli(trimStartMs)} "
+                } else ""
+
+                val trimDurMs = if (trimEndMs != null) {
+                    (trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)
+                } else null
+                val trimMid = if (trimDurMs != null) {
+                    "-t ${formatSecondsForCli(trimDurMs)} "
+                } else ""
+
                 // Use hardware encoder (VideoToolbox) for speed, fall back to libx264
                 val command =
-                        "-y -i \"$inputPath\" -c:v h264_videotoolbox -b:v 3000k -vf scale=min(1280\\,iw):-2 \"$outputPath\""
+                        "-y ${trimPre}-i \"$inputPath\" ${trimMid}-c:v h264_videotoolbox -b:v 3000k -vf scale=min(1280\\,iw):-2 \"$outputPath\""
 
                 val result = bridge.executeFFmpeg(command)
 
@@ -147,11 +155,39 @@ actual object FFmpegUtils {
                     // Fall back to software encoder if hardware fails
                     println("Docs: Hardware encoder failed, falling back to libx264: ${result.failStackTrace}")
                     val fallbackCommand =
-                            "-y -i \"$inputPath\" -c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
+                            "-y ${trimPre}-i \"$inputPath\" ${trimMid}-c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
                     val fallbackResult = bridge.executeFFmpeg(fallbackCommand)
                     if (fallbackResult.isSuccess) outputPath else null
                 }
             }
+
+    /**
+     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
+     * Bitrate is computed from fileSize / duration. The bridge's
+     * `videoStream.bitrate` is optional in the underlying ffprobe output and was
+     * not always populated, which used to force unnecessary re-encodes.
+     */
+    private suspend fun isAlreadyOptimal(inputPath: String): Boolean {
+        val mediaInfo = bridge.getMediaInformation(inputPath) ?: return false
+        val videoStream = mediaInfo.streams.firstOrNull { it.type == "video" }
+            ?: return false
+        val codec = videoStream.codec?.lowercase() ?: return false
+        val width = videoStream.width ?: return false
+
+        val attrs = NSFileManager.defaultManager.attributesOfItemAtPath(inputPath, null)
+        val sizeBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
+        val durationMs = getDurationMs(inputPath)
+        if (sizeBytes <= 0L || durationMs <= 0L) return false
+        val avgBitrate = sizeBytes * 8L * 1000L / durationMs
+
+        return codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
+    }
+
+    private fun formatSecondsForCli(ms: Long): String {
+        val whole = ms / 1000
+        val frac = ms % 1000
+        return "$whole.${frac.toString().padStart(3, '0')}"
+    }
 
     actual suspend fun segmentVideo(
             inputPath: String,
@@ -331,7 +367,13 @@ actual object FFmpegUtils {
     }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
-        val url = NSURL.fileURLWithPath(inputPath)
+        // Defensive: handle both raw paths and file:// URLs. fileURLWithPath
+        // would double-encode an already-formed URL; URLWithString won't
+        // accept a bare path. Same pattern as LocalVideoPlayerSurface.native.kt.
+        val url = if (inputPath.startsWith("file://"))
+            NSURL.URLWithString(inputPath)!!
+        else
+            NSURL.fileURLWithPath(inputPath)
         val asset = AVURLAsset.URLAssetWithURL(url, options = null)
 
         val durationSeconds = CMTimeGetSeconds(asset.duration)

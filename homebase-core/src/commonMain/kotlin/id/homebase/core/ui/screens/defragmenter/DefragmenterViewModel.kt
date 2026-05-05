@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
 import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
+import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_MESSAGE_CONTENT
 import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
 import id.homebase.core.ui.screens.defragmenter.model.CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
+import id.homebase.core.ui.screens.defragmenter.model.CELL_ORPHAN_CHAT_MESSAGE
 import id.homebase.core.ui.screens.defragmenter.model.CELL_UNMAPPABLE_CONVERSATION
 import id.homebase.core.ui.screens.defragmenter.model.CELL_HEALTHY
 import id.homebase.core.ui.screens.defragmenter.service.CellState
@@ -14,6 +16,7 @@ import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragRepairEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -45,10 +48,16 @@ class DefragmenterViewModel(
     private var runStartMark: TimeSource.Monotonic.ValueTimeMark? = null
     private var elapsedMsAtPause: Long = 0L
     private var pendingMoves: Float = 0f
-    private var nextGapCursor: Int = 0
+    private val remainingGaps: ArrayList<Int> = ArrayList()
     private var nextFilledCursor: Int = Int.MAX_VALUE
     private var moveIdCounter: Long = 0L
     private var smoothedMovesPerSecond: Float = BASE_MOVES_PER_SECOND
+
+    // Per-run animation telemetry, reset when a new defrag starts. Logged
+    // alongside the cleanup-pass summary so we can tell at a glance how many
+    // hard-deletes the move loop fired vs the unreachable-tail sweep.
+    private var animationCommits: Long = 0L
+    private var animationHardDeletes: Long = 0L
 
     private var analyzeJob: Job? = null
     private var repairJob: Job? = null
@@ -68,6 +77,10 @@ class DefragmenterViewModel(
             DefragmenterUiAction.Close -> viewModelScope.launch {
                 _events.emit(DefragmenterUiEvent.CloseRequested)
             }
+            DefragmenterUiAction.OpenReview -> openReview()
+            DefragmenterUiAction.DismissReview -> dismissReview()
+            DefragmenterUiAction.ReviewSkip -> reviewSkip()
+            DefragmenterUiAction.ReviewDelete -> reviewDelete()
         }
     }
 
@@ -98,6 +111,12 @@ class DefragmenterViewModel(
                     issueCountArchivalMismatch = 0,
                     issueCountCorruptJson = 0,
                     issueCountUnmappableConvo = 0,
+                    issueCountOrphanMessage = 0,
+                    issueCountCorruptMessageContent = 0,
+                    corruptHeaderCandidates = emptyList(),
+                    corruptMessageCandidates = emptyList(),
+                    reviewIndex = 0,
+                    showReviewDialog = false,
                 )
             }
             val accGaps = HashMap<Int, DeletedFileRef>()
@@ -107,6 +126,8 @@ class DefragmenterViewModel(
             var archivalCount = 0
             var corruptCount = 0
             var unmappableCount = 0
+            var orphanCount = 0
+            var corruptMessageContentCount = 0
             source.analyze().collect { ev ->
                 when (ev) {
                     is DefragAnalyzeEvent.Sized -> {
@@ -161,6 +182,14 @@ class DefragmenterViewModel(
                                         states[pos] = CELL_UNMAPPABLE_CONVERSATION
                                         unmappableCount++
                                     }
+                                    is CellState.OrphanChatMessage -> {
+                                        states[pos] = CELL_ORPHAN_CHAT_MESSAGE
+                                        orphanCount++
+                                    }
+                                    is CellState.CorruptMessageContent -> {
+                                        states[pos] = CELL_CORRUPT_MESSAGE_CONTENT
+                                        corruptMessageContentCount++
+                                    }
                                     is CellState.Healthy, is CellState.SoftDeleted -> Unit
                                 }
                             }
@@ -173,6 +202,8 @@ class DefragmenterViewModel(
                                 issueCountArchivalMismatch = archivalCount,
                                 issueCountCorruptJson = corruptCount,
                                 issueCountUnmappableConvo = unmappableCount,
+                                issueCountOrphanMessage = orphanCount,
+                                issueCountCorruptMessageContent = corruptMessageContentCount,
                             )
                         }
                     }
@@ -185,7 +216,9 @@ class DefragmenterViewModel(
                         Logger.d(tag = tag) {
                             "Analyze complete: total=$total, gaps=${accGaps.size}, " +
                                     "legacy=$legacyCount archival=$archivalCount " +
-                                    "corrupt=$corruptCount unmappable=$unmappableCount"
+                                    "corrupt=$corruptCount unmappable=$unmappableCount " +
+                                    "corruptMessageContent=$corruptMessageContentCount " +
+                                    "reviewQueue=${ev.corruptCandidates.size + ev.corruptMessageContentCandidates.size}"
                         }
                         _uiState.update {
                             it.copy(
@@ -202,6 +235,12 @@ class DefragmenterViewModel(
                                 issueCountArchivalMismatch = archivalCount,
                                 issueCountCorruptJson = corruptCount,
                                 issueCountUnmappableConvo = unmappableCount,
+                                issueCountOrphanMessage = orphanCount,
+                                issueCountCorruptMessageContent = corruptMessageContentCount,
+                                corruptHeaderCandidates = ev.corruptCandidates,
+                                corruptMessageCandidates = ev.corruptMessageContentCandidates,
+                                reviewIndex = 0,
+                                showReviewDialog = false,
                             )
                         }
                     }
@@ -230,11 +269,16 @@ class DefragmenterViewModel(
         pendingMoves = 0f
         lastTickNanos = 0L
         smoothedMovesPerSecond = BASE_MOVES_PER_SECOND
+        animationCommits = 0L
+        animationHardDeletes = 0L
         _uiState.update { it.copy(phase = DefragmenterPhase.Defragmenting) }
     }
 
     private fun hasRepairTargets(s: DefragmenterUiState): Boolean =
-        s.issueCountLegacyUserDateZero > 0 || s.issueCountArchivalMismatch > 0
+        s.issueCountLegacyUserDateZero > 0 ||
+            s.issueCountArchivalMismatch > 0 ||
+            s.issueCountOrphanMessage > 0 ||
+            s.issueCountUnmappableConvo > 0
 
     private fun pause() {
         val s = _uiState.value
@@ -276,6 +320,12 @@ class DefragmenterViewModel(
                     issueCountArchivalMismatch = 0,
                     issueCountCorruptJson = 0,
                     issueCountUnmappableConvo = 0,
+                    issueCountOrphanMessage = 0,
+                    issueCountCorruptMessageContent = 0,
+                    corruptHeaderCandidates = emptyList(),
+                    corruptMessageCandidates = emptyList(),
+                    reviewIndex = 0,
+                    showReviewDialog = false,
                 )
             }
             return
@@ -336,11 +386,18 @@ class DefragmenterViewModel(
             if (frameTimeNanos - move.startTimeNanos >= move.durationNanos) {
                 grid.setFilled(move.fromIndex, false)
                 grid.setFilled(move.toIndex, true)
+                // Belt-and-suspenders for the source gate in nextFilledToMove:
+                // if a coloured cell ever slips through, wipe its overlay code
+                // here so the now-empty source can't keep painting an issue rect.
+                val cs = state.cellStates
+                if (move.fromIndex in 0 until cs.size) cs[move.fromIndex] = CELL_HEALTHY
                 commits++
+                animationCommits++
                 // The gap (toIndex) represents a soft-deleted row. Fire the
                 // real hard-delete POST against its backing fileId.
                 val ref = gapMap[move.toIndex]
                 if (ref != null) {
+                    animationHardDeletes++
                     viewModelScope.launch {
                         source.hardDelete(ref.driveId, ref.fileId)
                     }
@@ -359,13 +416,17 @@ class DefragmenterViewModel(
             .coerceAtLeast(16_000_000L) // at least one frame
         var spawnExhausted = false
         while (pendingMoves >= 1f && mergedInFlight.size < MAX_CONCURRENT_MOVES) {
-            val fromIdx = nextFilledToMove(grid)
-            val toIdx = nextGapToFill(grid)
-            if (fromIdx < 0 || toIdx < 0 || fromIdx <= toIdx) {
-                // No more productive moves — the grid is already compacted or
-                // every remaining gap is past the last filled block. Any gap
-                // still in gapMap whose grid bit is 0 is an unreachable
-                // soft-delete and will be cleaned up on Complete transition.
+            val fromIdx = nextFilledToMove(grid, state.cellStates)
+            if (fromIdx < 0) {
+                pendingMoves = 0f
+                spawnExhausted = true
+                break
+            }
+            val toIdx = nextGapBelow(fromIdx)
+            if (toIdx < 0) {
+                // No remaining gap sits below the current source block — every
+                // surviving gap is past the last filled cell, so they're
+                // unreachable soft-deletes that will be cleaned up on Complete.
                 pendingMoves = 0f
                 spawnExhausted = true
                 break
@@ -373,8 +434,8 @@ class DefragmenterViewModel(
             // Preemptively clear fromIdx so the cached filled-blocks path stops
             // drawing it — the animated in-flight sprite takes over. We DO NOT
             // touch toIdx: the target must appear empty (dark) until the block
-            // physically arrives on commit. The cursor is monotonic so we
-            // won't re-pick either index before this move completes.
+            // physically arrives on commit. nextGapBelow removes its return
+            // value from the pool, so we won't re-pick the same target.
             grid.setFilled(fromIdx, false)
             mergedInFlight.add(
                 InFlightMove(
@@ -410,6 +471,10 @@ class DefragmenterViewModel(
         val noWorkLeft = displayedGapsRemaining <= 0 || spawnExhausted
         val reachedEnd = noWorkLeft && mergedInFlight.isEmpty()
         val phase = if (reachedEnd) {
+            Logger.d(tag = tag) {
+                "Animation complete: commits=$animationCommits hardDeletes=$animationHardDeletes " +
+                        "remainingGapPool=${remainingGaps.size}"
+            }
             // Hard-delete any soft-deleted files that never got animated
             // (gaps whose grid bit is still 0 at defrag end).
             cleanupUnreachableGaps(grid)
@@ -499,6 +564,16 @@ class DefragmenterViewModel(
                     issueCountArchivalMismatch =
                         (it.issueCountArchivalMismatch - 1).coerceAtLeast(0),
                 )
+                DefragRepairEvent.RepairKind.OrphanChatMessage -> it.copy(
+                    gridVersion = it.gridVersion + 1,
+                    issueCountOrphanMessage =
+                        (it.issueCountOrphanMessage - 1).coerceAtLeast(0),
+                )
+                DefragRepairEvent.RepairKind.UnmappableConversation -> it.copy(
+                    gridVersion = it.gridVersion + 1,
+                    issueCountUnmappableConvo =
+                        (it.issueCountUnmappableConvo - 1).coerceAtLeast(0),
+                )
             }
         }
         // Pace the visual flip so it's visible even when SQL UPDATEs return
@@ -538,23 +613,47 @@ class DefragmenterViewModel(
     }
 
     private fun resetCursors() {
-        nextGapCursor = 0
         nextFilledCursor = Int.MAX_VALUE
+        remainingGaps.clear()
+        remainingGaps.addAll(gapMap.keys)
+        remainingGaps.shuffle()
     }
 
-    private fun nextGapToFill(grid: BlockGrid): Int {
-        val idx = grid.nextGapFrom(nextGapCursor)
-        if (idx < 0) return -1
-        nextGapCursor = idx + 1
-        return idx
+    // Pick a random remaining gap whose position is < upperExclusive (i.e.,
+    // a productive target for the source block we're about to move). Returns
+    // -1 when no remaining gap satisfies the bound — the spawn loop reads
+    // that as "exhausted" and transitions to cleanup.
+    private fun nextGapBelow(upperExclusive: Int): Int {
+        val it = remainingGaps.iterator()
+        while (it.hasNext()) {
+            val pos = it.next()
+            if (pos < upperExclusive) {
+                it.remove()
+                return pos
+            }
+        }
+        return -1
     }
 
-    private fun nextFilledToMove(grid: BlockGrid): Int {
-        val start = min(nextFilledCursor, grid.totalBlocks - 1)
-        val idx = grid.prevFilledFrom(start)
-        if (idx < 0) return -1
-        nextFilledCursor = idx - 1
-        return idx
+    // Pick the largest remaining HEALTHY filled block as the source for the
+    // next compaction move. Bad-coded cells (LegacyUserDateZero, ArchivalMismatch,
+    // CorruptJsonHeader, UnmappableConversation) are skipped: they get healed
+    // in place by the repair phase, and moving them desyncs cellStates from
+    // the visual grid (the colour-flip would land on an empty cell instead of
+    // on the block that visually represents the row).
+    private fun nextFilledToMove(grid: BlockGrid, cellStates: ByteArray): Int {
+        var start = min(nextFilledCursor, grid.totalBlocks - 1)
+        while (start >= 0) {
+            val idx = grid.prevFilledFrom(start)
+            if (idx < 0) return -1
+            val healthy = idx >= cellStates.size || cellStates[idx] == CELL_HEALTHY
+            if (healthy) {
+                nextFilledCursor = idx - 1
+                return idx
+            }
+            start = idx - 1
+        }
+        return -1
     }
 
     /**
@@ -584,6 +683,106 @@ class DefragmenterViewModel(
         for (i in inFlight.indices) arr[i] = inFlight[i].toIndex
         return arr
     }
+
+    // region Corrupt-file review walk
+    //
+    // The review queue is the concatenation of corruptHeaderCandidates +
+    // corruptMessageCandidates, in that order. reviewIndex points into the
+    // combined sequence; helpers below translate between index and queue
+    // segment so the dialog can render the right kind of card.
+
+    private fun reviewQueueSize(s: DefragmenterUiState): Int =
+        s.corruptHeaderCandidates.size + s.corruptMessageCandidates.size
+
+    private fun openReview() {
+        val s = _uiState.value
+        if (reviewQueueSize(s) == 0) return
+        _uiState.update { it.copy(showReviewDialog = true, reviewIndex = 0) }
+    }
+
+    private fun dismissReview() {
+        _uiState.update { it.copy(showReviewDialog = false) }
+    }
+
+    private fun reviewSkip() {
+        advanceReviewIndex()
+    }
+
+    private fun reviewDelete() {
+        val s = _uiState.value
+        val driveId: Uuid
+        val fileId: Uuid
+        val isMessageContent: Boolean
+        val headerSize = s.corruptHeaderCandidates.size
+        when {
+            s.reviewIndex < headerSize -> {
+                val c = s.corruptHeaderCandidates[s.reviewIndex]
+                driveId = c.driveId
+                fileId = c.fileId
+                isMessageContent = false
+            }
+            s.reviewIndex < headerSize + s.corruptMessageCandidates.size -> {
+                val c = s.corruptMessageCandidates[s.reviewIndex - headerSize]
+                driveId = c.driveId
+                fileId = c.fileId
+                isMessageContent = true
+            }
+            else -> return
+        }
+        viewModelScope.launch {
+            val ok = runCatching { source.hardDelete(driveId, fileId) }
+                .getOrElse {
+                    Logger.w(tag = tag, throwable = it) {
+                        "review hardDelete threw drive=$driveId file=$fileId"
+                    }
+                    false
+                }
+            if (!ok) {
+                Logger.w(tag = tag) {
+                    "review hardDelete returned false drive=$driveId file=$fileId — skipping"
+                }
+            }
+        }
+        // Best-effort cell-byte flip: scan cellStates for any position with the
+        // matching code (we don't track fileId↔position) and clear the FIRST
+        // one matching the candidate's kind. The next Analyze fully reconciles.
+        val targetCode: Byte =
+            if (isMessageContent) CELL_CORRUPT_MESSAGE_CONTENT else CELL_CORRUPT_JSON_HEADER
+        val states = s.cellStates
+        for (i in states.indices) {
+            if (states[i] == targetCode) {
+                states[i] = CELL_HEALTHY
+                break
+            }
+        }
+        _uiState.update {
+            val tally = if (isMessageContent) {
+                it.copy(
+                    issueCountCorruptMessageContent =
+                        (it.issueCountCorruptMessageContent - 1).coerceAtLeast(0),
+                )
+            } else {
+                it.copy(
+                    issueCountCorruptJson = (it.issueCountCorruptJson - 1).coerceAtLeast(0),
+                )
+            }
+            tally.copy(gridVersion = it.gridVersion + 1)
+        }
+        advanceReviewIndex()
+    }
+
+    private fun advanceReviewIndex() {
+        _uiState.update {
+            val next = it.reviewIndex + 1
+            if (next >= reviewQueueSize(it)) {
+                it.copy(reviewIndex = 0, showReviewDialog = false)
+            } else {
+                it.copy(reviewIndex = next)
+            }
+        }
+    }
+
+    // endregion
 
     companion object {
         const val BASE_MOVES_PER_SECOND: Float = 6f
