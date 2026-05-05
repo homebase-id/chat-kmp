@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.defragmenter.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -105,21 +105,23 @@ fun CorruptFileReviewDialog(
                     Win98BeveledPanel(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 320.dp),
+                            .heightIn(max = 480.dp),
                         sunken = true,
                         background = Win98Palette.White,
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(scroll)
-                                .padding(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            if (isHeader) {
-                                HeaderBody(headerCandidates[reviewIndex])
-                            } else {
-                                MessageBody(messageCandidates[reviewIndex - headerCandidates.size])
+                        SelectionContainer {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(scroll)
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                if (isHeader) {
+                                    HeaderBody(headerCandidates[reviewIndex])
+                                } else {
+                                    MessageBody(messageCandidates[reviewIndex - headerCandidates.size])
+                                }
                             }
                         }
                     }
@@ -252,13 +254,11 @@ private fun RawJsonBlock(raw: String) {
             fontWeight = FontWeight.Bold,
         ),
     )
-    val hScroll = rememberScrollState()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFFEFEFEF))
-            .padding(6.dp)
-            .horizontalScroll(hScroll),
+            .padding(6.dp),
     ) {
         Text(
             text = raw,

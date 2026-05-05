@@ -235,9 +235,9 @@
     <string name="defragmenter_status_cancelled">Cancelled</string>
     <string name="defragmenter_grid_description">Defragmenting %1$s. %2$d percent complete.</string>
 
-    <!-- Defragmenter — corrupt-file review dialog -->
-    <string name="defragmenter_review_button">Review %1$d corrupt file(s)…</string>
-    <string name="defragmenter_review_dialog_title">Corrupt file (%1$d of %2$d)</string>
+    <!-- Defragmenter — bad-block review dialog -->
+    <string name="defragmenter_review_button">Review %1$d bad block(s)…</string>
+    <string name="defragmenter_review_dialog_title">Bad block (%1$d of %2$d)</string>
     <string name="defragmenter_review_kind_header">Header</string>
     <string name="defragmenter_review_kind_message_content">Message content</string>
     <string name="defragmenter_review_label_drive">Drive: %1$s</string>
@@ -249,7 +249,7 @@
     <string name="defragmenter_review_label_created">Created (ms): %1$s</string>
     <string name="defragmenter_review_label_unique">Unique id: %1$s</string>
     <string name="defragmenter_review_decode_error">Decode error: %1$s</string>
-    <string name="defragmenter_review_raw_json">Raw JSON (first 200 chars):</string>
+    <string name="defragmenter_review_raw_json">Raw content (first 4000 chars):</string>
     <string name="defragmenter_review_button_delete">Delete</string>
     <string name="defragmenter_review_button_skip">Skip</string>
     <string name="defragmenter_review_button_close">Close</string>

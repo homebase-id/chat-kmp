@@ -177,7 +177,7 @@ internal suspend fun classifyRow(
                 sender = header.fileMetadata.senderOdinId,
                 createdMs = header.fileMetadata.created.milliseconds,
                 decodeError = err.message?.take(200),
-                rawContentPrefix = content?.take(200) ?: "",
+                rawContentPrefix = content?.take(4000) ?: "",
             )
         }
     }
@@ -229,6 +229,6 @@ internal fun buildQuarantineCandidate(
         createdMs = fileMetadata?.long("created"),
         fileType = appData?.int("fileType"),
         uniqueId = appData?.uuid("uniqueId"),
-        rawHeaderPrefix = row.jsonHeader.take(200),
+        rawHeaderPrefix = row.jsonHeader.take(4000),
     )
 }

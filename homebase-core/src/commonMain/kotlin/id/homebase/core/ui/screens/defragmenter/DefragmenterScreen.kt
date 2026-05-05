@@ -306,7 +306,7 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
             }
             if (state.issueCountCorruptJson > 0) {
                 Win98Label(
-                    text = "Corrupt JSON: ${state.issueCountCorruptJson}",
+                    text = "Bad header blocks: ${state.issueCountCorruptJson}",
                     color = Win98Palette.IssueCorruptJsonFill,
                 )
             }
@@ -324,7 +324,7 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
             }
             if (state.issueCountCorruptMessageContent > 0) {
                 Win98Label(
-                    text = "Corrupt message content: ${state.issueCountCorruptMessageContent}",
+                    text = "Bad message blocks: ${state.issueCountCorruptMessageContent}",
                     color = Win98Palette.IssueCorruptMessageContentFill,
                 )
             }
