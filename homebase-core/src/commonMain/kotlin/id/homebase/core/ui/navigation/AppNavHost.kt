@@ -90,6 +90,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
+import id.homebase.core.ui.screens.help.HelpScreen
 import kotlin.uuid.Uuid
 
 @Composable
@@ -697,6 +698,7 @@ fun AppNavHost(
                     }
                 }
             }
+        }
 
             // In-app notification banner overlay
             InAppNotificationBanner(
