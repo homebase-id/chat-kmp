@@ -145,9 +145,15 @@ internal suspend fun classifyRow(
     }
 
     // 5. Legacy null-userDate (chat messages only).
+    //
+    // Gates only on `appData.userDate == null` in the parsed JSON header
+    // (the source of truth the consumer reads). Deliberately ignores
+    // `row.userDate` — it may already be non-zero from a prior repair pass
+    // that patched the SQL projection but didn't yet patch the header. We
+    // need to re-flag those so the now-extended repair can rewrite the
+    // jsonHeader column too.
     if (
         fileType == MESSAGE_FILE_TYPE &&
-        row.userDate == 0L &&
         header.fileMetadata.appData.userDate == null &&
         header.fileMetadata.created.milliseconds > 0L
     ) {

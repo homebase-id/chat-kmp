@@ -197,6 +197,19 @@ class DriveMainIndexWrapper(
         }
     }
 
+    /**
+     * Defragmenter: rewrite a row's jsonHeader text after the
+     * LegacyUserDateZero repair has patched `appData.userDate` in the
+     * parsed header. Local-only.
+     */
+    suspend fun repairJsonHeaderByRowId(rowId: Long, jsonHeader: String): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.driveMainIndexQueries
+                .repairJsonHeaderByRowId(jsonHeader, rowId)
+                .value > 0
+        }
+    }
+
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,
         driveId: Uuid,

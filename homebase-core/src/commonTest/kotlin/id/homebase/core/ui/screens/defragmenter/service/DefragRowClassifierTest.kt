@@ -111,13 +111,42 @@ class DefragRowClassifierTest {
         assertEquals(CellState.Healthy, state)
     }
 
+    @Test
+    fun classify_messageWithNullHeaderUserDate_returnsLegacyUserDateZero() = runTest {
+        // Even when the SQL `userDate` column has been previously repaired
+        // (non-zero), a null in the parsed `appData.userDate` re-flags the
+        // row so the new repair pass can rewrite the jsonHeader column too.
+        val row = chatMessageRow(
+            content = """{"message":"hi","deliveryStatus":50}""",
+            groupId = convoId,
+            headerUserDate = null,
+            rowUserDate = 5000L,
+        )
+        val probe: suspend (HomebaseFile) -> Throwable? = { null }
+
+        val state = classifyRow(
+            driveId = driveId,
+            row = row,
+            mapToBasicProbe = null,
+            healthyConversationIds = healthyConvos,
+            decodeMessageContentProbe = probe,
+        )
+
+        val legacy = state as? CellState.LegacyUserDateZero
+        assertNotNull(legacy, "expected LegacyUserDateZero, got $state")
+        assertEquals(1000L, legacy.createdMs)
+    }
+
     private fun chatMessageRow(
         content: String,
         groupId: Uuid,
         fileId: Uuid = Uuid.random(),
         rowId: Long = 1L,
+        headerUserDate: Long? = 1000L,
+        rowUserDate: Long = 1000L,
     ): PagedScanRow {
         val jsonContent = content.replace("\\", "\\\\").replace("\"", "\\\"")
+        val userDateField = if (headerUserDate == null) "null" else headerUserDate.toString()
         val jsonHeader = """{
             "driveId": "$driveId",
             "fileId": "$fileId",
@@ -143,7 +172,7 @@ class DefragRowClassifierTest {
                     "fileType": 7878,
                     "dataType": 0,
                     "groupId": "$groupId",
-                    "userDate": 1000,
+                    "userDate": $userDateField,
                     "content": "$jsonContent",
                     "previewThumbnail": null,
                     "archivalStatus": 0
@@ -174,7 +203,7 @@ class DefragRowClassifierTest {
         return PagedScanRow(
             rowId = rowId,
             fileId = fileId,
-            userDate = 1000L,
+            userDate = rowUserDate,
             archivalStatus = 0L,
             jsonHeader = jsonHeader,
         )
