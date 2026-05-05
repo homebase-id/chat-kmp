@@ -4,8 +4,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.util.getUriHandler
@@ -25,14 +27,31 @@ import org.jetbrains.compose.resources.stringResource
  * startup.
  */
 @Composable
-fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
+fun ExtendPermissionDialog(
+    viewModel: ExtendPermissionViewModel,
+    onCancel: (() -> Unit)? = null,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
 
+    LaunchedEffect(uiState) {
+        Logger.i(tag = "ExtendPermissionDialog") {
+            "uiState observed: ${uiState::class.simpleName} (vm=${viewModel.hashCode()})"
+        }
+    }
+
     when (val state = uiState) {
         is ExtendPermissionUiState.ShowDialog -> {
+            LaunchedEffect(state.appName) {
+                Logger.i(tag = "ExtendPermissionDialog") {
+                    "rendering AlertDialog for ${state.appName}"
+                }
+            }
             AlertDialog(
-                onDismissRequest = { viewModel.dismissDialog() },
+                onDismissRequest = {
+                    viewModel.dismissDialog()
+                    onCancel?.invoke()
+                },
                 title = { Text(stringResource(MR.string.permissions_missing_title)) },
                 text = {
                     Text(stringResource(MR.string.permissions_missing_body, state.appName))
@@ -46,7 +65,10 @@ fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissDialog() }) {
+                    TextButton(onClick = {
+                        viewModel.dismissDialog()
+                        onCancel?.invoke()
+                    }) {
                         Text(stringResource(MR.string.cancel))
                     }
                 }

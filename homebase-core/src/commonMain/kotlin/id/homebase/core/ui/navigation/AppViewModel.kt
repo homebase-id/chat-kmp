@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -13,6 +15,8 @@ import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.permission.registerPermissionCallbackHandler
+import id.homebase.core.permission.unregisterPermissionCallbackHandler
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
@@ -35,6 +39,7 @@ class AppViewModel(
     private val shareContentProcessor: ShareContentProcessor,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val updateAppManager: UpdateAppManager,
+    private val eventBus: EventBus,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -51,11 +56,20 @@ class AppViewModel(
     init {
         collectNotificationEvents()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
+        registerPermissionCallbackHandler { canceled ->
+            viewModelScope.launch {
+                eventBus.emit(
+                    if (canceled) BackendEvent.PermissionsExtensionCanceled
+                    else BackendEvent.PermissionsExtensionReturned
+                )
+            }
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
         unregisterShareHandler()
+        unregisterPermissionCallbackHandler()
     }
 
     fun refreshData() {

@@ -356,7 +356,16 @@ fun AppNavHost(
 
                     composable<Route.Feed> {
                         if (isAuthenticated) {
-                            FeedScreen(viewModel = koinViewModel())
+                            FeedScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateToChat = {
+                                    navController.navigate(Route.ChatList) {
+                                        popUpTo(Route.ChatList) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                            )
                         }
                     }
 

@@ -183,6 +183,22 @@ sealed interface BackendEvent {
     // A drive subscription was rejected by the server (non-fatal — other drives still sync)
     data class DriveAuthorizationFailed(val message: String) : BackendEvent
 
+    /**
+     * Emitted when the user has returned from the owner-console "Extend Permissions" flow.
+     * On desktop this fires when the local callback server hits its /permission-callback
+     * endpoint. ExtendPermissionViewModel listens for this and re-runs its check so the
+     * dialog dismisses (or re-shows) immediately rather than waiting for the next event.
+     */
+    data object PermissionsExtensionReturned : BackendEvent
+
+    /**
+     * Emitted when the user explicitly canceled the owner-console "Extend Permissions"
+     * flow (the redirect URL carried `status=canceled`). Distinct from
+     * [PermissionsExtensionReturned] so the VM can route the user back to the chat tab
+     * without re-prompting with the same dialog they just dismissed.
+     */
+    data object PermissionsExtensionCanceled : BackendEvent
+
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
 }

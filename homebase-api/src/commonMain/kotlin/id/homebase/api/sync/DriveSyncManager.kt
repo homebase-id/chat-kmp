@@ -165,6 +165,13 @@ class DriveSyncManager(
             }
         }
         isRunning = true
+        // Note: drives registered via mountDrive() while isRunning was false
+        // (bootstrap pre-mounts, or add-on activations during a paused window)
+        // sit in driveSyncs with their initial sync deferred. The caller is
+        // expected to follow start() with syncAll(), which iterates the full
+        // map and kicks each — same path that handles the mandatory drives
+        // we just added above. Both production callers (AuthConnectionCoordinator
+        // and BackgroundSyncOrchestrator) already do this.
     }
 
     suspend fun syncAll() {
@@ -216,15 +223,25 @@ class DriveSyncManager(
 
     /**
      * Dynamically mounts a drive into the sync engine (e.g. when an add-on is activated
-     * mid-session). Starts an HTTP-polling sync immediately; real-time WebSocket push
-     * notifications will arrive only after the next reconnect.
+     * mid-session, or during cold-boot bootstrap before [start] has flipped
+     * [isRunning] true).
+     *
+     * Splits cleanly into "register" (in-memory bookkeeping — always runs once
+     * credentials exist) and "kick a sync" (network I/O — only runs while the
+     * manager is in the running state). A drive registered while paused/not-yet-
+     * started is picked up by the next [start]'s catch-up loop.
      */
     suspend fun mountDrive(driveId: Uuid, label: String) {
-        if (!isRunning) { Logger.w { "mountDrive() skipped — not running" }; return }
         val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
         if (alreadyExists) return
 
-        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        // getActiveCredentials() instead of requireActiveCredentials() — a logout
+        // race during add-on activation should be a deferred mount, not a crash.
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: run {
+            Logger.w { "mountDrive($driveId) skipped — no active credentials" }
+            return
+        }
+
         val sync = try {
             DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
         } catch (e: CancellationException) {
@@ -236,7 +253,10 @@ class DriveSyncManager(
         }
         driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
         _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
-        sync.sync()
+
+        // Defer the network kick if the manager isn't running yet — start()'s
+        // catch-up loop will pick it up when isRunning flips true.
+        if (isRunning) sync.sync()
     }
 
     /**

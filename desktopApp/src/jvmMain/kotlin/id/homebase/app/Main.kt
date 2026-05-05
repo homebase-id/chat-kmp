@@ -17,6 +17,9 @@ import com.kdroid.composetray.tray.api.Tray
 import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseKeyManager
@@ -73,6 +76,19 @@ fun main() {
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+
+    // Bridge the local callback server's /permission-callback hit (after the user
+    // returns from the owner-console "Extend Permissions" flow) to the in-app event
+    // bus so ExtendPermissionViewModel re-runs its check and the dialog dismisses.
+    val eventBus = GlobalContext.get().get<EventBus>()
+    LocalCallbackServer.setPermissionCallback { canceled ->
+        runBlocking {
+            eventBus.emit(
+                if (canceled) BackendEvent.PermissionsExtensionCanceled
+                else BackendEvent.PermissionsExtensionReturned
+            )
+        }
+    }
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")

@@ -23,10 +23,24 @@ object AppConfig {
 
     // Deep link scheme for returning from permission extension
     const val DEEP_LINK_SCHEME = "homebase-fchat"
-    const val RETURN_URL = "$DEEP_LINK_SCHEME://permission-callback"
 
     const val REPORT_CONTENT_URL = "https://ravenhosting.cloud/report/content"
 }
+
+/**
+ * Return URL the owner console redirects the browser to once the user has finished
+ * extending app permissions. Platform-specific because the mechanism differs:
+ *
+ * - **Mobile (Android/iOS) and Web**: a custom URL scheme deep link
+ *   (`homebase-fchat://permission-callback`) registered on the device.
+ * - **Desktop (JVM)**: a localhost loopback URL handled by the in-process
+ *   [id.homebase.api.browser.LocalCallbackServer] (the same server the OAuth login
+ *   flow uses). The implementation must ensure the server is running before returning.
+ *
+ * Called every time a [PermissionExtensionConfig] is built (i.e. per ViewModel
+ * construction, which is per login session) — so the JVM port is fresh per session.
+ */
+expect fun returnUrl(): String
 
 // Circle IDs for connected identities
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
@@ -148,7 +162,7 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
-        returnUrl = AppConfig.RETURN_URL
+        returnUrl = returnUrl()
     )
 }
 
@@ -176,6 +190,6 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
         // needsAllConnected = true,
-        returnUrl = AppConfig.RETURN_URL
+        returnUrl = returnUrl()
     )
 }
