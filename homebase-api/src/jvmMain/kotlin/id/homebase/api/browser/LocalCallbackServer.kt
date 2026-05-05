@@ -103,8 +103,20 @@ object LocalCallbackServer {
                                 DesktopAppFocusManager.requestFocus()
                                 call.respondText("OK", ContentType.Text.Plain)
 
+                                // Invalidate the in-process handles immediately so any
+                                // ensureCallbackServer() call during the grace window
+                                // (e.g., the user clicking Extend Permissions on a
+                                // different screen as the desktop app comes to focus)
+                                // sees "not running" and starts a fresh server on a new
+                                // port — instead of getting handed a port that's about
+                                // to be unbound. The actual engine stop is still delayed
+                                // so the browser's window.close() roundtrip can finish.
+                                val toStop = server
+                                server = null
+                                currentPort = 0
                                 delay(750)
-                                stop()
+                                toStop?.stop(1000, 2000)
+                                Logger.i(tag = TAG) { "Callback server stopped (focus)" }
                             }
 
                             /** Health check */

@@ -37,8 +37,10 @@ object AppConfig {
  *   [id.homebase.api.browser.LocalCallbackServer] (the same server the OAuth login
  *   flow uses). The implementation must ensure the server is running before returning.
  *
- * Called every time a [PermissionExtensionConfig] is built (i.e. per ViewModel
- * construction, which is per login session) — so the JVM port is fresh per session.
+ * Invoked at URL-build time (per extend-permissions click) via the lambda in
+ * [PermissionExtensionConfig.returnUrl], not at config-build time — so a JVM
+ * callback server that was stopped between checks is restarted, and the URL
+ * carries a live port.
  */
 expect fun returnUrl(): String
 
@@ -162,7 +164,7 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
-        returnUrl = returnUrl()
+        returnUrl = ::returnUrl
     )
 }
 
@@ -190,6 +192,6 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
         // needsAllConnected = true,
-        returnUrl = returnUrl()
+        returnUrl = ::returnUrl
     )
 }
