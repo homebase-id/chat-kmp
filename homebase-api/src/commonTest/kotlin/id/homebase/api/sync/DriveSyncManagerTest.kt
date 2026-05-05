@@ -376,6 +376,96 @@ class DriveSyncManagerTest {
     }
 
     @Test
+    fun mountDriveBeforeStartRegistersAndIsKickedBySyncAll() {
+        // Bootstrap path: AuthConnectionCoordinator mounts add-on drives from the
+        // registry BEFORE the WS handshake fires DriveSyncManager.start(). The mount
+        // must register the drive in-memory, defer the sync kick, and the subsequent
+        // syncAll() (the canonical "kick everything" call after start()) must include
+        // the pre-registered drive.
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope, emptyMap())
+
+            val driveId = Uuid.random()
+            manager.mountDrive(driveId, "Pre-registered")
+            runCurrent()
+
+            // Registered but no sync kicked yet.
+            assertTrue(manager.driveStatuses.value.containsKey(driveId))
+            assertEquals(DriveState.Initialized, manager.driveStatuses.value[driveId]?.state)
+
+            manager.start()
+            runCurrent()
+            // After start() alone, the pre-registered drive is still Initialized — the
+            // kick is deferred until the caller's syncAll().
+            assertEquals(DriveState.Initialized, manager.driveStatuses.value[driveId]?.state)
+
+            // launch is required because syncAll() suspends on joinAll() against the
+            // (hung) MockEngine and would block the test forever if invoked directly.
+            backgroundScope.launch { manager.syncAll() }
+            runCurrent()
+
+            // performSync emits Started → state transitions to Synchronizing.
+            assertIs<DriveState.Synchronizing>(manager.driveStatuses.value[driveId]?.state)
+        }
+        db.close()
+    }
+
+    @Test
+    fun mountDriveWhilePausedRegistersAndIsKickedByNextSyncAll() {
+        // Mid-session add-on install while the WS is paused (network blip / pre-reconnect):
+        // the activation flow's mountDrive() must register, defer the kick, and let the
+        // next reconnect's start() + syncAll() pick it up.
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val mandatoryDrive = Uuid.random()
+            val manager = buildManager(
+                db, buildCredentials(), EventBus(), backgroundScope,
+                mapOf(mandatoryDrive to "Chat"),
+            )
+            manager.start()
+            runCurrent()
+            manager.pause()
+            runCurrent()
+
+            val addonDrive = Uuid.random()
+            manager.mountDrive(addonDrive, "Mid-session add-on")
+            runCurrent()
+
+            // Registered while paused — no sync kicked yet.
+            assertTrue(manager.driveStatuses.value.containsKey(addonDrive))
+            assertEquals(DriveState.Initialized, manager.driveStatuses.value[addonDrive]?.state)
+
+            manager.start()
+            runCurrent()
+            backgroundScope.launch { manager.syncAll() }
+            runCurrent()
+
+            assertIs<DriveState.Synchronizing>(manager.driveStatuses.value[addonDrive]?.state)
+        }
+        db.close()
+    }
+
+    @Test
+    fun mountDriveWithoutCredentialsLogsAndSkips() {
+        // Logout race during add-on activation: getActiveCredentials() returns null,
+        // mountDrive must warn and bail without registering — no DriveSync object,
+        // no entry in driveStatuses.
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val emptyCredentials = CredentialsManager() // never call setActiveCredentials
+            val manager = buildManager(db, emptyCredentials, EventBus(), backgroundScope, emptyMap())
+
+            val driveId = Uuid.random()
+            manager.mountDrive(driveId, "No-creds drive")
+            runCurrent()
+
+            assertTrue(manager.driveStatuses.value.isEmpty())
+        }
+        db.close()
+    }
+
+    @Test
     fun unmountDriveRemovesDriveAndClearsStatus() {
         val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
