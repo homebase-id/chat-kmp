@@ -13,7 +13,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
-import id.homebase.core.widget.EmojiReaction
+import id.homebase.core.widget.ReactionDisplayItem
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -75,7 +75,8 @@ data class MessageListUiState(
     val isEditingMessageId: Uuid? = null,
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
-    val messageReactions: List<EmojiReaction>? = null,
+    val messageReactions: List<ReactionDisplayItem>? = null,
+    val isReactionsLoading: Boolean = false,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
