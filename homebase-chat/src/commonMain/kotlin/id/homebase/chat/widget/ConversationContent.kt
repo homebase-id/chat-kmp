@@ -100,7 +100,7 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.chat.location.rememberCurrentLocationLauncher
-import id.homebase.chat.services.renderer.AttachmentRenderer
+import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
@@ -219,8 +219,8 @@ fun ConversationContent(
     // Hoisted composer staging slot. Owned at this level so user-initiated attachments
     // (location, contact, etc.) can be appended from outside the input bar (e.g. from the
     // attachment sheet). Auto-detected attachments (link previews from typed URLs) write here
-    // too, via `MessageInputBar`'s onAttachmentRenderersChange callback.
-    var attachmentRenderers by remember { mutableStateOf<List<AttachmentRenderer>>(emptyList()) }
+    // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
+    var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
     // Location-share flow. Triggered from the AttachmentOptions sheet → GPS launcher → fetch
     // a static map preview from the (dev-stub) provider → append a LocationPreviewRenderer to
@@ -238,7 +238,7 @@ fun ConversationContent(
                 val preview = locationPreviewProvider.getLocationPreview(fix.latitude, fix.longitude)
                 if (preview != null) {
                     // Replace any existing staged location (one location at a time).
-                    attachmentRenderers = attachmentRenderers.filterNot { it is LocationPreviewRenderer } +
+                    payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
                         LocationPreviewRenderer(preview)
                 }
             } finally {
@@ -1063,8 +1063,8 @@ fun ConversationContent(
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
                                 isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
-                                attachmentRenderers = attachmentRenderers,
-                                onAttachmentRenderersChange = { attachmentRenderers = it },
+                                payloadRenderers = payloadRenderers,
+                                onPayloadRenderersChange = { payloadRenderers = it },
                                 onSendMessage = { text, attachments ->
                                     val hasContent = text.isNotBlank() ||
                                         attachments.any { it !is id.homebase.chat.services.renderer.LinkPreviewRenderer }
@@ -1077,12 +1077,12 @@ fun ConversationContent(
                                             onUiAction(
                                                 ConversationListUiAction.SendMessage(
                                                     conversationId = conversation.conversation.id,
-                                                    attachmentRenderers = attachments,
+                                                    payloadRenderers = attachments,
                                                 )
                                             )
                                             // Clear the staged slot so the next message doesn't
                                             // inherit the just-sent attachments.
-                                            attachmentRenderers = emptyList()
+                                            payloadRenderers = emptyList()
                                         }
                                     }
                                 },

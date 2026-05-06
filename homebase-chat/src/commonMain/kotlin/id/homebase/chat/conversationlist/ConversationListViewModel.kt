@@ -20,7 +20,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.chat.services.renderer.AttachmentRenderer
+import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
@@ -753,7 +753,7 @@ class ConversationListViewModel(
                 // User-initiated attachments (location, contact, etc.) enable send even with no
                 // text. Link previews don't — they're auto-detected from typed URLs and only
                 // ride along when there's a text message to send.
-                val hasUserInitiatedAttachment = action.attachmentRenderers.any {
+                val hasUserInitiatedAttachment = action.payloadRenderers.any {
                     it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
                 }
                 if (hasMessage || hasUserInitiatedAttachment) {
@@ -765,13 +765,13 @@ class ConversationListViewModel(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
                             content = content,
-                            attachmentRenderers = action.attachmentRenderers,
+                            payloadRenderers = action.payloadRenderers,
                         )
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
                             content = content,
-                            attachmentRenderers = action.attachmentRenderers,
+                            payloadRenderers = action.payloadRenderers,
                         )
                     }
                     // Input is cleared inside addMessage/replyToMessage after
@@ -2836,11 +2836,11 @@ class ConversationListViewModel(
     private fun addMessage(
         conversationId: Uuid,
         content: String,
-        attachmentRenderers: List<AttachmentRenderer> = emptyList(),
+        payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = attachmentRenderers.toCombinedPayloadBundle(fileOperationsProvider)
+                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
@@ -2871,11 +2871,11 @@ class ConversationListViewModel(
         conversationId: Uuid,
         replyTo: MessageUiModel,
         content: String,
-        attachmentRenderers: List<AttachmentRenderer> = emptyList(),
+        payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = attachmentRenderers.toCombinedPayloadBundle(fileOperationsProvider)
+                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,

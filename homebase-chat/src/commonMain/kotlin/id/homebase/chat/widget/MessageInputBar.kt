@@ -103,7 +103,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
-import id.homebase.chat.services.renderer.AttachmentRenderer
+import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
@@ -157,9 +157,9 @@ fun MessageInputBar(
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
-    attachmentRenderers: List<AttachmentRenderer>,
-    onAttachmentRenderersChange: (List<AttachmentRenderer>) -> Unit,
-    onSendMessage: (String, List<AttachmentRenderer>) -> Unit,
+    payloadRenderers: List<PayloadRenderer>,
+    onPayloadRenderersChange: (List<PayloadRenderer>) -> Unit,
+    onSendMessage: (String, List<PayloadRenderer>) -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
@@ -184,9 +184,9 @@ fun MessageInputBar(
 
             // If the user modifies the URL, immediately hide the old preview while we
             // wait to fetch the new one.
-            val existingLink = attachmentRenderers.firstOrNull { it is LinkPreviewRenderer } as? LinkPreviewRenderer
+            val existingLink = payloadRenderers.firstOrNull { it is LinkPreviewRenderer } as? LinkPreviewRenderer
             if (existingLink != null && existingLink.preview.url != url) {
-                onAttachmentRenderersChange(attachmentRenderers.filterNot { it is LinkPreviewRenderer })
+                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
             }
 
             if (url !in cancelledUrls && url != lastFetchedUrl) {
@@ -196,8 +196,8 @@ fun MessageInputBar(
                     val preview = linkPreviewProvider.getLinkPreview(url)
                     // Ensure the URL wasn't cancelled during the network request delay.
                     if (preview != null && url !in cancelledUrls) {
-                        onAttachmentRenderersChange(
-                            attachmentRenderers.filterNot { it is LinkPreviewRenderer } +
+                        onPayloadRenderersChange(
+                            payloadRenderers.filterNot { it is LinkPreviewRenderer } +
                                 LinkPreviewRenderer(preview)
                         )
                     }
@@ -208,8 +208,8 @@ fun MessageInputBar(
             }
         } else {
             // URL was completely removed, so clean up preview and reset memory.
-            if (attachmentRenderers.any { it is LinkPreviewRenderer }) {
-                onAttachmentRenderersChange(attachmentRenderers.filterNot { it is LinkPreviewRenderer })
+            if (payloadRenderers.any { it is LinkPreviewRenderer }) {
+                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
             }
             cancelledUrls = emptySet()
             lastFetchedUrl = null
@@ -221,12 +221,12 @@ fun MessageInputBar(
      * the URL-detector won't re-stage it on the next keystroke (preserves the original behaviour
      * of `cancelledUrls`).
      */
-    fun cancelAttachment(id: String) {
-        val att = attachmentRenderers.firstOrNull { it.id == id } ?: return
+    fun cancelRenderer(id: String) {
+        val att = payloadRenderers.firstOrNull { it.id == id } ?: return
         if (att is LinkPreviewRenderer) {
             cancelledUrls = cancelledUrls + att.preview.url
         }
-        onAttachmentRenderersChange(attachmentRenderers.filterNot { it.id == id })
+        onPayloadRenderersChange(payloadRenderers.filterNot { it.id == id })
     }
 
     fun sendMessage() {
@@ -234,9 +234,9 @@ fun MessageInputBar(
         // Link previews alone shouldn't enable send (a bare URL with no text was never sendable
         // in the original shape). User-initiated kinds (location, contact, etc.) WILL enable
         // send because they're not LinkPreviewRenderer.
-        val hasUserInitiatedAttachment = attachmentRenderers.any { it !is LinkPreviewRenderer }
+        val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
         if (!isSendingMessage && (hasText || hasUserInitiatedAttachment)) {
-            onSendMessage(textFieldState.toMarkdown(), attachmentRenderers)
+            onSendMessage(textFieldState.toMarkdown(), payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
         }
@@ -272,8 +272,8 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp),
                 focusRequester = focusRequester,
                 state = textFieldState,
-                attachmentRenderers = attachmentRenderers,
-                onCancelAttachment = ::cancelAttachment,
+                payloadRenderers = payloadRenderers,
+                onCancelAttachment = ::cancelRenderer,
                 editExistingMode = editExistingMode,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -292,9 +292,9 @@ fun MessageInputBar(
                 focusRequester = focusRequester,
                 state = textFieldState,
                 editExistingMode = editExistingMode,
-                attachmentRenderers = attachmentRenderers,
+                payloadRenderers = payloadRenderers,
                 recordingData = recordingData,
-                onCancelAttachment = ::cancelAttachment,
+                onCancelAttachment = ::cancelRenderer,
                 showingEmojiSheet = showingEmojiSheet,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -322,7 +322,7 @@ fun MessageTextFieldExpanded(
     focusRequester: FocusRequester,
     state: RichTextState,
     editExistingMode: Boolean,
-    attachmentRenderers: List<AttachmentRenderer>,
+    payloadRenderers: List<PayloadRenderer>,
     onCancelAttachment: (id: String) -> Unit,
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
@@ -345,8 +345,8 @@ fun MessageTextFieldExpanded(
                 onKeyboardClick = {}
             )
         }
-        attachmentRenderers.forEach { att ->
-            AttachmentRendererRow(
+        payloadRenderers.forEach { att ->
+            PayloadRendererRow(
                 attachment = att,
                 onCancel = { onCancelAttachment(att.id) },
             )
@@ -470,7 +470,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     state: RichTextState,
-    attachmentRenderers: List<AttachmentRenderer>,
+    payloadRenderers: List<PayloadRenderer>,
     recordingData: RecordingData?,
     onCancelAttachment: (id: String) -> Unit,
     editExistingMode: Boolean,
@@ -493,7 +493,7 @@ fun MessageTextFieldCompact(
     // Send button is shown when there's text OR a user-initiated attachment (not link previews,
     // which are auto-detected from typed URLs and don't on their own indicate intent to send).
     val showSendButton = state.annotatedString.isNotBlank() ||
-        attachmentRenderers.any { it !is LinkPreviewRenderer }
+        payloadRenderers.any { it !is LinkPreviewRenderer }
     val showRecordingButton by remember(
         editExistingMode,
         showSendButton
@@ -572,8 +572,8 @@ fun MessageTextFieldCompact(
 //            if (!isKeyboardFocused) {
 //                Spacer(modifier = Modifier.height(48.dp))
 //            }
-            attachmentRenderers.forEach { att ->
-                AttachmentRendererRow(
+            payloadRenderers.forEach { att ->
+                PayloadRendererRow(
                     attachment = att,
                     onCancel = { onCancelAttachment(att.id) },
                 )

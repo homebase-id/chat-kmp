@@ -12,24 +12,24 @@ import id.homebase.api.client.location.LocationPreview
  * same-id link preview when the URL changes).
  *
  * Adding a new kind:
- *   1. add a `data class XxxRenderer(val ...) : AttachmentRenderer` here,
- *   2. add a `when` branch in `AttachmentRendererRow` (UI dispatch),
- *   3. add a `when` branch in `List<AttachmentRenderer>.toCombinedPayloadBundle` (wire-format dispatch).
+ *   1. add a `data class XxxRenderer(val ...) : PayloadRenderer` here,
+ *   2. add a `when` branch in `PayloadRendererRow` (UI dispatch),
+ *   3. add a `when` branch in `List<PayloadRenderer>.toCombinedPayloadBundle` (wire-format dispatch).
  *
  * No new params on [MessageInputBar] / [MessageTextFieldExpanded] / [MessageTextFieldCompact],
  * no new branches in `ConversationListViewModel`.
  */
 @Immutable
-sealed interface AttachmentRenderer {
+sealed interface PayloadRenderer {
     val id: String
 }
 
 @Immutable
-data class LinkPreviewRenderer(val preview: LinkPreview) : AttachmentRenderer {
+data class LinkPreviewRenderer(val preview: LinkPreview) : PayloadRenderer {
     override val id: String get() = "link:${preview.url}"
 }
 
 @Immutable
-data class LocationPreviewRenderer(val preview: LocationPreview) : AttachmentRenderer {
+data class LocationPreviewRenderer(val preview: LocationPreview) : PayloadRenderer {
     override val id: String get() = "loc:${preview.lat},${preview.lon}"
 }
