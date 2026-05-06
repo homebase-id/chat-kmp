@@ -15,9 +15,15 @@ import id.homebase.api.serialization.OdinSystemSerializer
  * for a group rollup come from [MessageUiModel.reactionPreview].
  */
 object EventRsvp {
-    const val GOING = "👍"        // 👍
-    const val NOT_GOING = "👎"    // 👎
-    const val MAYBE = "🤔"        // 🤔
+    // Picked for tone: ✅ / 🤔 / ❌ reads as confirm / consider / decline,
+    // less judgmental than 👍 / 🤔 / 👎 (a thumbs-down on a friend's
+    // birthday party shouldn't be the visual). Existing RSVPs sent before
+    // this change carry the old emojis and won't be counted in rollups
+    // or recognized as "current RSVP" by new clients — accepted, no
+    // backfill.
+    const val GOING = "✅"
+    const val NOT_GOING = "❌"
+    const val MAYBE = "🤔"
 
     val ALL: Set<String> = setOf(GOING, NOT_GOING, MAYBE)
 
