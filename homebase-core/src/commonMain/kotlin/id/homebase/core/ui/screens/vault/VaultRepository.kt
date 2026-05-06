@@ -277,7 +277,7 @@ class VaultRepository(
         val newKeyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
         )
-        val metadata = UploadFileMetadata(
+        val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = false,
             isEncrypted = true,
             appData = UploadAppFileMetaData(
@@ -287,9 +287,9 @@ class VaultRepository(
                 groupId = groupId,
             ),
             versionTag = versionTag,
-        ).encryptContent(newKeyHeader)
+        )
 
-        return outboxSync.tryEnqueue(
+        val enqueued = outboxSync.tryEnqueue(
             request = UpdateFileByUniqueIdRequest(
                 driveId = driveId,
                 uniqueId = uniqueId,
@@ -300,11 +300,21 @@ class VaultRepository(
                     recipients = emptyList(),
                     manifest = manifest,
                 ),
-                metadata = metadata,
+                metadata = unencryptedMetadata.encryptContent(newKeyHeader),
                 payloads = payloads,
                 thumbnails = thumbnails,
             ),
         )
+
+        if (enqueued) {
+            try {
+                optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for $uniqueId" }
+            }
+        }
+
+        return enqueued
     }
 
     suspend fun renameFile(
