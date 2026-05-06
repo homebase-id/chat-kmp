@@ -129,6 +129,7 @@ import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
@@ -1216,17 +1217,24 @@ fun ConversationContent(
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
                     visible = showAttachmentSheet && !isKeyboardVisible,
                 ) {
-                    AttachmentGallery(
-                        onImageSelected = {
-                            showAttachmentSheet = false
-                            onUiAction(
-                                ConversationListUiAction.AttachGalleryItem(
-                                    conversationId = conversation.conversation.id,
-                                    files = listOf(it)
+                    // The gallery thumb strip reads the OS photo library via GalleryCache,
+                    // which only exists on Android/iOS. On desktop/web the row would be
+                    // empty, so we skip it entirely and let the icon row sit at the top of
+                    // the sheet. The 300 dp height floor on AttachmentOptionsDisplay still
+                    // applies — desktop can host a virtual keyboard, so the floor stays.
+                    if (isMobile()) {
+                        AttachmentGallery(
+                            onImageSelected = {
+                                showAttachmentSheet = false
+                                onUiAction(
+                                    ConversationListUiAction.AttachGalleryItem(
+                                        conversationId = conversation.conversation.id,
+                                        files = listOf(it)
+                                    )
                                 )
-                            )
-                        },
-                    )
+                            },
+                        )
+                    }
                     AttachmentOptions(onGalleryClick = {
                         showAttachmentSheet = false
                         galleryLauncher.launch()
