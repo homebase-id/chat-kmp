@@ -565,6 +565,7 @@ fun AppNavHost(
                                 },
                             )
                         }
+                    }
 
                         composable<Route.GroupSettings> {
                             if (isAuthenticated) {
@@ -707,7 +708,6 @@ fun AppNavHost(
                     }
                 }
             }
-        }
 
             // In-app notification banner overlay
             InAppNotificationBanner(
