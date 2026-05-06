@@ -156,7 +156,7 @@ private fun EventDetailContent(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("") },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
                         Icon(
@@ -336,10 +336,13 @@ private fun RsvpSection(
 ) {
     if (reactors.isEmpty()) return
     val youLabel = stringResource(MR.string.you)
+    // Format: "<emoji> <localized label> · <count>". The pieces are already
+    // localized; this is a presentational concat, not a translatable string.
+    val headerText = emoji + " " + sectionLabel + " · " + reactors.size.toString()
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = "$emoji $sectionLabel · ${reactors.size}",
+            text = headerText,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )

@@ -41,6 +41,7 @@ import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
 import id.homebase.resources.chat_event_starting_soon
 import id.homebase.resources.chat_event_unparseable
+import id.homebase.resources.chat_event_your_time_in_zone
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.time.Duration.Companion.seconds
@@ -158,7 +159,11 @@ fun EventBubble(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "your time: ${formatTime(deviceLocal)} ${shortZone(deviceTz.id)}",
+                    text = stringResource(
+                        MR.string.chat_event_your_time_in_zone,
+                        formatTime(deviceLocal),
+                        shortZone(deviceTz.id),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = effectiveContent.copy(alpha = 0.6f),
                 )

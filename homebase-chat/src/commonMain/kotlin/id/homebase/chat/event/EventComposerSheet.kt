@@ -62,7 +62,9 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
+import id.homebase.resources.chat_event_add_end_time
 import id.homebase.resources.chat_event_create_title
+import id.homebase.resources.chat_event_remove_end_time
 import id.homebase.resources.chat_event_field_description
 import id.homebase.resources.chat_event_field_ends
 import id.homebase.resources.chat_event_field_location
@@ -275,7 +277,12 @@ private fun EventComposerContent(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { hasEndTime = !hasEndTime }) {
-                    Text(if (hasEndTime) "Remove end time" else "Add end time")
+                    Text(
+                        text = stringResource(
+                            if (hasEndTime) MR.string.chat_event_remove_end_time
+                            else MR.string.chat_event_add_end_time,
+                        ),
+                    )
                 }
             }
             if (hasEndTime) {
@@ -425,15 +432,18 @@ private fun DateTimeRow(
     onPickDate: () -> Unit,
     onPickTime: () -> Unit,
 ) {
+    val dateText = local.toString().substringBefore('T')
+    val timeText = local.hour.toString().padStart(2, '0') +
+        ":" + local.minute.toString().padStart(2, '0')
     Column {
         Text(text = label, style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onPickDate, modifier = Modifier.weight(1f)) {
-                Text(local.toString().substringBefore('T'))
+                Text(text = dateText)
             }
             OutlinedButton(onClick = onPickTime, modifier = Modifier.weight(1f)) {
-                Text("${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}")
+                Text(text = timeText)
             }
         }
     }
