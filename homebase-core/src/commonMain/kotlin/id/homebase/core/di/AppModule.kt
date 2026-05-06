@@ -204,6 +204,12 @@ val appModule = module {
                 }
                 // endregion
 
+                // region Heal group: incoming GroupHealRequested status
+                conversationStream.onIncomingHealRequest = { status, sender ->
+                    conversationService.handleIncomingHealRequest(status, sender)
+                }
+                // endregion
+
                 // region Auto-unarchive: incoming message for archived conversation
                 conversationStream.onUnarchiveConversation = { conversationId ->
                     conversationService.unarchiveConversation(conversationId)

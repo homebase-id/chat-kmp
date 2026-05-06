@@ -17,5 +17,16 @@ enum class StatusMessage() {
 
     /** Posted when a 1:1 conversation is freshly created — currently emitted by the
      *  connection-request send flow so both sides see an opening status entry. */
-    ConversationStarted
+    ConversationStarted,
+
+    /** Broadcast by the original author of a group when the user clicks "Heal Group".
+     *  Carries canonical group identity (originalAuthor, versionTag, title, participants,
+     *  admin file versionTag) so recipients can detect a divergent local copy and
+     *  hard-delete it on their own server before the next push lands. */
+    GroupHealRequested,
+
+    /** Local-only marker written by the receive-side heal handler when it actually
+     *  hard-deleted broken local copies. Surfaces the cleanup to the user instead of
+     *  letting it happen silently. Never sent over peer. */
+    GroupHealLocalCleanup,
 }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
@@ -61,6 +62,7 @@ import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
+import id.homebase.resources.chat_location_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
 import id.homebase.resources.chat_no_gallery_items
@@ -264,22 +266,16 @@ fun AttachmentOptions(
                     onClick = onFileClick
                 )
             }
-//            if (isMobile()) {
-//                item {
-//                    AttachmentOption(
-//                        icon = Icons.Default.AccountCircle,
-//                        label = stringResource(MR.string.chat_message_attachment_contact),
-//                        onClick = onContactClick
-//                    )
-//                }
-//                item {
-//                    AttachmentOption(
-//                        icon = Icons.Default.LocationOn,
-//                        label = stringResource(MR.string.chat_message_attachment_location),
-//                        onClick = onLocationClick
-//                    )
-//                }
-//            }
+            if (isMobile()) {
+                item {
+                    AttachmentOption(
+                        modifier = Modifier.testTag("attachment_location"),
+                        icon = Icons.Default.LocationOn,
+                        label = stringResource(MR.string.chat_location_share),
+                        onClick = onLocationClick,
+                    )
+                }
+            }
         }
     }
 }
@@ -323,6 +319,11 @@ private fun AttachmentOption(
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

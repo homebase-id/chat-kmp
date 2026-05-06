@@ -334,6 +334,11 @@
     <string name="system_group_conversation_member_left_you">You left the conversation</string>
     <string name="system_group_conversation_member_declined_rejoin">%1$s declined to rejoin the conversation</string>
     <string name="system_group_conversation_member_declined_rejoin_you">You declined to rejoin the conversation</string>
+    <string name="system_group_heal_requested">%1$s requested a group heal</string>
+    <string name="system_group_heal_requested_you">You requested a group heal</string>
+    <string name="system_group_heal_local_cleanup_both">Removed broken local copies (group + admins) as part of heal</string>
+    <string name="system_group_heal_local_cleanup_main">Removed broken local copy (group) as part of heal</string>
+    <string name="system_group_heal_local_cleanup_admin">Removed broken local copy (admins) as part of heal</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
@@ -494,7 +499,14 @@
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
     <string name="chat_message_file">File</string>
+    <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
+
+    <string name="chat_location_share">Location</string>
+    <string name="chat_location_attachment">Location map</string>
+    <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
+    <string name="chat_location_unavailable">Couldn\'t get your location. Try again outdoors or check that Location is enabled.</string>
+    <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
