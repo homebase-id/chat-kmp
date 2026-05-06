@@ -268,6 +268,10 @@ class VaultRepository(
         groupId: Uuid?,
         versionTag: Uuid?,
         keyHeader: KeyHeader,
+        fileType: Int = VAULT_FILE_TYPE,
+        manifest: UpdateManifest = UpdateManifest.build(),
+        payloads: List<PayloadFile>? = null,
+        thumbnails: List<ThumbnailFile>? = null,
     ): Boolean {
         val content = OdinSystemSerializer.serialize(fileContent)
         val newKeyHeader = KeyHeader(
@@ -279,7 +283,7 @@ class VaultRepository(
             appData = UploadAppFileMetaData(
                 uniqueId = uniqueId,
                 content = content,
-                fileType = VAULT_FILE_TYPE,
+                fileType = fileType,
                 groupId = groupId,
             ),
             versionTag = versionTag,
@@ -294,9 +298,11 @@ class VaultRepository(
                     transferIv = ByteArrayUtil.getRndByteArray(16),
                     locale = UpdateLocale.Local,
                     recipients = emptyList(),
-                    manifest = UpdateManifest.build(),
+                    manifest = manifest,
                 ),
                 metadata = metadata,
+                payloads = payloads,
+                thumbnails = thumbnails,
             ),
         )
     }
@@ -466,32 +472,19 @@ class VaultRepository(
                 keyHeader.aesKey, scope,
             )
 
-            val metadata = UploadFileMetadata(
-                allowDistribution = false,
-                isEncrypted = true,
-                appData = UploadAppFileMetaData(uniqueId = file.uniqueId),
+            enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(name = file.fileName, label = file.label, notes = file.notes),
+                groupId = file.groupId,
                 versionTag = file.versionTag,
-            )
-
-            outboxSync.tryEnqueue(
-                request = UpdateFileByUniqueIdRequest(
-                    driveId = file.driveId,
-                    uniqueId = file.uniqueId,
-                    keyHeader = keyHeader,
-                    instructions = FileUpdateInstructionSet(
-                        transferIv = ByteArrayUtil.getRndByteArray(16),
-                        locale = UpdateLocale.Local,
-                        recipients = emptyList(),
-                        manifest = UpdateManifest.build(
-                            payloads = encryptedBundle.payloads,
-                            thumbnails = encryptedBundle.thumbnails,
-                            generatePayloadIv = false,
-                        ),
-                    ),
-                    metadata = metadata,
+                keyHeader = file.keyHeader,
+                manifest = UpdateManifest.build(
                     payloads = encryptedBundle.payloads,
                     thumbnails = encryptedBundle.thumbnails,
+                    generatePayloadIv = false,
                 ),
+                payloads = encryptedBundle.payloads,
+                thumbnails = encryptedBundle.thumbnails,
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
@@ -509,27 +502,14 @@ class VaultRepository(
                 return deleteFile(file.uniqueId, file.fileId)
             }
 
-            val metadata = UploadFileMetadata(
-                allowDistribution = false,
-                isEncrypted = true,
-                appData = UploadAppFileMetaData(uniqueId = file.uniqueId),
+            enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(name = file.fileName, label = file.label, notes = file.notes),
+                groupId = file.groupId,
                 versionTag = file.versionTag,
-            )
-
-            outboxSync.tryEnqueue(
-                request = UpdateFileByUniqueIdRequest(
-                    driveId = file.driveId,
-                    uniqueId = file.uniqueId,
-                    keyHeader = file.keyHeader,
-                    instructions = FileUpdateInstructionSet(
-                        transferIv = ByteArrayUtil.getRndByteArray(16),
-                        locale = UpdateLocale.Local,
-                        recipients = emptyList(),
-                        manifest = UpdateManifest.build(
-                            toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
-                        ),
-                    ),
-                    metadata = metadata,
+                keyHeader = file.keyHeader,
+                manifest = UpdateManifest.build(
+                    toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
                 ),
             )
         } catch (e: Exception) {

@@ -46,6 +46,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -132,8 +134,11 @@ fun VaultGalleryOverlay(
     var showUI by remember { mutableStateOf(true) }
     var pageToDelete by remember { mutableStateOf<String?>(null) }
     val sheetPeekHeight by animateDpAsState(if (showUI) 120.dp else 0.dp)
+    val scaffoldState = rememberBottomSheetScaffoldState()
+    val scope = rememberCoroutineScope()
 
     BottomSheetScaffold(
+        scaffoldState = scaffoldState,
         sheetPeekHeight = sheetPeekHeight,
         sheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -177,18 +182,27 @@ fun VaultGalleryOverlay(
                 val descriptor = pages[page]
                 val isImage = descriptor.contentType?.startsWith("image/") == true
 
+                val onTapImage: () -> Unit = {
+                    val sheetState = scaffoldState.bottomSheetState
+                    if (sheetState.currentValue == SheetValue.Expanded) {
+                        scope.launch { sheetState.partialExpand() }
+                    } else {
+                        showUI = !showUI
+                    }
+                }
+
                 if (isImage) {
                     GalleryPageImage(
                         file = file,
                         descriptor = descriptor,
-                        onToggleUI = { showUI = !showUI },
+                        onToggleUI = onTapImage,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                     )
                 } else {
                     GalleryPageNonImage(
                         descriptor = descriptor,
-                        onToggleUI = { showUI = !showUI },
+                        onToggleUI = onTapImage,
                     )
                 }
             }

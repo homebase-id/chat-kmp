@@ -223,17 +223,18 @@ fun AppNavHost(
 
     val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
 
-    // Open-Vault helper — if activated, go straight to the Vault screen (which gates on
-    // biometrics internally); otherwise kick off the onboarding flow.
+    // Open-Vault helper — if activated (or still checking), go to the Vault screen
+    // (which shows loading/biometric gate); only show onboarding when we're certain
+    // the vault has never been set up (isActivated == false, not null).
     val openVault: () -> Unit = {
-        if (isVaultActivated) {
-            navController.navigate(Route.Vault) {
+        if (isVaultActivated == false) {
+            navController.navigate(Route.VaultOnboarding) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
                 restoreState = true
             }
         } else {
-            navController.navigate(Route.VaultOnboarding) {
+            navController.navigate(Route.Vault) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
                 restoreState = true

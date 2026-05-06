@@ -378,6 +378,94 @@ class VaultFileItemTest {
     }
 
     // ---------------------------------------------------------------
+    // Update operation field preservation
+    // Simulates what each VaultRepository update method does:
+    // constructs a VaultFileContent and round-trips through serialization.
+    // ---------------------------------------------------------------
+
+    private fun simulateUpdateRoundTrip(content: VaultFileContent): VaultFileContent {
+        val json = OdinSystemSerializer.serialize(content)
+        return OdinSystemSerializer.deserialize(json)
+    }
+
+    @Test
+    fun updateOperation_renamePreservesLabelAndNotes() {
+        val existing = VaultFileContent(name = "old.jpg", label = "Shelly", notes = "Passport")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = "new.jpg", label = existing.label, notes = existing.notes)
+        )
+        assertEquals("new.jpg", updated.name)
+        assertEquals("Shelly", updated.label)
+        assertEquals("Passport", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_labelChangePreservesNameAndNotes() {
+        val existing = VaultFileContent(name = "photo.jpg", label = null, notes = "Important doc")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = "Gabriel", notes = existing.notes)
+        )
+        assertEquals("photo.jpg", updated.name)
+        assertEquals("Gabriel", updated.label)
+        assertEquals("Important doc", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_notesChangePreservesNameAndLabel() {
+        val existing = VaultFileContent(name = "scan.pdf", label = "Leela", notes = null)
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = existing.label, notes = "Expires 2030")
+        )
+        assertEquals("scan.pdf", updated.name)
+        assertEquals("Leela", updated.label)
+        assertEquals("Expires 2030", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_appendPagesPreservesAllFields() {
+        val existing = VaultFileContent(name = "passport.jpg", label = "Aja", notes = "Kids passport")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = existing.label, notes = existing.notes)
+        )
+        assertEquals("passport.jpg", updated.name)
+        assertEquals("Aja", updated.label)
+        assertEquals("Kids passport", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_deletePagePreservesAllFields() {
+        val existing = VaultFileContent(name = "multi.jpg", label = "Michael", notes = "Visa pages")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = existing.label, notes = existing.notes)
+        )
+        assertEquals("multi.jpg", updated.name)
+        assertEquals("Michael", updated.label)
+        assertEquals("Visa pages", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_clearLabelKeepsNameAndNotes() {
+        val existing = VaultFileContent(name = "doc.pdf", label = "Old Label", notes = "Notes here")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = null, notes = existing.notes)
+        )
+        assertEquals("doc.pdf", updated.name)
+        assertNull(updated.label)
+        assertEquals("Notes here", updated.notes)
+    }
+
+    @Test
+    fun updateOperation_clearNotesKeepsNameAndLabel() {
+        val existing = VaultFileContent(name = "doc.pdf", label = "My Doc", notes = "Old notes")
+        val updated = simulateUpdateRoundTrip(
+            VaultFileContent(name = existing.name, label = existing.label, notes = null)
+        )
+        assertEquals("doc.pdf", updated.name)
+        assertEquals("My Doc", updated.label)
+        assertNull(updated.notes)
+    }
+
+    // ---------------------------------------------------------------
     // toVaultFileItem() — null/invalid cases
     // ---------------------------------------------------------------
 

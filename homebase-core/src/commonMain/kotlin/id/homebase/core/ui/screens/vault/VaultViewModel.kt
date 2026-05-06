@@ -62,8 +62,8 @@ class VaultViewModel(
     // Maps outbox uniqueId -> sectionId for grouping
     private val uploadTracker = mutableMapOf<Uuid, Uuid>()
 
-    private val _isActivated = MutableStateFlow(false)
-    val isActivated: StateFlow<Boolean> = _isActivated.asStateFlow()
+    private val _isActivated = MutableStateFlow<Boolean?>(null)
+    val isActivated: StateFlow<Boolean?> = _isActivated.asStateFlow()
 
     private suspend fun isVaultRegistered(): Boolean {
         val drives = driveRegistry.bootstrap()
