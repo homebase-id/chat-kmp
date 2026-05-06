@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -15,8 +17,16 @@ import co.touchlab.kermit.Logger
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LocationLauncher.android"
+
+/**
+ * Fused Location can spin for 30+ seconds when no provider has a cached fix (emulator without
+ * a mock location, indoors with no signal, etc.) before resolving with `null`. Cap the wait so
+ * the user gets feedback quickly.
+ */
+private const val FETCH_TIMEOUT_MS = 15_000L
 
 @Composable
 actual fun rememberCurrentLocationLauncher(
@@ -74,7 +84,24 @@ private fun fetchLocation(
 ) {
     val client = LocationServices.getFusedLocationProviderClient(context)
     val cts = CancellationTokenSource()
-    Logger.d(tag = TAG) { "fetchLocation: requesting fused getCurrentLocation (BALANCED_POWER)" }
+    val delivered = AtomicBoolean(false)
+    val handler = Handler(Looper.getMainLooper())
+
+    fun deliverOnce(result: LocationResult) {
+        if (delivered.compareAndSet(false, true)) {
+            handler.removeCallbacksAndMessages(null)
+            onResult(result)
+        }
+    }
+
+    val timeoutRunnable = Runnable {
+        Logger.w(tag = TAG) { "fused getCurrentLocation timed out after ${FETCH_TIMEOUT_MS}ms — cancelling" }
+        cts.cancel()
+        deliverOnce(LocationResult.Unavailable)
+    }
+    handler.postDelayed(timeoutRunnable, FETCH_TIMEOUT_MS)
+
+    Logger.d(tag = TAG) { "fetchLocation: requesting fused getCurrentLocation (BALANCED_POWER, ${FETCH_TIMEOUT_MS}ms cap)" }
     client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
         .addOnSuccessListener { location ->
             if (location == null) {
@@ -83,12 +110,12 @@ private fun fetchLocation(
                 Logger.w(tag = TAG) {
                     "fused getCurrentLocation returned null (no mock location? location services off?)"
                 }
-                onResult(LocationResult.Unavailable)
+                deliverOnce(LocationResult.Unavailable)
             } else {
                 Logger.d(tag = TAG) {
                     "fused getCurrentLocation success lat=${location.latitude} lon=${location.longitude}"
                 }
-                onResult(
+                deliverOnce(
                     LocationResult.Success(
                         LocationFix(
                             latitude = location.latitude,
@@ -101,6 +128,6 @@ private fun fetchLocation(
         }
         .addOnFailureListener { e ->
             Logger.w(throwable = e, tag = TAG) { "fused getCurrentLocation failed" }
-            onResult(LocationResult.Unavailable)
+            deliverOnce(LocationResult.Unavailable)
         }
 }
