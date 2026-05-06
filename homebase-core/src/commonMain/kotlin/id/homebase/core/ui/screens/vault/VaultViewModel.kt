@@ -234,7 +234,19 @@ class VaultViewModel(
                         Logger.d(tag = TAG) { "syncDrive on empty load: ${e.message}" }
                     }
                 }
-                _uiState.update { it.copy(sections = sectionModels, isLoading = false) }
+                _uiState.update { current ->
+                    val refreshedOverlay = (current.fullScreenOverlay as? VaultOverlay.Gallery)?.let { gallery ->
+                        val freshFile = sectionModels
+                            .flatMap { it.entries }
+                            .find { it.uniqueId == gallery.file.uniqueId }
+                        if (freshFile != null) gallery.copy(file = freshFile) else gallery
+                    }
+                    current.copy(
+                        sections = sectionModels,
+                        isLoading = false,
+                        fullScreenOverlay = refreshedOverlay ?: current.fullScreenOverlay,
+                    )
+                }
             }
         }
     }
