@@ -11,15 +11,28 @@ data class PermissionExtensionConfig(
     val circleDrives: List<TargetDriveAccessRequest>? = null,
     val permissions: List<AppPermissionType>,
     val needsAllConnected: Boolean = false,
-    val returnUrl: String
+    /**
+     * Resolved at URL-build time, not config-build time. Desktop's localhost
+     * callback server can be stopped between checks (the `/focus` route shuts it
+     * down after the user returns from the owner console), so the port baked
+     * into the extend-permission URL must be re-resolved each time the user
+     * clicks Extend Permissions — otherwise the post-flow redirect lands on a
+     * dead port.
+     */
+    val returnUrl: () -> String
 )
 
 /** Result of missing permission check. */
-data class MissingPermissionsResult(
+class MissingPermissionsResult(
     val missingDrives: List<TargetDriveAccessRequest>,
     val missingPermissions: List<AppPermissionType>,
     val missingAllConnectedCircle: Boolean,
-    val extendPermissionUrl: String
+    /**
+     * Builds the extend-permission URL with a freshly-resolved `returnUrl` on
+     * every invocation — call this at click time, not check time, so the URL
+     * carries the live callback-server port.
+     */
+    val buildExtendPermissionUrl: () -> String
 ) {
     val hasMissingPermissions: Boolean
         get() =
@@ -108,23 +121,23 @@ class PermissionExtensionManager(
             return null
         }
 
-        // Build the extend permission URL
-        val extendPermissionUrl =
-            getExtendPermissionUrl(
-                host = hostIdentity,
-                appId = config.appId,
-                missingDrives = missingDrives,
-                circleDrives = config.circleDrives,
-                missingPermissions = missingPermissions.map { it.value },
-                needsAllConnected = missingAllConnectedCircle,
-                returnUrl = config.returnUrl
-            )
+        val missingPermissionValues = missingPermissions.map { it.value }
 
         return MissingPermissionsResult(
             missingDrives = missingDrives,
             missingPermissions = missingPermissions,
             missingAllConnectedCircle = missingAllConnectedCircle,
-            extendPermissionUrl = extendPermissionUrl
+            buildExtendPermissionUrl = {
+                getExtendPermissionUrl(
+                    host = hostIdentity,
+                    appId = config.appId,
+                    missingDrives = missingDrives,
+                    circleDrives = config.circleDrives,
+                    missingPermissions = missingPermissionValues,
+                    needsAllConnected = missingAllConnectedCircle,
+                    returnUrl = config.returnUrl()
+                )
+            }
         )
     }
 

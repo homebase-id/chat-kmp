@@ -91,4 +91,19 @@ object Win98Palette {
     val IssueUnmappableConvoFill: Color = Color(0xFFE070A0)
     val IssueUnmappableConvoLight: Color = Color(0xFFFFA8C8)
     val IssueUnmappableConvoShadow: Color = Color(0xFF904060)
+
+    // Rose — chat message (7878) whose appData.groupId points to a missing or
+    // unmappable conversation. Repaired by recreating the parent conversation
+    // via ConversationService.recoverConversation.
+    val IssueOrphanMessageFill: Color = Color(0xFFFF4D88)
+    val IssueOrphanMessageLight: Color = Color(0xFFFF95B8)
+    val IssueOrphanMessageShadow: Color = Color(0xFFA82050)
+
+    // Bright red — chat message (7878) whose outer header parsed but whose
+    // appData.content can't be deserialised as MessageAppData /
+    // StatusMessageData. Surfaced via the bad-block review dialog so the user
+    // can confirm hard-delete.
+    val IssueCorruptMessageContentFill: Color = Color(0xFFFF1F1F)
+    val IssueCorruptMessageContentLight: Color = Color(0xFFFF6B6B)
+    val IssueCorruptMessageContentShadow: Color = Color(0xFF8F0000)
 }

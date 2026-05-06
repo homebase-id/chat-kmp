@@ -23,13 +23,17 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
+import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
@@ -39,6 +43,7 @@ import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
 import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
+import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -225,6 +230,10 @@ val appModule = module {
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
+    // One-shot bus for post-create introduction preflight: CreateConversationGroupViewModel
+    // emits after successful group creation, ConversationListViewModel collects and
+    // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
+    singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatMessageStream)
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
@@ -266,12 +275,35 @@ val appModule = module {
                 t
             }
         }
+        // Detects whether a chat-message file's appData.content can be decoded
+        // as the runtime payload type ChatMessageStream.mapToMessageData would
+        // pick (StatusMessageData for status messages, MessageAppData
+        // otherwise). Returns null on success, the throwable on failure.
+        // Mirrors ChatMessageStream.kt:449-466 so the Defragmenter agrees with
+        // what the conversation list actually tries to render.
+        val decodeMessageContentProbe: suspend (HomebaseFile) -> Throwable? = { file ->
+            val appData = file.fileMetadata.appData
+            val content = appData.content
+            when {
+                content.isNullOrEmpty() -> null
+                appData.dataType == ChatProtocol.ChatStatusMessageDataType ->
+                    runCatching {
+                        OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                    }.exceptionOrNull()
+                else ->
+                    runCatching {
+                        OdinSystemSerializer.deserialize<MessageAppData>(content)
+                    }.exceptionOrNull()
+            }
+        }
         LiveDefragSource(
             driveSyncManager = get(),
             credentialsManager = get(),
             databaseManager = get(),
             driveFileProvider = get(),
+            conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
+            decodeMessageContentProbe = decodeMessageContentProbe,
         )
     }
 
@@ -279,7 +311,37 @@ val appModule = module {
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
-    viewModelOf(::ConversationListViewModel)
+    // Manual `viewModel { ... }` rather than viewModelOf because the constructor
+    // exceeds Koin's reified-generic helper ceiling (22 params). Adding the 23rd
+    // (PostCreateIntroductionPreflightBus) overflowed the helpers; spelling the
+    // injections out works fine.
+    viewModel {
+        ConversationListViewModel(
+            conversationStream = get(),
+            chatMessageStream = get(),
+            chatMessageSenderService = get(),
+            chatMessageActionService = get(),
+            conversationService = get(),
+            userPreferences = get(),
+            fileOperationsProvider = get(),
+            ownerSessionRepository = get(),
+            credentialsManager = get(),
+            authConnectionCoordinator = get(),
+            audioRecorder = get(),
+            audioWaveFormGenerator = get(),
+            eventBus = get(),
+            contactService = get(),
+            connectionService = get(),
+            connectionRequestService = get(),
+            driveFileProvider = get(),
+            shareContentProcessor = get(),
+            localVideoContextStore = get(),
+            pendingNotificationTap = get(),
+            cropResultBus = get(),
+            drawResultBus = get(),
+            postCreateIntroductionPreflightBus = get(),
+        )
+    }
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
     viewModelOf(::CreateConversationGroupViewModel)

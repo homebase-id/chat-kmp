@@ -24,6 +24,8 @@ import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
+import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.feed.share.ShareShortcutAvatarLoader
 import id.homebase.feed.share.ShareShortcutPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -130,7 +132,13 @@ class MainApplication : Application(), KoinComponent {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private fun initShareShortcuts() {
-        val publisher = ShareShortcutPublisher(this, get(), get())
+        val conversationStream = get<ConversationStream>()
+        val avatarLoader = ShareShortcutAvatarLoader(conversationStream, get())
+        val publisher = ShareShortcutPublisher(
+            context = this,
+            shareableConversations = conversationStream.shareableConversations,
+            loadAvatarIcon = avatarLoader::loadIcon,
+        )
         publisher.start(appScope)
     }
 

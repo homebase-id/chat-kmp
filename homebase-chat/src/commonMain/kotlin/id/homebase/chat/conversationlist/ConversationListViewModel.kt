@@ -77,6 +77,7 @@ import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
@@ -95,7 +96,11 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.chat_conversation_deleted_confirmation
+import id.homebase.resources.chat_conversation_deleting_in_progress
+import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
 import id.homebase.resources.chat_group_introduce_everyone_status
+import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_search_result_conversations
@@ -130,6 +135,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -172,6 +178,7 @@ class ConversationListViewModel(
     private val pendingNotificationTap: PendingNotificationTap,
     private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
     private val drawResultBus: id.homebase.imageeditor.ui.DrawResultBus,
+    private val postCreateIntroductionPreflightBus: id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus,
 ) : ViewModel() {
 
     companion object {
@@ -209,21 +216,35 @@ class ConversationListViewModel(
             runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
         }
         pendingThumbnails[attachmentId] = deferred
+        // Duration is needed by the trim screen and is cheap to read; kick it off in
+        // parallel with the poster extraction.
+        val durationDeferred = viewModelScope.async {
+            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
+                .getOrNull()
+        }
         viewModelScope.launch {
             val bytes = try {
                 deferred.await()
             } catch (_: CancellationException) {
                 null
             }
+            val durationMs = try {
+                durationDeferred.await()
+            } catch (_: CancellationException) {
+                null
+            }
             pendingThumbnails.remove(attachmentId)
-            if (bytes == null) return@launch
+            if (bytes == null && durationMs == null) return@launch
             _messagesUiState.update { state ->
                 val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
                     ?: return@update state
                 if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
                 val updated = overlay.attachments.map { a ->
                     if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
-                        a.copy(thumbnailBytes = bytes)
+                        a.copy(
+                            thumbnailBytes = bytes ?: a.thumbnailBytes,
+                            durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
+                        )
                     } else a
                 }
                 state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
@@ -244,6 +265,56 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
+        }
+
+        // Post-create preflight collector. CreateConversationGroupViewModel emits the
+        // newly-created conversation id to the bus; we run a best-effort introduction
+        // preflight and, if any recipient is non-Ready, surface the
+        // IntroducePreflight dialog. Best-effort — preflight failure logs and
+        // returns null, so the user simply doesn't see a dialog (introductions
+        // already fired silently at create time via trySendIntroductions).
+        //
+        // The bus is a StateFlow so a value emitted before this VM existed (mobile
+        // single-pane: the create-group screen is up while this VM hasn't been
+        // constructed yet) is observed the moment we start collecting. We
+        // explicitly call consume(id) after handling so the same value isn't
+        // re-processed on a subsequent collector restart (e.g. config change).
+        //
+        // Overlay is shown during the preflight call so the user gets visible
+        // feedback that something is happening on the freshly-created conversation
+        // — without it the brief delay before the dialog feels like the app stuck.
+        viewModelScope.launch {
+            postCreateIntroductionPreflightBus.pending
+                .filterNotNull()
+                .collect { conversationId ->
+                    _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
+                    try {
+                        val preflight = conversationService.previewIntroduceEveryone(conversationId)
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                        if (preflight != null && !preflight.allReady) {
+                            val defaultMessage =
+                                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
+                            _uiState.update {
+                                it.copy(
+                                    uiDialog = ConversationListUiDialog.IntroducePreflight(
+                                        conversationId = conversationId,
+                                        message = defaultMessage,
+                                        result = preflight,
+                                    )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.w(throwable = e, tag = "ConversationListViewModel") {
+                            "post-create preflight failed for $conversationId: ${e.message}"
+                        }
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                    } finally {
+                        // Always consume — even on null/all-ready/error paths — so the
+                        // same id isn't re-processed if the collector restarts.
+                        postCreateIntroductionPreflightBus.consume(conversationId)
+                    }
+                }
         }
 
         viewModelScope.launch {
@@ -1620,7 +1691,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.HideReactionDetails -> {
-                _messagesUiState.update { it.copy(messageReactions = null) }
+                _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false) }
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
@@ -1720,6 +1791,35 @@ class ConversationListViewModel(
                 introduceEveryone(action.conversationId)
             }
 
+            is ConversationListUiAction.IntroduceSendAnyway -> {
+                viewModelScope.launch {
+                    _uiState.update { it.copy(uiDialog = null) }
+                    conversationService.introduceEveryone(action.conversationId, action.message)
+                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                }
+            }
+
+            is ConversationListUiAction.IntroduceSendReadyOnly -> {
+                viewModelScope.launch {
+                    _uiState.update { it.copy(uiDialog = null) }
+                    if (action.readyRecipients.isEmpty()) {
+                        // No-op — the dialog should not have allowed this, but be defensive.
+                        sendEvent(ShowErrorMessage("No ready recipients to send to."))
+                        return@launch
+                    }
+                    conversationService.introduceRecipients(
+                        conversationId = action.conversationId,
+                        recipients = action.readyRecipients,
+                        message = action.message,
+                    )
+                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                }
+            }
+
+            is ConversationListUiAction.IntroduceCancel -> {
+                _uiState.update { it.copy(uiDialog = null) }
+            }
+
             is ConversationListUiAction.ArchiveConversation -> {
                 viewModelScope.launch {
                     try {
@@ -1775,15 +1875,26 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConfirmDeleteConversation -> {
                 viewModelScope.launch {
-                    try {
-                        conversationService.deleteConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to delete conversation: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
-                    }
+                    runDeleteConversationFlow(
+                        conversationId = action.conversationId,
+                        leaveFirst = false,
+                        overlayLabel = MR.string.chat_conversation_deleting_in_progress,
+                    )
                 }
+            }
+
+            is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> {
+                viewModelScope.launch {
+                    runDeleteConversationFlow(
+                        conversationId = action.conversationId,
+                        leaveFirst = true,
+                        overlayLabel = MR.string.chat_conversation_leaving_and_deleting_in_progress,
+                    )
+                }
+            }
+
+            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> {
+                _uiState.update { it.copy(closeDetailPaneRequest = null) }
             }
 
             is ConversationListUiAction.AcceptRejoin -> {
@@ -1992,6 +2103,25 @@ class ConversationListViewModel(
                 }
             }
 
+            /* Inline trim scrubber result. */
+            is ConversationListUiAction.ApplyTrimResult -> {
+                val overlay = _messagesUiState.value.fullScreenOverlay
+                if (overlay !is FullScreenOverlay.AttachmentData) return
+                val newAttachments = overlay.attachments.map { existing ->
+                    if (existing.attachmentId == action.attachmentId &&
+                        existing is AttachmentPendingFile.FileVideo
+                    ) {
+                        existing.copy(
+                            trimStartMs = action.trimStartMs,
+                            trimEndMs = action.trimEndMs,
+                        )
+                    } else existing
+                }
+                _messagesUiState.update {
+                    it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+                }
+            }
+
             /* Audio recording */
             is ConversationListUiAction.ShowRecordingHelp -> {
                 sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
@@ -2100,8 +2230,33 @@ class ConversationListViewModel(
         viewModelScope.launch {
             val defaultMessage =
                 "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
-            conversationService.introduceEveryone(conversationId, defaultMessage)
-            sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+            // Show the in-flight overlay during preflight — without this the user
+            // sees nothing for ~hundreds of ms and the app feels stuck.
+            _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
+            // Best-effort preflight: if every recipient is Ready, proceed silently
+            // as before; if any recipient is non-Ready, surface a dialog so the
+            // user can choose Send anyway / Skip and send to the rest / Cancel.
+            // If preflight itself fails (returns null), fall through to the
+            // existing send-everyone path — preflight is advisory, not enforcing.
+            val preflight = conversationService.previewIntroduceEveryone(conversationId)
+            // Always clear the overlay before doing anything follow-up; the dialog
+            // (if shown) draws on top of the conversation view, not the overlay.
+            _uiState.update { it.copy(inFlightOperationLabel = null) }
+            if (preflight == null || preflight.allReady) {
+                conversationService.introduceEveryone(conversationId, defaultMessage)
+                sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                return@launch
+            }
+            // Some recipients are not ready; let the user decide.
+            _uiState.update {
+                it.copy(
+                    uiDialog = ConversationListUiDialog.IntroducePreflight(
+                        conversationId = conversationId,
+                        message = defaultMessage,
+                        result = preflight,
+                    )
+                )
+            }
         }
     }
 
@@ -2228,9 +2383,25 @@ class ConversationListViewModel(
     }
 
     private fun loadReactionDetails(messageId: Uuid) {
+        _messagesUiState.update { it.copy(isReactionsLoading = true, messageReactions = emptyList()) }
         viewModelScope.launch {
-            val messageReactions = chatMessageActionService.getReactions(messageId)
-            _messagesUiState.update { it.copy(messageReactions = messageReactions) }
+            try {
+                val rawReactions = chatMessageActionService.getReactions(messageId)
+                val reactions = rawReactions.map { reaction ->
+                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
+                        ?: reaction.odinId.domainName
+                    ReactionDisplayItem(
+                        odinId = reaction.odinId.domainName,
+                        displayName = displayName,
+                        emoji = reaction.emoji,
+                    )
+                }
+                _messagesUiState.update {
+                    it.copy(messageReactions = reactions, isReactionsLoading = false)
+                }
+            } catch (_: Exception) {
+                _messagesUiState.update { it.copy(isReactionsLoading = false, messageReactions = null) }
+            }
         }
     }
 
@@ -2253,6 +2424,18 @@ class ConversationListViewModel(
                 replyToMessage = null,
             )
         }
+
+        // Flip the selected id NOW, not after messages arrive. The scaffold's
+        // detail-pane navigation in NotificationNavigationEffects keys off this
+        // value via LaunchedEffect(selectedConversationId); waiting for the first
+        // ChatMessagesData.Messages emission held the navigation hostage to a
+        // potentially slow DB read on cold-start / post-reconnect. The detail pane
+        // already shows isLoadingMessages = true above; messages will fill in via
+        // the collect block below.
+        Logger.i(tag = "ConversationListViewModel") {
+            "selectedConversationId set id=$conversationId (pending messages)"
+        }
+        _uiState.update { it.copy(selectedConversationId = conversationId) }
 
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
@@ -2362,12 +2545,17 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            Logger.i(tag = "ConversationListViewModel") {
-                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                            if (setInitialScroll) {
+                                // Crisp proof that the detail pane is no longer
+                                // gated on messages: this is the gap between the
+                                // synchronous selectedConversationId flip and the
+                                // first messages payload landing in the UI. If
+                                // it's long, navigation already completed (tap →
+                                // detailPane render) without waiting for it.
+                                Logger.i(tag = "ConversationListViewModel") {
+                                    "messages first emission id=$conversationId messageCount=${messages.size} sinceSelected=${loadStart.elapsedNow()}"
+                                }
                             }
-                            _uiState.value = _uiState.value.copy(
-                                selectedConversationId = conversationId,
-                            )
 
                             _messagesUiState.update {
                                 it.copy(
@@ -2418,6 +2606,74 @@ class ConversationListViewModel(
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
     }
+
+    /**
+     * Combined delete (and optional leave-first) flow. Drives the in-flight overlay
+     * via [ConversationListUiState.inFlightOperationLabel], runs the service ops,
+     * then reconciles UI state (drops the row from the in-memory list, pops the
+     * detail pane if the deleted conversation was open, fires the snackbar).
+     *
+     * @param leaveFirst when true, calls [ConversationService.leaveGroup] before
+     *                   the delete. Required when the user is still an active
+     *                   member of a group conversation; the service-side delete
+     *                   guard otherwise rejects with IllegalStateException.
+     */
+    private suspend fun runDeleteConversationFlow(
+        conversationId: Uuid,
+        leaveFirst: Boolean,
+        overlayLabel: org.jetbrains.compose.resources.StringResource,
+    ) {
+        _uiState.update { it.copy(inFlightOperationLabel = overlayLabel) }
+        try {
+            if (leaveFirst) {
+                // Mirror GroupSettingsViewModel.LeaveGroupConfirm logic so a sole-admin
+                // with no reachable non-admin still goes through the local-only branch.
+                val enriched = uiState.value.activeConversations
+                    .find { it.conversation.id == conversationId }
+                val conversation = enriched?.conversation
+                val currentUser = credentialsManager.requireActiveCredentials().domain
+                val isSoleAdmin = conversation != null
+                        && conversation.isCurrentUserAdmin(currentUser)
+                        && conversation.admins.size == 1
+                val hasReachableNonAdmin = enriched != null && enriched.participants.any {
+                    it.connectionState ==
+                            id.homebase.chat.services.convo.contact.ContactConnectionState.Connected
+                            && conversation?.isCurrentUserAdmin(it.odinId) == false
+                }
+                val forceLocalOnly = isSoleAdmin && !hasReachableNonAdmin
+                conversationService.leaveGroup(
+                    conversationId = conversationId,
+                    forceLocalOnly = forceLocalOnly,
+                )
+            }
+            conversationService.deleteConversation(conversationId)
+
+            // Drop the row from the in-memory list immediately and tell the stream
+            // to keep it filtered across reloads — see ConversationStream.deletedIds.
+            conversationStream.onConversationDeleted(conversationId)
+
+            val close = uiState.value.selectedConversationId == conversationId
+            _uiState.update {
+                it.copy(
+                    inFlightOperationLabel = null,
+                    selectedConversationId = if (close) null else it.selectedConversationId,
+                    closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
+                )
+            }
+            if (close) {
+                // ClearSelection also resets messages and stops the per-convo job.
+                onAction(ConversationListUiAction.ClearSelection)
+            }
+            sendEvent(ShowInfoMessage(MR.string.chat_conversation_deleted_confirmation))
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                "Failed to delete conversation (leaveFirst=$leaveFirst): ${e.message}"
+            }
+            _uiState.update { it.copy(inFlightOperationLabel = null) }
+            sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
+        }
+    }
+
 
     private fun autoConnect(recipient: OdinId) {
         // Only operate while the Connect-identities sheet is open; otherwise there is no
@@ -2833,6 +3089,8 @@ class ConversationListViewModel(
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
                                 displayName = attachment.file.name,
+                                trimStartMs = attachment.trimStartMs,
+                                trimEndMs = attachment.trimEndMs,
                             )
                         )
                     }
@@ -2907,6 +3165,9 @@ class ConversationListViewModel(
                                 thumbnailBytes = bytes,
                                 localFilePath = file.file.toString(),
                                 aspectRatio = aspect,
+                                trimStartMs = file.trimStartMs,
+                                trimEndMs = file.trimEndMs,
+                                durationMs = file.durationMs,
                             )
                         } else null
                     }

@@ -23,6 +23,7 @@ class ActiveConversationStateTest {
             modified = null,
             created = Instant.fromEpochMilliseconds(0),
             originalAuthor = null,
+            sender = null,
             displayName = "Tester",
             messageAppData = MessageAppData(),
             reactionPreview = null,

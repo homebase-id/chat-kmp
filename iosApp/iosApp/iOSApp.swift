@@ -163,19 +163,40 @@ struct iOSApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    handleShareURL(url)
+                    handleIncomingURL(url)
                 }
+        }
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        switch url.scheme {
+        case "homebase-share":
+            handleShareURL(url)
+        case "homebase-fchat":
+            handlePermissionCallbackURL(url)
+        default:
+            break
         }
     }
 
     /// Handles `homebase-share://send?conversationId=X` URLs from the share extension.
     private func handleShareURL(_ url: URL) {
-        guard url.scheme == "homebase-share",
-              url.host == "send",
+        guard url.host == "send",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let conversationId = components.queryItems?.first(where: { $0.name == "conversationIds" })?.value
         else { return }
 
         ShareHandlerBridge.shared.handleIncomingShare(conversationId: conversationId)
+    }
+
+    /// Handles `homebase-fchat://permission-callback?status=...` URLs returned from the
+    /// owner-console "Extend Permissions" flow. `status=canceled` routes the user back
+    /// to the chat tab without re-prompting; success triggers a permission recheck.
+    private func handlePermissionCallbackURL(_ url: URL) {
+        guard url.host == "permission-callback" else { return }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let status = components?.queryItems?.first(where: { $0.name == "status" })?.value?.lowercased()
+        let canceled = (status == "canceled" || status == "cancelled")
+        PermissionCallbackBridge.shared.handlePermissionCallback(canceled: canceled)
     }
 }

@@ -182,20 +182,8 @@ class AuthConnectionCoordinator(
                             // would silently skip if isRunning is still false.
                             driveSyncManager.start()
 
-                            // Mount optional drives (vault, etc.) from DriveRegistry.
-                            // Must happen AFTER start() sets isRunning=true, otherwise
-                            // mountDrive() silently skips.
-                            val registeredDrives = driveRegistry.loadDrives()
-                            for (drive in registeredDrives) {
-                                driveSyncManager.mountDrive(drive.drive.alias, drive.label)
-                            }
-
-                            // Flush the server inbox before syncing.  While connected the
-                            // server pushes inboxItemReceived notifications in real-time,
-                            // but those notifications are NOT replayed after a reconnect.
-                            // Without this call, items that arrived while we were offline
-                            // stay in the inbox and QueryBatch returns 0 records.
-                            wsClient?.processAllInboxes()
+                            // processInbox no longer needed — server auto-processes on QueryBatch.
+                            // wsClient?.processAllInboxes()
 
                             driveSyncManager.syncAll()
                         } catch (e: Exception) {

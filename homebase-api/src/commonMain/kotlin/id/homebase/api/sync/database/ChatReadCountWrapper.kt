@@ -11,7 +11,20 @@ import kotlin.uuid.Uuid
 
 data class ConversationWithLastMessage(
     val conversation: HomebaseFile,
-    val message: HomebaseFile?
+    val message: HomebaseFile?,
+    /**
+     * Authoritative `DriveMainIndex.userDate` (epoch ms) of the last message,
+     * straight from the SQL column. Null when there's no last message yet.
+     *
+     * Carried separately from `message` because `ChatMessageStream.mapToMessageData`
+     * clamps the in-memory `MessageUiModel.userDate` to `metadata.transitCreated`
+     * for display safety, which can drop below the SQL value when peers ship
+     * messages with a later `appData.userDate`. Read-bookkeeping (lastRead /
+     * unread-counter) compares against the SQL column, so callers must use
+     * this field, not `message.fileMetadata.appData.userDate` or the mapped
+     * `MessageUiModel.userDate`.
+     */
+    val msgUserDateMs: Long?,
 )
 
 data class ConversationUnreadCount(
@@ -87,7 +100,8 @@ class ChatReadCountWrapper(
 
                 ConversationWithLastMessage(
                     conversation = conversation,
-                    message = message
+                    message = message,
+                    msgUserDateMs = it.msgUserDate,
                 )
 
             } catch (t: Throwable) {

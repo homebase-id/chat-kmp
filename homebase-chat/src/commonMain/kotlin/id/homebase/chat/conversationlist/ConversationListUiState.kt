@@ -13,7 +13,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
-import id.homebase.core.widget.EmojiReaction
+import id.homebase.core.widget.ReactionDisplayItem
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -40,6 +40,22 @@ data class ConversationListUiState(
     val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
+    /** Non-null while a long-ish service op is in flight. Drives the full-screen
+     *  scrim+spinner overlay so the user gets visible feedback that something is
+     *  happening; otherwise the brief delay between tap and follow-up UI feels
+     *  like the app is stuck. The string is the label the overlay should display:
+     *  - `chat_conversation_deleting_in_progress` — plain delete
+     *  - `chat_conversation_leaving_and_deleting_in_progress` — combined leave+delete
+     *  - `chat_introduce_preflight_in_progress` — introduction preflight check
+     *  Null means no overlay. Cleared on both success and error. */
+    val inFlightOperationLabel: StringResource? = null,
+    /** When non-null, the screen should pop the scaffold detail pane (i.e. close the
+     *  open conversation). Use a dedicated state field rather than [uiEvent] because
+     *  delete fires multiple events back-to-back (close + snackbar) and `uiEvent` is
+     *  a single slot — successive sends overwrite each other and the close was being
+     *  eaten by the snackbar. The screen calls [closeDetailPaneRequestConsumed] when
+     *  it has handled the request. */
+    val closeDetailPaneRequest: Uuid? = null,
 )
 
 @Immutable
@@ -59,7 +75,8 @@ data class MessageListUiState(
     val isEditingMessageId: Uuid? = null,
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
-    val messageReactions: List<EmojiReaction>? = null,
+    val messageReactions: List<ReactionDisplayItem>? = null,
+    val isReactionsLoading: Boolean = false,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -189,7 +206,14 @@ sealed interface FullScreenOverlay {
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
-    data class FileVideo(val id: Uuid, val file: PlatformFile, val thumbnailBytes: ByteArray? = null) : AttachmentPendingFile(id)
+    data class FileVideo(
+        val id: Uuid,
+        val file: PlatformFile,
+        val thumbnailBytes: ByteArray? = null,
+        val durationMs: Long? = null,
+        val trimStartMs: Long? = null,
+        val trimEndMs: Long? = null,
+    ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)

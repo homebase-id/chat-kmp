@@ -101,12 +101,43 @@ class ConversationMapper(
                         OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
                     }
 
-                val participants = conversationData.recipients.filterNotNull().distinct()
+                val rawRecipients = conversationData.recipients
+                val participants = rawRecipients.filterNotNull().distinct()
                 require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
                 val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
                 val isLegacyGroup = !isGroup && participants.size > 2
                 val isAnyGroup = isGroup || isLegacyGroup
+
+                // ---- DEBUG instrumentation ----
+                // PARTICIPANT-LIST TRACE — log every group's participant list each time it is
+                // mapped. If a member is missing in the UI, the diff between this and the
+                // ParticipantsAudit lines from createConversation/writeConversationFile/
+                // updateConversationInternal pinpoints exactly which step lost it.
+                if (isAnyGroup) {
+                    val nullCount = rawRecipients.count { it == null }
+                    val rawSize = rawRecipients.size
+                    val droppedDistinct = rawRecipients.filterNotNull().size - participants.size
+                    Logger.d(tag = "ParticipantsAudit") {
+                        "ConversationMapper.mapToBasic READ for $conversationId: " +
+                            "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
+                            "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
+                            "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
+                    }
+                    if (nullCount > 0) {
+                        Logger.w(tag = "ParticipantsAudit") {
+                            "ConversationMapper.mapToBasic for $conversationId: $nullCount null entries in recipients — " +
+                                "deserializer produced nulls (corrupt content or schema drift)"
+                        }
+                    }
+                    if (droppedDistinct > 0) {
+                        Logger.w(tag = "ParticipantsAudit") {
+                            "ConversationMapper.mapToBasic for $conversationId: $droppedDistinct duplicate entries in stored recipients — " +
+                                "the stored file has duplicates; investigate writers (createConversation/updateConversationInternal/recoverConversation)"
+                        }
+                    }
+                }
+                // ---- end DEBUG ----
 
                 val title =
                     if (conversationId == ChatProtocol.ConversationWithYourselfId) {
@@ -149,7 +180,13 @@ class ConversationMapper(
                 val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
 
                 val conversationState = when {
-                    isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
+                    // Legacy groups have no protocol to update the participants list, so
+                    // `participants.contains(domain)` after LeftTag does NOT mean "someone
+                    // re-added me" — the list literally cannot change. Treat any LeftTag
+                    // on a legacy group as Left, regardless of participants. Without this
+                    // exemption, the user sees a spurious "You were re-added to this group"
+                    // immediately after leaving a legacy group.
+                    isLeftByTag && !isLegacyGroup && participants.contains(domain) -> ConversationState.RejoinPending
                     isLeftByTag -> ConversationState.Left
                     isAnyGroup && !participants.contains(domain) -> ConversationState.Removed
                     isArchivedByTag -> ConversationState.Archived
@@ -229,15 +266,30 @@ class ConversationMapper(
      * This is a per-row patcher; callers in [ConversationStream] invoke
      * it in a loop over rows from `selectAllConversationPlusLastMessage`.
      */
+    /**
+     * @param sqlUserDateMs Authoritative `DriveMainIndex.userDate` for the
+     *   message row. When provided, drives the conversation's
+     *   `latestMessageTimestamp` directly rather than the clamped
+     *   `MessageUiModel.userDate`. Pass `null` only when no SQL row exists yet
+     *   for the message (which essentially never happens — by the time
+     *   `applyLastMessage` runs, the message has been ingested into
+     *   `DriveMainIndex`). Use [HomebaseFile.sqlUserDateMs] to derive it
+     *   from a freshly-received file when there's no SQL projection at hand.
+     */
     suspend fun applyLastMessage(
         ui: ConversationUiModel,
         lastMsgFile: HomebaseFile,
         domain: OdinId,
+        sqlUserDateMs: Long? = null,
     ): ConversationUiModel {
         val msg = ChatMessageStream.mapToMessageData(lastMsgFile, credentialsManager) {
             it.fileMetadata.originalAuthor?.domainName ?: ""
         } ?: return ui
-        return ui.updateWithLatestMessage(msg, domain)
+        return ui.updateWithLatestMessage(
+            msg,
+            domain,
+            latestTimestampOverrideMs = sqlUserDateMs,
+        )
     }
 
     /**
@@ -285,7 +337,7 @@ class ConversationMapper(
 
         return if (lastMsg != null) {
             val domain = credentialsManager.requireActiveDomain()
-            applyLastMessage(withAdmins, lastMsg, domain)
+            applyLastMessage(withAdmins, lastMsg, domain, sqlUserDateMs = lastMsg.sqlUserDateMs())
         } else withAdmins
     }
 

@@ -445,13 +445,14 @@ class OdinWebSocketClient(
                 notification.data
             )
 
-        notify(
-            command = "processInbox",
-            payload = ProcessInboxPayload(
-                targetDrive = n.targetDrive,
-                batchSize = 100
-            )
-        )
+        // processInbox no longer needed — server auto-processes on QueryBatch.
+        // notify(
+        //     command = "processInbox",
+        //     payload = ProcessInboxPayload(
+        //         targetDrive = n.targetDrive,
+        //         batchSize = 100
+        //     )
+        // )
     }
 
     private suspend fun handleReactionEvent(
@@ -669,15 +670,16 @@ class OdinWebSocketClient(
      * Call this right after a successful handshake / reconnect.
      */
     suspend fun processAllInboxes() {
-        for (drive in drives) {
-            notify(
-                command = "processInbox",
-                payload = ProcessInboxPayload(
-                    targetDrive = drive,
-                    batchSize = 100
-                )
-            )
-        }
+        // processInbox no longer needed — server auto-processes on QueryBatch.
+        // for (drive in drives) {
+        //     notify(
+        //         command = "processInbox",
+        //         payload = ProcessInboxPayload(
+        //             targetDrive = drive,
+        //             batchSize = 100
+        //         )
+        //     )
+        // }
     }
 
     /**

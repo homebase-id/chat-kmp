@@ -18,10 +18,17 @@ import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.notifications.NotificationIntentDecision
+import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.notifications.decideNotificationIntent
+import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.feed.share.ShareShortcutPublisher
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import io.github.vinceglb.filekit.FileKit
@@ -35,6 +42,7 @@ class MainActivity : AppCompatActivity() {
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
     private val notificationService: NotificationService by inject()
+    private val eventBus: EventBus by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -116,9 +124,38 @@ class MainActivity : AppCompatActivity() {
             // Deep link: homebase-fchat://conversation/{conversationId}
             if (data.host == "conversation" && data.pathSegments.isNotEmpty()) {
                 val conversationId = data.pathSegments.first()
-                Logger.i(tag = "MainActivity") { "Deep link: navigating to conversation $conversationId" }
-                notificationService.navigateToConversation(conversationId)
+                val fromShareShortcut = intent.getBooleanExtra(
+                    ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, false
+                )
+                val source = if (fromShareShortcut) {
+                    NotificationNavigationEvent.OpenConversation.Source.ShareIntent
+                } else {
+                    NotificationNavigationEvent.OpenConversation.Source.NotificationTap
+                }
+                Logger.i(tag = "MainActivity") {
+                    "Deep link: navigating to conversation $conversationId source=$source"
+                }
+                notificationService.navigateToConversation(conversationId, source = source)
                 // Clear the deep link so it's not re-processed on config changes
+                intent.data = null
+                return
+            }
+
+            // Owner-console "Extend Permissions" return URL.
+            // Path: homebase-fchat://permission-callback?status=[canceled|...]
+            if (data.host == "permission-callback") {
+                val status = data.getQueryParameter("status")
+                val canceled = status.equals("canceled", ignoreCase = true) ||
+                    status.equals("cancelled", ignoreCase = true)
+                Logger.i(tag = "MainActivity") {
+                    "Permission-extend deep link (status=$status canceled=$canceled)"
+                }
+                lifecycleScope.launch {
+                    eventBus.emit(
+                        if (canceled) BackendEvent.PermissionsExtensionCanceled
+                        else BackendEvent.PermissionsExtensionReturned
+                    )
+                }
                 intent.data = null
                 return
             }
@@ -136,29 +173,41 @@ class MainActivity : AppCompatActivity() {
      * Extracts the payload data from intent extras and routes via NotificationService.
      */
     private fun handleNotificationIntent(intent: Intent) {
-        // Check for our always-present marker extra (works for all notification types,
-        // not just chat notifications that carry a conversationId)
-        if (!intent.getBooleanExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP, false)) return
+        val isMarked = intent.getBooleanExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP, false)
+        val payload = intent.extras?.let { extras ->
+            buildMap<String, Any> {
+                for (key in extras.keySet()) {
+                    @Suppress("DEPRECATION") extras.get(key)?.let { put(key, it) }
+                }
+            }
+        } ?: emptyMap()
 
-        val conversationId = intent.getStringExtra(
-            RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID
-        )
-        Logger.i(tag = "MainActivity") {
-            "Notification intent detected (conversation: $conversationId)"
+        when (val decision = decideNotificationIntent(intent.flags, isMarked, payload)) {
+            NotificationIntentDecision.Skip -> {
+                // The replay case — Android resumed the activity from recents and
+                // handed back the original launching Intent (with stale extras).
+                // We log it specifically because the symptom from homebase.log
+                // 2026-05-01 08:05:49 was a stale tap auto-navigating the user.
+                if (isReplayedFromHistory(intent.flags) && isMarked) {
+                    Logger.i(tag = "MainActivity") {
+                        "Skipping replayed notification intent (FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY set)"
+                    }
+                }
+            }
+            is NotificationIntentDecision.Process -> {
+                val conversationId = intent.getStringExtra(
+                    RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID
+                )
+                Logger.i(tag = "MainActivity") {
+                    "Notification intent detected (conversation: $conversationId)"
+                }
+                notificationService.handleNotificationClicked(decision.payload)
+            }
         }
-
-        // Build PayloadData map from intent extras (RichNotificationDisplayer puts all
-        // original notification payload entries as extras)
-        val extras = intent.extras ?: return
-        val payloadData = mutableMapOf<String, Any>()
-        for (key in extras.keySet()) {
-            @Suppress("DEPRECATION")
-            extras.get(key)?.let { payloadData[key] = it }
-        }
-
-        notificationService.handleNotificationClicked(payloadData)
 
         // Clear the notification extras so we don't re-handle on config change
+        // within this same activity instance (process death + recents resume is
+        // covered by the FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY check above).
         intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP)
         intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID)
         intent.removeExtra("data")

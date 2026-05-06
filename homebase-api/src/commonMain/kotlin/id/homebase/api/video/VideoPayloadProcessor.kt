@@ -22,7 +22,9 @@ class VideoPayloadProcessor(
         payload: PayloadFile,
         keyHeader: KeyHeader,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
-        descriptorContentPayloadKey: String
+        descriptorContentPayloadKey: String,
+        trimStartMs: Long? = null,
+        trimEndMs: Long? = null,
     ): VideoProcessResult {
 
         // Resolve content URIs (Android) to real filesystem paths before FFmpeg work
@@ -74,15 +76,20 @@ class VideoPayloadProcessor(
         )
 
         val compressedPath =
-            FFmpegUtils.compressVideo(payload.filePath) {
-                onProgress?.invoke(
-                    VideoPayloadProgressPhase(
-                        payload.key,
-                        VideoProcessingPhase.COMPRESSING,
-                        it
+            FFmpegUtils.compressVideo(
+                inputPath = payload.filePath,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs,
+                onProgress = {
+                    onProgress?.invoke(
+                        VideoPayloadProgressPhase(
+                            payload.key,
+                            VideoProcessingPhase.COMPRESSING,
+                            it
+                        )
                     )
-                )
-            } ?: payload.filePath
+                },
+            ) ?: payload.filePath
 
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 

@@ -2,11 +2,13 @@ package id.homebase.chat.services.convo
 
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.XorIdUtil
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -64,7 +66,7 @@ class ConversationServiceRecoveryTest {
     }
 
     @Test
-    fun recoverConversation_oneOnOne_existingDeleted_revivesViaUpdate() = runTest {
+    fun recoverConversation_oneOnOne_existingDeleted_revivesAsLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -81,15 +83,26 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
+            )
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "deleted 1:1 should be replaced with a local placeholder")
+            assertNull(
+                file.fileMetadata.versionTag,
+                "local-only placeholder marker (versionTag=null) lets a real server file later supersede it",
+            )
             assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "deleted 1:1 should be revived via an UpdateFileByUniqueId enqueue",
+                fixture.conversationLoader.loaded.contains(xorId),
+                "recoverConversation should refresh the in-memory model via loadConversation",
             )
         }
     }
 
     @Test
-    fun recoverConversation_oneOnOne_noFile_createsFresh() = runTest {
+    fun recoverConversation_oneOnOne_noFile_writesLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -101,15 +114,123 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
+            )
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "no local file ⇒ a placeholder should be written")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker")
+            assertTrue(fixture.conversationLoader.loaded.contains(xorId))
+        }
+    }
+
+    @Test
+    fun recoverConversation_oneOnOne_forwardedMessage_usesSenderAsCounterparty() = runTest {
+        // Forwarded-message scenario:
+        //   senderOdinId = alice (the wire-level counterparty in this 1:1)
+        //   originalAuthor = carol (whoever first wrote the content; not in this 1:1)
+        // The 1:1 id is XorId(self, alice). The XOR test must use sender, not
+        // originalAuthor — otherwise the convo is misclassified as a group
+        // ("1:1 repair" forced fallback) with the wrong participant.
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val alice = "alice.test"
+            val carol = "carol.test"
+            val xorId = XorIdUtil.getNewXorId(fixture.testDomain, alice)
+
+            service.recoverConversation(
+                conversationId = xorId,
+                originalAuthor = OdinId(carol),
+                sender = OdinId(alice),
+            )
+
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "forwarded 1:1 should produce a placeholder file")
+            assertNull(file.fileMetadata.versionTag, "local-only placeholder marker")
+
+            // Took the 1:1 branch (no ConversationGroupTag) — the regression
+            // would set the group tag and a "1:1 repair" title.
+            val tags = file.fileMetadata.appData.tags ?: emptyList()
+            assertFalse(
+                tags.contains(ChatProtocol.ConversationGroupTag),
+                "forwarded 1:1 should NOT be classified as a group",
+            )
+
+            // Recipients use the sender (alice), not the originalAuthor (carol).
+            val contentJson = file.fileMetadata.appData.content
+            assertNotNull(contentJson, "placeholder content should be written")
+            val content = OdinSystemSerializer.deserialize<ConversationAppDataJson>(contentJson)
+            val recipients = content.recipients?.filterNotNull()?.map { it.domainName } ?: emptyList()
             assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "no local file ⇒ writeConversationFile must enqueue a new-file upload",
+                recipients.contains(alice),
+                "1:1 placeholder must list the sender (alice) as participant; got $recipients",
+            )
+            assertFalse(
+                recipients.contains(carol),
+                "originalAuthor (carol) is content provenance, not a participant; got $recipients",
+            )
+        }
+    }
+
+    /**
+     * Regression: an orphaned 1:1 with `recipients=[self]` crashes the
+     * mapper at line 151 (`participants.first { it != domain }`). The
+     * recovery path (ConversationService.kt:1583–1597) is explicitly designed
+     * to handle this — it forces the placeholder to the group branch so the
+     * mapper takes the safe path instead of crashing. Without an active caller
+     * invoking `recoverConversation` this row stays broken on every list load,
+     * which is what `ConversationStream.loadBasicConversations` now wires up.
+     *
+     * Pins the local-only recovery contract: after recovery the placeholder
+     * file carries the group tag (so the mapper's group branch fires) and
+     * no outbox work was enqueued.
+     */
+    @Test
+    fun recoverConversation_oneOnOne_existingInvalidSelfOnly_revivesAsGroupPlaceholder() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            // The orphan shape: recipients=[testDomain only]. The conversationId
+            // doesn't matter for the crash — what matters is that the stored
+            // recipients list contains only the current user.
+            val convoId = fixture.seedOrphanedOneOnOneSelfOnly()
+            val rowsBefore = fixture.outboxRowCount()
+
+            service.recoverConversation(
+                conversationId = convoId,
+                originalAuthor = OdinId(fixture.testDomain),
+            )
+
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
+            )
+
+            val file = fixture.getConversationFile(convoId)
+            assertNotNull(file, "post-recovery placeholder file must exist")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker (versionTag=null)")
+
+            // The placeholder MUST carry the group tag so the mapper takes the
+            // group branch — the whole point of the forced-group recovery is to
+            // avoid the `participants.first { it != domain }` deref.
+            val tags = file.fileMetadata.appData.tags ?: emptyList()
+            assertTrue(
+                tags.contains(ChatProtocol.ConversationGroupTag),
+                "self-only 1:1 must be revived with the group tag so the mapper " +
+                        "takes the safe (group) branch; got tags=$tags",
+            )
+
+            assertTrue(
+                fixture.conversationLoader.loaded.contains(convoId),
+                "recoverConversation should refresh the in-memory model via loadConversation",
             )
         }
     }
 
     @Test
-    fun recoverConversation_group_noFile_createsWithCallerAndOriginalAuthor() = runTest {
+    fun recoverConversation_group_noFile_writesLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -122,10 +243,15 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
-            assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "group recovery with no file should enqueue a new group conversation",
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
             )
+            val file = fixture.getConversationFile(groupId)
+            assertNotNull(file, "no local file ⇒ a placeholder should be written")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker")
+            assertTrue(fixture.conversationLoader.loaded.contains(groupId))
         }
     }
 

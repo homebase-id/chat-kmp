@@ -15,7 +15,6 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -54,8 +53,19 @@ class ConversationStream(
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
     private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
-    private var loadJob: Job? = null
+    private var started = false
     private var shareCacheJob: Job? = null
+
+    /**
+     * Conversation ids the user deleted in this app session. The file is still
+     * on disk (soft-deleted via archivalStatus=Removed) until the outbox processes
+     * the server-side delete, so [loadBasicConversations] would otherwise resurrect
+     * a "deleted conversation" placeholder via [ConversationMapper.mapDeletedConversation]
+     * on every reload. Tracking the ids here lets us filter them out for the rest
+     * of the session. Cleared on app restart (when the outbox should have already
+     * hard-deleted them).
+     */
+    private val deletedIds: MutableSet<Uuid> = mutableSetOf()
 
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
@@ -76,7 +86,7 @@ class ConversationStream(
      *  sync, or transfer-to-self). The plumbing is retained so a future
      *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
      *  reconciliation pass) can wire in without touching DI. */
-    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -93,6 +103,18 @@ class ConversationStream(
     private val placeholderIds = mutableSetOf<Uuid>()
     // endregion
 
+    // region Orphan-recovery: read-path dedup of recover attempts
+    // [loadBasicConversations] triggers [onRecoverConversation] for any row
+    // that mapped to [ConversationState.Invalid] (the mapper's catch-all for
+    // unmappable conversation files — e.g. a 1:1 whose other participant is
+    // gone, leaving recipients=[self], which crashes the
+    // `participants.first { it != domain }` deref). Recovery is local-only and
+    // idempotent; the set is session-scoped so a fresh app launch retries.
+    // Within a session the set prevents a recovery → reload → recovery loop
+    // if the placeholder write somehow fails silently.
+    private val recoveryAttemptedIds = mutableSetOf<Uuid>()
+    // endregion
+
     // region Auto-unarchive: incoming message for archived conversation
     /** Called when a message arrives for an archived conversation.
      *  Wired in AppModule to ConversationService.unarchiveConversation(). */
@@ -107,15 +129,13 @@ class ConversationStream(
     // file notification — arrive as BatchReceived events and are applied incrementally.
     // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
     // incremental BatchReceived path is sufficient and avoids an expensive full reload
-    // on every incoming message.
+    // on every incoming message. We DO, however, re-enrich unread counts on Stopped —
+    // that's a small ChatReadCount scan and catches reads written by batches that
+    // landed during the sync round (and message-only batches, which the per-batch
+    // enrich path further down doesn't cover).
     init {
         scope.launch {
             eventBus.events.collect { event ->
-
-                if (event is BackendEvent.ConnectionOnline) {
-                    enrichAllConversationsWithUnreadCounts()
-                    return@collect
-                }
 
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
@@ -124,22 +144,40 @@ class ConversationStream(
 
                     is BackendEvent.DriveEvent.Stopped -> {
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
-                        // If placeholders remain after sync completion, the real
-                        // conversation files genuinely didn't arrive — persist
-                        // the placeholders to local DB so they survive restart.
-                        // Only on success: on failure we'd prefer to retry on the
-                        // next sync rather than commit a speculative placeholder.
-                        if (event.result is BackendEvent.DriveResult.Success &&
-                            placeholderIds.isNotEmpty()
-                        ) {
-                            val toReconcile = placeholderIds.toSet()
-                            placeholderIds.clear()
-                            scope.launch {
-                                try {
-                                    reconcileUnresolvedPlaceholders(toReconcile)
-                                } catch (e: Exception) {
-                                    Logger.e(e) {
-                                        "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
+                        if (event.result is BackendEvent.DriveResult.Success) {
+                            // If placeholders remain after sync completion, the real
+                            // conversation files genuinely didn't arrive — persist
+                            // the placeholders to local DB so they survive restart.
+                            // Only on success: on failure we'd prefer to retry on the
+                            // next sync rather than commit a speculative placeholder.
+                            if (placeholderIds.isNotEmpty()) {
+                                val toReconcile = placeholderIds.toSet()
+                                placeholderIds.clear()
+                                scope.launch {
+                                    try {
+                                        reconcileUnresolvedPlaceholders(toReconcile)
+                                    } catch (e: Exception) {
+                                        Logger.e(e) {
+                                            "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
+                                        }
+                                    }
+                                }
+                            }
+                            // Re-enrich unread counts after the chat-drive sync
+                            // completes — but only if the sync actually received
+                            // records. totalCount=0 means no batches, no writes to
+                            // ChatReadCount, so nothing to re-enrich. Replaces the
+                            // old BackendEvent.ConnectionOnline trigger so the second
+                            // cold-boot enrich (when there is one) now lands AFTER
+                            // sync writes (deterministic order), not concurrent with them.
+                            if (event.totalCount > 0) {
+                                scope.launch {
+                                    try {
+                                        enrichAllConversationsWithUnreadCounts()
+                                    } catch (e: Exception) {
+                                        Logger.e(e) {
+                                            "ConversationStream: post-Stopped enrich failed: ${e.message}"
+                                        }
                                     }
                                 }
                             }
@@ -192,16 +230,20 @@ class ConversationStream(
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
-        // For each file in the batch, map to model (fetch last message from DB if needed)
-        val incomingMessages =
-            messageFiles.mapNotNull { file ->
-                ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
-            }
+        // For each file in the batch, map to model (fetch last message from DB if needed).
+        // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
+        // pull the SQL-faithful userDate via `file.sqlUserDateMs()` — `MessageUiModel.userDate`
+        // is clamped to `transitCreated` for display and can underrun the SQL column.
+        val incoming = ArrayList<Pair<HomebaseFile, MessageUiModel>>(messageFiles.size)
+        for (file in messageFiles) {
+            val mapped = ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
+            if (mapped != null) incoming.add(file to mapped)
+        }
 
-        if (messageFiles.size != incomingMessages.size)
-            Logger.w("ConversationStream: ${messageFiles.size - incomingMessages.size} of ${messageFiles.size} messages failed to convert")
+        if (messageFiles.size != incoming.size)
+            Logger.w("ConversationStream: ${messageFiles.size - incoming.size} of ${messageFiles.size} messages failed to convert")
 
-        for (m in incomingMessages) {
+        for ((file, m) in incoming) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
 
             // Drop messages for conversations the user has left or been removed from
@@ -247,7 +289,7 @@ class ConversationStream(
                 _conversations.value = _conversations.value.copy(
                     items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
                 )
-                updateConversationFromNewMessage(revived, m)
+                updateConversationFromNewMessage(revived, m, file.sqlUserDateMs())
 
                 // Intentionally do NOT trigger server-side recovery here. A
                 // drive-sync batch handler is the wrong place to enqueue
@@ -261,24 +303,24 @@ class ConversationStream(
             // endregion
 
             if (matchingConversation == null) {
-                // Determine 1:1 vs group so the placeholder has a useful avatar
+                // Determine 1:1 vs group so the placeholder has a useful avatar.
+                // Use sender (not originalAuthor) for the XOR test — for forwarded
+                // messages those differ and originalAuthor is content provenance,
+                // not the wire-level counterparty.
                 val activeDomain = credentialsManager.getActiveDomain()
-                val isOneToOne = activeDomain != null && m.originalAuthor != null
-                    && m.conversationId == XorIdUtil.getNewXorId(
-                        activeDomain.domainName, m.originalAuthor.domainName
-                    )
+                val isOneToOne = activeDomain != null && m.isOneToOne(activeDomain)
 
                 val placeholderAvatar = if (isOneToOne) {
                     ConversationAvatarModel(
                         type = ConversationAvatarModel.Type.Connection,
-                        odinId = m.originalAuthor
+                        odinId = m.sender,
                     )
                 } else {
                     ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
                 }
 
                 val placeholderParticipants = if (isOneToOne) {
-                    listOf(activeDomain, m.originalAuthor).distinct()
+                    listOfNotNull(activeDomain, m.sender).distinct()
                 } else {
                     emptyList()
                 }
@@ -288,7 +330,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Conversation missing...",
                         lastMessage = m.content,
-                        latestMessageTimestamp = m.userDate,
+                        latestMessageTimestamp = Instant.fromEpochMilliseconds(file.sqlUserDateMs()),
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -330,7 +372,7 @@ class ConversationStream(
                 placeholderIds += m.conversationId
                 // endregion
             } else {
-                updateConversationFromNewMessage(matchingConversation, m)
+                updateConversationFromNewMessage(matchingConversation, m, file.sqlUserDateMs())
             }
         }
 
@@ -339,11 +381,20 @@ class ConversationStream(
         _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
     }
 
+    /**
+     * @param sqlUserDateMs Authoritative `DriveMainIndex.userDate` of the
+     *   incoming message file (epoch ms). Used as the source of truth for the
+     *   conversation's `latestMessageTimestamp` so it stays in lock-step with
+     *   `selectAllUnreadCount`. The clamped `m.userDate` is correct for
+     *   display but can underrun the SQL value.
+     */
     private suspend fun updateConversationFromNewMessage(
         c: ConversationUiModel,
-        m: MessageUiModel
+        m: MessageUiModel,
+        sqlUserDateMs: Long,
     ) {
-        if (m.userDate >= c.latestMessageTimestamp) {
+        val sqlUserDate = Instant.fromEpochMilliseconds(sqlUserDateMs)
+        if (sqlUserDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             val increment =
@@ -354,7 +405,7 @@ class ConversationStream(
 
             val updatedConversation = c.copy(
                 unreadCount = c.unreadCount + increment,
-                latestMessageTimestamp = m.userDate,
+                latestMessageTimestamp = sqlUserDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                 lastMessageIsDeleted = m.isDeleted,
@@ -380,6 +431,15 @@ class ConversationStream(
         } else {
             updateConversation(existing, incoming)
         }
+    }
+
+    override suspend fun removeConversation(conversationId: Uuid) {
+        val current = _conversations.value
+        if (current.items.none { it.id == conversationId }) return
+        _conversations.value = current.copy(
+            items = current.items.filterNot { it.id == conversationId }
+        )
+        placeholderIds -= conversationId
     }
 
     private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
@@ -419,6 +479,16 @@ class ConversationStream(
         // file-of-record lastReadTime into ChatReadCount and patches unread
         // counts in one round-trip — fire-and-forget so the in-memory list
         // update above stays on the hot path.
+        //
+        // Skip while the cold-load pipeline hasn't run its own enrich yet.
+        // During initial sync, every conversation file streams in via this
+        // path and would trigger N redundant enrich passes (each 2-10s on a
+        // power user's box, visibly reshuffling the list every emit). The
+        // end-of-start() enrich (`enrichAllConversationsWithUnreadCounts`
+        // after `enrichWithLastMessages` / `enrichWithAdmins`) flips
+        // `hasUnreadCounts` once cold-load is done; only after that should
+        // per-batch arrivals trigger their own mirror.
+        if (!_conversations.value.enrichment.hasUnreadCounts) return
         scope.launch {
             try {
                 enrichAllConversationsWithUnreadCounts()
@@ -590,12 +660,21 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val basic = files.map { file ->
-            val ui = mapper.mapToBasic(file)
-            if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
-                ui.copy(conversationState = ConversationState.Left)
-            } else ui
-        }
+        val basicWithSource = files
+            // Locally-deleted conversations stay on disk (soft-deleted) until the
+            // outbox processes the server-side delete; without this filter the
+            // mapper would resurrect a "deleted conversation" placeholder for them
+            // on every reload. See [onConversationDeleted].
+            .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
+            .map { file ->
+                val ui = mapper.mapToBasic(file)
+                val finalUi = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+                    ui.copy(conversationState = ConversationState.Left)
+                } else ui
+                finalUi to file
+            }
+
+        val basic = basicWithSource.map { it.first }
 
         _conversations.value = ConversationsData(
             dataReady = true,
@@ -607,6 +686,42 @@ class ConversationStream(
             "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
                     "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
                     "items=${basic.size}"
+        }
+
+        // Trigger orphan recovery for any row that landed in the Invalid
+        // placeholder. Fire-and-forget on the existing scope: do NOT block
+        // the basic emit, do NOT await — recoverConversation writes a local
+        // placeholder file and re-syncs the row, which arrives back via the
+        // normal drive-sync → reload path.
+        triggerRecoveryForInvalidRows(basicWithSource)
+    }
+
+    private fun triggerRecoveryForInvalidRows(
+        basicWithSource: List<Pair<ConversationUiModel, id.homebase.api.client.drives.HomebaseFile>>,
+    ) {
+        val recover = onRecoverConversation ?: return
+        val toRecover = mutableListOf<Pair<Uuid, OdinId?>>()
+        for ((ui, file) in basicWithSource) {
+            if (ui.conversationState != ConversationState.Invalid) continue
+            val convoId = file.fileMetadata.appData.uniqueId ?: continue
+            if (!recoveryAttemptedIds.add(convoId)) continue
+            toRecover.add(convoId to file.fileMetadata.originalAuthor)
+        }
+        for ((convoId, originalAuthor) in toRecover) {
+            scope.launch {
+                try {
+                    Logger.w(tag = "OrphanRecovery") {
+                        "loadBasicConversations: triggering recoverConversation for Invalid row " +
+                                "convoId=$convoId originalAuthor=${originalAuthor?.domainName}"
+                    }
+                    recover(convoId, originalAuthor)
+                } catch (t: Throwable) {
+                    Logger.e(throwable = t, tag = "OrphanRecovery") {
+                        "loadBasicConversations: recoverConversation failed for convoId=$convoId — " +
+                                "placeholder will keep showing until next session retry"
+                    }
+                }
+            }
         }
     }
 
@@ -630,17 +745,22 @@ class ConversationStream(
         val rows = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val msgByConversation = HashMap<Uuid, id.homebase.api.client.drives.HomebaseFile>(rows.size)
+        // Carry the SQL `msgUserDate` (DriveMainIndex.userDate) alongside the
+        // file. The conversation list's `latestMessageTimestamp` must use this
+        // SQL value, not the clamped `MessageUiModel.userDate`, so it stays in
+        // lock-step with what `selectAllUnreadCount` filters on. See
+        // `HomebaseFile.sqlUserDateMs()` for the formula.
+        val msgByConversation = HashMap<Uuid, Pair<id.homebase.api.client.drives.HomebaseFile, Long?>>(rows.size)
         for (row in rows) {
             val convoId = row.conversation.fileMetadata.appData.uniqueId ?: continue
             val msg = row.message ?: continue
-            msgByConversation[convoId] = msg
+            msgByConversation[convoId] = msg to row.msgUserDateMs
         }
 
         val current = _conversations.value
         val updated = current.items.map { ui ->
-            val msgFile = msgByConversation[ui.id] ?: return@map ui
-            mapper.applyLastMessage(ui, msgFile, domain)
+            val pair = msgByConversation[ui.id] ?: return@map ui
+            mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
         }
 
         _conversations.value = current.copy(
@@ -717,9 +837,9 @@ class ConversationStream(
      * patched onto the model.
      *
      * Also invoked from message-read actions (see [ChatMessageActionService])
-     * and on `BackendEvent.ConnectionOnline`. Flips
-     * `enrichment.hasUnreadCounts` (first call only; subsequent calls just
-     * patch counts).
+     * and after every chat-drive `BackendEvent.DriveEvent.Stopped` that
+     * received at least one record. Flips `enrichment.hasUnreadCounts`
+     * (first call only; subsequent calls just patch counts).
      *
      * Safe to defer, safe to skip, safe to retry.
      */
@@ -811,7 +931,11 @@ class ConversationStream(
 
     // endregion
 
-    // Full conversation list load from local DB.  Idempotent (skips if already running).
+    // Full conversation list load from local DB.  One-shot — subsequent calls
+    // return immediately.  This is what allows the AppModule preload at
+    // onPostAuthenticated (the ~800ms cold-boot win) to coexist with
+    // unconditional start() calls from the various ViewModels' init blocks
+    // without re-running the whole load + enrichment pipeline.
     // Intended call sites — all user-initiated or startup:
     //   - AppModule onPostAuthenticated  (auth startup, preloads while UI composes)
     //   - ConversationListViewModel init (user navigates to list)
@@ -819,9 +943,10 @@ class ConversationStream(
     //   - GroupSettingsViewModel init     (user opens group settings)
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     fun start() {
-        if (loadJob?.isActive == true) return
+        if (started) return
+        started = true
         Logger.d("ConversationStream: start() — loading full conversation list from DB")
-        loadJob = scope.launch {
+        scope.launch {
             // MANDATORY — flips dataReady=true for the UI.
             loadBasicConversations()
 
@@ -866,6 +991,25 @@ class ConversationStream(
                     convo.copy(conversationState = ConversationState.Left)
                 else convo
             }
+        )
+    }
+
+    /**
+     * Drop the conversation from the in-memory list immediately. Called from the
+     * conversation-delete UI flow so the row disappears as soon as the service-side
+     * delete is enqueued, instead of lingering as a "deleted conversation" placeholder
+     * (the result of [ConversationMapper.mapDeletedConversation] firing on the soft-
+     * deleted file) until the next app start.
+     *
+     * Also records the id in [deletedIds] so [loadBasicConversations] keeps it out
+     * of the list across subsequent reloads; without this the row would be
+     * resurrected by the next DB read because the file is still on disk (soft-
+     * deleted) until the outbox processes the server-side delete.
+     */
+    fun onConversationDeleted(conversationId: Uuid) {
+        deletedIds += conversationId
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.filterNot { it.id == conversationId }
         )
     }
 
