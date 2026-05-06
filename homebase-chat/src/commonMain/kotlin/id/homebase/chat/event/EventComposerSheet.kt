@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -52,7 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.location.LocationResult
+import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -65,6 +69,7 @@ import id.homebase.resources.chat_event_field_starts
 import id.homebase.resources.chat_event_field_timezone
 import id.homebase.resources.chat_event_field_title
 import id.homebase.resources.chat_event_send
+import id.homebase.resources.chat_event_use_current_location
 import id.homebase.resources.ok
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -145,7 +150,34 @@ private fun EventComposerContent(
     }
     var hasEndTime by remember { mutableStateOf(false) }
     var locationText by remember { mutableStateOf("") }
+    var locationLat by remember { mutableStateOf<Double?>(null) }
+    var locationLon by remember { mutableStateOf<Double?>(null) }
     var meetingUrl by remember { mutableStateOf("") }
+    var fetchingLocation by remember { mutableStateOf(false) }
+
+    val locationPreviewProvider: LocationPreviewProvider = koinInject()
+    val currentLocationLauncher = rememberCurrentLocationLauncher { result ->
+        when (result) {
+            is LocationResult.Success -> {
+                scope.launch {
+                    val preview = runCatching {
+                        locationPreviewProvider.getLocationPreview(
+                            result.fix.latitude, result.fix.longitude,
+                        )
+                    }.getOrNull()
+                    locationText = preview?.address?.takeIf { it.isNotBlank() }
+                        ?: "${result.fix.latitude}, ${result.fix.longitude}"
+                    locationLat = result.fix.latitude
+                    locationLon = result.fix.longitude
+                    fetchingLocation = false
+                }
+            }
+            is LocationResult.PermissionDenied,
+            is LocationResult.Unavailable -> {
+                fetchingLocation = false
+            }
+        }
+    }
 
     var sending by remember { mutableStateOf(false) }
     var showStartDate by remember { mutableStateOf(false) }
@@ -186,6 +218,8 @@ private fun EventComposerContent(
                                     endUtcMs = endUtcMs,
                                     timezone = tz.id,
                                     locationText = locationText.takeIf { it.isNotBlank() },
+                                    lat = locationLat,
+                                    lon = locationLon,
                                     meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
                                     createdByOdinId = authorOdinId,
                                     createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
@@ -285,9 +319,29 @@ private fun EventComposerContent(
 
             OutlinedTextField(
                 value = locationText,
-                onValueChange = { locationText = it },
+                onValueChange = {
+                    locationText = it
+                    // The user is hand-editing the address, so previously captured
+                    // coordinates no longer correspond. Drop them.
+                    locationLat = null
+                    locationLon = null
+                },
                 label = { Text(stringResource(MR.string.chat_event_field_location)) },
                 singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        enabled = !fetchingLocation,
+                        onClick = {
+                            fetchingLocation = true
+                            currentLocationLauncher.launch()
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MyLocation,
+                            contentDescription = stringResource(MR.string.chat_event_use_current_location),
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(

@@ -45,7 +45,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.resources.MR
-import id.homebase.resources.chat_event_add_to_calendar
+import id.homebase.resources.chat_event_add_to_google_calendar
+import id.homebase.resources.chat_event_download_ics
 import id.homebase.resources.chat_event_join_meeting
 import id.homebase.resources.chat_event_open_in_maps
 import id.homebase.resources.chat_event_rsvp_maybe
@@ -164,12 +165,19 @@ private fun EventDetailContent(
                     label = loc,
                     actionLabel = stringResource(MR.string.chat_event_open_in_maps),
                     onClick = {
-                        val q = if (descriptor.lat != null && descriptor.lon != null) {
-                            "${descriptor.lat},${descriptor.lon}"
-                        } else {
-                            urlEncode(loc)
+                        // If the user typed a full URL, respect their intent — open it
+                        // verbatim. Otherwise build a Google Maps query: prefer captured
+                        // coordinates (drops a pin exactly), fall back to the encoded
+                        // text (Google's fuzzy match handles "Starbucks Copenhagen
+                        // Central" cleanly).
+                        val href = when {
+                            isLikelyUrl(loc) -> loc.trim()
+                            descriptor.lat != null && descriptor.lon != null ->
+                                "https://www.google.com/maps/search/?api=1&query=${descriptor.lat},${descriptor.lon}"
+                            else ->
+                                "https://www.google.com/maps/search/?api=1&query=${urlEncode(loc)}"
                         }
-                        runCatching { uriHandler.openUri("geo:$q?q=$q") }
+                        runCatching { uriHandler.openUri(href) }
                     },
                 )
                 Spacer(Modifier.height(8.dp))
@@ -187,7 +195,14 @@ private fun EventDetailContent(
 
             ActionRow(
                 icon = Icons.Default.CalendarMonth,
-                label = stringResource(MR.string.chat_event_add_to_calendar),
+                label = stringResource(MR.string.chat_event_add_to_google_calendar),
+                actionLabel = null,
+                onClick = { runCatching { uriHandler.openUri(googleCalendarUrl(descriptor)) } },
+            )
+            Spacer(Modifier.height(8.dp))
+            ActionRow(
+                icon = Icons.Default.CalendarMonth,
+                label = stringResource(MR.string.chat_event_download_ics),
                 actionLabel = null,
                 onClick = { calendarLauncher.addToCalendar(descriptor) },
             )
@@ -404,5 +419,7 @@ private fun formatHero(start: LocalDateTime, end: LocalDateTime?, tz: String): S
     }
 }
 
-private fun urlEncode(s: String): String =
-    s.replace(" ", "%20").replace(",", "%2C")
+private fun isLikelyUrl(s: String): Boolean {
+    val t = s.trim().lowercase()
+    return t.startsWith("http://") || t.startsWith("https://")
+}

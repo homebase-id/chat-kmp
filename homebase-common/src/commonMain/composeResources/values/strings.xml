@@ -505,7 +505,7 @@
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
-    <string name="chat_location_unavailable">Couldn\'t get your location. Try again outdoors or check that Location is enabled.</string>
+    <string name="chat_location_unavailable">Couldn't get your location. Try again outdoors or check that Location is enabled.</string>
     <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
 
     <!-- Event attachment -->
@@ -521,9 +521,10 @@
     <string name="chat_event_use_current_location">Use current location</string>
     <string name="chat_event_open_in_maps">Open in maps</string>
     <string name="chat_event_join_meeting">Join meeting</string>
-    <string name="chat_event_add_to_calendar">Add to calendar</string>
+    <string name="chat_event_add_to_google_calendar">Add to Google Calendar</string>
+    <string name="chat_event_download_ics">Download calendar file (.ics)</string>
     <string name="chat_event_rsvp_yes">Going</string>
-    <string name="chat_event_rsvp_no">Can\'t make it</string>
+    <string name="chat_event_rsvp_no">Can't make it</string>
     <string name="chat_event_rsvp_maybe">Maybe</string>
     <string name="chat_event_starting_soon">Starting in %1$s</string>
     <string name="chat_event_live_now">Live now</string>
