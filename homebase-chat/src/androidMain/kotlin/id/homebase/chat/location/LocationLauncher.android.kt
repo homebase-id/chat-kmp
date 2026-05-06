@@ -20,7 +20,7 @@ private const val TAG = "LocationLauncher.android"
 
 @Composable
 actual fun rememberCurrentLocationLauncher(
-    onResult: (LocationFix?) -> Unit,
+    onResult: (LocationResult) -> Unit,
 ): LocationLauncher {
     val context = LocalContext.current
     val onResultState = rememberUpdatedState(onResult)
@@ -30,10 +30,11 @@ actual fun rememberCurrentLocationLauncher(
     ) { result ->
         val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        Logger.d(tag = TAG) { "permission result granted=$granted (raw=$result)" }
         if (granted) {
             fetchLocation(context, onResultState.value)
         } else {
-            onResultState.value(null)
+            onResultState.value(LocationResult.PermissionDenied)
         }
     }
 
@@ -41,8 +42,10 @@ actual fun rememberCurrentLocationLauncher(
         object : LocationLauncher {
             override fun launch() {
                 if (hasLocationPermission(context)) {
+                    Logger.d(tag = TAG) { "launch: permission already granted, fetching" }
                     fetchLocation(context, onResultState.value)
                 } else {
+                    Logger.d(tag = TAG) { "launch: requesting permission" }
                     permissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -67,26 +70,37 @@ private fun hasLocationPermission(context: Context): Boolean {
 @SuppressLint("MissingPermission") // Guarded by hasLocationPermission() at every call site.
 private fun fetchLocation(
     context: Context,
-    onResult: (LocationFix?) -> Unit,
+    onResult: (LocationResult) -> Unit,
 ) {
     val client = LocationServices.getFusedLocationProviderClient(context)
     val cts = CancellationTokenSource()
+    Logger.d(tag = TAG) { "fetchLocation: requesting fused getCurrentLocation (BALANCED_POWER)" }
     client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
         .addOnSuccessListener { location ->
             if (location == null) {
-                onResult(null)
+                // Common on emulators with no mock location set, indoors with no last fix, or
+                // when location services are off at the OS level. Fused-API doesn't differentiate.
+                Logger.w(tag = TAG) {
+                    "fused getCurrentLocation returned null (no mock location? location services off?)"
+                }
+                onResult(LocationResult.Unavailable)
             } else {
+                Logger.d(tag = TAG) {
+                    "fused getCurrentLocation success lat=${location.latitude} lon=${location.longitude}"
+                }
                 onResult(
-                    LocationFix(
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
+                    LocationResult.Success(
+                        LocationFix(
+                            latitude = location.latitude,
+                            longitude = location.longitude,
+                            accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
+                        )
                     )
                 )
             }
         }
         .addOnFailureListener { e ->
-            Logger.w(throwable = e, tag = TAG) { "FusedLocation getCurrentLocation failed" }
-            onResult(null)
+            Logger.w(throwable = e, tag = TAG) { "fused getCurrentLocation failed" }
+            onResult(LocationResult.Unavailable)
         }
 }

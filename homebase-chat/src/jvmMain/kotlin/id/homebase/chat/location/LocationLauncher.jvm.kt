@@ -6,18 +6,19 @@ import androidx.compose.runtime.rememberUpdatedState
 
 /**
  * Desktop has no GPS — the picker UI is hidden by the `isMobile()` gate in the chat composer,
- * so this should never be invoked in normal use. If it ever is (e.g. a future shortcut), we
- * deliver `null` to keep the contract honest rather than throwing.
+ * so this should never be invoked in normal use. If it ever is (e.g. a future shortcut), report
+ * [LocationResult.PermissionDenied] (closest semantic: "this device can't share location") so
+ * the caller shows a helpful message rather than spinning forever.
  */
 @Composable
 actual fun rememberCurrentLocationLauncher(
-    onResult: (LocationFix?) -> Unit,
+    onResult: (LocationResult) -> Unit,
 ): LocationLauncher {
     val onResultState = rememberUpdatedState(onResult)
     return remember {
         object : LocationLauncher {
             override fun launch() {
-                onResultState.value(null)
+                onResultState.value(LocationResult.PermissionDenied)
             }
         }
     }

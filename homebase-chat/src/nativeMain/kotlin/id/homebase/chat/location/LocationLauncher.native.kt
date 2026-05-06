@@ -24,7 +24,7 @@ private const val TAG = "LocationLauncher.ios"
 
 @Composable
 actual fun rememberCurrentLocationLauncher(
-    onResult: (LocationFix?) -> Unit,
+    onResult: (LocationResult) -> Unit,
 ): LocationLauncher {
     val onResultState = rememberUpdatedState(onResult)
     val holder = remember { LocationLauncherHolder() }
@@ -36,7 +36,8 @@ actual fun rememberCurrentLocationLauncher(
     return remember(holder) {
         object : LocationLauncher {
             override fun launch() {
-                holder.start { fix -> onResultState.value(fix) }
+                Logger.d(tag = TAG) { "launch" }
+                holder.start { result -> onResultState.value(result) }
             }
         }
     }
@@ -46,12 +47,12 @@ actual fun rememberCurrentLocationLauncher(
 private class LocationLauncherHolder {
     private var manager: CLLocationManager? = null
     private var delegate: Delegate? = null
-    private var pendingCallback: ((LocationFix?) -> Unit)? = null
+    private var pendingCallback: ((LocationResult) -> Unit)? = null
     private var invalidated = false
 
-    fun start(callback: (LocationFix?) -> Unit) {
+    fun start(callback: (LocationResult) -> Unit) {
         if (invalidated) {
-            callback(null); return
+            callback(LocationResult.Unavailable); return
         }
         pendingCallback = callback
 
@@ -66,11 +67,20 @@ private class LocationLauncherHolder {
         }
 
         when (mgr.authorizationStatus) {
-            kCLAuthorizationStatusNotDetermined -> mgr.requestWhenInUseAuthorization()
+            kCLAuthorizationStatusNotDetermined -> {
+                Logger.d(tag = TAG) { "auth not determined → requesting" }
+                mgr.requestWhenInUseAuthorization()
+            }
             kCLAuthorizationStatusAuthorizedWhenInUse,
-            kCLAuthorizationStatusAuthorizedAlways -> mgr.requestLocation()
+            kCLAuthorizationStatusAuthorizedAlways -> {
+                Logger.d(tag = TAG) { "auth granted → requesting location" }
+                mgr.requestLocation()
+            }
             kCLAuthorizationStatusDenied,
-            kCLAuthorizationStatusRestricted -> deliver(null)
+            kCLAuthorizationStatusRestricted -> {
+                Logger.d(tag = TAG) { "auth denied/restricted" }
+                deliver(LocationResult.PermissionDenied)
+            }
             else -> mgr.requestWhenInUseAuthorization()
         }
     }
@@ -83,19 +93,25 @@ private class LocationLauncherHolder {
         pendingCallback = null
     }
 
-    fun deliver(fix: LocationFix?) {
+    fun deliver(result: LocationResult) {
         val cb = pendingCallback ?: return
         pendingCallback = null
-        cb(fix)
+        cb(result)
     }
 
     fun handleAuthorizationChange(status: CLAuthorizationStatus) {
         if (invalidated || pendingCallback == null) return
         when (status) {
             kCLAuthorizationStatusAuthorizedWhenInUse,
-            kCLAuthorizationStatusAuthorizedAlways -> manager?.requestLocation()
+            kCLAuthorizationStatusAuthorizedAlways -> {
+                Logger.d(tag = TAG) { "auth changed → granted, requesting location" }
+                manager?.requestLocation()
+            }
             kCLAuthorizationStatusDenied,
-            kCLAuthorizationStatusRestricted -> deliver(null)
+            kCLAuthorizationStatusRestricted -> {
+                Logger.d(tag = TAG) { "auth changed → denied" }
+                deliver(LocationResult.PermissionDenied)
+            }
         }
     }
 
@@ -109,15 +125,19 @@ private class LocationLauncherHolder {
         ) {
             val location = didUpdateLocations.firstOrNull() as? CLLocation
             if (location == null) {
-                holder.deliver(null); return
+                Logger.w(tag = TAG) { "didUpdateLocations: empty list" }
+                holder.deliver(LocationResult.Unavailable); return
             }
             val accuracy = location.horizontalAccuracy.takeIf { it >= 0 }?.toFloat()
             location.coordinate.useContents {
+                Logger.d(tag = TAG) { "didUpdateLocations: lat=$latitude lon=$longitude" }
                 holder.deliver(
-                    LocationFix(
-                        latitude = latitude,
-                        longitude = longitude,
-                        accuracyMeters = accuracy,
+                    LocationResult.Success(
+                        LocationFix(
+                            latitude = latitude,
+                            longitude = longitude,
+                            accuracyMeters = accuracy,
+                        )
                     )
                 )
             }
@@ -127,7 +147,7 @@ private class LocationLauncherHolder {
             Logger.w(tag = TAG) {
                 "CLLocationManager didFailWithError: ${didFailWithError.localizedDescription}"
             }
-            holder.deliver(null)
+            holder.deliver(LocationResult.Unavailable)
         }
 
         override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {

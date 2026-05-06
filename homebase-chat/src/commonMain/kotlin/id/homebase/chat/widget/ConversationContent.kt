@@ -60,6 +60,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -99,7 +101,11 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
+import co.touchlab.kermit.Logger
+import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
+import id.homebase.resources.chat_location_permission_denied
+import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.conversationlist.MessageListContentModel
@@ -228,21 +234,42 @@ fun ConversationContent(
     // previews; nothing here knows the bubble shape.
     val locationPreviewProvider: LocationPreviewProvider = koinInject()
     var isFetchingLocation by remember { mutableStateOf(false) }
-    val currentLocationLauncher = rememberCurrentLocationLauncher { fix ->
-        if (fix == null) {
-            isFetchingLocation = false
-            return@rememberCurrentLocationLauncher
-        }
-        coroutineScope.launch {
-            try {
-                val preview = locationPreviewProvider.getLocationPreview(fix.latitude, fix.longitude)
-                if (preview != null) {
-                    // Replace any existing staged location (one location at a time).
-                    payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
-                        LocationPreviewRenderer(preview)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
+    val locationUnavailableMsg = stringResource(MR.string.chat_location_unavailable)
+    val currentLocationLauncher = rememberCurrentLocationLauncher { result ->
+        isFetchingLocation = false
+        when (result) {
+            is LocationResult.Success -> {
+                Logger.d(tag = "LocationShare") {
+                    "fix received lat=${result.fix.latitude} lon=${result.fix.longitude} → fetching preview"
                 }
-            } finally {
-                isFetchingLocation = false
+                coroutineScope.launch {
+                    isFetchingLocation = true
+                    try {
+                        val preview = locationPreviewProvider.getLocationPreview(
+                            result.fix.latitude, result.fix.longitude,
+                        )
+                        if (preview != null) {
+                            // Replace any existing staged location (one location at a time).
+                            payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
+                                LocationPreviewRenderer(preview)
+                        } else {
+                            Logger.w(tag = "LocationShare") { "preview provider returned null" }
+                            snackbarHostState.showSnackbar(locationUnavailableMsg)
+                        }
+                    } finally {
+                        isFetchingLocation = false
+                    }
+                }
+            }
+            is LocationResult.PermissionDenied -> {
+                Logger.d(tag = "LocationShare") { "permission denied" }
+                coroutineScope.launch { snackbarHostState.showSnackbar(locationPermissionDeniedMsg) }
+            }
+            is LocationResult.Unavailable -> {
+                Logger.d(tag = "LocationShare") { "fix unavailable" }
+                coroutineScope.launch { snackbarHostState.showSnackbar(locationUnavailableMsg) }
             }
         }
     }
@@ -457,6 +484,7 @@ fun ConversationContent(
 
     Scaffold(
         modifier = Modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -1203,6 +1231,7 @@ fun ConversationContent(
                     }, onContactClick = {
                         showAttachmentSheet = false
                     }, onLocationClick = {
+                        Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false
                         isFetchingLocation = true
                         currentLocationLauncher.launch()
