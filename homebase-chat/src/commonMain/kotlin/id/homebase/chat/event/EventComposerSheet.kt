@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +59,7 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_event_create_title
@@ -190,6 +192,42 @@ private fun EventComposerContent(
         derivedStateOf { title.isNotBlank() && !sending }
     }
 
+    val doSend: () -> Unit = {
+        if (isValid) {
+            sending = true
+            scope.launch {
+                val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
+                val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
+                val endUtcMs = if (hasEndTime) endDateTime.toInstant(tz).toEpochMilliseconds() else null
+                val authorOdinId = ownerSession.user.value?.odinId?.domainName ?: ""
+                val descriptor = EventDescriptor(
+                    eventId = Uuid.random().toString(),
+                    title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
+                    description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
+                    startUtcMs = startUtcMs,
+                    endUtcMs = endUtcMs,
+                    timezone = tz.id,
+                    locationText = locationText.takeIf { it.isNotBlank() },
+                    lat = locationLat,
+                    lon = locationLon,
+                    meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
+                    createdByOdinId = authorOdinId,
+                    createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
+                )
+                runCatching {
+                    sender.sendNewEventMessage(
+                        messageUniqueId = Uuid.random(),
+                        conversationId = conversationId,
+                        descriptor = descriptor,
+                        previousMessageUniqueId = null,
+                    )
+                }
+                sending = false
+                onSent()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -199,47 +237,6 @@ private fun EventComposerContent(
                         Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
                     }
                 },
-                actions = {
-                    IconButton(
-                        enabled = isValid,
-                        onClick = {
-                            if (!isValid) return@IconButton
-                            sending = true
-                            scope.launch {
-                                val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
-                                val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
-                                val endUtcMs = if (hasEndTime) endDateTime.toInstant(tz).toEpochMilliseconds() else null
-                                val authorOdinId = ownerSession.user.value?.odinId?.domainName ?: ""
-                                val descriptor = EventDescriptor(
-                                    eventId = Uuid.random().toString(),
-                                    title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
-                                    description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
-                                    startUtcMs = startUtcMs,
-                                    endUtcMs = endUtcMs,
-                                    timezone = tz.id,
-                                    locationText = locationText.takeIf { it.isNotBlank() },
-                                    lat = locationLat,
-                                    lon = locationLon,
-                                    meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
-                                    createdByOdinId = authorOdinId,
-                                    createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
-                                )
-                                runCatching {
-                                    sender.sendNewEventMessage(
-                                        messageUniqueId = Uuid.random(),
-                                        conversationId = conversationId,
-                                        descriptor = descriptor,
-                                        previousMessageUniqueId = null,
-                                    )
-                                }
-                                sending = false
-                                onSent()
-                            }
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(MR.string.chat_event_send))
-                    }
-                }
             )
         },
         modifier = Modifier.fillMaxSize(),
@@ -351,6 +348,26 @@ private fun EventComposerContent(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = doSend,
+                enabled = isValid,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(MR.string.chat_event_send))
+            }
+
             Spacer(Modifier.height(24.dp))
         }
     }
