@@ -22,6 +22,14 @@ object ChatProtocol {
     const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
+    /**
+     * Rich-content message kinds that ride on the message header (no payload fetch
+     * on scroll). The full JSON object lives in `appData.content`; receivers branch
+     * off `appData.dataType` to choose a renderer. Polls and doodles will follow
+     * the same shape — pick the next free integer when adding one.
+     */
+    const val ChatEventMessageDataType = 210
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */

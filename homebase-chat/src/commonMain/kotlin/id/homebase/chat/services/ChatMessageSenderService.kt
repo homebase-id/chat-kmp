@@ -153,8 +153,30 @@ class ChatMessageSenderService(
         notificationText = "",
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
+        dataType = ChatProtocol.ChatStatusMessageDataType,
         isStatusMessage = true,
         additionalRecipients = additionalRecipients
+    )
+
+    /**
+     * Sends a typed event message. The descriptor JSON rides on the message header
+     * (`appData.content` + `appData.dataType = ChatEventMessageDataType`) so receivers
+     * see it without fetching a payload. [notificationText] is the title — surfaces
+     * in push notifications, the chat list preview, and search.
+     */
+    suspend fun sendNewEventMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        descriptor: id.homebase.chat.event.EventDescriptor,
+        previousMessageUniqueId: Uuid?,
+    ): SendMessageResult = sendMessageInternal(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = OdinSystemSerializer.serialize(descriptor),
+        notificationText = descriptor.title,
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = null,
+        dataType = ChatProtocol.ChatEventMessageDataType,
     )
 
     private suspend fun sendMessageInternal(
@@ -164,6 +186,7 @@ class ChatMessageSenderService(
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
+        dataType: Int = 0,
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList(),
         userDate: UnixTimeUtc? = null,
@@ -205,7 +228,7 @@ class ChatMessageSenderService(
                     uniqueId = messageUniqueId,
                     groupId = conversationId,
                     fileType = ChatProtocol.MessageFileType,
-                    dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else 0,
+                    dataType = dataType,
                     userDate = effectiveUserDate.milliseconds,
                     content = content,
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {

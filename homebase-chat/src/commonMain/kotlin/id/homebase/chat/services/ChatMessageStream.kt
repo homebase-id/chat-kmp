@@ -20,6 +20,8 @@ import id.homebase.api.sync.database.QueryBatch
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.milliseconds
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
@@ -391,6 +393,7 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
             val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
+            val isEventMessage = appData.dataType == ChatProtocol.ChatEventMessageDataType
             val hasMore =
                 metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
             val isPendingSend =
@@ -450,24 +453,42 @@ class ChatMessageStream(
                 val delivery = getDeliveryStatus(header).value
 
                 val messageAppData: MessageAppData
+                var messageContent: MessageContent? = null
 
-                if (isStatusMessage) {
-                    val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
-                    val rendered = renderStatusMessage(
-                        author = metadata.originalAuthor,
-                        status = status,
-                        currentUser = domain
-                    )
-                    messageAppData = MessageAppData(
-                        message = JsonPrimitive(rendered),
-                        deliveryStatus = delivery,
-                        isEdited = false
-                    )
-                } else {
-                    val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
-                    messageAppData = source.copy(
-                        deliveryStatus = delivery
-                    )
+                when {
+                    isStatusMessage -> {
+                        val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                        val rendered = renderStatusMessage(
+                            author = metadata.originalAuthor,
+                            status = status,
+                            currentUser = domain
+                        )
+                        messageAppData = MessageAppData(
+                            message = JsonPrimitive(rendered),
+                            deliveryStatus = delivery,
+                            isEdited = false
+                        )
+                    }
+                    isEventMessage -> {
+                        val parsed = MessageContentParser.parse(ChatProtocol.ChatEventMessageDataType, content)
+                        messageContent = parsed
+                        // Display label feeds notifications, conversation-list previews, search.
+                        // When parsing fails (older client / malformed), fall back to a generic
+                        // label rather than dropping the message.
+                        val displayLabel = (parsed as? MessageContent.Event)?.descriptor?.title
+                            ?: "Event"
+                        messageAppData = MessageAppData(
+                            message = JsonPrimitive(displayLabel),
+                            deliveryStatus = delivery,
+                            isEdited = false
+                        )
+                    }
+                    else -> {
+                        val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                        messageAppData = source.copy(
+                            deliveryStatus = delivery
+                        )
+                    }
                 }
 
                 val displayName = displayNameResolver(header)
@@ -537,6 +558,7 @@ class ChatMessageStream(
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
                     isStatusMessage = isStatusMessage,
+                    messageContent = messageContent,
                     hasMore = hasMore
                 )
 
