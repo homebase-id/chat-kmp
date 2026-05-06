@@ -45,9 +45,13 @@ object LinkPreviewPayloadBuilder {
             "application/octet-stream"
         }
 
-        // 3. Always write to temp file for encryption pipeline
+        // 3. Always write to temp file for encryption pipeline.
+        // Sentinel byte when no image: AesCbc.encrypt rejects empty data
+        // (would crash addMessage for URLs whose page has no og:image, e.g. diku.dk).
+        // Receiver gates image rendering on descriptor.hasImage, so this byte is never read.
+        val payloadBytes = if (imageBytes.isNotEmpty()) imageBytes else byteArrayOf(0x00)
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
-            bytes = imageBytes, prefix = "link_preview", suffix = ".dat"
+            bytes = payloadBytes, prefix = "link_preview", suffix = ".dat"
         )
 
         // 4. Generate tinyThumb if image exists
