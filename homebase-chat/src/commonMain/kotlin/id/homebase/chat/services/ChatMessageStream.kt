@@ -51,6 +51,11 @@ import id.homebase.resources.system_group_conversation_member_left
 import id.homebase.resources.system_group_conversation_member_left_you
 import id.homebase.resources.system_group_conversation_started
 import id.homebase.resources.system_group_conversation_started_you
+import id.homebase.resources.system_group_heal_local_cleanup_admin
+import id.homebase.resources.system_group_heal_local_cleanup_both
+import id.homebase.resources.system_group_heal_local_cleanup_main
+import id.homebase.resources.system_group_heal_requested
+import id.homebase.resources.system_group_heal_requested_you
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -538,7 +543,11 @@ class ChatMessageStream(
             } catch (t: Throwable) {
 
                 Logger.e(t) {
-                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData}]. Message: ${t.message}"
+                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} " +
+                            "created=${metadata.created} updated=${metadata.updated} transitCreated=${metadata.transitCreated} " +
+                            "originalAuthor=${metadata.originalAuthor?.domainName} senderOdinId=${metadata.senderOdinId?.domainName} " +
+                            "versionTag=${metadata.versionTag} globalTransitId=${metadata.globalTransitId} " +
+                            "appData=[${appData}]. Message: ${t.message}"
                 }
 
                 try {
@@ -736,6 +745,28 @@ class ChatMessageStream(
                         MR.string.system_group_conversation_member_declined_rejoin,
                         name
                     )
+
+                StatusMessage.GroupHealRequested ->
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_group_heal_requested_you)
+                    else TranslationUtil.getString(
+                        MR.string.system_group_heal_requested,
+                        name
+                    )
+
+                StatusMessage.GroupHealLocalCleanup -> {
+                    val cleanup = status.groupHealCleanup
+                    val main = cleanup?.cleanedUpMain == true
+                    val admin = cleanup?.cleanedUpAdmin == true
+                    when {
+                        main && admin -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_both)
+                        main -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_main)
+                        admin -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_admin)
+                        // Defensive: cleanup status with neither flag set —
+                        // shouldn't happen in practice; render the "both"
+                        // string so we don't render an empty line.
+                        else -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_both)
+                    }
+                }
             }
         }
     }

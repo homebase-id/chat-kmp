@@ -20,7 +20,8 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.link.LinkPreview
+import id.homebase.chat.services.renderer.PayloadRenderer
+import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
@@ -55,7 +56,6 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
-import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
@@ -758,7 +758,13 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
-                if (hasMessage) {
+                // User-initiated attachments (location, contact, etc.) enable send even with no
+                // text. Link previews don't — they're auto-detected from typed URLs and only
+                // ride along when there's a text message to send.
+                val hasUserInitiatedAttachment = action.payloadRenderers.any {
+                    it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
+                }
+                if (hasMessage || hasUserInitiatedAttachment) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
                     val content = messageInputTextState.toMarkdown().trimEnd()
                     val replyTo = _messagesUiState.value.replyToMessage
@@ -767,13 +773,13 @@ class ConversationListViewModel(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
                             content = content,
-                            linkPreview = action.linkPreview
+                            payloadRenderers = action.payloadRenderers,
                         )
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
                             content = content,
-                            linkPreview = action.linkPreview
+                            payloadRenderers = action.payloadRenderers,
                         )
                     }
                     // Input is cleared inside addMessage/replyToMessage after
@@ -2851,13 +2857,11 @@ class ConversationListViewModel(
     private fun addMessage(
         conversationId: Uuid,
         content: String,
-        linkPreview: LinkPreview? = null
+        payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = linkPreview?.let {
-                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
-                }
+                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
@@ -2888,13 +2892,11 @@ class ConversationListViewModel(
         conversationId: Uuid,
         replyTo: MessageUiModel,
         content: String,
-        linkPreview: LinkPreview? = null
+        payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = linkPreview?.let {
-                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
-                }
+                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,

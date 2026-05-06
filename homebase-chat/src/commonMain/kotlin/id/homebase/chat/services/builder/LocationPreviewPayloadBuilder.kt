@@ -2,7 +2,7 @@ package id.homebase.chat.services.builder
 
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -13,18 +13,19 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 @OptIn(ExperimentalEncodingApi::class)
-object LinkPreviewPayloadBuilder {
+object LocationPreviewPayloadBuilder {
 
     suspend fun build(
-        linkPreview: LinkPreview, fileOperationsProvider: FileOperationsProvider
+        locationPreview: LocationPreview,
+        fileOperationsProvider: FileOperationsProvider,
     ): PayloadBundle {
-        val imageUrl = linkPreview.imageUrl
+        val imageUrl = locationPreview.imageUrl
         val hasBase64 = imageUrl != null && imageUrl.contains("base64,")
 
         val imageBytes = if (hasBase64 && imageUrl.isNotEmpty()) {
             try {
                 Base64.decode(imageUrl.substringAfter("base64,"))
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 ByteArray(0)
             }
         } else {
@@ -33,10 +34,9 @@ object LinkPreviewPayloadBuilder {
 
         val actualHasImage = imageBytes.isNotEmpty()
 
-        // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
-        var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = null)
+        var descriptorContent = buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = null)
         if (descriptorContent.encodeToByteArray().size > ChatProtocol.MaxDescriptorContentLength) {
-            descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = 100)
+            descriptorContent = buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 200)
         }
 
         val mimeType = if (actualHasImage && imageUrl != null) {
@@ -45,21 +45,19 @@ object LinkPreviewPayloadBuilder {
             "application/octet-stream"
         }
 
-        // 3. Always write to temp file for encryption pipeline.
-        // Sentinel byte when no image: AesCbc.encrypt rejects empty data
-        // (would crash addMessage for URLs whose page has no og:image, e.g. diku.dk).
-        // Receiver gates image rendering on descriptor.hasImage, so this byte is never read.
+        // Sentinel byte when no image: AesCbc.encrypt rejects empty data (would crash addMessage
+        // for coords-only previews). Receiver gates image rendering on descriptor.hasImage, so
+        // this byte is never read. Same fix as LinkPreviewPayloadBuilder.
         val payloadBytes = if (imageBytes.isNotEmpty()) imageBytes else byteArrayOf(0x00)
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
-            bytes = payloadBytes, prefix = "link_preview", suffix = ".dat"
+            bytes = payloadBytes, prefix = "location_preview", suffix = ".dat"
         )
 
-        // 4. Generate tinyThumb if image exists
         val tinyThumb: EmbeddedThumb? = if (actualHasImage) {
             try {
-                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
+                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LOCATION)
                 thumb
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         } else {
@@ -69,30 +67,34 @@ object LinkPreviewPayloadBuilder {
         return PayloadBundle(
             payloads = listOf(
                 PayloadFile(
-                    key = ChatProtocol.PAYLOAD_KEY_LINKS,
+                    key = ChatProtocol.PAYLOAD_KEY_LOCATION,
                     filePath = tempPath,
                     contentType = mimeType,
                     descriptorContent = descriptorContent,
-                    previewThumbnail = tinyThumb
+                    previewThumbnail = tinyThumb,
                 )
-            ), thumbnails = emptyList(), previewThumbs = listOfNotNull(tinyThumb)
+            ),
+            thumbnails = emptyList(),
+            previewThumbs = listOfNotNull(tinyThumb),
         )
     }
 
     private fun buildDescriptorJson(
-        linkPreview: LinkPreview, hasImage: Boolean, maxDescLen: Int?
+        locationPreview: LocationPreview,
+        hasImage: Boolean,
+        maxAddrLen: Int?,
     ): String {
-        val descriptor = LinkPreviewDescriptor(
-            url = linkPreview.url,
-            hasImage = hasImage,
-            imageWidth = if (hasImage) linkPreview.imageWidth else null,
-            imageHeight = if (hasImage) linkPreview.imageHeight else null,
-            description = if (maxDescLen != null) {
-                linkPreview.description.truncateToCodePoints(maxDescLen)
+        val descriptor = LocationPreviewDescriptor(
+            lat = locationPreview.lat,
+            lon = locationPreview.lon,
+            address = if (maxAddrLen != null) {
+                locationPreview.address.truncateToCodePoints(maxAddrLen)
             } else {
-                linkPreview.description
+                locationPreview.address
             },
-            title = linkPreview.title
+            hasImage = hasImage,
+            imageWidth = if (hasImage) locationPreview.imageWidth else null,
+            imageHeight = if (hasImage) locationPreview.imageHeight else null,
         )
         return OdinSystemSerializer.serialize(listOf(descriptor))
     }
