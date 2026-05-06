@@ -105,6 +105,15 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     }
 
     private fun initShareFlow() {
+        // Kick the conversation and contact loaders. start() is idempotent — a no-op
+        // when MainActivity has already booted them via AuthConnectionCoordinator's
+        // onPostAuthenticated hook. On a true cold start whose first activity is this
+        // one (process force-killed, then a generic share), MainActivity never runs,
+        // AuthConnectionCoordinator is never instantiated as a Koin singleton, and
+        // the SharePickerScreen would otherwise spin on dataReady=false forever.
+        conversationStream.start()
+        contactService.start()
+
         // Extract shared content
         val tempDir = File(cacheDir, "share_temp")
         val sharedContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
