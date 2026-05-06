@@ -2044,10 +2044,27 @@ class ConversationService(
      *     don't resurrect groups the user has explicitly left.
      *   - Both local files match the canonical identity.
      */
-    suspend fun handleIncomingHealRequest(status: StatusMessageData, sender: OdinId) {
+    suspend fun handleIncomingHealRequest(
+        status: StatusMessageData,
+        sender: OdinId,
+        messageFile: HomebaseFile,
+    ) {
         val info = status.groupHeal ?: return
         val audit = MethodAudit("handleIncomingHealRequest")
-        audit.start("conversationId=${info.conversationUniqueId} sender=${sender.domainName} canonicalAuthor=${info.canonicalOriginalAuthor.domainName}")
+        audit.start("conversationId=${info.conversationUniqueId} sender=${sender.domainName} canonicalAuthor=${info.canonicalOriginalAuthor.domainName} messageFileId=${messageFile.fileId}")
+
+        // Per-message idempotency gate. The marker rides on this status message
+        // file's localAppData and syncs across the recipient's devices, so a
+        // re-fired BatchReceived (cursor reset, full re-sync, sibling device)
+        // can't replay the destructive cleanup against state that has since
+        // moved on (e.g. canonical author bumped the group's versionTag —
+        // isFileBroken would otherwise misread that as a divergence).
+        val currentTags = messageFile.fileMetadata.localAppData?.tags?.toSet().orEmpty()
+        if (ChatProtocol.HealAppliedTag in currentTags) {
+            audit.info("HealAppliedTag already present on status message ${messageFile.fileId} — skipping")
+            audit.finish("already-applied")
+            return
+        }
 
         // Forgery guard: only the canonical author can announce themselves.
         if (sender != info.canonicalOriginalAuthor) {
@@ -2094,6 +2111,11 @@ class ConversationService(
 
         if (!mainBroken && !adminBroken) {
             audit.info("nothing to clean up — local copies match canonical identity")
+            // Still mark applied: if we don't, a future BatchReceived carrying
+            // this same heal message could re-evaluate against a now-different
+            // local versionTag (canonical author updated the group in the
+            // interim) and misclassify the file as broken.
+            markHealApplied(messageFile, currentTags, audit)
             audit.finish("no-op")
             return
         }
@@ -2178,7 +2200,56 @@ class ConversationService(
             Logger.w(e) { "handleIncomingHealRequest: failed to write GroupHealLocalCleanup status for ${info.conversationUniqueId}" }
         }
 
+        // Mark the status message file as applied so this device — and, once
+        // the upload lands, sibling devices — short-circuit on any future
+        // BatchReceived carrying the same heal message.
+        markHealApplied(messageFile, currentTags, audit)
+
         audit.finish("cleanedUpMain=$mainBroken cleanedUpAdmin=$adminBroken")
+    }
+
+    /**
+     * Writes [ChatProtocol.HealAppliedTag] into the status message file's
+     * `localAppData.tags` (optimistic) and enqueues the server upload so the
+     * marker syncs across the recipient's devices. Failure is logged but not
+     * propagated — the heal action itself has already succeeded.
+     */
+    private suspend fun markHealApplied(
+        messageFile: HomebaseFile,
+        currentTags: Set<Uuid>,
+        audit: MethodAudit,
+    ) {
+        val messageUniqueId = messageFile.fileMetadata.appData.uniqueId
+        if (messageUniqueId == null) {
+            audit.checkWarn("markHealApplied", "status message has no uniqueId — cannot tag, idempotency falls back to isFileBroken")
+            return
+        }
+        val newTags = (currentTags + ChatProtocol.HealAppliedTag).toList()
+        audit.step(4, "updateLocalTags(+HealAppliedTag) on status message ${messageFile.fileId}")
+        runCatching {
+            optimisticWriter.updateLocalTags(
+                driveId = chatDrive,
+                uniqueId = messageUniqueId,
+                newTags = newTags,
+            )
+            outboxSync.tryEnqueue(
+                request = UpdateLocalMetadataTagsOutboxRequest(
+                    file = FileIdFileIdentifier(
+                        fileId = messageFile.fileId.toString(),
+                        targetDrive = chatTargetDrive,
+                    ),
+                    versionTag = messageFile.fileMetadata.localAppData?.versionTag?.toString(),
+                    tags = newTags.map { it.toString() },
+                ),
+                driveId = chatDrive,
+                uniqueId = Uuid.random(),
+                dependencyUniqueId = null,
+            )
+        }.onSuccess { audit.checkPass("healAppliedTagWritten") }
+            .onFailure { e ->
+                audit.threw("healAppliedTagWritten", e)
+                Logger.w(e) { "handleIncomingHealRequest: failed to write HealAppliedTag for status message ${messageFile.fileId}" }
+            }
     }
 
     private fun isFileBroken(
