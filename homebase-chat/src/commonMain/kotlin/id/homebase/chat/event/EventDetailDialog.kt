@@ -32,8 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +45,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_add_to_google_calendar
 import id.homebase.resources.chat_event_download_ics
@@ -111,9 +120,25 @@ private fun EventDetailContent(
     onDismiss: () -> Unit,
 ) {
     val actionService: ChatMessageActionService = koinInject()
+    val contactService: ContactService = koinInject()
+    val ownerSession: OwnerSessionRepository = koinInject()
     val uriHandler = LocalUriHandler.current
     val calendarLauncher = rememberCalendarLauncher()
     val scope = rememberCoroutineScope()
+
+    val contacts by contactService.contacts.collectAsStateWithLifecycle()
+    val selfOdinId = ownerSession.user.value?.odinId
+
+    // Roster fetch — fires once per messageId. Re-fetches when ownReactions
+    // changes (so tapping an RSVP refreshes the list within ~1s without
+    // closing/reopening). null = loading, empty list = no reactors yet.
+    val rosterReactions: List<EmojiReaction>? by produceState<List<EmojiReaction>?>(
+        initialValue = null,
+        key1 = messageId,
+        key2 = ownReactions.toList(),
+    ) {
+        value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
+    }
 
     val tz = remember(descriptor.timezone) {
         runCatching { TimeZone.of(descriptor.timezone) }.getOrElse { TimeZone.currentSystemDefault() }
@@ -245,7 +270,100 @@ private fun EventDetailContent(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            rosterReactions?.takeIf { it.isNotEmpty() }?.let { reactionsList ->
+                Spacer(Modifier.height(24.dp))
+                RsvpRoster(
+                    reactions = reactionsList,
+                    contacts = contacts,
+                    selfOdinId = selfOdinId,
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * Three-section roster of reactors, grouped by RSVP emoji. Sections with no
+ * reactors are omitted. Display name comes from the contact list when known,
+ * "You" when it's the current user, or the bare odin domain as fallback.
+ */
+@Composable
+private fun RsvpRoster(
+    reactions: List<EmojiReaction>,
+    contacts: List<ContactUiModel>,
+    selfOdinId: OdinId?,
+) {
+    val nameByOdinId = remember(contacts) { contacts.associateBy { it.odinId } }
+    fun resolve(odinId: OdinId): Pair<String, String> {
+        if (odinId == selfOdinId) return "You" to (selfOdinId.domainName.firstOrNull()?.uppercase() ?: "Y")
+        val contact = nameByOdinId[odinId]
+        if (contact != null) return contact.name to contact.avatarInitials
+        // Fallback when the contact isn't cached locally.
+        val display = odinId.domainName
+        val initials = display.firstOrNull()?.uppercase() ?: "?"
+        return display to initials
+    }
+
+    Column {
+        RsvpSection(
+            emoji = EventRsvp.GOING,
+            sectionLabel = stringResource(MR.string.chat_event_rsvp_yes),
+            reactors = reactions.filter { it.emoji == EventRsvp.GOING },
+            resolveDisplay = ::resolve,
+        )
+        RsvpSection(
+            emoji = EventRsvp.MAYBE,
+            sectionLabel = stringResource(MR.string.chat_event_rsvp_maybe),
+            reactors = reactions.filter { it.emoji == EventRsvp.MAYBE },
+            resolveDisplay = ::resolve,
+        )
+        RsvpSection(
+            emoji = EventRsvp.NOT_GOING,
+            sectionLabel = stringResource(MR.string.chat_event_rsvp_no),
+            reactors = reactions.filter { it.emoji == EventRsvp.NOT_GOING },
+            resolveDisplay = ::resolve,
+        )
+    }
+}
+
+@Composable
+private fun RsvpSection(
+    emoji: String,
+    sectionLabel: String,
+    reactors: List<EmojiReaction>,
+    resolveDisplay: (OdinId) -> Pair<String, String>,
+) {
+    if (reactors.isEmpty()) return
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "$emoji $sectionLabel · ${reactors.size}",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    Spacer(Modifier.height(4.dp))
+    Column {
+        reactors.forEach { reactor ->
+            val (name, initials) = resolveDisplay(reactor.odinId)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FallbackAvatar(
+                    initials = initials,
+                    options = AvatarOptions(size = 32.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
