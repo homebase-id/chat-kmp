@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalEncodingApi::class)
+@file:OptIn(ExperimentalEncodingApi::class, ExperimentalComposeUiApi::class)
 
 package id.homebase.core.ui.screens.vault
 
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -34,23 +35,21 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -71,43 +70,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.util.formatFileSize
-import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
-import id.homebase.resources.vault_detail_created
-import id.homebase.resources.vault_detail_current_page
-import id.homebase.resources.vault_detail_entry_summary
-import id.homebase.resources.vault_detail_modified
-import id.homebase.resources.vault_detail_pages
-import id.homebase.resources.vault_detail_size
-import id.homebase.resources.vault_detail_total_size
-import id.homebase.resources.vault_detail_type
 import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_delete_last_page_confirm
 import id.homebase.resources.vault_gallery_delete_page
 import id.homebase.resources.vault_gallery_delete_page_confirm
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_gallery_share_page
-import id.homebase.resources.vault_notes_cancel
-import id.homebase.resources.vault_notes_label
+import id.homebase.resources.vault_label_placeholder
 import id.homebase.resources.vault_notes_placeholder
-import id.homebase.resources.vault_notes_save
 import id.homebase.resources.vault_error_image_unavailable
 import id.homebase.resources.vault_permission_cancel
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.Instant
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -121,9 +112,9 @@ fun VaultGalleryOverlay(
     onSharePage: (payloadKey: String) -> Unit,
     onDeletePage: (payloadKey: String) -> Unit,
     onAppendPages: () -> Unit,
+    onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
-    onRenameEntry: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -135,15 +126,18 @@ fun VaultGalleryOverlay(
         pageCount = { pages.size },
     )
 
+    // Hoisted so the top bar title reflects live edits
+    var labelText by remember(file.label) { mutableStateOf(file.label ?: "") }
+
     var showUI by remember { mutableStateOf(true) }
     var pageToDelete by remember { mutableStateOf<String?>(null) }
-    val sheetPeekHeight by animateDpAsState(if (showUI) 160.dp else 0.dp)
+    val sheetPeekHeight by animateDpAsState(if (showUI) 120.dp else 0.dp)
 
     BottomSheetScaffold(
         sheetPeekHeight = sheetPeekHeight,
         sheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        sheetContainerColor = Color.Black.copy(alpha = 0.94f),
-        sheetContentColor = Color.White,
+        sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        sheetContentColor = MaterialTheme.colorScheme.onSurface,
         sheetShadowElevation = 8.dp,
         sheetDragHandle = {
             Box(
@@ -152,7 +146,7 @@ fun VaultGalleryOverlay(
             ) {
                 Box(
                     modifier = Modifier.size(width = 36.dp, height = 4.dp).background(
-                        color = Color.White.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         shape = RoundedCornerShape(2.dp),
                     ),
                 )
@@ -163,7 +157,10 @@ fun VaultGalleryOverlay(
                 file = file,
                 pages = pages,
                 pagerState = pagerState,
+                labelText = labelText,
+                onLabelTextChange = { labelText = it },
                 onAppendPages = onAppendPages,
+                onUpdateLabel = onUpdateLabel,
                 onUpdateNotes = onUpdateNotes,
             )
         },
@@ -209,7 +206,7 @@ fun VaultGalleryOverlay(
                     title = {
                         Column {
                             Text(
-                                text = file.fileName,
+                                text = labelText.ifBlank { null } ?: file.fileName,
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
@@ -256,7 +253,6 @@ fun VaultGalleryOverlay(
                         }
                         VaultFileDropdownMenu(
                             file = file,
-                            onRename = { onRenameEntry() },
                             onShare = { currentDescriptor?.let { onSharePage(it.key) } },
                             onDelete = { onDeleteEntry() },
                             iconTint = Color.White,
@@ -313,13 +309,15 @@ private fun GalleryDetailSheet(
     file: VaultFileItem,
     pages: List<PayloadDescriptor>,
     pagerState: PagerState,
+    labelText: String,
+    onLabelTextChange: (String) -> Unit,
     onAppendPages: () -> Unit,
+    onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val thumbnailListState = rememberLazyListState()
-    val scrollState = rememberScrollState()
-    var editingNotes by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
     var notesText by remember(file.notes) { mutableStateOf(file.notes ?: "") }
 
     LaunchedEffect(pagerState) {
@@ -328,14 +326,8 @@ private fun GalleryDetailSheet(
         }
     }
 
-    LaunchedEffect(editingNotes) {
-        if (editingNotes) {
-            scrollState.animateScrollTo(scrollState.maxValue)
-        }
-    }
-
     Column(
-        modifier = Modifier.fillMaxWidth().imePadding().verticalScroll(scrollState),
+        modifier = Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
     ) {
         // Thumbnail strip
         LazyRow(
@@ -357,11 +349,16 @@ private fun GalleryDetailSheet(
                     Modifier
                 }
 
+                val pageLabel = stringResource(
+                    MR.string.vault_gallery_page_counter,
+                    index + 1,
+                    pages.size,
+                )
                 Box(
                     modifier = Modifier.size(48.dp).background(
-                        color = Color.White.copy(alpha = 0.1f),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         shape = RoundedCornerShape(6.dp),
-                    ).then(borderModifier).clickable {
+                    ).then(borderModifier).clickable(onClickLabel = pageLabel) {
                         scope.launch { pagerState.animateScrollToPage(index) }
                     },
                     contentAlignment = Alignment.Center,
@@ -400,7 +397,7 @@ private fun GalleryDetailSheet(
                         Icon(
                             imageVector = fileTypeIcon(descriptor.contentType ?: ""),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -411,7 +408,7 @@ private fun GalleryDetailSheet(
                 Box(
                     modifier = Modifier.size(48.dp).border(
                         width = 1.dp,
-                        color = Color.White.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                         shape = RoundedCornerShape(6.dp),
                     ).clickable { onAppendPages() },
                     contentAlignment = Alignment.Center,
@@ -419,193 +416,108 @@ private fun GalleryDetailSheet(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.vault_gallery_add_page),
-                        tint = Color.White.copy(alpha = 0.7f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(24.dp),
                     )
                 }
             }
         }
 
-        // File name + date
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        ) {
-            Text(
-                text = file.fileName,
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = formatFileInfo(file.sizeBytes, file.createdAt),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.5f),
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Current Page
-        val currentDescriptor = pages.getOrNull(pagerState.currentPage)
-        DetailSectionLabel(stringResource(MR.string.vault_detail_current_page))
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            DetailField(
-                label = stringResource(MR.string.vault_detail_type),
-                value = currentDescriptor?.contentType ?: "—",
-            )
-            DetailField(
-                label = stringResource(MR.string.vault_detail_size),
-                value = currentDescriptor?.bytesWritten?.formatFileSize() ?: "—",
-            )
-            DetailField(
-                label = stringResource(MR.string.vault_detail_modified),
-                value = currentDescriptor?.lastModified?.let {
-                    formatShortDate(Instant.fromEpochMilliseconds(it))
-                } ?: "—",
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Entry Summary
-        DetailSectionLabel(stringResource(MR.string.vault_detail_entry_summary))
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            DetailField(
-                label = stringResource(MR.string.vault_detail_pages),
-                value = pages.size.toString(),
-            )
-            DetailField(
-                label = stringResource(MR.string.vault_detail_total_size),
-                value = file.sizeBytes.formatFileSize(),
-            )
-            DetailField(
-                label = stringResource(MR.string.vault_detail_created),
-                value = formatShortDate(Instant.fromEpochMilliseconds(file.createdAt)),
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Notes
-        DetailSectionLabel(stringResource(MR.string.vault_notes_label))
-        Spacer(modifier = Modifier.height(6.dp))
-        if (editingNotes) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = notesText,
-                    onValueChange = { notesText = it },
-                    placeholder = {
+        // Label field — always editable, saves only when value changed
+        val labelPlaceholder = stringResource(MR.string.vault_label_placeholder)
+        val originalLabel = remember(file.uniqueId) { file.label ?: "" }
+        var labelHasFocused by remember { mutableStateOf(false) }
+        BasicTextField(
+            value = labelText,
+            onValueChange = onLabelTextChange,
+            textStyle = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    if (labelText != originalLabel) {
+                        onUpdateLabel(labelText.ifBlank { null })
+                    }
+                },
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 16.dp)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        labelHasFocused = true
+                    } else if (labelHasFocused && labelText != originalLabel) {
+                        onUpdateLabel(labelText.ifBlank { null })
+                    }
+                },
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (labelText.isEmpty()) {
                         Text(
-                            stringResource(MR.string.vault_notes_placeholder),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = labelPlaceholder,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                         )
-                    },
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                        cursorColor = Color.White,
-                    ),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 5,
-                )
-                IconButton(
-                    onClick = {
-                        val notes = notesText.ifBlank { null }
-                        onUpdateNotes(notes)
-                        editingNotes = false
-                    },
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = stringResource(MR.string.vault_notes_save),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
+                    }
+                    innerTextField()
                 }
-                IconButton(
-                    onClick = {
-                        notesText = file.notes ?: ""
-                        editingNotes = false
-                    },
+            },
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Description field — always editable, saves only when value changed
+        val notesPlaceholder = stringResource(MR.string.vault_notes_placeholder)
+        val originalNotes = remember(file.uniqueId) { file.notes ?: "" }
+        var notesHasFocused by remember { mutableStateOf(false) }
+        BasicTextField(
+            value = notesText,
+            onValueChange = { notesText = it },
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            maxLines = 4,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 16.dp)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        notesHasFocused = true
+                    } else if (notesHasFocused && notesText != originalNotes) {
+                        onUpdateNotes(notesText.ifBlank { null })
+                    }
+                },
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.vault_notes_cancel),
-                        tint = Color.White.copy(alpha = 0.5f),
-                    )
+                    if (notesText.isEmpty()) {
+                        Text(
+                            text = notesPlaceholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                        )
+                    }
+                    innerTextField()
                 }
-            }
-        } else {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(8.dp),
-                ).clickable { editingNotes = true }.padding(12.dp),
-            ) {
-                Text(
-                    text = file.notes?.ifBlank { null }
-                        ?: stringResource(MR.string.vault_notes_placeholder),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (file.notes.isNullOrBlank()) {
-                        Color.White.copy(alpha = 0.3f)
-                    } else {
-                        Color.White.copy(alpha = 0.7f)
-                    },
-                    maxLines = 5,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+            },
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun DetailSectionLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        color = Color.White.copy(alpha = 0.4f),
-        letterSpacing = 0.5.sp,
-        modifier = Modifier.padding(horizontal = 16.dp),
-    )
-}
-
-@Composable
-private fun DetailField(label: String, value: String) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.5f),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-        )
     }
 }
 
@@ -678,7 +590,7 @@ private fun GalleryPageImage(
                     )
                 },
                 contentScale = ContentScale.Fit,
-                contentDescription = file.fileName,
+                contentDescription = file.label?.ifBlank { null } ?: file.fileName,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )

@@ -623,6 +623,7 @@
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>
+    <string name="vault_label_placeholder">Add label</string>
     <string name="vault_notes_save">Save</string>
     <string name="vault_notes_cancel">Cancel</string>
 
@@ -652,6 +653,7 @@
     <string name="vault_error_append_pages">Failed to add pages</string>
     <string name="vault_error_delete_page">Failed to delete page</string>
     <string name="vault_error_save_notes">Failed to save notes</string>
+    <string name="vault_error_update_label">Failed to update label for %1$s</string>
     <string name="vault_error_download_page">Failed to download page for sharing</string>
     <string name="vault_error_outbox_upload">Upload failed</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>

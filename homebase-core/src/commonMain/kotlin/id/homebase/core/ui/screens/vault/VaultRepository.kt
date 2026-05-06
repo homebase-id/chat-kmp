@@ -262,49 +262,87 @@ class VaultRepository(
         }
     }
 
-    // TODO: Add optimistic update with rollback (snapshot → writeUpdate → enqueue → rollback on failure)
+    private suspend fun enqueueFileContentUpdate(
+        uniqueId: Uuid,
+        fileContent: VaultFileContent,
+        groupId: Uuid?,
+        versionTag: Uuid?,
+        keyHeader: KeyHeader,
+    ): Boolean {
+        val content = OdinSystemSerializer.serialize(fileContent)
+        val newKeyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
+        )
+        val metadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = uniqueId,
+                content = content,
+                fileType = VAULT_FILE_TYPE,
+                groupId = groupId,
+            ),
+            versionTag = versionTag,
+        ).encryptContent(newKeyHeader)
+
+        return outboxSync.tryEnqueue(
+            request = UpdateFileByUniqueIdRequest(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                keyHeader = newKeyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = ByteArrayUtil.getRndByteArray(16),
+                    locale = UpdateLocale.Local,
+                    recipients = emptyList(),
+                    manifest = UpdateManifest.build(),
+                ),
+                metadata = metadata,
+            ),
+        )
+    }
+
     suspend fun renameFile(
         uniqueId: Uuid,
         newName: String,
+        existingLabel: String?,
         existingNotes: String?,
+        groupId: Uuid?,
         versionTag: Uuid?,
         keyHeader: KeyHeader,
     ): Boolean {
         return try {
-            val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = newName, notes = existingNotes)
-            )
-
-            val newKeyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
-            )
-
-            val metadata = UploadFileMetadata(
-                allowDistribution = false,
-                isEncrypted = true,
-                appData = UploadAppFileMetaData(
-                    uniqueId = uniqueId,
-                    content = content,
-                ),
+            enqueueFileContentUpdate(
+                uniqueId = uniqueId,
+                fileContent = VaultFileContent(name = newName, label = existingLabel, notes = existingNotes),
+                groupId = groupId,
                 versionTag = versionTag,
-            ).encryptContent(newKeyHeader)
-
-            outboxSync.tryEnqueue(
-                request = UpdateFileByUniqueIdRequest(
-                    driveId = driveId,
-                    uniqueId = uniqueId,
-                    keyHeader = newKeyHeader,
-                    instructions = FileUpdateInstructionSet(
-                        transferIv = ByteArrayUtil.getRndByteArray(16),
-                        locale = UpdateLocale.Local,
-                        recipients = emptyList(),
-                        manifest = UpdateManifest.build(),
-                    ),
-                    metadata = metadata,
-                ),
+                keyHeader = keyHeader,
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue rename: $uniqueId -> $newName" }
+            false
+        }
+    }
+
+    suspend fun updateLabel(
+        uniqueId: Uuid,
+        existingName: String,
+        newLabel: String?,
+        existingNotes: String?,
+        groupId: Uuid?,
+        versionTag: Uuid?,
+        keyHeader: KeyHeader,
+    ): Boolean {
+        return try {
+            enqueueFileContentUpdate(
+                uniqueId = uniqueId,
+                fileContent = VaultFileContent(name = existingName, label = newLabel, notes = existingNotes),
+                groupId = groupId,
+                versionTag = versionTag,
+                keyHeader = keyHeader,
+            )
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to enqueue label update: $uniqueId" }
             false
         }
     }
@@ -350,6 +388,7 @@ class VaultRepository(
                 appData = UploadAppFileMetaData(
                     uniqueId = sectionUniqueId,
                     content = content,
+                    fileType = VAULT_SECTION_TYPE,
                 ),
                 versionTag = versionTag,
             ).encryptContent(newKeyHeader)
@@ -505,37 +544,12 @@ class VaultRepository(
         notes: String?,
     ): Boolean {
         return try {
-            val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = file.fileName, notes = notes)
-            )
-
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = file.keyHeader.aesKey
-            )
-            val metadata = UploadFileMetadata(
-                allowDistribution = false,
-                isEncrypted = true,
-                appData = UploadAppFileMetaData(
-                    uniqueId = file.uniqueId,
-                    content = content,
-                ),
+            enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(name = file.fileName, label = file.label, notes = notes),
+                groupId = file.groupId,
                 versionTag = file.versionTag,
-            ).encryptContent(keyHeader)
-
-            outboxSync.tryEnqueue(
-                request = UpdateFileByUniqueIdRequest(
-                    driveId = file.driveId,
-                    uniqueId = file.uniqueId,
-                    keyHeader = keyHeader,
-                    instructions = FileUpdateInstructionSet(
-                        transferIv = ByteArrayUtil.getRndByteArray(16),
-                        locale = UpdateLocale.Local,
-                        recipients = emptyList(),
-                        manifest = UpdateManifest.build(),
-                    ),
-                    metadata = metadata,
-                ),
+                keyHeader = file.keyHeader,
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue notes update for ${file.uniqueId}" }

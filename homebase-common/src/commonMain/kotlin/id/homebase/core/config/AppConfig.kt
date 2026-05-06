@@ -229,6 +229,6 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = vaultTargetDriveAccessRequest,
         permissions = emptyList(),
-        returnUrl = AppConfig.RETURN_URL
+        returnUrl = ::returnUrl
     )
 }

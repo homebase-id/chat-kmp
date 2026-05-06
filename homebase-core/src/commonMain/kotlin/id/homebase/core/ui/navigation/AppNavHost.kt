@@ -140,7 +140,9 @@ fun AppNavHost(
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute =
-        currentDestination.isTopLevelRoute() || topLevelRoutes.any { topLevelRoute ->
+        currentDestination.isTopLevelRoute() ||
+        currentDestination?.hasRoute(Route.VaultOnboarding::class) == true ||
+        topLevelRoutes.any { topLevelRoute ->
             currentDestination?.hasRoute(topLevelRoute.route::class) == true
         }
 
@@ -149,8 +151,9 @@ fun AppNavHost(
     val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
-    val isOnVaultScreen = currentDestination?.hasRoute(Route.Vault::class) == true
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isOnVaultScreen
+    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
+    val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -230,7 +233,11 @@ fun AppNavHost(
                 restoreState = true
             }
         } else {
-            navController.navigate(Route.VaultOnboarding)
+            navController.navigate(Route.VaultOnboarding) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
         }
     }
 
@@ -319,7 +326,7 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                if (showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isOnVaultScreen) {
+                if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
                     NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
@@ -749,7 +756,6 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 VaultOnboardingScreen(
                                     viewModel = vaultViewModel,
-                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -759,7 +765,6 @@ fun AppNavHost(
                                 VaultScreen(
                                     vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                     viewModel = vaultViewModel,
-                                    onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
                                 )
                             }

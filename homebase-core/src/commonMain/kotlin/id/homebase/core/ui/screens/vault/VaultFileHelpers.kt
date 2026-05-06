@@ -52,12 +52,11 @@ internal fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
 }
 
 /**
- * Three-dot dropdown menu for vault file actions (rename, share, delete).
+ * Three-dot dropdown menu for vault file actions (share, delete).
  */
 @Composable
 internal fun VaultFileDropdownMenu(
     file: VaultFileItem,
-    onRename: (VaultFileItem) -> Unit,
     onShare: (VaultFileItem) -> Unit,
     onDelete: (VaultFileItem) -> Unit,
     iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -76,13 +75,6 @@ internal fun VaultFileDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.vault_rename_action)) },
-                onClick = {
-                    expanded = false
-                    onRename(file)
-                },
-            )
             DropdownMenuItem(
                 text = { Text(stringResource(MR.string.vault_share)) },
                 onClick = {

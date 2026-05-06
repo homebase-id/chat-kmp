@@ -15,6 +15,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -25,7 +26,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Unit tests for [toVaultFileItem] mapper and [guessContentType] utility.
+ * Unit tests for [toVaultFileItem] mapper and [detectContentTypeFromExtensionOrHint] utility.
  */
 class VaultFileItemTest {
 
@@ -122,7 +123,7 @@ class VaultFileItemTest {
         assertEquals("image/jpeg", item.contentType)
         assertEquals(2048L, item.sizeBytes)
         assertEquals(1_700_000_000_000L, item.createdAt)
-        assertEquals("img_key", item.payloadKey)
+        assertEquals("img_key", item.payloadDescriptors.first().key)
         assertTrue(item.isEncrypted)
         assertEquals(versionTag, item.versionTag)
         assertNull(item.previewThumbnail)
@@ -152,7 +153,7 @@ class VaultFileItemTest {
         assertEquals("report.pdf", item.fileName)
         assertEquals("application/pdf", item.contentType)
         assertEquals(500_000L, item.sizeBytes)
-        assertEquals("pdf_key", item.payloadKey)
+        assertEquals("pdf_key", item.payloadDescriptors.first().key)
         assertTrue(item.isPdf)
         assertFalse(item.isImage)
     }
@@ -171,9 +172,9 @@ class VaultFileItemTest {
         val item = file.toVaultFileItem()
 
         assertNotNull(item)
-        assertEquals("first", item.payloadKey)
+        assertEquals("first", item.payloadDescriptors.first().key)
         assertEquals("image/png", item.contentType)
-        assertEquals(100L, item.sizeBytes)
+        assertEquals(600L, item.sizeBytes)
     }
 
     @Test
@@ -233,6 +234,150 @@ class VaultFileItemTest {
     }
 
     // ---------------------------------------------------------------
+    // toVaultFileItem() — label field
+    // ---------------------------------------------------------------
+
+    @Test
+    fun toVaultFileItem_mapsLabelWhenPresent() {
+        val file = buildHomebaseFile(
+            contentJson = OdinSystemSerializer.serialize(
+                VaultFileContent(name = "photo.jpg", label = "Shelly")
+            ),
+        )
+
+        val item = file.toVaultFileItem()
+
+        assertNotNull(item)
+        assertEquals("Shelly", item.label)
+        assertEquals("photo.jpg", item.fileName)
+    }
+
+    @Test
+    fun toVaultFileItem_labelIsNullByDefault() {
+        val file = buildHomebaseFile(
+            contentJson = OdinSystemSerializer.serialize(
+                VaultFileContent(name = "photo.jpg")
+            ),
+        )
+
+        val item = file.toVaultFileItem()
+
+        assertNotNull(item)
+        assertNull(item.label)
+    }
+
+    @Test
+    fun toVaultFileItem_mapsLabelAndNotesTogether() {
+        val file = buildHomebaseFile(
+            contentJson = OdinSystemSerializer.serialize(
+                VaultFileContent(name = "passport.jpg", label = "Gabriel", notes = "Expires 2028")
+            ),
+        )
+
+        val item = file.toVaultFileItem()
+
+        assertNotNull(item)
+        assertEquals("Gabriel", item.label)
+        assertEquals("Expires 2028", item.notes)
+        assertEquals("passport.jpg", item.fileName)
+    }
+
+    @Test
+    fun toVaultFileItem_handlesMultiplePayloadDescriptors() {
+        val file = buildHomebaseFile(
+            payloads = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", bytesWritten = 500L),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", bytesWritten = 600L),
+                PayloadDescriptor(key = "vlt_pg_02", contentType = "image/png", bytesWritten = 700L),
+            ),
+        )
+
+        val item = file.toVaultFileItem()
+
+        assertNotNull(item)
+        assertEquals(3, item.pageCount)
+        assertTrue(item.hasMultiplePages)
+        assertEquals(1800L, item.sizeBytes)
+        assertEquals(3, item.payloadDescriptors.size)
+    }
+
+    // ---------------------------------------------------------------
+    // VaultFileContent serialization — field preservation
+    // ---------------------------------------------------------------
+
+    @Test
+    fun vaultFileContent_roundTrip_preservesAllFields() {
+        val original = VaultFileContent(name = "photo.jpg", label = "Shelly", notes = "Passport")
+        val json = OdinSystemSerializer.serialize(original)
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(json)
+        assertEquals("photo.jpg", restored.name)
+        assertEquals("Shelly", restored.label)
+        assertEquals("Passport", restored.notes)
+    }
+
+    @Test
+    fun vaultFileContent_roundTrip_nullLabelPreserved() {
+        val original = VaultFileContent(name = "doc.pdf", label = null, notes = "Important")
+        val json = OdinSystemSerializer.serialize(original)
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(json)
+        assertEquals("doc.pdf", restored.name)
+        assertNull(restored.label)
+        assertEquals("Important", restored.notes)
+    }
+
+    @Test
+    fun vaultFileContent_backwardCompatibility_missingLabelDefaultsToNull() {
+        val legacyJson = """{"name":"old_photo.jpg","notes":"some notes"}"""
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(legacyJson)
+        assertEquals("old_photo.jpg", restored.name)
+        assertNull(restored.label)
+        assertEquals("some notes", restored.notes)
+    }
+
+    @Test
+    fun vaultFileContent_backwardCompatibility_nameOnly() {
+        val legacyJson = """{"name":"minimal.jpg"}"""
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(legacyJson)
+        assertEquals("minimal.jpg", restored.name)
+        assertNull(restored.label)
+        assertNull(restored.notes)
+    }
+
+    @Test
+    fun vaultFileContent_labelUpdatePreservesNameAndNotes() {
+        val before = VaultFileContent(name = "photo.jpg", label = null, notes = "Expires 2028")
+        val after = before.copy(label = "Gabriel")
+        val json = OdinSystemSerializer.serialize(after)
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(json)
+        assertEquals("photo.jpg", restored.name)
+        assertEquals("Gabriel", restored.label)
+        assertEquals("Expires 2028", restored.notes)
+    }
+
+    @Test
+    fun vaultFileContent_notesUpdatePreservesNameAndLabel() {
+        val before = VaultFileContent(name = "photo.jpg", label = "Shelly", notes = null)
+        val after = before.copy(notes = "Updated description")
+        val json = OdinSystemSerializer.serialize(after)
+        val restored = OdinSystemSerializer.deserialize<VaultFileContent>(json)
+        assertEquals("photo.jpg", restored.name)
+        assertEquals("Shelly", restored.label)
+        assertEquals("Updated description", restored.notes)
+    }
+
+    @Test
+    fun toVaultFileItem_backwardCompatibility_legacyContentWithoutLabel() {
+        val file = buildHomebaseFile(
+            contentJson = """{"name":"legacy_photo.jpg","notes":"old note"}""",
+        )
+        val item = file.toVaultFileItem()
+        assertNotNull(item)
+        assertEquals("legacy_photo.jpg", item.fileName)
+        assertNull(item.label)
+        assertEquals("old note", item.notes)
+    }
+
+    // ---------------------------------------------------------------
     // toVaultFileItem() — null/invalid cases
     // ---------------------------------------------------------------
 
@@ -288,160 +433,160 @@ class VaultFileItemTest {
     }
 
     // ---------------------------------------------------------------
-    // guessContentType() — common extensions
+    // detectContentTypeFromExtensionOrHint() — common extensions
     // ---------------------------------------------------------------
 
     @Test
     fun guessContentType_jpg() {
-        assertEquals("image/jpeg", guessContentType("photo.jpg"))
+        assertEquals("image/jpeg", detectContentTypeFromExtensionOrHint("photo.jpg"))
     }
 
     @Test
     fun guessContentType_jpeg() {
-        assertEquals("image/jpeg", guessContentType("photo.jpeg"))
+        assertEquals("image/jpeg", detectContentTypeFromExtensionOrHint("photo.jpeg"))
     }
 
     @Test
     fun guessContentType_png() {
-        assertEquals("image/png", guessContentType("image.png"))
+        assertEquals("image/png", detectContentTypeFromExtensionOrHint("image.png"))
     }
 
     @Test
     fun guessContentType_gif() {
-        assertEquals("image/gif", guessContentType("anim.gif"))
+        assertEquals("image/gif", detectContentTypeFromExtensionOrHint("anim.gif"))
     }
 
     @Test
     fun guessContentType_webp() {
-        assertEquals("image/webp", guessContentType("pic.webp"))
+        assertEquals("image/webp", detectContentTypeFromExtensionOrHint("pic.webp"))
     }
 
     @Test
     fun guessContentType_svg() {
-        assertEquals("image/svg+xml", guessContentType("icon.svg"))
+        assertEquals("image/svg+xml", detectContentTypeFromExtensionOrHint("icon.svg"))
     }
 
     @Test
     fun guessContentType_heic() {
-        assertEquals("image/heic", guessContentType("live.heic"))
+        assertEquals("image/heic", detectContentTypeFromExtensionOrHint("live.heic"))
     }
 
     @Test
     fun guessContentType_mp4() {
-        assertEquals("video/mp4", guessContentType("clip.mp4"))
+        assertEquals("video/mp4", detectContentTypeFromExtensionOrHint("clip.mp4"))
     }
 
     @Test
     fun guessContentType_mov() {
-        assertEquals("video/quicktime", guessContentType("movie.mov"))
+        assertEquals("video/quicktime", detectContentTypeFromExtensionOrHint("movie.mov"))
     }
 
     @Test
     fun guessContentType_mp3() {
-        assertEquals("audio/mpeg", guessContentType("song.mp3"))
+        assertEquals("audio/mpeg", detectContentTypeFromExtensionOrHint("song.mp3"))
     }
 
     @Test
     fun guessContentType_pdf() {
-        assertEquals("application/pdf", guessContentType("doc.pdf"))
+        assertEquals("application/pdf", detectContentTypeFromExtensionOrHint("doc.pdf"))
     }
 
     @Test
     fun guessContentType_zip() {
-        assertEquals("application/zip", guessContentType("archive.zip"))
+        assertEquals("application/zip", detectContentTypeFromExtensionOrHint("archive.zip"))
     }
 
     @Test
     fun guessContentType_txt() {
-        assertEquals("text/plain", guessContentType("readme.txt"))
+        assertEquals("text/plain", detectContentTypeFromExtensionOrHint("readme.txt"))
     }
 
     @Test
     fun guessContentType_json() {
-        assertEquals("application/json", guessContentType("data.json"))
+        assertEquals("application/json", detectContentTypeFromExtensionOrHint("data.json"))
     }
 
     @Test
     fun guessContentType_csv() {
-        assertEquals("text/csv", guessContentType("sheet.csv"))
+        assertEquals("text/csv", detectContentTypeFromExtensionOrHint("sheet.csv"))
     }
 
     @Test
     fun guessContentType_html() {
-        assertEquals("text/html", guessContentType("page.html"))
+        assertEquals("text/html", detectContentTypeFromExtensionOrHint("page.html"))
     }
 
     @Test
     fun guessContentType_htm() {
-        assertEquals("text/html", guessContentType("page.htm"))
+        assertEquals("text/html", detectContentTypeFromExtensionOrHint("page.htm"))
     }
 
     // ---------------------------------------------------------------
-    // guessContentType() — case insensitivity
+    // detectContentTypeFromExtensionOrHint() — case insensitivity
     // ---------------------------------------------------------------
 
     @Test
     fun guessContentType_caseInsensitive_JPG() {
-        assertEquals("image/jpeg", guessContentType("PHOTO.JPG"))
+        assertEquals("image/jpeg", detectContentTypeFromExtensionOrHint("PHOTO.JPG"))
     }
 
     @Test
     fun guessContentType_caseInsensitive_PDF() {
-        assertEquals("application/pdf", guessContentType("Report.PDF"))
+        assertEquals("application/pdf", detectContentTypeFromExtensionOrHint("Report.PDF"))
     }
 
     @Test
     fun guessContentType_caseInsensitive_PNG() {
-        assertEquals("image/png", guessContentType("Screenshot.PNG"))
+        assertEquals("image/png", detectContentTypeFromExtensionOrHint("Screenshot.PNG"))
     }
 
     @Test
     fun guessContentType_caseInsensitive_mixedCase() {
-        assertEquals("video/mp4", guessContentType("video.Mp4"))
+        assertEquals("video/mp4", detectContentTypeFromExtensionOrHint("video.Mp4"))
     }
 
     // ---------------------------------------------------------------
-    // guessContentType() — edge cases
+    // detectContentTypeFromExtensionOrHint() — edge cases
     // ---------------------------------------------------------------
 
     @Test
     fun guessContentType_unknownExtension() {
-        assertEquals("application/octet-stream", guessContentType("data.xyz"))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint("data.xyz"))
     }
 
     @Test
     fun guessContentType_noExtension() {
-        assertEquals("application/octet-stream", guessContentType("Makefile"))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint("Makefile"))
     }
 
     @Test
     fun guessContentType_multipleDots() {
-        assertEquals("application/pdf", guessContentType("file.backup.pdf"))
+        assertEquals("application/pdf", detectContentTypeFromExtensionOrHint("file.backup.pdf"))
     }
 
     @Test
     fun guessContentType_multipleDots_unknownFinal() {
-        assertEquals("application/octet-stream", guessContentType("archive.tar.bak"))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint("archive.tar.bak"))
     }
 
     @Test
     fun guessContentType_dotOnly() {
-        assertEquals("application/octet-stream", guessContentType("."))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint("."))
     }
 
     @Test
     fun guessContentType_emptyString() {
-        assertEquals("application/octet-stream", guessContentType(""))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint(""))
     }
 
     @Test
     fun guessContentType_hiddenFileWithExtension() {
-        assertEquals("image/jpeg", guessContentType(".hidden.jpg"))
+        assertEquals("image/jpeg", detectContentTypeFromExtensionOrHint(".hidden.jpg"))
     }
 
     @Test
     fun guessContentType_trailingDot() {
         // "file." -> extension is "" -> octet-stream
-        assertEquals("application/octet-stream", guessContentType("file."))
+        assertEquals("application/octet-stream", detectContentTypeFromExtensionOrHint("file."))
     }
 }

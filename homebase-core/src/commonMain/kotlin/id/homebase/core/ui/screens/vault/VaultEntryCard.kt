@@ -58,12 +58,12 @@ fun VaultEntryCard(
 ) {
     val cardShape = RoundedCornerShape(CARD_CORNER)
     val topCornersShape = RoundedCornerShape(topStart = CARD_CORNER, topEnd = CARD_CORNER)
-    val description = "${file.fileName}, $sectionTitle"
+    val description = file.label?.ifBlank { null } ?: file.fileName
 
     Column(
         modifier = modifier
             .width(CARD_WIDTH)
-            .height(CARD_HEIGHT)
+            .height(if (!file.label.isNullOrBlank()) CARD_HEIGHT else THUMBNAIL_HEIGHT)
             .clip(cardShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(
@@ -117,7 +117,7 @@ fun VaultEntryCard(
                 if (file.isImage && localImage != null) {
                     AsyncImage(
                         model = localImage.localFilePath,
-                        contentDescription = file.fileName,
+                        contentDescription = description,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
@@ -150,7 +150,7 @@ fun VaultEntryCard(
                             ),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
-                            contentDescription = file.fileName,
+                            contentDescription = description,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
@@ -236,21 +236,22 @@ fun VaultEntryCard(
             }
         }
 
-        // Label area — bottom 32dp
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(LABEL_HEIGHT)
-                .padding(horizontal = 6.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(
-                text = file.fileName,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+        if (!file.label.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(LABEL_HEIGHT)
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = file.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ const val VAULT_SECTION_TYPE = 5573
 @Serializable
 data class VaultFileContent(
     val name: String,
+    val label: String? = null,
     val notes: String? = null,
 )
 
@@ -41,6 +42,7 @@ data class VaultFileItem(
     val uniqueId: Uuid,
     val driveId: Uuid,
     val fileName: String,
+    val label: String? = null,
     val contentType: String,
     val sizeBytes: Long,
     val createdAt: Long,
@@ -101,6 +103,7 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
         uniqueId = fileMetadata.appData.uniqueId ?: fileId,
         driveId = driveId,
         fileName = vaultFileContent.name,
+        label = vaultFileContent.label,
         contentType = payloads.first().contentType ?: "",
         sizeBytes = payloads.sumOf { it.bytesWritten ?: 0L },
         createdAt = fileMetadata.created.milliseconds,

@@ -140,12 +140,32 @@ class VaultViewModel(
                 Logger.i(tag = TAG) { "createDefaultSections: creating '$title' ($id)" }
                 vaultRepository.createSection(id, VaultSectionContent(title, index))
             } else {
-                Logger.d(TAG) { "createDefaultSections: '$title' ($id) already exists — skipping" }
+                Logger.d(tag = TAG) { "createDefaultSections: '$title' ($id) already exists — skipping" }
             }
         }
     }
 
     fun onAction(action: VaultUiAction) {
+        when (action) {
+            is VaultUiAction.EntryClicked,
+            is VaultUiAction.AddSection,
+            is VaultUiAction.RenameSection,
+            is VaultUiAction.DeleteSection,
+            is VaultUiAction.MoveSectionUp,
+            is VaultUiAction.MoveSectionDown,
+            is VaultUiAction.AddEntryToSection,
+            is VaultUiAction.AppendPages,
+            is VaultUiAction.DeletePage,
+            is VaultUiAction.UpdateNotes,
+            is VaultUiAction.UpdateLabel,
+            is VaultUiAction.SharePage,
+            is VaultUiAction.ShareFile,
+            is VaultUiAction.RenameFile,
+            is VaultUiAction.DeleteFile,
+            is VaultUiAction.CloseOverlay -> vaultPreferences.recordUserAction()
+            else -> {}
+        }
+
         when (action) {
             VaultUiAction.SetupClicked -> {
                 _uiState.update { it.copy(isCheckingPermissions = true) }
@@ -172,6 +192,7 @@ class VaultViewModel(
             is VaultUiAction.AppendPages -> handleAppendPages(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
+            is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
             is VaultUiAction.SharePage -> handleSharePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
             is VaultUiAction.ShareFile -> handleShareFile(action)
@@ -210,7 +231,7 @@ class VaultViewModel(
                     try {
                         driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
                     } catch (e: Exception) {
-                        Logger.d(TAG) { "syncDrive on empty load: ${e.message}" }
+                        Logger.d(tag = TAG) { "syncDrive on empty load: ${e.message}" }
                     }
                 }
                 _uiState.update { it.copy(sections = sectionModels, isLoading = false) }
@@ -409,7 +430,9 @@ class VaultViewModel(
             val success = vaultRepository.renameFile(
                 uniqueId = file.uniqueId,
                 newName = action.newName,
+                existingLabel = file.label,
                 existingNotes = file.notes,
+                groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
             )
@@ -459,6 +482,23 @@ class VaultViewModel(
         viewModelScope.launch {
             val success = vaultRepository.updateNotes(action.file, action.notes)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.SaveNotesFailed))
+        }
+    }
+
+    private fun handleUpdateLabel(action: VaultUiAction.UpdateLabel) {
+        viewModelScope.launch {
+            val success = vaultRepository.updateLabel(
+                uniqueId = action.file.uniqueId,
+                existingName = action.file.fileName,
+                newLabel = action.label?.ifBlank { null },
+                existingNotes = action.file.notes,
+                groupId = action.file.groupId,
+                versionTag = action.file.versionTag,
+                keyHeader = action.file.keyHeader,
+            )
+            if (!success) {
+                _events.tryEmit(VaultUiEvent.Error(VaultError.UpdateLabelFailed(action.file.fileName)))
+            }
         }
     }
 

@@ -48,6 +48,11 @@ sealed interface VaultUiAction {
         val notes: String?,
     ) : VaultUiAction
 
+    data class UpdateLabel(
+        val file: VaultFileItem,
+        val label: String?,
+    ) : VaultUiAction
+
     data class EntryClicked(val file: VaultFileItem) : VaultUiAction
     data class ShareFile(val file: VaultFileItem) : VaultUiAction
     data class SharePage(val file: VaultFileItem, val payloadKey: String) : VaultUiAction
@@ -79,6 +84,7 @@ sealed interface VaultError {
     data object AppendPagesFailed : VaultError
     data object DeletePageFailed : VaultError
     data object SaveNotesFailed : VaultError
+    data class UpdateLabelFailed(val fileName: String) : VaultError
     data object DownloadPageFailed : VaultError
     data object OutboxUploadFailed : VaultError
 }

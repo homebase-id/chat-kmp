@@ -20,19 +20,26 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     // In-memory biometric session tracking — not persisted, resets on app restart
     private var lastAuthTimeMs: Long = 0L
     private var lastBackgroundTimeMs: Long = 0L
+    private var lastActionTimeMs: Long = 0L
 
     fun recordAuthSuccess() {
-        lastAuthTimeMs = Clock.System.now().toEpochMilliseconds()
+        val now = Clock.System.now().toEpochMilliseconds()
+        lastAuthTimeMs = now
+        lastActionTimeMs = now
     }
 
     fun recordAppBackgrounded() {
         lastBackgroundTimeMs = Clock.System.now().toEpochMilliseconds()
     }
 
+    fun recordUserAction() {
+        lastActionTimeMs = Clock.System.now().toEpochMilliseconds()
+    }
+
     fun isAuthSessionValid(): Boolean {
         if (lastAuthTimeMs == 0L) return false
         val now = Clock.System.now().toEpochMilliseconds()
-        if (now - lastAuthTimeMs > AUTH_SESSION_DURATION_MS) return false
+        if (now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) return false
         if (lastBackgroundTimeMs > lastAuthTimeMs &&
             now - lastBackgroundTimeMs > BACKGROUND_THRESHOLD_MS
         ) return false
@@ -64,7 +71,7 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0102")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0103")
 
-        private const val AUTH_SESSION_DURATION_MS = 2 * 60 * 1000L  // 2 minutes
+        private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
         private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds
     }
 }

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,7 +61,6 @@ import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
-import id.homebase.resources.menu_back
 import id.homebase.resources.vault_biometric_prompt_subtitle
 import id.homebase.resources.vault_biometric_prompt_title
 import id.homebase.resources.vault_error_append_pages
@@ -76,6 +74,7 @@ import id.homebase.resources.vault_error_outbox_upload
 import id.homebase.resources.vault_error_rename_file
 import id.homebase.resources.vault_error_rename_section
 import id.homebase.resources.vault_error_save_notes
+import id.homebase.resources.vault_error_update_label
 import id.homebase.resources.vault_error_upload
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_permission_cancel
@@ -99,7 +98,6 @@ import org.koin.compose.koinInject
 fun VaultScreen(
     vaultExtendPermissionViewModel: ExtendPermissionViewModel,
     viewModel: VaultViewModel,
-    onNavigateBack: () -> Unit,
     onNavigateToSettings: () -> Unit,
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
@@ -192,7 +190,6 @@ fun VaultScreen(
     var activeSectionForEntry by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var sectionToDelete by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var sectionToRename by remember { mutableStateOf<VaultSectionUiModel?>(null) }
-    var fileToRename by remember { mutableStateOf<VaultFileItem?>(null) }
 
     // Camera picker
     val cameraLauncher = rememberCameraManager { file ->
@@ -235,14 +232,6 @@ fun VaultScreen(
             if (uiState.fullScreenOverlay == null) {
                 TopAppBar(
                     title = { Text(stringResource(MR.string.vault_label)) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back),
-                            )
-                        }
-                    },
                     actions = {
                         IconButton(onClick = onNavigateToSettings) {
                             Icon(
@@ -346,13 +335,15 @@ fun VaultScreen(
                             fileForAppend = overlay.file
                             appendPicker.launch()
                         },
+                        onUpdateLabel = { label ->
+                            viewModel.onAction(VaultUiAction.UpdateLabel(overlay.file, label))
+                        },
                         onUpdateNotes = { notes ->
                             viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
                         },
                         onDeleteEntry = {
                             viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
                         },
-                        onRenameEntry = { fileToRename = overlay.file },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
                     )
@@ -475,42 +466,6 @@ fun VaultScreen(
         )
     }
 
-    // File rename dialog
-    fileToRename?.let { file ->
-        var nameField by remember(file) {
-            mutableStateOf(TextFieldValue(file.fileName, TextRange(0, file.fileName.length)))
-        }
-        val fileFocus = remember { FocusRequester() }
-        AlertDialog(
-            onDismissRequest = { fileToRename = null },
-            title = { Text(stringResource(MR.string.vault_rename_title)) },
-            text = {
-                OutlinedTextField(
-                    value = nameField,
-                    onValueChange = { nameField = it },
-                    singleLine = true,
-                    modifier = Modifier.focusRequester(fileFocus),
-                )
-                LaunchedEffect(Unit) { fileFocus.requestFocus() }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.onAction(VaultUiAction.RenameFile(file, nameField.text))
-                        fileToRename = null
-                    },
-                ) {
-                    Text(stringResource(MR.string.vault_rename_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { fileToRename = null }) {
-                    Text(stringResource(MR.string.vault_permission_cancel))
-                }
-            },
-        )
-    }
-
 }
 
 private enum class VaultPickerAction { Camera, Gallery }
@@ -527,6 +482,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     VaultError.AppendPagesFailed -> stringResource(MR.string.vault_error_append_pages)
     VaultError.DeletePageFailed -> stringResource(MR.string.vault_error_delete_page)
     VaultError.SaveNotesFailed -> stringResource(MR.string.vault_error_save_notes)
+    is VaultError.UpdateLabelFailed -> stringResource(MR.string.vault_error_update_label, error.fileName)
     VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
 }
