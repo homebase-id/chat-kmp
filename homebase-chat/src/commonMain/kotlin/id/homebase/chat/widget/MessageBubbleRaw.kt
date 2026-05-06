@@ -134,7 +134,10 @@ fun MessageBubbleRaw(
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                onClick = null, // wired in slice 3 (detail screen)
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
             )
             return
         }
