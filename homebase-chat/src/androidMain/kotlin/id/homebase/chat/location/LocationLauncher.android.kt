@@ -4,6 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,17 +18,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import co.touchlab.kermit.Logger
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LocationLauncher.android"
 
 /**
- * Fused Location can spin for 30+ seconds when no provider has a cached fix (emulator without
- * a mock location, indoors with no signal, etc.) before resolving with `null`. Cap the wait so
- * the user gets feedback quickly.
+ * Cap on the active "wait for a single live update" request when no cached fix is available.
+ * Without a cap, indoor / no-signal devices spin until the OS gives up (often >30s).
  */
 private const val FETCH_TIMEOUT_MS = 15_000L
 
@@ -77,13 +77,28 @@ private fun hasLocationPermission(context: Context): Boolean {
         ) == PackageManager.PERMISSION_GRANTED
 }
 
-@SuppressLint("MissingPermission") // Guarded by hasLocationPermission() at every call site.
+/**
+ * Stock Android [LocationManager] approach (mirrors Signal's `LocationRetriever`). We tried
+ * `FusedLocationProviderClient` first; it returned `null` for both `lastLocation` and
+ * `getCurrentLocation` on real devices and emulators alike, even when a mock GPS fix had been
+ * applied. LocationManager reads from the platform's location cache directly, has no Play
+ * Services dependency, and handles the emulator's mock-provider correctly.
+ *
+ * Strategy:
+ *  1. Try `getLastKnownLocation` on GPS_PROVIDER, then NETWORK_PROVIDER — cheap, no battery
+ *     drain. On real devices this almost always returns a fix because Maps/Weather/etc. have
+ *     populated the cache.
+ *  2. If both are null, register a one-shot [LocationListener] via `requestLocationUpdates`
+ *     and remove ourselves on the first callback (or after [FETCH_TIMEOUT_MS]).
+ *
+ * Permission is guarded by [hasLocationPermission] at every call site.
+ */
+@SuppressLint("MissingPermission")
 private fun fetchLocation(
     context: Context,
     onResult: (LocationResult) -> Unit,
 ) {
-    val client = LocationServices.getFusedLocationProviderClient(context)
-    val cts = CancellationTokenSource()
+    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val delivered = AtomicBoolean(false)
     val handler = Handler(Looper.getMainLooper())
 
@@ -94,7 +109,7 @@ private fun fetchLocation(
         }
     }
 
-    fun deliverFix(location: android.location.Location, source: String) {
+    fun deliverFix(location: Location, source: String) {
         Logger.d(tag = TAG) {
             "$source success lat=${location.latitude} lon=${location.longitude}"
         }
@@ -109,46 +124,71 @@ private fun fetchLocation(
         )
     }
 
-    fun activeFetch() {
-        val timeoutRunnable = Runnable {
-            Logger.w(tag = TAG) { "getCurrentLocation timed out after ${FETCH_TIMEOUT_MS}ms — cancelling" }
-            cts.cancel()
-            deliverOnce(LocationResult.Unavailable)
+    val enabledProviders = buildList {
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            add(LocationManager.GPS_PROVIDER)
         }
-        handler.postDelayed(timeoutRunnable, FETCH_TIMEOUT_MS)
-        Logger.d(tag = TAG) { "active fetch: getCurrentLocation (BALANCED_POWER, ${FETCH_TIMEOUT_MS}ms cap)" }
-        client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
-            .addOnSuccessListener { location ->
-                if (location == null) {
-                    Logger.w(tag = TAG) {
-                        "getCurrentLocation returned null (no mock location? location services off?)"
-                    }
-                    deliverOnce(LocationResult.Unavailable)
-                } else {
-                    deliverFix(location, "getCurrentLocation")
-                }
-            }
-            .addOnFailureListener { e ->
-                Logger.w(throwable = e, tag = TAG) { "getCurrentLocation failed" }
-                deliverOnce(LocationResult.Unavailable)
-            }
+        if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            add(LocationManager.NETWORK_PROVIDER)
+        }
     }
 
-    // Try lastLocation first: it's the cached fix from any provider (including the emulator's
-    // mock location, which getCurrentLocation often refuses to return because it wants a fresh
-    // active fix). Cheap, no battery drain. Falls back to active fetch if nothing is cached.
-    Logger.d(tag = TAG) { "fetchLocation: trying lastLocation first" }
-    client.lastLocation
-        .addOnSuccessListener { last ->
-            if (last != null) {
-                deliverFix(last, "lastLocation")
-            } else {
-                Logger.d(tag = TAG) { "lastLocation null → falling back to active fetch" }
-                activeFetch()
-            }
+    if (enabledProviders.isEmpty()) {
+        Logger.w(tag = TAG) {
+            "no location providers enabled (Location turned off in OS settings? airplane mode?)"
         }
-        .addOnFailureListener { e ->
-            Logger.w(throwable = e, tag = TAG) { "lastLocation failed → falling back to active fetch" }
-            activeFetch()
+        deliverOnce(LocationResult.Unavailable)
+        return
+    }
+    Logger.d(tag = TAG) { "fetchLocation: enabled providers = $enabledProviders" }
+
+    // 1. Try cached fixes from each enabled provider, freshest first.
+    var bestCached: Location? = null
+    for (provider in enabledProviders) {
+        val cached = locationManager.getLastKnownLocation(provider)
+        if (cached != null && (bestCached == null || cached.time > bestCached.time)) {
+            bestCached = cached
         }
+    }
+    if (bestCached != null) {
+        deliverFix(bestCached, "lastKnownLocation(${bestCached.provider})")
+        return
+    }
+
+    // 2. No cached fix — request a one-shot live update from the best available provider
+    //    (GPS preferred, NETWORK fallback), with a hard timeout.
+    val activeProvider = enabledProviders.first()
+    Logger.d(tag = TAG) {
+        "no cached fix; requesting single update from $activeProvider (${FETCH_TIMEOUT_MS}ms cap)"
+    }
+
+    val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            locationManager.removeUpdates(this)
+            deliverFix(location, "requestLocationUpdates($activeProvider)")
+        }
+
+        // Required for minSdk < 30 — defaulted on API 30+, but we still target 27.
+        @Deprecated("Required for compat with API < 30; provider status is not used.")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    val timeoutRunnable = Runnable {
+        Logger.w(tag = TAG) {
+            "single update timed out after ${FETCH_TIMEOUT_MS}ms — removing listener"
+        }
+        locationManager.removeUpdates(listener)
+        deliverOnce(LocationResult.Unavailable)
+    }
+    handler.postDelayed(timeoutRunnable, FETCH_TIMEOUT_MS)
+
+    locationManager.requestLocationUpdates(
+        activeProvider,
+        /* minTimeMs = */ 0L,
+        /* minDistanceM = */ 0f,
+        listener,
+        Looper.getMainLooper(),
+    )
 }

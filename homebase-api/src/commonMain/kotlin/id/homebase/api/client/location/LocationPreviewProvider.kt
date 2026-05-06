@@ -80,7 +80,10 @@ class LocationPreviewProvider(
             header("User-Agent", USER_AGENT)
             header("Accept", "application/json")
         }
-        if (!response.status.isSuccess()) return null
+        if (!response.status.isSuccess()) {
+            Logger.w(tag = TAG) { "reverseGeocode HTTP ${response.status.value} for $lat,$lon" }
+            return null
+        }
         val body = response.bodyAsText()
         val parsed = runCatching {
             Json.parseToJsonElement(body).jsonObject["display_name"]?.jsonPrimitive?.contentOrNull
@@ -91,12 +94,22 @@ class LocationPreviewProvider(
     private suspend fun fetchStaticMap(lat: Double, lon: Double, zoom: Int): ByteArray? {
         val url = "https://staticmap.openstreetmap.de/staticmap.php?" +
             "center=$lat,$lon&zoom=$zoom&size=${MAP_WIDTH}x$MAP_HEIGHT&markers=$lat,$lon,red-pushpin"
+        Logger.d(tag = TAG) { "fetchStaticMap GET $url" }
         val response = httpClient.get(url) {
             header("User-Agent", USER_AGENT)
             header("Accept", "image/png,image/*")
         }
-        if (!response.status.isSuccess()) return null
-        return response.readRawBytes()
+        if (!response.status.isSuccess()) {
+            // Log a snippet of the body so we can tell rate-limit / blocked-UA / outage apart.
+            val snippet = runCatching { response.bodyAsText().take(200) }.getOrNull().orEmpty()
+            Logger.w(tag = TAG) {
+                "fetchStaticMap HTTP ${response.status.value} for $lat,$lon body=\"$snippet\""
+            }
+            return null
+        }
+        val bytes = response.readRawBytes()
+        Logger.d(tag = TAG) { "fetchStaticMap success ${bytes.size} bytes" }
+        return bytes
     }
 
     private fun formatLatLon(lat: Double, lon: Double): String {
