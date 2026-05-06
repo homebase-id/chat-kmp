@@ -43,6 +43,15 @@ object ChatProtocol {
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
 
+    /** Local metadata tag: this GroupHealRequested status message has already been
+     *  applied on this recipient's drive. Idempotency gate for
+     *  `ConversationService.handleIncomingHealRequest` — without it, a heal status
+     *  message that is reprocessed (cursor reset, full re-sync, sibling device)
+     *  could re-classify a now-canonical local file as broken and hard-delete it
+     *  against a stale canonical-versionTag snapshot. The marker rides on the
+     *  message file's localAppData and syncs across the recipient's devices. */
+    val HealAppliedTag = Uuid.parse("c5b2e1d4-8a7f-4d6e-a3c2-1b9e8f7d6c5a")
+
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
 
