@@ -17,8 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
@@ -64,7 +64,7 @@ import id.homebase.resources.chat_event_rsvp_maybe
 import id.homebase.resources.chat_event_rsvp_no
 import id.homebase.resources.chat_event_rsvp_summary
 import id.homebase.resources.chat_event_rsvp_yes
-import id.homebase.resources.cancel
+import id.homebase.resources.menu_back
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -159,7 +159,10 @@ private fun EventDetailContent(
                 title = { Text("") },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(MR.string.menu_back),
+                        )
                     }
                 }
             )

@@ -22,6 +22,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
+import id.homebase.chat.services.renderer.toMessageDataType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
@@ -2852,6 +2853,7 @@ class ConversationListViewModel(
                     messageText = content,
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
+                    dataType = payloadRenderers.toMessageDataType(),
                 )
                 messageInputTextState.clear()
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
@@ -2893,7 +2895,8 @@ class ConversationListViewModel(
                     replyTo = replyPreview,
                     messageText = content,
                     previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle
+                    payloadBundle = payloadBundle,
+                    dataType = payloadRenderers.toMessageDataType(),
                 )
                 messageInputTextState.clear()
                 _messagesUiState.update { it.copy(replyToMessage = null) }

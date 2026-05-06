@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,6 +61,7 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.menu_back
 import id.homebase.resources.chat_event_create_title
 import id.homebase.resources.chat_event_field_description
 import id.homebase.resources.chat_event_field_ends
@@ -233,7 +234,10 @@ private fun EventComposerContent(
                 title = { Text(stringResource(MR.string.chat_event_create_title)) },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(MR.string.menu_back),
+                        )
                     }
                 },
             )
