@@ -45,8 +45,12 @@ object LocationPreviewPayloadBuilder {
             "application/octet-stream"
         }
 
+        // Sentinel byte when no image: AesCbc.encrypt rejects empty data (would crash addMessage
+        // for coords-only previews). Receiver gates image rendering on descriptor.hasImage, so
+        // this byte is never read. Same fix as LinkPreviewPayloadBuilder.
+        val payloadBytes = if (imageBytes.isNotEmpty()) imageBytes else byteArrayOf(0x00)
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
-            bytes = imageBytes, prefix = "location_preview", suffix = ".dat"
+            bytes = payloadBytes, prefix = "location_preview", suffix = ".dat"
         )
 
         val tinyThumb: EmbeddedThumb? = if (actualHasImage) {

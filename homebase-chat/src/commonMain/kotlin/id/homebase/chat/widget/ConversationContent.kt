@@ -104,6 +104,7 @@ import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
+import id.homebase.resources.chat_location_map_preview_unavailable
 import id.homebase.resources.chat_location_permission_denied
 import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
@@ -237,6 +238,7 @@ fun ConversationContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
     val locationUnavailableMsg = stringResource(MR.string.chat_location_unavailable)
+    val locationMapPreviewUnavailableMsg = stringResource(MR.string.chat_location_map_preview_unavailable)
     val currentLocationLauncher = rememberCurrentLocationLauncher { result ->
         isFetchingLocation = false
         when (result) {
@@ -250,13 +252,14 @@ fun ConversationContent(
                         val preview = locationPreviewProvider.getLocationPreview(
                             result.fix.latitude, result.fix.longitude,
                         )
-                        if (preview != null) {
-                            // Replace any existing staged location (one location at a time).
-                            payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
-                                LocationPreviewRenderer(preview)
-                        } else {
-                            Logger.w(tag = "LocationShare") { "preview provider returned null" }
-                            snackbarHostState.showSnackbar(locationUnavailableMsg)
+                        // Always stage — coordinates alone are useful even without a map image.
+                        payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
+                            LocationPreviewRenderer(preview)
+                        if (preview.imageUrl == null) {
+                            Logger.w(tag = "LocationShare") {
+                                "preview returned with no image (map service down or offline) — coords-only"
+                            }
+                            snackbarHostState.showSnackbar(locationMapPreviewUnavailableMsg)
                         }
                     } finally {
                         isFetchingLocation = false
