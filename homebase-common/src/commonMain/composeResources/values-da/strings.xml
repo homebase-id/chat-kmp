@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">Homebase Chat</string>
+
     <!-- Menu options -->
     <string name="settings">Indstillinger</string>
 
@@ -163,11 +165,26 @@
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
     <string name="connections_send_request">Send anmodning</string>
+
+    <!-- Auto-connect status messages -->
+    <string name="auto_connect_blocked">Kan ikke forbinde med %1$s.</string>
+    <string name="auto_connect_duplicate_introductory_request">En anmodning til %1$s er allerede i gang.</string>
+    <string name="auto_connect_failed_generic">Noget gik galt. Prøv igen.</string>
+    <string name="auto_connect_invalid_request">Ugyldig anmodning.</string>
+    <string name="auto_connect_invalid_request_with_detail">Ugyldig anmodning: %1$s.</string>
+    <string name="auto_connect_outgoing_request_exists">Du har allerede sendt en anmodning til %1$s.</string>
+    <string name="auto_connect_pending_manual_approval">Anmodning sendt. %1$s skal godkende.</string>
+    <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
+    <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
+    <string name="auto_connect_recipient_requires_upgrade">%1$s's server skal opdateres, før du kan forbinde.</string>
+    <string name="auto_connect_recipient_unreachable">Kunne ikke nå %1$s. Prøv igen senere.</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_profile_info">Profiloplysninger</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
     <string name="settings_logout">Log ud</string>
+    <string name="settings_logout_in_progress">Sletter alle dine krypterede data</string>
+    <string name="settings_storage">Lagerplads</string>
     <string name="settings_delete_account">Slet min konto</string>
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
@@ -250,6 +267,11 @@
     <string name="system_group_conversation_member_left_you">Du forlod samtalen</string>
     <string name="system_group_conversation_member_declined_rejoin">%1$s afslog at genindtræde i samtalen</string>
     <string name="system_group_conversation_member_declined_rejoin_you">Du afslog at genindtræde i samtalen</string>
+    <string name="system_group_heal_requested">%1$s anmodede om en gruppereparation</string>
+    <string name="system_group_heal_requested_you">Du anmodede om en gruppereparation</string>
+    <string name="system_group_heal_local_cleanup_admin">Fjernede defekt lokal kopi (admins) som del af reparation</string>
+    <string name="system_group_heal_local_cleanup_both">Fjernede defekte lokale kopier (gruppe + admins) som del af reparation</string>
+    <string name="system_group_heal_local_cleanup_main">Fjernede defekt lokal kopi (gruppe) som del af reparation</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
@@ -336,6 +358,13 @@
     <string name="chat_group_rejoin_pending_description">Du er blevet tilføjet til denne gruppe igen</string>
     <string name="chat_group_rejoin_accept">Genindtræd</string>
     <string name="chat_group_rejoin_decline">Afvis</string>
+    <string name="chat_group_heal">Reparér gruppe</string>
+    <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
+    <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
+    <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
+    <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
+    <string name="chat_group_main_file_delivered">Gruppefil leveret</string>
+    <string name="chat_group_main_file_problem">Problem med levering af gruppefil</string>
 
     <!-- 1:1 connection state banner -->
     <string name="chat_not_connected_description">Du er ikke forbundet.</string>
@@ -368,6 +397,8 @@
     <string name="chat_note_to_self">Note til selv</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
     <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
+    <string name="chat_attach_file_failed">Kunne ikke vedhæfte fil(er): %s</string>
+    <string name="chat_auto_connect_connected">Forbundet</string>
 
     <!-- Audio recording -->
     <string name="chat_message_audio_recording_help">Tryk og hold for at optage en lydbesked, slip for sende</string>
@@ -416,8 +447,11 @@
     <string name="chat_message_download_file">Download fil</string>
     <string name="chat_message_file_type_icon">Filtypeikon</string>
     <string name="chat_message_camera">Kamera</string>
+    <string name="chat_message_take_photo">Tag billede</string>
+    <string name="chat_message_record_video">Optag video</string>
     <string name="chat_message_microphone">Mikrofon</string>
     <string name="chat_message_emoji">Emoji</string>
+    <string name="chat_message_location">Placering</string>
 
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>
@@ -442,8 +476,101 @@
     <string name="emoji_none_found">Ingen emojis fundet</string>
 
     <string name="crop">Beskær</string>
+    <string name="draw">Tegn</string>
     <string name="trim_start_handle">Beskær start</string>
     <string name="trim_end_handle">Beskær slut</string>
     <string name="trim_position">Afspilningsposition</string>
+
+    <!-- Storage screen -->
+    <string name="storage_caches_header">Caches</string>
+    <string name="storage_caches_none">Ingen caches</string>
+    <string name="storage_clear_caches">Ryd caches</string>
+    <string name="storage_caches_cleared">Caches ryddet</string>
+    <string name="storage_total_cache_format">I alt: %1$s</string>
+    <string name="storage_drives_header">Drev</string>
+    <string name="storage_drives_none">Ingen drev</string>
+    <string name="storage_drive_count_format">%1$d elementer</string>
+    <string name="storage_other_header">Andet</string>
+    <string name="storage_database">Database</string>
+    <string name="storage_defragment_button">Defragmentér</string>
+    <string name="storage_cache_payloads">Mediedata</string>
+    <string name="storage_cache_thumbnails">Miniaturebilleder</string>
+    <string name="storage_cache_profile_images">Profilbilleder</string>
+    <string name="storage_cache_profiles">Offentlige profiler</string>
+    <string name="storage_cache_coil_memory">Billeder i hukommelsen</string>
+    <string name="storage_cache_ram_badge">RAM</string>
+    <string name="storage_cache_unknown">Andet</string>
+    <string name="storage_cache_size_format">%1$s / %2$s</string>
+    <string name="storage_cache_unavailable">Ikke tilgængelig</string>
+    <string name="storage_cache_unhealthy_title">Nogle caches kunne ikke åbnes</string>
+    <string name="storage_cache_unhealthy_body">En eller flere caches på disken kunne ikke initialiseres. Tryk på \"Ryd caches\" for at nulstille dem — cachelagrede data vil gå tabt, men ingen primære data påvirkes.</string>
+
+    <!-- Defragmenter -->
+    <string name="defragmenter_title_format">Defragmenterer %1$s…</string>
+    <string name="defragmenter_drive_label_all">Alle drev</string>
+    <string name="defragmenter_grid_description">Defragmenterer %1$s. %2$d procent færdig.</string>
+    <string name="defragmenter_status_idle">Klar til analyse</string>
+    <string name="defragmenter_status_analyzing">Analyserer drev… %1$d af %2$d</string>
+    <string name="defragmenter_status_ready">Analyse fuldført — klar til defragmentering</string>
+    <string name="defragmenter_status_running">Defragmenterer</string>
+    <string name="defragmenter_status_paused">Sat på pause</string>
+    <string name="defragmenter_status_repairing">Reparerer lokalt indeks…</string>
+    <string name="defragmenter_status_vacuuming">Optimerer database…</string>
+    <string name="defragmenter_status_complete">Defragmentering fuldført</string>
+    <string name="defragmenter_status_cancelled">Annulleret</string>
+    <string name="defragmenter_stat_total">Blokke i alt: %1$d</string>
+    <string name="defragmenter_stat_gaps">Resterende huller: %1$d</string>
+    <string name="defragmenter_stat_moves">Flyttede blokke: %1$d</string>
+    <string name="defragmenter_stat_elapsed">Forløbet: %1$s</string>
+    <string name="defragmenter_stat_eta">Estimeret: %1$s</string>
+    <string name="defragmenter_analyze">Analysér</string>
+    <string name="defragmenter_start">Start defragmentering</string>
+    <string name="defragmenter_pause">Pause</string>
+    <string name="defragmenter_resume">Genoptag</string>
+    <string name="defragmenter_cancel">Annullér</string>
+    <string name="defragmenter_close">Luk</string>
+
+    <!-- Defragmenter — bad-block review dialog -->
+    <string name="defragmenter_review_button">Gennemgå %1$d defekt(e) blok(ke)…</string>
+    <string name="defragmenter_review_dialog_title">Defekt blok (%1$d af %2$d)</string>
+    <string name="defragmenter_review_kind_header">Header</string>
+    <string name="defragmenter_review_kind_message_content">Beskedindhold</string>
+    <string name="defragmenter_review_label_drive">Drev: %1$s</string>
+    <string name="defragmenter_review_label_file">Fil: %1$s</string>
+    <string name="defragmenter_review_label_filetype">Filtype: %1$s</string>
+    <string name="defragmenter_review_label_unique">Unik id: %1$s</string>
+    <string name="defragmenter_review_label_created">Oprettet (ms): %1$s</string>
+    <string name="defragmenter_review_label_sender">Afsender: %1$s</string>
+    <string name="defragmenter_review_label_author">Oprindelig forfatter: %1$s</string>
+    <string name="defragmenter_review_label_conversation">Samtale: %1$s</string>
+    <string name="defragmenter_review_decode_error">Afkodningsfejl: %1$s</string>
+    <string name="defragmenter_review_raw_json">Råt indhold (første 4000 tegn):</string>
+    <string name="defragmenter_review_button_skip">Spring over</string>
+    <string name="defragmenter_review_button_delete">Slet</string>
+    <string name="defragmenter_review_button_close">Luk</string>
+
+    <!-- Location attachments -->
+    <string name="chat_location_attachment">Placeringskort</string>
+    <string name="chat_location_share">Placering</string>
+    <string name="chat_location_unavailable">Kunne ikke hente din placering. Prøv igen udendørs eller tjek, at Placering er aktiveret.</string>
+    <string name="chat_location_permission_denied">Placeringstilladelse afvist. Aktivér den i Indstillinger for at dele din placering.</string>
+    <string name="chat_location_map_preview_unavailable">Forhåndsvisning af kort ikke tilgængelig — sender kun koordinater.</string>
+
+    <!-- Reactions -->
+    <string name="chat_reactions_title">Reaktioner</string>
+    <string name="chat_reactions_all">Alle</string>
+
+    <!-- Share picker -->
+    <string name="share_picker_next">Næste</string>
+    <string name="share_picker_send">Send</string>
+
+    <!-- Pending attachments -->
+    <string name="pending_attachment_one">1 vedhæftning</string>
+    <string name="pending_attachment_many">%1$d vedhæftninger</string>
+
+    <!-- Feed screen -->
+    <string name="feed_error_title">Kunne ikke indlæse feed</string>
+    <string name="feed_error_retry">Prøv igen</string>
+    <string name="feed_loading">Indlæser feed…</string>
 
 </resources>
