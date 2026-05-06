@@ -601,6 +601,12 @@ class ConversationStream(
             conversationState = resolvedState,
             exitedAt = resolvedExitedAt,
             fileUpdated = incoming.fileUpdated,
+            // Carries the conversation file's localAppData.lastReadTime forward —
+            // a peer device's mark-as-read advances it, syncs it, and we'd otherwise
+            // drop it here, which leaves enrichAllConversationsWithUnreadCounts
+            // mirroring modelMs=0 and skipping the ChatReadCount upsert. Max
+            // keeps it monotonic against a stale drive-sync echo.
+            lastRead = if (incoming.lastRead > existing.lastRead) incoming.lastRead else existing.lastRead,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
