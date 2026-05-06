@@ -94,40 +94,61 @@ private fun fetchLocation(
         }
     }
 
-    val timeoutRunnable = Runnable {
-        Logger.w(tag = TAG) { "fused getCurrentLocation timed out after ${FETCH_TIMEOUT_MS}ms — cancelling" }
-        cts.cancel()
-        deliverOnce(LocationResult.Unavailable)
-    }
-    handler.postDelayed(timeoutRunnable, FETCH_TIMEOUT_MS)
-
-    Logger.d(tag = TAG) { "fetchLocation: requesting fused getCurrentLocation (BALANCED_POWER, ${FETCH_TIMEOUT_MS}ms cap)" }
-    client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
-        .addOnSuccessListener { location ->
-            if (location == null) {
-                // Common on emulators with no mock location set, indoors with no last fix, or
-                // when location services are off at the OS level. Fused-API doesn't differentiate.
-                Logger.w(tag = TAG) {
-                    "fused getCurrentLocation returned null (no mock location? location services off?)"
-                }
-                deliverOnce(LocationResult.Unavailable)
-            } else {
-                Logger.d(tag = TAG) {
-                    "fused getCurrentLocation success lat=${location.latitude} lon=${location.longitude}"
-                }
-                deliverOnce(
-                    LocationResult.Success(
-                        LocationFix(
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
-                        )
-                    )
+    fun deliverFix(location: android.location.Location, source: String) {
+        Logger.d(tag = TAG) {
+            "$source success lat=${location.latitude} lon=${location.longitude}"
+        }
+        deliverOnce(
+            LocationResult.Success(
+                LocationFix(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
                 )
+            )
+        )
+    }
+
+    fun activeFetch() {
+        val timeoutRunnable = Runnable {
+            Logger.w(tag = TAG) { "getCurrentLocation timed out after ${FETCH_TIMEOUT_MS}ms — cancelling" }
+            cts.cancel()
+            deliverOnce(LocationResult.Unavailable)
+        }
+        handler.postDelayed(timeoutRunnable, FETCH_TIMEOUT_MS)
+        Logger.d(tag = TAG) { "active fetch: getCurrentLocation (BALANCED_POWER, ${FETCH_TIMEOUT_MS}ms cap)" }
+        client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
+            .addOnSuccessListener { location ->
+                if (location == null) {
+                    Logger.w(tag = TAG) {
+                        "getCurrentLocation returned null (no mock location? location services off?)"
+                    }
+                    deliverOnce(LocationResult.Unavailable)
+                } else {
+                    deliverFix(location, "getCurrentLocation")
+                }
+            }
+            .addOnFailureListener { e ->
+                Logger.w(throwable = e, tag = TAG) { "getCurrentLocation failed" }
+                deliverOnce(LocationResult.Unavailable)
+            }
+    }
+
+    // Try lastLocation first: it's the cached fix from any provider (including the emulator's
+    // mock location, which getCurrentLocation often refuses to return because it wants a fresh
+    // active fix). Cheap, no battery drain. Falls back to active fetch if nothing is cached.
+    Logger.d(tag = TAG) { "fetchLocation: trying lastLocation first" }
+    client.lastLocation
+        .addOnSuccessListener { last ->
+            if (last != null) {
+                deliverFix(last, "lastLocation")
+            } else {
+                Logger.d(tag = TAG) { "lastLocation null → falling back to active fetch" }
+                activeFetch()
             }
         }
         .addOnFailureListener { e ->
-            Logger.w(throwable = e, tag = TAG) { "fused getCurrentLocation failed" }
-            deliverOnce(LocationResult.Unavailable)
+            Logger.w(throwable = e, tag = TAG) { "lastLocation failed → falling back to active fetch" }
+            activeFetch()
         }
 }
