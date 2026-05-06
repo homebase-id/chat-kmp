@@ -144,7 +144,36 @@ internal suspend fun classifyRow(
         }
     }
 
-    // 5. Legacy null-userDate (chat messages only).
+    // 5. Chat message (7878) whose appData.content fails strict deserialise.
+    //    Placed AFTER the OrphanChatMessage branch so an orphan that *also*
+    //    has corrupt content stays classified as orphan — recovering the
+    //    parent may resolve both at once. Placed BEFORE LegacyUserDateZero
+    //    because a corrupt-content row often *also* has a null userDate
+    //    (older corrupt rows commonly never had userDate stamped); without
+    //    this ordering the row would be classified Legacy and "repaired"
+    //    by stamping a userDate, which leaves the unreadable content in
+    //    place and the consumer keeps throwing on every cold-load.
+    //    Probe is null in tests / when the caller doesn't want runtime-typed
+    //    decode (e.g. probe-disabled).
+    if (fileType == MESSAGE_FILE_TYPE && decodeMessageContentProbe != null) {
+        val err = decodeMessageContentProbe(header)
+        if (err != null) {
+            val content = header.fileMetadata.appData.content
+            return CellState.CorruptMessageContent(
+                driveId = driveId,
+                fileId = row.fileId,
+                rowId = row.rowId,
+                conversationId = header.fileMetadata.appData.groupId,
+                originalAuthor = header.fileMetadata.originalAuthor,
+                sender = header.fileMetadata.senderOdinId,
+                createdMs = header.fileMetadata.created.milliseconds,
+                decodeError = err.message?.take(200),
+                rawContentPrefix = content?.take(4000) ?: "",
+            )
+        }
+    }
+
+    // 6. Legacy null-userDate (chat messages only).
     //
     // Gates only on `appData.userDate == null` in the parsed JSON header
     // (the source of truth the consumer reads). Deliberately ignores
@@ -163,29 +192,6 @@ internal suspend fun classifyRow(
             rowId = row.rowId,
             createdMs = header.fileMetadata.created.milliseconds,
         )
-    }
-
-    // 6. Chat message (7878) whose appData.content fails strict deserialise.
-    //    Placed AFTER the OrphanChatMessage branch so an orphan that *also*
-    //    has corrupt content stays classified as orphan — recovering the
-    //    parent may resolve both at once. Probe is null in tests / when
-    //    the caller doesn't want runtime-typed decode (e.g. probe-disabled).
-    if (fileType == MESSAGE_FILE_TYPE && decodeMessageContentProbe != null) {
-        val err = decodeMessageContentProbe(header)
-        if (err != null) {
-            val content = header.fileMetadata.appData.content
-            return CellState.CorruptMessageContent(
-                driveId = driveId,
-                fileId = row.fileId,
-                rowId = row.rowId,
-                conversationId = header.fileMetadata.appData.groupId,
-                originalAuthor = header.fileMetadata.originalAuthor,
-                sender = header.fileMetadata.senderOdinId,
-                createdMs = header.fileMetadata.created.milliseconds,
-                decodeError = err.message?.take(200),
-                rawContentPrefix = content?.take(4000) ?: "",
-            )
-        }
     }
 
     // 7. Default.
