@@ -30,6 +30,20 @@ object ChatProtocol {
      */
     const val ChatEventMessageDataType = 210
 
+    /**
+     * Header-level kind tag for messages whose primary attachment is a Location
+     * preview ([PAYLOAD_KEY_LOCATION] payload). The receiver still dispatches off
+     * the payload key (the descriptor + map image live there), so this is purely a
+     * server-queryable kind axis: lets `QueryBatch` filter by location messages,
+     * lets future "all locations shared" features land without scanning every
+     * payload metadata blob client-side.
+     *
+     * Pre-existing Location messages on the wire have `dataType = 0` and remain
+     * indistinguishable at the header level until a defragger backfill pass tags
+     * them. New sends are stamped from now on.
+     */
+    const val ChatLocationMessageDataType = 211
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */

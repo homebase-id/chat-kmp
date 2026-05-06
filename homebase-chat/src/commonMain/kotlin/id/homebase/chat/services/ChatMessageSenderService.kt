@@ -101,6 +101,7 @@ class ChatMessageSenderService(
             notificationText = "You have a new message",
             previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = built.payloadBundle,
+            dataType = inferDataTypeFromBundle(built.payloadBundle),
             userDate = userDate,
         )
     }
@@ -134,8 +135,27 @@ class ChatMessageSenderService(
             notificationText = "You have a new reply",
             previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = built.payloadBundle,
+            dataType = inferDataTypeFromBundle(built.payloadBundle),
             userDate = userDate,
         )
+    }
+
+    /**
+     * Maps a [PayloadBundle] to the message-header `dataType` it implies.
+     * Today only Location messages stamp a non-zero kind here; future
+     * payload-bearing typed kinds (e.g. typed media) plug in via
+     * additional payload-key matches. Header-only typed kinds (Event,
+     * future Poll/Doodle/Dice) bypass this — they go through
+     * [sendNewTypedMessage] which derives the dataType from
+     * [id.homebase.chat.services.content.MessageContentParser].
+     */
+    private fun inferDataTypeFromBundle(bundle: PayloadBundle?): Int {
+        val keys = bundle?.payloads?.map { it.key } ?: return 0
+        return when {
+            keys.any { it == ChatProtocol.PAYLOAD_KEY_LOCATION } ->
+                ChatProtocol.ChatLocationMessageDataType
+            else -> 0
+        }
     }
 
 
@@ -496,6 +516,15 @@ class ChatMessageSenderService(
             fileOperationsProvider = fileOperationsProvider
         )
 
+        // Preserve the source's dataType so a forwarded Location stays
+        // header-tagged as a Location (and any future payload-bearing kind
+        // does the same automatically). Falls back to bundle inference for
+        // sources that pre-date the kind tagging — keeps newly-forwarded
+        // Locations queryable even when the original was sent with dataType=0.
+        val sourceDataType = sourceFile.fileMetadata.appData.dataType ?: 0
+        val forwardedDataType = if (sourceDataType != 0) sourceDataType
+            else inferDataTypeFromBundle(built.payloadBundle)
+
         return targetConversationIds.map { conversationId ->
             sendMessageInternal(
                 messageUniqueId = Uuid.random(),
@@ -503,7 +532,8 @@ class ChatMessageSenderService(
                 content = built.headerContent,
                 notificationText = "You have a new message",
                 previousMessageUniqueId = null,
-                payloadBundle = built.payloadBundle
+                payloadBundle = built.payloadBundle,
+                dataType = forwardedDataType,
             )
         }
     }
