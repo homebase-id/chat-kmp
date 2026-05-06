@@ -133,6 +133,16 @@ class LocationPreviewProvider(
             return null
         }
         val bytes = response.readRawBytes()
+        if (bytes.size < BLANK_TILE_THRESHOLD_BYTES) {
+            // OSM serves a tiny uniform-color PNG (~100 bytes) for tiles with no rendered map
+            // data — empty oceans, deserts with no roads, etc. Render-as-image would just be a
+            // blank gray square, which looks broken. Treat as "no map" and let the caller's
+            // coords-only fallback take over.
+            Logger.w(tag = TAG) {
+                "fetchStaticMap returned ${bytes.size} bytes (blank tile — no OSM data here)"
+            }
+            return null
+        }
         Logger.d(tag = TAG) { "fetchStaticMap success ${bytes.size} bytes" }
         return bytes
     }
@@ -159,6 +169,10 @@ class LocationPreviewProvider(
         // OSM tiles are 256x256. Single-tile fetch matches that natively.
         private const val MAP_WIDTH = 256
         private const val MAP_HEIGHT = 256
+
+        // OSM "no data" tiles are tiny uniform-color PNGs (~100 bytes). Real rendered tiles
+        // with even minimal content are >1KB. 500 bytes is a safe cutoff.
+        private const val BLANK_TILE_THRESHOLD_BYTES = 500
         private const val NOMINATIM_MIN_INTERVAL_MS = 1100L
         private const val USER_AGENT = "HomebaseChat/dev (+https://homebase.id)"
 
