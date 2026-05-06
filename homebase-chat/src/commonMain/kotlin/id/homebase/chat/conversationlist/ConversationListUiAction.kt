@@ -191,6 +191,14 @@ sealed interface ConversationListUiAction {
         val paintedBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /** Inline trim scrubber moved — store the chosen range, or null to clear. */
+    data class ApplyTrimResult(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+        val trimStartMs: Long?,
+        val trimEndMs: Long?,
+    ) : ConversationListUiAction
+
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
 }

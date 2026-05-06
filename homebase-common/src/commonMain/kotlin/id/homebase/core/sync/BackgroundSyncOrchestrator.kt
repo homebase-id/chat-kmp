@@ -33,13 +33,8 @@ class BackgroundSyncOrchestrator(
         return runCatching {
             driveSyncManager.start()
 
-            // TODO TODD: Poke the inbox via HTTP here
-            // The server holds incoming transfers in the inbox until a processInbox
-            // command is sent.  Over WebSocket this happens automatically via
-            // inboxItemReceived notifications, but when WS is offline we need an
-            // HTTP equivalent (e.g. POST /api/v2/transit/inbox/process) so that
-            // QueryBatch can find the new records.
-            processInboxViaHttp()
+            // processInbox no longer needed — server auto-processes on QueryBatch.
+            // processInboxViaHttp()
 
             driveSyncManager.syncAll()
         }.fold(
@@ -69,8 +64,8 @@ class BackgroundSyncOrchestrator(
      * counterpart of the WS "processInbox" command.
      */
     private suspend fun processInboxViaHttp() {
-        // no-op until the server exposes an HTTP endpoint for inbox processing
-        driveFileHttpProvider.processInbox(chatTargetDrive.alias)
+        // processInbox no longer needed — server auto-processes on QueryBatch.
+        // driveFileHttpProvider.processInbox(chatTargetDrive.alias)
     }
 
     companion object {

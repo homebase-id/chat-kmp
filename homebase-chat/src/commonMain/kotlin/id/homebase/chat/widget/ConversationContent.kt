@@ -124,7 +124,7 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.EmojiSelectorSheet
-import id.homebase.core.widget.EmojiSummary
+import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
@@ -370,8 +370,16 @@ fun ConversationContent(
         onUiAction = onUiAction,
     )
 
-    uiState.messageReactions?.let {
-        EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
+    uiState.messageReactions?.let { reactions ->
+        ReactionsBottomSheet(
+            reactions = reactions,
+            isLoading = uiState.isReactionsLoading,
+            ownerOdinId = uiState.ownerSession?.odinId?.domainName,
+            onContactClick = { odinId ->
+                onUiAction(ConversationListUiAction.ShowContactInfo(odinId))
+            },
+            onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) },
+        )
     }
 
     if (showBlockConfirmDialog) {

@@ -157,3 +157,10 @@ UPDATE DriveMainIndex SET archivalStatus = ? WHERE rowId = ?;
 -- Used by the repair pass to correct LegacyUserDateZero rows. Local-only.
 repairUserDateByRowId:
 UPDATE DriveMainIndex SET userDate = ? WHERE rowId = ?;
+
+-- Defragmenter: rewrite a row's jsonHeader text after we patch
+-- appData.userDate locally (LegacyUserDateZero repair). Local-only —
+-- if the row ever resyncs from the server the original null returns,
+-- which is fine: the classifier will re-flag and re-repair next pass.
+repairJsonHeaderByRowId:
+UPDATE DriveMainIndex SET jsonHeader = ? WHERE rowId = ?;

@@ -13,7 +13,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
-import id.homebase.core.widget.EmojiReaction
+import id.homebase.core.widget.ReactionDisplayItem
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -77,7 +77,8 @@ data class MessageListUiState(
     val isEditingMessageId: Uuid? = null,
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
-    val messageReactions: List<EmojiReaction>? = null,
+    val messageReactions: List<ReactionDisplayItem>? = null,
+    val isReactionsLoading: Boolean = false,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -207,7 +208,14 @@ sealed interface FullScreenOverlay {
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
-    data class FileVideo(val id: Uuid, val file: PlatformFile, val thumbnailBytes: ByteArray? = null) : AttachmentPendingFile(id)
+    data class FileVideo(
+        val id: Uuid,
+        val file: PlatformFile,
+        val thumbnailBytes: ByteArray? = null,
+        val durationMs: Long? = null,
+        val trimStartMs: Long? = null,
+        val trimEndMs: Long? = null,
+    ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)

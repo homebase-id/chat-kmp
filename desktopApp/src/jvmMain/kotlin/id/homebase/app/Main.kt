@@ -2,6 +2,7 @@ package id.homebase.app
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,16 +12,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
 import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
@@ -73,6 +79,19 @@ fun main() {
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+
+    // Bridge the local callback server's /permission-callback hit (after the user
+    // returns from the owner-console "Extend Permissions" flow) to the in-app event
+    // bus so ExtendPermissionViewModel re-runs its check and the dialog dismisses.
+    val eventBus = GlobalContext.get().get<EventBus>()
+    LocalCallbackServer.setPermissionCallback { canceled ->
+        runBlocking {
+            eventBus.emit(
+                if (canceled) BackendEvent.PermissionsExtensionCanceled
+                else BackendEvent.PermissionsExtensionReturned
+            )
+        }
+    }
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")
@@ -205,7 +224,12 @@ fun main() {
         ) {
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
-            App()
+
+            // Provide Desktop-specific LifecycleOwner to the composition tree
+            val desktopLifecycleOwner = rememberDesktopLifecycleOwner(isWindowVisible)
+            CompositionLocalProvider(LocalLifecycleOwner provides desktopLifecycleOwner) {
+                App()
+            }
         }
     }
 }
