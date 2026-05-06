@@ -319,6 +319,11 @@ private fun AttachmentOption(
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

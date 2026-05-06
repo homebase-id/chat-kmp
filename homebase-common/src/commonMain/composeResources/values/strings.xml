@@ -497,7 +497,7 @@
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
 
-    <string name="chat_location_share">Share location</string>
+    <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
     <string name="chat_location_unavailable">Couldn\'t get your location. Try again outdoors or check that Location is enabled.</string>
