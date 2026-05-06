@@ -35,7 +35,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,13 +47,15 @@ import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
-import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.avatars.OwnerAvatar
+import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
+import id.homebase.resources.you
 import id.homebase.resources.chat_event_add_to_google_calendar
 import id.homebase.resources.chat_event_download_ics
 import id.homebase.resources.chat_event_join_meeting
@@ -127,7 +128,6 @@ private fun EventDetailContent(
     val calendarLauncher = rememberCalendarLauncher()
     val scope = rememberCoroutineScope()
 
-    val contacts by contactService.contacts.collectAsStateWithLifecycle()
     val selfOdinId = ownerSession.user.value?.odinId
 
     // Roster fetch — fires once per messageId. Re-fetches when ownReactions
@@ -276,7 +276,7 @@ private fun EventDetailContent(
                 Spacer(Modifier.height(24.dp))
                 RsvpRoster(
                     reactions = reactionsList,
-                    contacts = contacts,
+                    contactService = contactService,
                     selfOdinId = selfOdinId,
                 )
             }
@@ -288,56 +288,51 @@ private fun EventDetailContent(
 
 /**
  * Three-section roster of reactors, grouped by RSVP emoji. Sections with no
- * reactors are omitted. Display name comes from the contact list when known,
- * "You" when it's the current user, or the bare odin domain as fallback.
+ * reactors are omitted. Mirrors the avatar + name resolution that
+ * `MessageInfoScreen` / `ReactionsBottomSheet` use, so the same identity
+ * renders identically here and there.
  */
 @Composable
 private fun RsvpRoster(
     reactions: List<EmojiReaction>,
-    contacts: List<ContactUiModel>,
+    contactService: ContactService,
     selfOdinId: OdinId?,
 ) {
-    val nameByOdinId = remember(contacts) { contacts.associateBy { it.odinId } }
-    fun resolve(odinId: OdinId): Pair<String, String> {
-        if (odinId == selfOdinId) return "You" to (selfOdinId.domainName.firstOrNull()?.uppercase() ?: "Y")
-        val contact = nameByOdinId[odinId]
-        if (contact != null) return contact.name to contact.avatarInitials
-        // Fallback when the contact isn't cached locally.
-        val display = odinId.domainName
-        val initials = display.firstOrNull()?.uppercase() ?: "?"
-        return display to initials
-    }
-
     Column {
         RsvpSection(
-            emoji = EventRsvp.GOING,
             sectionLabel = stringResource(MR.string.chat_event_rsvp_yes),
+            emoji = EventRsvp.GOING,
             reactors = reactions.filter { it.emoji == EventRsvp.GOING },
-            resolveDisplay = ::resolve,
+            contactService = contactService,
+            selfOdinId = selfOdinId,
         )
         RsvpSection(
-            emoji = EventRsvp.MAYBE,
             sectionLabel = stringResource(MR.string.chat_event_rsvp_maybe),
+            emoji = EventRsvp.MAYBE,
             reactors = reactions.filter { it.emoji == EventRsvp.MAYBE },
-            resolveDisplay = ::resolve,
+            contactService = contactService,
+            selfOdinId = selfOdinId,
         )
         RsvpSection(
-            emoji = EventRsvp.NOT_GOING,
             sectionLabel = stringResource(MR.string.chat_event_rsvp_no),
+            emoji = EventRsvp.NOT_GOING,
             reactors = reactions.filter { it.emoji == EventRsvp.NOT_GOING },
-            resolveDisplay = ::resolve,
+            contactService = contactService,
+            selfOdinId = selfOdinId,
         )
     }
 }
 
 @Composable
 private fun RsvpSection(
-    emoji: String,
     sectionLabel: String,
+    emoji: String,
     reactors: List<EmojiReaction>,
-    resolveDisplay: (OdinId) -> Pair<String, String>,
+    contactService: ContactService,
+    selfOdinId: OdinId?,
 ) {
     if (reactors.isEmpty()) return
+    val youLabel = stringResource(MR.string.you)
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -349,23 +344,55 @@ private fun RsvpSection(
     Spacer(Modifier.height(4.dp))
     Column {
         reactors.forEach { reactor ->
-            val (name, initials) = resolveDisplay(reactor.odinId)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FallbackAvatar(
-                    initials = initials,
-                    options = AvatarOptions(size = 32.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            ReactorRow(
+                odinId = reactor.odinId,
+                isOwner = reactor.odinId == selfOdinId,
+                youLabel = youLabel,
+                contactService = contactService,
+            )
         }
+    }
+}
+
+@Composable
+private fun ReactorRow(
+    odinId: OdinId,
+    isOwner: Boolean,
+    youLabel: String,
+    contactService: ContactService,
+) {
+    // Same resolution path as MessageInfoViewModel.
+    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val avatarOptions = AvatarOptions(size = 32.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isOwner) {
+            // OwnerAvatar with profileImageData = null delegates to PublicAvatar
+            // (https://$odinId/pub/image), matching the behaviour in
+            // ReactionsBottomSheet.ReactionRow for the current user.
+            OwnerAvatar(
+                odinId = odinId,
+                profileImageData = null,
+                initials = resolvedName.initials(),
+                options = avatarOptions,
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+            )
+        } else {
+            PublicAvatar(
+                odinId = odinId,
+                initials = resolvedName.initials(),
+                options = avatarOptions,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = if (isOwner) youLabel else resolvedName,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
