@@ -10,6 +10,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -40,19 +41,27 @@ fun MessageItem(
         null
     }
 
-    // Memoize all callbacks with message.id as key
+    // Per-content action policy. Plain text/media messages have null
+    // messageContent → fall back to Standard (every action allowed). Typed
+    // rich content (event today; poll/doodle/dice later) declares its own
+    // policy on the sealed type — defaulting to StructuredOneShot which
+    // disables edit/reply/forward/share/inline-reactions/reactor-details.
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+
+    // Memoize all callbacks with message.id as key. Disabled actions get
+    // null callbacks; the bubble subcomposables already gate on non-null.
     val onMessageInfo =
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
-        remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } }
+        if (policy.allowReply) remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
     val onForward =
-        remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } }
+        if (policy.allowForward) remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } } else null
     val onShare =
-        remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } }
+        if (policy.allowShare) remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
     val onDelete =
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
     val onShowReactions =
-        remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } }
+        if (policy.allowReactionDetails) remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } } else null
     val onDecryptFile =
         remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.DecryptFile(messageId = message.id, payloadKey = payload.key)) } }
     val onClickMessageId =
@@ -67,17 +76,19 @@ fun MessageItem(
             )
         }
     }
-    val onAddReaction = remember(message.id) {
-        { _: Any, reaction: String ->
-            onUiAction(
-                ConversationListUiAction.ToggleReaction(
-                    message.conversationId,
-                    message.id,
-                    reaction
+    val onAddReaction = if (policy.allowInlineReactions) {
+        remember(message.id) {
+            { _: Any, reaction: String ->
+                onUiAction(
+                    ConversationListUiAction.ToggleReaction(
+                        message.conversationId,
+                        message.id,
+                        reaction
+                    )
                 )
-            )
+            }
         }
-    }
+    } else null
     val onShowMore =
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMoreClicked(message.conversationId, message.id)) } }
     val onBlock = if (isGroupConversation) {
@@ -91,17 +102,19 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ReportContent) } }
 
     if (message.isAuthoredBy(odinId)) {
-        val onEdit = remember(message.id) {
-            {
-                onUiAction(
-                    ConversationListUiAction.EditMessage(
-                        messageId = message.id,
-                        versionTag = message.versionTag,
-                        ignoreDraft = false
+        val onEdit = if (policy.allowEdit) {
+            remember(message.id) {
+                {
+                    onUiAction(
+                        ConversationListUiAction.EditMessage(
+                            messageId = message.id,
+                            versionTag = message.versionTag,
+                            ignoreDraft = false
+                        )
                     )
-                )
+                }
             }
-        }
+        } else null
 
         SwipeableMessageWrapper(
             enabled = isMobile() && !message.isDeleted,

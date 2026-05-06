@@ -102,6 +102,7 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.resources.chat_location_map_preview_unavailable
@@ -214,6 +215,7 @@ fun ConversationContent(
     val focusRequesterSearch = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showEventComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -1238,10 +1240,21 @@ fun ConversationContent(
                         showAttachmentSheet = false
                         isFetchingLocation = true
                         currentLocationLauncher.launch()
+                    }, onEventClick = {
+                        showAttachmentSheet = false
+                        showEventComposer = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
+    }
+
+    if (showEventComposer) {
+        EventComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showEventComposer = false },
+            onSent = { showEventComposer = false },
+        )
     }
 }
 

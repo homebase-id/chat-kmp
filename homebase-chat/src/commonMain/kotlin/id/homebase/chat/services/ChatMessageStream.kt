@@ -20,6 +20,8 @@ import id.homebase.api.sync.database.QueryBatch
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.milliseconds
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
@@ -450,24 +452,47 @@ class ChatMessageStream(
                 val delivery = getDeliveryStatus(header).value
 
                 val messageAppData: MessageAppData
+                // Try the typed-content parser first. Returns non-null when
+                // appData.dataType matches a known kind (event today; poll,
+                // doodle, dice when those land) AND the content JSON parses.
+                // New kinds plug in via MessageContentParser — zero mapper edits.
+                val messageContent: MessageContent? =
+                    if (isStatusMessage) null
+                    else MessageContentParser.parse(appData.dataType, content)
 
-                if (isStatusMessage) {
-                    val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
-                    val rendered = renderStatusMessage(
-                        author = metadata.originalAuthor,
-                        status = status,
-                        currentUser = domain
-                    )
-                    messageAppData = MessageAppData(
-                        message = JsonPrimitive(rendered),
-                        deliveryStatus = delivery,
-                        isEdited = false
-                    )
-                } else {
-                    val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
-                    messageAppData = source.copy(
-                        deliveryStatus = delivery
-                    )
+                when {
+                    isStatusMessage -> {
+                        val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                        val rendered = renderStatusMessage(
+                            author = metadata.originalAuthor,
+                            status = status,
+                            currentUser = domain
+                        )
+                        messageAppData = MessageAppData(
+                            message = JsonPrimitive(rendered),
+                            deliveryStatus = delivery,
+                            isEdited = false
+                        )
+                    }
+                    messageContent != null -> {
+                        // Display label feeds notifications, conversation-list previews,
+                        // search. Each kind contributes its own (event title, poll
+                        // question, etc.) via MessageContent.displayLabel.
+                        messageAppData = MessageAppData(
+                            message = JsonPrimitive(messageContent.displayLabel),
+                            deliveryStatus = delivery,
+                            isEdited = false
+                        )
+                    }
+                    else -> {
+                        // Plain text + media path. Also catches malformed typed
+                        // content (parser returned null) — falls back rather than
+                        // dropping the message.
+                        val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                        messageAppData = source.copy(
+                            deliveryStatus = delivery
+                        )
+                    }
                 }
 
                 val displayName = displayNameResolver(header)
@@ -537,6 +562,7 @@ class ChatMessageStream(
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
                     isStatusMessage = isStatusMessage,
+                    messageContent = messageContent,
                     hasMore = hasMore
                 )
 

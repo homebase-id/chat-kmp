@@ -22,6 +22,28 @@ object ChatProtocol {
     const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
+    /**
+     * Rich-content message kinds that ride on the message header (no payload fetch
+     * on scroll). The full JSON object lives in `appData.content`; receivers branch
+     * off `appData.dataType` to choose a renderer. Polls and doodles will follow
+     * the same shape — pick the next free integer when adding one.
+     */
+    const val ChatEventMessageDataType = 210
+
+    /**
+     * Header-level kind tag for messages whose primary attachment is a Location
+     * preview ([PAYLOAD_KEY_LOCATION] payload). The receiver still dispatches off
+     * the payload key (the descriptor + map image live there), so this is purely a
+     * server-queryable kind axis: lets `QueryBatch` filter by location messages,
+     * lets future "all locations shared" features land without scanning every
+     * payload metadata blob client-side.
+     *
+     * Pre-existing Location messages on the wire have `dataType = 0` and remain
+     * indistinguishable at the header level until a defragger backfill pass tags
+     * them. New sends are stamped from now on.
+     */
+    const val ChatLocationMessageDataType = 211
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */
