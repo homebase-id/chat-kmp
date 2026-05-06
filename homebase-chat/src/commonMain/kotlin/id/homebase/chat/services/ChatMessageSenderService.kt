@@ -159,24 +159,29 @@ class ChatMessageSenderService(
     )
 
     /**
-     * Sends a typed event message. The descriptor JSON rides on the message header
-     * (`appData.content` + `appData.dataType = ChatEventMessageDataType`) so receivers
-     * see it without fetching a payload. [notificationText] is the title — surfaces
-     * in push notifications, the chat list preview, and search.
+     * Sends a typed rich-content message (event today; poll, doodle, dice when
+     * those land). The content's JSON rides on the message header
+     * (`appData.content` + `appData.dataType` from
+     * [id.homebase.chat.services.content.MessageContentParser.dataTypeFor]) so
+     * receivers see it without fetching a payload. The notification / chat-list
+     * preview text is the content's `displayLabel`.
+     *
+     * Adding a new kind: implement [id.homebase.chat.services.content.MessageContent],
+     * add a parser branch, and call this method. No new sender entry point.
      */
-    suspend fun sendNewEventMessage(
+    suspend fun sendNewTypedMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
-        descriptor: id.homebase.chat.event.EventDescriptor,
+        content: id.homebase.chat.services.content.MessageContent,
         previousMessageUniqueId: Uuid?,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
-        content = OdinSystemSerializer.serialize(descriptor),
-        notificationText = descriptor.title,
+        content = id.homebase.chat.services.content.MessageContentParser.serialize(content),
+        notificationText = content.displayLabel,
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = null,
-        dataType = ChatProtocol.ChatEventMessageDataType,
+        dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
     )
 
     private suspend fun sendMessageInternal(

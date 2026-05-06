@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.common.OdinId
+import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -90,7 +91,7 @@ fun EventDetailDialog(
     descriptor: EventDescriptor,
     messageId: Uuid,
     conversationId: Uuid,
-    ownReactions: Iterable<String>,
+    ownReactions: ImmutableList<String>,
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
 ) {
@@ -115,7 +116,7 @@ private fun EventDetailContent(
     descriptor: EventDescriptor,
     messageId: Uuid,
     conversationId: Uuid,
-    ownReactions: Iterable<String>,
+    ownReactions: ImmutableList<String>,
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
 ) {
@@ -135,7 +136,7 @@ private fun EventDetailContent(
     val rosterReactions: List<EmojiReaction>? by produceState<List<EmojiReaction>?>(
         initialValue = null,
         key1 = messageId,
-        key2 = ownReactions.toList(),
+        key2 = ownReactions,
     ) {
         value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
     }

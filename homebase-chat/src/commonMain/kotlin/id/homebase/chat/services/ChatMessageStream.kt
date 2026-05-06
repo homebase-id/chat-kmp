@@ -393,7 +393,6 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
             val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
-            val isEventMessage = appData.dataType == ChatProtocol.ChatEventMessageDataType
             val hasMore =
                 metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
             val isPendingSend =
@@ -453,7 +452,13 @@ class ChatMessageStream(
                 val delivery = getDeliveryStatus(header).value
 
                 val messageAppData: MessageAppData
-                var messageContent: MessageContent? = null
+                // Try the typed-content parser first. Returns non-null when
+                // appData.dataType matches a known kind (event today; poll,
+                // doodle, dice when those land) AND the content JSON parses.
+                // New kinds plug in via MessageContentParser — zero mapper edits.
+                val messageContent: MessageContent? =
+                    if (isStatusMessage) null
+                    else MessageContentParser.parse(appData.dataType, content)
 
                 when {
                     isStatusMessage -> {
@@ -469,21 +474,20 @@ class ChatMessageStream(
                             isEdited = false
                         )
                     }
-                    isEventMessage -> {
-                        val parsed = MessageContentParser.parse(ChatProtocol.ChatEventMessageDataType, content)
-                        messageContent = parsed
-                        // Display label feeds notifications, conversation-list previews, search.
-                        // When parsing fails (older client / malformed), fall back to a generic
-                        // label rather than dropping the message.
-                        val displayLabel = (parsed as? MessageContent.Event)?.descriptor?.title
-                            ?: "Event"
+                    messageContent != null -> {
+                        // Display label feeds notifications, conversation-list previews,
+                        // search. Each kind contributes its own (event title, poll
+                        // question, etc.) via MessageContent.displayLabel.
                         messageAppData = MessageAppData(
-                            message = JsonPrimitive(displayLabel),
+                            message = JsonPrimitive(messageContent.displayLabel),
                             deliveryStatus = delivery,
                             isEdited = false
                         )
                     }
                     else -> {
+                        // Plain text + media path. Also catches malformed typed
+                        // content (parser returned null) — falls back rather than
+                        // dropping the message.
                         val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
                         messageAppData = source.copy(
                             deliveryStatus = delivery

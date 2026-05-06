@@ -25,8 +25,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +57,7 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -215,10 +214,10 @@ private fun EventComposerContent(
                     createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
                 )
                 runCatching {
-                    sender.sendNewEventMessage(
+                    sender.sendNewTypedMessage(
                         messageUniqueId = Uuid.random(),
                         conversationId = conversationId,
-                        descriptor = descriptor,
+                        content = MessageContent.Event(descriptor),
                         previousMessageUniqueId = null,
                     )
                 }

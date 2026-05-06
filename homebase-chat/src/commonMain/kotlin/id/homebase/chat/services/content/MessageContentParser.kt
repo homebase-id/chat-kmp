@@ -16,8 +16,8 @@ object MessageContentParser {
 
     private const val TAG = "MessageContentParser"
 
-    fun parse(dataType: Int, content: String?): MessageContent? {
-        if (content.isNullOrBlank()) return null
+    fun parse(dataType: Int?, content: String?): MessageContent? {
+        if (dataType == null || content.isNullOrBlank()) return null
         return when (dataType) {
             ChatProtocol.ChatEventMessageDataType -> parseEvent(content)
             else -> null

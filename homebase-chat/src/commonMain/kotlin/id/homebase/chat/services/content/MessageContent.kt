@@ -27,8 +27,18 @@ sealed interface MessageContent {
      */
     val actions: ActionPolicy get() = ActionPolicy.StructuredOneShot
 
+    /**
+     * Short human-readable label used everywhere the chat needs a fallback
+     * "what was this message?": push notifications, conversation-list previews,
+     * search index, the sender's `notificationText`. Each kind contributes its
+     * own concise summary (event title, poll question, etc.). Never blank.
+     */
+    val displayLabel: String
+
     /** A scheduled event with optional location, meeting URL, and RSVP via reactions. */
-    data class Event(val descriptor: EventDescriptor) : MessageContent
+    data class Event(val descriptor: EventDescriptor) : MessageContent {
+        override val displayLabel: String get() = descriptor.title
+    }
 
     // Future:
     // data class Poll(val descriptor: PollDescriptor) : MessageContent
