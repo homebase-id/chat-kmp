@@ -51,6 +51,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.video.formatDurationLabel
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -181,6 +182,41 @@ fun MediaItem(
                 MediaPlaceholder(
                     emoji = "\uD83D\uDD17",
                     label = "Link",
+                    modifier = baseModifier,
+                )
+            }
+        }
+
+        payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
+            val locationDescriptors = remember(payload.descriptorContent) {
+                payload.descriptorContent?.let { content ->
+                    try {
+                        OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
+                            content
+                        )
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
+
+            val payloadIv = payload.iv?.let { Base64.decode(it) }
+
+            if (payloadIv != null && locationDescriptors != null) {
+                LocationPreviewCard(
+                    descriptor = locationDescriptors[0],
+                    fileId = fileId,
+                    driveId = driveId,
+                    payloadKey = payload.key,
+                    keyHeader = KeyHeader(payloadIv, keyHeader.aesKey),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: previewThumbnail,
+                    modifier = baseModifier,
+                )
+            } else {
+                MediaPlaceholder(
+                    emoji = "\uD83D\uDCCD",
+                    label = "Location",
                     modifier = baseModifier,
                 )
             }

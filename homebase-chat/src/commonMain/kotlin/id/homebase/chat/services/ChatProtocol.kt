@@ -52,6 +52,9 @@ object ChatProtocol {
 
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"
+    // Server-side constraint: payload keys must match `^[a-z0-9_]{8,10}$`. "chat_location"
+    // (13 chars) was rejected with 400 "Missing payload key"; "chat_loc" (8 chars) fits.
+    const val PAYLOAD_KEY_LOCATION = "chat_loc"
 
     const val DefaultPayloadKey = "dflt_key"
     const val MaxDescriptorContentLength = 1024

@@ -19,6 +19,7 @@ import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
@@ -87,6 +88,7 @@ val apiModule = module {
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)
     singleOf(::LinkPreviewProvider)
+    singleOf(::LocationPreviewProvider)
 
     single { EventBus() }
 }

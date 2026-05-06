@@ -499,7 +499,14 @@
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
     <string name="chat_message_file">File</string>
+    <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
+
+    <string name="chat_location_share">Location</string>
+    <string name="chat_location_attachment">Location map</string>
+    <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
+    <string name="chat_location_unavailable">Couldn\'t get your location. Try again outdoors or check that Location is enabled.</string>
+    <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
