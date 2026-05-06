@@ -7,6 +7,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.truncateToCodePoints
@@ -15,6 +16,8 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.StatusMessage
+import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -87,6 +90,14 @@ class ConversationStream(
      *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
      *  reconciliation pass) can wire in without touching DI. */
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
+
+    /**
+     * Hook invoked when the live receive stream observes an incoming
+     * [StatusMessage.GroupHealRequested] status. Wired in AppModule to
+     * [ConversationService.handleIncomingHealRequest]. Side effect only —
+     * does not affect message-list dispatch.
+     */
+    var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -227,8 +238,32 @@ class ConversationStream(
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
 
+    private suspend fun dispatchGroupHealRequests(messageFiles: List<HomebaseFile>) {
+        val handler = onIncomingHealRequest ?: return
+        for (file in messageFiles) {
+            val appData = file.fileMetadata.appData
+            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
+            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
+            val content = appData.content ?: continue
+            val status = runCatching {
+                OdinSystemSerializer.deserialize<StatusMessageData>(content)
+            }.getOrNull() ?: continue
+            if (status.statusMessage != StatusMessage.GroupHealRequested) continue
+            try {
+                handler(status, sender)
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: heal-request handler threw for sender=${sender.domainName}: ${e.message}" }
+            }
+        }
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
+
+        // Pre-pass: dispatch GroupHealRequested status messages to the heal
+        // handler. Done here (live BatchReceived only — never on cold reads or
+        // searches) so the side effects fire exactly once per arrival.
+        dispatchGroupHealRequests(messageFiles)
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
