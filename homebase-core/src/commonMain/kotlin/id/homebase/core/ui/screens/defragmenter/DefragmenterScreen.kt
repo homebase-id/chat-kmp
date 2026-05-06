@@ -209,13 +209,14 @@ private fun DefragmenterContent(
 
         val reviewTotal =
             state.corruptHeaderCandidates.size + state.corruptMessageCandidates.size
-        if (reviewTotal > 0) {
-            Win98Button(
-                text = stringResource(MR.string.defragmenter_review_button, reviewTotal),
-                enabled = true,
-                onClick = { onAction(DefragmenterUiAction.OpenReview) },
-            )
-        }
+        // Render unconditionally so the grid panel above retains the same
+        // height across phases — without this, the button appearing/disappearing
+        // mid-analyze visibly resizes every block.
+        Win98Button(
+            text = stringResource(MR.string.defragmenter_review_button, reviewTotal),
+            enabled = reviewTotal > 0,
+            onClick = { onAction(DefragmenterUiAction.OpenReview) },
+        )
     }
 
     if (state.showReviewDialog) {
@@ -290,44 +291,40 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
                 stringResource(MR.string.defragmenter_stat_eta, formatDuration(state.estRemainingMs))
             )
             // Per-issue tallies + colour swatches so the user can map block
-            // colour → meaning at a glance. Hidden when the count is zero so
-            // the panel doesn't grow until issues actually exist.
-            if (state.issueCountLegacyUserDateZero > 0) {
-                Win98Label(
-                    text = "Legacy userDate=0: ${state.issueCountLegacyUserDateZero}",
-                    color = Win98Palette.IssueLegacyUserDateZeroFill,
-                )
-            }
-            if (state.issueCountArchivalMismatch > 0) {
-                Win98Label(
-                    text = "Soft-delete drift: ${state.issueCountArchivalMismatch}",
-                    color = Win98Palette.IssueArchivalMismatchFill,
-                )
-            }
-            if (state.issueCountCorruptJson > 0) {
-                Win98Label(
-                    text = "Bad header blocks: ${state.issueCountCorruptJson}",
-                    color = Win98Palette.IssueCorruptJsonFill,
-                )
-            }
-            if (state.issueCountUnmappableConvo > 0) {
-                Win98Label(
-                    text = "Unmappable conversation: ${state.issueCountUnmappableConvo}",
-                    color = Win98Palette.IssueUnmappableConvoFill,
-                )
-            }
-            if (state.issueCountOrphanMessage > 0) {
-                Win98Label(
-                    text = "Orphan messages: ${state.issueCountOrphanMessage}",
-                    color = Win98Palette.IssueOrphanMessageFill,
-                )
-            }
-            if (state.issueCountCorruptMessageContent > 0) {
-                Win98Label(
-                    text = "Bad message blocks: ${state.issueCountCorruptMessageContent}",
-                    color = Win98Palette.IssueCorruptMessageContentFill,
-                )
-            }
+            // colour → meaning at a glance. Always rendered so the panel
+            // height is constant across phases — without this, rows popping
+            // in mid-analyze shrink the grid panel above and visibly clip
+            // its bottom row of cells.
+            IssueTallyRow(
+                label = "Legacy userDate=0",
+                count = state.issueCountLegacyUserDateZero,
+                activeColor = Win98Palette.IssueLegacyUserDateZeroFill,
+            )
+            IssueTallyRow(
+                label = "Soft-delete drift",
+                count = state.issueCountArchivalMismatch,
+                activeColor = Win98Palette.IssueArchivalMismatchFill,
+            )
+            IssueTallyRow(
+                label = "Bad header blocks",
+                count = state.issueCountCorruptJson,
+                activeColor = Win98Palette.IssueCorruptJsonFill,
+            )
+            IssueTallyRow(
+                label = "Unmappable conversation",
+                count = state.issueCountUnmappableConvo,
+                activeColor = Win98Palette.IssueUnmappableConvoFill,
+            )
+            IssueTallyRow(
+                label = "Orphan messages",
+                count = state.issueCountOrphanMessage,
+                activeColor = Win98Palette.IssueOrphanMessageFill,
+            )
+            IssueTallyRow(
+                label = "Bad message blocks",
+                count = state.issueCountCorruptMessageContent,
+                activeColor = Win98Palette.IssueCorruptMessageContentFill,
+            )
         }
     }
 }
@@ -384,6 +381,18 @@ private fun ActionButtons(state: DefragmenterUiState, onAction: (DefragmenterUiA
             )
         }
     }
+}
+
+/**
+ * One legend row in the StatsPanel issue tallies. Always rendered (even when
+ * count is zero) so the panel keeps a constant height across phases. Coloured
+ * with the issue's swatch when active; muted grey when zero so the legend
+ * reads as "this bucket is empty so far" rather than as a coloured signal.
+ */
+@Composable
+private fun IssueTallyRow(label: String, count: Int, activeColor: Color) {
+    val color = if (count > 0) activeColor else Win98Palette.Black.copy(alpha = 0.45f)
+    Win98Label(text = "$label: $count", color = color)
 }
 
 @Composable

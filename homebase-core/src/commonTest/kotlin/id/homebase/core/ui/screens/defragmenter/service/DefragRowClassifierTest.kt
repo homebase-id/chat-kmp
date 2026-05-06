@@ -112,6 +112,37 @@ class DefragRowClassifierTest {
     }
 
     @Test
+    fun classify_messageWithNullUserDateAndCorruptContent_corruptWinsOverLegacy() = runTest {
+        // Older corrupt rows commonly carry both a null appData.userDate and an
+        // unparseable content blob. If LegacyUserDateZero takes priority, the
+        // repair pass stamps a userDate and leaves the unreadable content in
+        // place — the consumer keeps throwing on every cold-load. CorruptMessageContent
+        // must take priority so the row surfaces in the user-review queue.
+        val row = chatMessageRow(
+            content = "?garbage{",
+            groupId = convoId,
+            headerUserDate = null,
+            rowUserDate = 0L,
+        )
+        val probe: suspend (HomebaseFile) -> Throwable? = {
+            IllegalStateException("expected '{' but got '?'")
+        }
+
+        val state = classifyRow(
+            driveId = driveId,
+            row = row,
+            mapToBasicProbe = null,
+            healthyConversationIds = healthyConvos,
+            decodeMessageContentProbe = probe,
+        )
+
+        assertTrue(
+            state is CellState.CorruptMessageContent,
+            "expected CorruptMessageContent to win over LegacyUserDateZero, got $state",
+        )
+    }
+
+    @Test
     fun classify_messageWithNullHeaderUserDate_returnsLegacyUserDateZero() = runTest {
         // Even when the SQL `userDate` column has been previously repaired
         // (non-zero), a null in the parsed `appData.userDate` re-flags the

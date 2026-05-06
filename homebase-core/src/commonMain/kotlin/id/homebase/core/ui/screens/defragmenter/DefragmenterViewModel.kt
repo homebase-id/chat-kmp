@@ -16,6 +16,8 @@ import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragRepairEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
+import id.homebase.core.ui.screens.defragmenter.service.MessageContentQuarantineCandidate
+import id.homebase.core.ui.screens.defragmenter.service.QuarantineCandidate
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -755,20 +757,44 @@ class DefragmenterViewModel(
                 break
             }
         }
-        _uiState.update {
-            val tally = if (isMessageContent) {
-                it.copy(
-                    issueCountCorruptMessageContent =
-                        (it.issueCountCorruptMessageContent - 1).coerceAtLeast(0),
-                )
+        // Atomically prune the deleted entry from the in-memory candidate list,
+        // adjust counts, and re-derive reviewIndex / showReviewDialog. Done in
+        // a single _uiState.update so Compose snapshots the new lists and
+        // index together — the dialog never sees a stale entry vs an advanced
+        // index. After removing the entry at reviewIndex, that index already
+        // points at the *next* candidate, so we don't bump it.
+        _uiState.update { current ->
+            val newHeader: List<QuarantineCandidate>
+            val newMessage: List<MessageContentQuarantineCandidate>
+            if (isMessageContent) {
+                val msgIdx = current.reviewIndex - current.corruptHeaderCandidates.size
+                newHeader = current.corruptHeaderCandidates
+                newMessage = current.corruptMessageCandidates.toMutableList()
+                    .apply { if (msgIdx in indices) removeAt(msgIdx) }
             } else {
-                it.copy(
-                    issueCountCorruptJson = (it.issueCountCorruptJson - 1).coerceAtLeast(0),
-                )
+                val hdrIdx = current.reviewIndex
+                newHeader = current.corruptHeaderCandidates.toMutableList()
+                    .apply { if (hdrIdx in indices) removeAt(hdrIdx) }
+                newMessage = current.corruptMessageCandidates
             }
-            tally.copy(gridVersion = it.gridVersion + 1)
+            val newTotal = newHeader.size + newMessage.size
+            val newIndex =
+                if (newTotal == 0) 0 else current.reviewIndex.coerceAtMost(newTotal - 1)
+            val showDialog = current.showReviewDialog && newTotal > 0
+            current.copy(
+                corruptHeaderCandidates = newHeader,
+                corruptMessageCandidates = newMessage,
+                reviewIndex = newIndex,
+                showReviewDialog = showDialog,
+                issueCountCorruptMessageContent = if (isMessageContent)
+                    (current.issueCountCorruptMessageContent - 1).coerceAtLeast(0)
+                else current.issueCountCorruptMessageContent,
+                issueCountCorruptJson = if (!isMessageContent)
+                    (current.issueCountCorruptJson - 1).coerceAtLeast(0)
+                else current.issueCountCorruptJson,
+                gridVersion = current.gridVersion + 1,
+            )
         }
-        advanceReviewIndex()
     }
 
     private fun advanceReviewIndex() {

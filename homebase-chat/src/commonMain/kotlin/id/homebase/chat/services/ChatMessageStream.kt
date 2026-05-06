@@ -543,7 +543,11 @@ class ChatMessageStream(
             } catch (t: Throwable) {
 
                 Logger.e(t) {
-                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData}]. Message: ${t.message}"
+                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} " +
+                            "created=${metadata.created} updated=${metadata.updated} transitCreated=${metadata.transitCreated} " +
+                            "originalAuthor=${metadata.originalAuthor?.domainName} senderOdinId=${metadata.senderOdinId?.domainName} " +
+                            "versionTag=${metadata.versionTag} globalTransitId=${metadata.globalTransitId} " +
+                            "appData=[${appData}]. Message: ${t.message}"
                 }
 
                 try {
