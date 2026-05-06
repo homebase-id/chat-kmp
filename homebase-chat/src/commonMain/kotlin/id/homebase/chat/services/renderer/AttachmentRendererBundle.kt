@@ -1,4 +1,4 @@
-package id.homebase.chat.services.staged
+package id.homebase.chat.services.renderer
 
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.PayloadBundle
@@ -6,16 +6,14 @@ import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
 
 /**
- * Convert a list of staged attachments to a single combined [PayloadBundle] suitable for the
+ * Convert a list of attachment renderers to a single combined [PayloadBundle] suitable for the
  * chat send pipeline. Returns `null` when the list is empty (the send pipeline treats `null`
  * as "no payloads").
  *
- * This is the single dispatch point between staged-content kinds and their on-wire builder.
- * `ConversationListViewModel.addMessage` and `replyToMessage` call this once instead of
- * managing a manual `link/location/contact?` combination — adding a new kind is a one-line
- * `when` branch addition here, not a new conditional in every send path.
+ * Single dispatch point between renderer kinds and their on-wire builders. Adding a new kind
+ * is a one-line `when` branch here, not a new conditional in every send path.
  */
-suspend fun List<StagedAttachment>.toCombinedPayloadBundle(
+suspend fun List<AttachmentRenderer>.toCombinedPayloadBundle(
     fileOps: FileOperationsProvider,
 ): PayloadBundle? {
     if (isEmpty()) return null
@@ -30,9 +28,9 @@ suspend fun List<StagedAttachment>.toCombinedPayloadBundle(
     }
 }
 
-private suspend fun StagedAttachment.toPayloadBundle(
+private suspend fun AttachmentRenderer.toPayloadBundle(
     fileOps: FileOperationsProvider,
 ): PayloadBundle = when (this) {
-    is StagedLinkPreview -> LinkPreviewPayloadBuilder.build(preview, fileOps)
-    is StagedLocationPreview -> LocationPreviewPayloadBuilder.build(preview, fileOps)
+    is LinkPreviewRenderer -> LinkPreviewPayloadBuilder.build(preview, fileOps)
+    is LocationPreviewRenderer -> LocationPreviewPayloadBuilder.build(preview, fileOps)
 }

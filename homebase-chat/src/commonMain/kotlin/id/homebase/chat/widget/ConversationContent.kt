@@ -100,8 +100,8 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.chat.location.rememberCurrentLocationLauncher
-import id.homebase.chat.services.staged.StagedAttachment
-import id.homebase.chat.services.staged.StagedLocationPreview
+import id.homebase.chat.services.renderer.AttachmentRenderer
+import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -219,11 +219,11 @@ fun ConversationContent(
     // Hoisted composer staging slot. Owned at this level so user-initiated attachments
     // (location, contact, etc.) can be appended from outside the input bar (e.g. from the
     // attachment sheet). Auto-detected attachments (link previews from typed URLs) write here
-    // too, via `MessageInputBar`'s onStagedAttachmentsChange callback.
-    var stagedAttachments by remember { mutableStateOf<List<StagedAttachment>>(emptyList()) }
+    // too, via `MessageInputBar`'s onAttachmentRenderersChange callback.
+    var attachmentRenderers by remember { mutableStateOf<List<AttachmentRenderer>>(emptyList()) }
 
     // Location-share flow. Triggered from the AttachmentOptions sheet → GPS launcher → fetch
-    // a static map preview from the (dev-stub) provider → append a StagedLocationPreview to
+    // a static map preview from the (dev-stub) provider → append a LocationPreviewRenderer to
     // the composer's staging slot. The composer renders/cancels it via the same path as link
     // previews; nothing here knows the bubble shape.
     val locationPreviewProvider: LocationPreviewProvider = koinInject()
@@ -238,8 +238,8 @@ fun ConversationContent(
                 val preview = locationPreviewProvider.getLocationPreview(fix.latitude, fix.longitude)
                 if (preview != null) {
                     // Replace any existing staged location (one location at a time).
-                    stagedAttachments = stagedAttachments.filterNot { it is StagedLocationPreview } +
-                        StagedLocationPreview(preview)
+                    attachmentRenderers = attachmentRenderers.filterNot { it is LocationPreviewRenderer } +
+                        LocationPreviewRenderer(preview)
                 }
             } finally {
                 isFetchingLocation = false
@@ -1063,11 +1063,11 @@ fun ConversationContent(
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
                                 isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
-                                stagedAttachments = stagedAttachments,
-                                onStagedAttachmentsChange = { stagedAttachments = it },
+                                attachmentRenderers = attachmentRenderers,
+                                onAttachmentRenderersChange = { attachmentRenderers = it },
                                 onSendMessage = { text, attachments ->
                                     val hasContent = text.isNotBlank() ||
-                                        attachments.any { it !is id.homebase.chat.services.staged.StagedLinkPreview }
+                                        attachments.any { it !is id.homebase.chat.services.renderer.LinkPreviewRenderer }
                                     if (hasContent) {
                                         if (uiState.isEditingMessageId != null) {
                                             onUiAction(
@@ -1077,12 +1077,12 @@ fun ConversationContent(
                                             onUiAction(
                                                 ConversationListUiAction.SendMessage(
                                                     conversationId = conversation.conversation.id,
-                                                    stagedAttachments = attachments,
+                                                    attachmentRenderers = attachments,
                                                 )
                                             )
                                             // Clear the staged slot so the next message doesn't
                                             // inherit the just-sent attachments.
-                                            stagedAttachments = emptyList()
+                                            attachmentRenderers = emptyList()
                                         }
                                     }
                                 },

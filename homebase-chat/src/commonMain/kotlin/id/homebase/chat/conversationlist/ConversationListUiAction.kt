@@ -3,7 +3,7 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
-import id.homebase.chat.services.staged.StagedAttachment
+import id.homebase.chat.services.renderer.AttachmentRenderer
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -63,7 +63,7 @@ sealed interface ConversationListUiAction {
     data object DismissSheet : ConversationListUiAction
     data class SendMessage(
         val conversationId: Uuid,
-        val stagedAttachments: List<StagedAttachment> = emptyList(),
+        val attachmentRenderers: List<AttachmentRenderer> = emptyList(),
     ) : ConversationListUiAction
 
     data class SendFile(

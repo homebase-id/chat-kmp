@@ -20,8 +20,8 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.chat.services.staged.StagedAttachment
-import id.homebase.chat.services.staged.toCombinedPayloadBundle
+import id.homebase.chat.services.renderer.AttachmentRenderer
+import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
@@ -753,8 +753,8 @@ class ConversationListViewModel(
                 // User-initiated attachments (location, contact, etc.) enable send even with no
                 // text. Link previews don't — they're auto-detected from typed URLs and only
                 // ride along when there's a text message to send.
-                val hasUserInitiatedAttachment = action.stagedAttachments.any {
-                    it !is id.homebase.chat.services.staged.StagedLinkPreview
+                val hasUserInitiatedAttachment = action.attachmentRenderers.any {
+                    it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
                 }
                 if (hasMessage || hasUserInitiatedAttachment) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
@@ -765,13 +765,13 @@ class ConversationListViewModel(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
                             content = content,
-                            stagedAttachments = action.stagedAttachments,
+                            attachmentRenderers = action.attachmentRenderers,
                         )
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
                             content = content,
-                            stagedAttachments = action.stagedAttachments,
+                            attachmentRenderers = action.attachmentRenderers,
                         )
                     }
                     // Input is cleared inside addMessage/replyToMessage after
@@ -2836,11 +2836,11 @@ class ConversationListViewModel(
     private fun addMessage(
         conversationId: Uuid,
         content: String,
-        stagedAttachments: List<StagedAttachment> = emptyList(),
+        attachmentRenderers: List<AttachmentRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = stagedAttachments.toCombinedPayloadBundle(fileOperationsProvider)
+                val payloadBundle = attachmentRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
@@ -2871,11 +2871,11 @@ class ConversationListViewModel(
         conversationId: Uuid,
         replyTo: MessageUiModel,
         content: String,
-        stagedAttachments: List<StagedAttachment> = emptyList(),
+        attachmentRenderers: List<AttachmentRenderer> = emptyList(),
     ) {
         viewModelScope.launch {
             try {
-                val payloadBundle = stagedAttachments.toCombinedPayloadBundle(fileOperationsProvider)
+                val payloadBundle = attachmentRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
