@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -782,7 +783,8 @@ fun InlineReplyPreview(
         }
     }
 
-    val hasImage = imageData != null || replyPreview.previewThumbnail != null
+    val hasThumb = imageData != null || thumbnailBitmap != null
+    val hasImage = hasThumb || replyPreview.previewThumbnail != null
 
     // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
     val mediaPayloads = remember(replyMessage?.payloads) {
@@ -797,8 +799,14 @@ fun InlineReplyPreview(
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
     )
-    val displayMessage = contentLabel?.text
-        ?: replyPreview.message.ifEmpty { if (hasImage) stringResource(MR.string.media) else "" }
+    val displayMessage = resolveReplyContentText(
+        replyText = replyPreview.message,
+        contentLabelText = contentLabel?.text,
+        hasThumbnail = hasThumb,
+        hasMedia = hasImage,
+        mediaFallbackLabel = stringResource(MR.string.media),
+    )
+    val showContentIcon = shouldShowContentIcon(hasThumb, contentLabel?.text)
 
     Row(
         modifier = Modifier
@@ -808,82 +816,77 @@ fun InlineReplyPreview(
             .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         // Vertical accent bar
-        Row {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(color = contentColor, shape = RoundedCornerShape(2.dp))
-            )
-            Column(
-                modifier = Modifier.weight(1f, fill = false)
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                val replyAuthorIsYou = currentOdinId.isNotEmpty() &&
-                    replyPreview.authorOdinId == currentOdinId
-                val authorDisplayName = when {
-                    replyAuthorIsYou -> stringResource(MR.string.you)
-                    else -> replyMessage?.displayName ?: replyPreview.authorOdinId
-                }
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(color = contentColor, shape = RoundedCornerShape(2.dp))
+        )
+        Column(
+            modifier = Modifier.weight(1f)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+                val authorDisplayName = resolveReplyAuthorName(
+                    authorOdinId = replyPreview.authorOdinId,
+                    currentOdinId = currentOdinId,
+                    resolvedDisplayName = replyMessage?.displayName,
+                    youLabel = stringResource(MR.string.you),
+                )
                 Text(
                     text = authorDisplayName,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    contentLabel?.icon?.let { icon ->
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = contentColor,
+                if (displayMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (showContentIcon) {
+                            contentLabel?.icon?.let { icon ->
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = contentColor.copy(alpha = 0.7f),
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                            }
+                        }
+                        Text(
+                            text = displayMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
                     }
-                    Text(
-                        text = displayMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
-        }
         // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
         if (imageData != null) {
-            Row {
-                Spacer(modifier = Modifier.width(8.dp))
-                HomebaseImage(
-                    imageData = imageData,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = null,
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
+            HomebaseImage(
+                imageData = imageData,
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop,
+                contentDescription = null,
+            )
         } else {
             thumbnailBitmap?.let { bitmap ->
-                Row {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Crop,
+                )
             }
         }
     }

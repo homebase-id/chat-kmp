@@ -111,10 +111,13 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
         ) {
             // Author + content preview
             Column(modifier = Modifier.weight(1f)) {
-                val isYou = currentOdinId.isNotEmpty() &&
-                    message.originalAuthor?.domainName == currentOdinId
                 Text(
-                    text = if (isYou) stringResource(MR.string.you) else message.displayName,
+                    text = resolveReplyAuthorName(
+                        authorOdinId = message.originalAuthor?.domainName ?: "",
+                        currentOdinId = currentOdinId,
+                        resolvedDisplayName = message.displayName,
+                        youLabel = stringResource(MR.string.you),
+                    ),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
