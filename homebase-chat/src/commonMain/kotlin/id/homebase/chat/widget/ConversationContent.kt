@@ -460,6 +460,18 @@ fun ConversationContent(
             onContactClick = { odinId ->
                 onUiAction(ConversationListUiAction.ShowContactInfo(odinId))
             },
+            onAddReaction = uiState.reactionDetailsMessageId?.let { messageId ->
+                { emoji: String ->
+                    onUiAction(
+                        ConversationListUiAction.ToggleReaction(
+                            conversationId = conversation.conversation.id,
+                            messageId = messageId,
+                            reaction = emoji,
+                        )
+                    )
+                    onUiAction(ConversationListUiAction.HideReactionDetails)
+                }
+            },
             onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) },
         )
     }
