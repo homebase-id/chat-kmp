@@ -257,26 +257,28 @@ fun SentMessageBubble(
             }
 
             Box(
-                modifier = if (isMobile()) {
-                    Modifier.fillMaxWidth().combinedClickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                        onLongClick = {
-                            if (onMessageInfo != null) {
-                                popupMode = MessagePopupMode.All
-                            }
-                        },
-                        onDoubleClick = {
-                            if (onAddReaction != null) {
-                                popupMode = MessagePopupMode.Reaction
-                            }
-                        },
-                    )
-                } else Modifier,
+                modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Box {
+                Box(
+                    modifier = if (isMobile()) {
+                        Modifier.combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = {
+                                if (onMessageInfo != null) {
+                                    popupMode = MessagePopupMode.All
+                                }
+                            },
+                            onDoubleClick = {
+                                if (onAddReaction != null) {
+                                    popupMode = MessagePopupMode.Reaction
+                                }
+                            },
+                        )
+                    } else Modifier,
+                ) {
                     MessageBubbleRaw(
                         modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
                         message = message,
