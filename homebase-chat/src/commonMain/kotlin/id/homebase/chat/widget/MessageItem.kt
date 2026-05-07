@@ -34,7 +34,6 @@ fun MessageItem(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
 ) {
-    // TODO: currentOdinId is "" - is that supposed to be the case??
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
     } catch (_: Exception) {
