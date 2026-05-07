@@ -216,6 +216,17 @@ class ChatMessageSenderService(
         val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
+        val effectiveNotificationText = if (recipients.size > 1) {
+            val groupName = conversation.name
+            if (groupName.isNotBlank()) {
+                "$notificationText in $groupName"
+            } else {
+                "$notificationText in a group chat"
+            }
+        } else {
+            notificationText
+        }
+
         Logger.d(tag = TAG) {
             "sendMessageInternal: encrypting message=$messageUniqueId " +
                 "conversation=$conversationId " +
@@ -258,7 +269,7 @@ class ChatMessageSenderService(
                     typeId = conversationId.toString(),
                     tagId = messageUniqueId.toString(),
                     silent = false,
-                    unEncryptedMessage = notificationText
+                    unEncryptedMessage = effectiveNotificationText
                 )
             ),
             payloads = encryptedBundle.payloads,

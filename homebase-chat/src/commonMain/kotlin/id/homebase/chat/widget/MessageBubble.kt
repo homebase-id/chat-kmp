@@ -260,6 +260,11 @@ fun SentMessageBubble(
                                 popupMode = MessagePopupMode.All
                             }
                         },
+                        onDoubleClick = {
+                            if (onAddReaction != null) {
+                                popupMode = MessagePopupMode.Reaction
+                            }
+                        },
                     )
                 } else Modifier,
                 contentAlignment = Alignment.CenterEnd,
@@ -416,6 +421,11 @@ fun ReceivedMessageBubble(
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
+                            }
+                        },
+                        onDoubleClick = {
+                            if (onAddReaction != null) {
+                                popupMode = MessagePopupMode.Reaction
                             }
                         },
                     )
