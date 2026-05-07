@@ -30,7 +30,7 @@ data class DiceRollDescriptor(
 
     companion object {
         val ALLOWED_FACES = listOf(4, 6, 8, 10, 12, 20)
-        const val MAX_DICE = 12
+        const val MAX_DICE = 10
     }
 }
 
