@@ -27,7 +27,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -135,7 +135,7 @@ fun ConversationListPane(
                         navigationIcon = {
                             IconButton(onClick = { onUiAction(ConversationListUiAction.ArchiveBackClicked) }) {
                                 Icon(
-                                    imageVector = Icons.Default.ChevronLeft,
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = stringResource(MR.string.menu_back)
                                 )
                             }
