@@ -8,6 +8,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.sync.database.NativeDatabaseSizeProbe
+import id.homebase.chat.dice.IosShakeDetector
+import id.homebase.chat.dice.ShakeDetector
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -47,6 +49,7 @@ actual fun platformModule(): Module = module {
     single<AudioWaveFormGenerator> { IOSWaveFormGenerator() }
     single<DatabaseSizeProbe> { NativeDatabaseSizeProbe() }
     single<UpdateAppManager> { IOSUpdateAppManager(get()) }
+    single<ShakeDetector> { IosShakeDetector() }
     single(createdAtStart = true) {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
