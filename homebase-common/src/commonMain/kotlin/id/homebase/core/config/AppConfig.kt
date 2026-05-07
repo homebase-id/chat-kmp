@@ -8,6 +8,7 @@ import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import kotlinx.serialization.Serializable
+import kotlin.uuid.Uuid
 
 @Serializable
 data class LabeledDrive(val drive: TargetDrive, val label: String)
@@ -71,6 +72,13 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val momentsLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
+        type = Uuid.parse("4338d7d2-f217-486a-8790-a4982644c15f"),
+    ),
+    label = "Moments",
+)
 
 // Backward-compatible aliases — all existing consumers remain unaffected
 val chatTargetDrive = chatLabeledDrive.drive
@@ -165,6 +173,27 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
         returnUrl = ::returnUrl
+    )
+}
+
+// Moments-specific permission config — drive-only, no extra app permissions
+val momentsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = momentsLabeledDrive.drive.alias.toString(),
+        type = momentsLabeledDrive.drive.type.toString(),
+        name = "Moments Drive",
+        description = "Drive which contains your saved moments",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    ),
+)
+
+fun getMomentsPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = momentsTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
     )
 }
 

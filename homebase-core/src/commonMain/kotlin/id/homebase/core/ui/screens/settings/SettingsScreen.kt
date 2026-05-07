@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -77,6 +78,7 @@ import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_active
 import id.homebase.resources.settings_notifications_issue
@@ -95,6 +97,7 @@ fun SettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
+    onNavigateToMomentsSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -150,7 +153,8 @@ fun SettingsScreen(
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
             onNavigateToStorage = onNavigateToStorage,
-            onNavigateToHelp = onNavigateToHelp
+            onNavigateToHelp = onNavigateToHelp,
+            onNavigateToMomentsSettings = onNavigateToMomentsSettings,
         )
 
         if (uiState.isLoggingOut) {
@@ -210,6 +214,7 @@ fun SettingsUi(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
+    onNavigateToMomentsSettings: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
 
@@ -348,6 +353,13 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("momentsSettingsButton"),
+                imageVector = Icons.Outlined.AutoAwesome,
+                text = stringResource(MR.string.moments_settings_section),
+                onClick = onNavigateToMomentsSettings,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
                 modifier = Modifier.testTag("helpButton"),
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 text = stringResource(MR.string.settings_help),
@@ -385,7 +397,8 @@ fun SettingsUiPreview() {
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToStorage = {},
-            onNavigateToHelp = {}
+            onNavigateToHelp = {},
+            onNavigateToMomentsSettings = {},
         )
     }
 }

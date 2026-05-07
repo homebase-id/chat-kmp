@@ -307,6 +307,18 @@
     <string name="permissions_missing_body">The %1$s app is missing permissions. Without the necessary permissions the functionality of %1$s will be limited.</string>
     <string name="permissions_extend">Extend Permissions</string>
 
+    <!-- Moments add-on -->
+    <string name="moments_label">Moments</string>
+    <string name="moments_onboarding_title">Moments worth remembering</string>
+    <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
+    <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
+    <string name="moments_onboarding_setup">Set it up</string>
+    <string name="moments_onboarding_dismiss">Not now</string>
+    <string name="moments_welcome">Moments worth remembering</string>
+    <string name="moments_settings_section">Moments</string>
+    <string name="moments_settings_open">Open Moments</string>
+    <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>
     <string name="system_conversation_title_updated_you">You updated the conversation title</string>

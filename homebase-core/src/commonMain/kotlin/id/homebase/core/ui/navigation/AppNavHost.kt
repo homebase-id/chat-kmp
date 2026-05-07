@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -75,6 +76,12 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
+import id.homebase.core.ui.screens.moments.MomentsScreen
+import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
+import id.homebase.core.ui.screens.moments.MomentsUiEvent
+import id.homebase.core.ui.screens.moments.MomentsViewModel
+import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
@@ -89,6 +96,7 @@ import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import id.homebase.core.ui.screens.help.HelpScreen
 import kotlin.uuid.Uuid
@@ -105,8 +113,28 @@ fun AppNavHost(
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val topLevelRoutes =
-        remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Home) }
+    val momentsPreferences = koinInject<MomentsPreferences>()
+    val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val momentsViewModel: MomentsViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible) {
+        buildList {
+            add(TopLevelRoute.Chat)
+            add(TopLevelRoute.Feed)
+            if (momentsIconVisible) add(TopLevelRoute.Moments)
+            add(TopLevelRoute.Home)
+        }
+    }
+    val openMoments: () -> Unit = {
+        if (momentsPreferences.activated.value) {
+            navController.navigate(Route.Moments) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.MomentsOnboarding)
+        }
+    }
     val uriHandler = getUriHandler()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -219,6 +247,22 @@ fun AppNavHost(
         }
     }
 
+    // Translate Moments onboarding one-shot events into nav-stack changes.
+    LaunchedEffect(Unit) {
+        momentsViewModel.events.collect { event ->
+            when (event) {
+                MomentsUiEvent.Activated -> {
+                    navController.popBackStack(Route.MomentsOnboarding, inclusive = true)
+                    navController.navigate(Route.Moments) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+                MomentsUiEvent.CloseOnboarding -> navController.popBackStack()
+            }
+        }
+    }
+
     // Auto-dismiss in-app banner after 4 seconds
     val inAppNotification = uiState.inAppNotification
     LaunchedEffect(inAppNotification) {
@@ -240,7 +284,8 @@ fun AppNavHost(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
-                                navController.navigate(topLevelRoute.route) {
+                                if (topLevelRoute is TopLevelRoute.Moments) openMoments()
+                                else navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
@@ -264,7 +309,8 @@ fun AppNavHost(
                                 // label = { Text(topLevelRoute.label) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
-                                    navController.navigate(topLevelRoute.route) {
+                                    if (topLevelRoute is TopLevelRoute.Moments) openMoments()
+                                    else navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
                                         restoreState = true
@@ -629,6 +675,32 @@ fun AppNavHost(
                                     onNavigateToHelp = {
                                         navController.navigate(Route.Help)
                                     },
+                                    onNavigateToMomentsSettings = {
+                                        navController.navigate(Route.MomentsSettings)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentsOnboarding> {
+                            if (isAuthenticated) {
+                                MomentsOnboardingScreen(
+                                    viewModel = momentsViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.Moments> {
+                            if (isAuthenticated) MomentsScreen()
+                        }
+
+                        composable<Route.MomentsSettings> {
+                            if (isAuthenticated) {
+                                MomentsSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenMoments = openMoments,
                                 )
                             }
                         }
@@ -739,9 +811,10 @@ private fun NavHostController.selectConversationOnChatList(
 
 // Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true || this?.hasRoute(Route.Feed::class) == true || this?.hasRoute(
-        Route.Home::class
-    ) == true
+    return this?.hasRoute(Route.ChatList::class) == true ||
+            this?.hasRoute(Route.Feed::class) == true ||
+            this?.hasRoute(Route.Moments::class) == true ||
+            this?.hasRoute(Route.Home::class) == true
 }
 
 // Helper to check if we're navigating between top-level routes
@@ -754,5 +827,6 @@ sealed class TopLevelRoute(
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
     data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
+    data object Moments : TopLevelRoute(Route.Moments, "Moments", Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }

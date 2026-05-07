@@ -55,8 +55,10 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.getFeedPermissionExtensionConfig
+import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
+import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -75,6 +77,8 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
+import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
@@ -91,9 +95,11 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val FeedPermissionQualifier = named("feedPermission")
+val MomentsPermissionQualifier = named("momentsPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { MomentsPreferences(get()) }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -358,6 +364,9 @@ val appModule = module {
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
     viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
+    viewModel(MomentsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getMomentsPermissionExtensionConfig()) }
+    viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
+    viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
