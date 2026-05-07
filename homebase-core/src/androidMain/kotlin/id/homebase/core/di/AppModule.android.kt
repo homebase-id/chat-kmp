@@ -8,6 +8,8 @@ import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
+import id.homebase.chat.dice.AndroidShakeDetector
+import id.homebase.chat.dice.ShakeDetector
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.core.audio.AndroidAudioPlayer
 import id.homebase.core.audio.AndroidAudioRecorder
@@ -62,6 +64,7 @@ actual fun platformModule(): Module = module {
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
     single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
     single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
+    single<ShakeDetector> { AndroidShakeDetector(androidContext()) }
     single(createdAtStart = true) {
         ImageLoader.Builder(androidContext())
                 .components {
