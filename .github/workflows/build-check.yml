@@ -30,12 +30,12 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
       - name: Run JVM unit tests
-        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest homebase-core:jvmTest --rerun-tasks
+        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest homebase-core:jvmTest
         env:
           JDK_21: ${{ env.JAVA_HOME }}
           CI: true
@@ -83,9 +83,18 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Cache Kotlin/Native
+        if: matrix.os == 'macos-latest'
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew

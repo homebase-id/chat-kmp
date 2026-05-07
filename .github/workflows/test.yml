@@ -17,13 +17,13 @@ jobs:
             # Run Android Unit Tests and Desktop Tests
             test-command: |
               set -o pipefail
-              ./gradlew testDebugUnitTest --rerun-tasks --info | tee test-output.log
-              ./gradlew homebase-common:jvmTest homebase-chat:jvmTest --rerun-tasks
-              ./gradlew desktopTest --rerun-tasks
+              ./gradlew testDebugUnitTest --info | tee test-output.log
+              ./gradlew homebase-common:jvmTest homebase-chat:jvmTest
+              ./gradlew desktopTest
           - os: macos-latest
             name: iOS
             # Run iOS Simulator Tests
-            test-command: ./gradlew iosSimulatorArm64Test --rerun-tasks
+            test-command: ./gradlew iosSimulatorArm64Test
       fail-fast: false
     name: ${{ matrix.name }} Tests on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -43,9 +43,18 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Cache Kotlin/Native
+        if: matrix.os == 'macos-latest'
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
