@@ -774,6 +774,9 @@ fun AppNavHost(
                                     vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                     viewModel = vaultViewModel,
                                     onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
+                                    onNavigateToChats = {
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
                                 )
                             }
                         }

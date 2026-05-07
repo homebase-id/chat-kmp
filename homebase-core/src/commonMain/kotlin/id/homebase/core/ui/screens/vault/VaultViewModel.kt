@@ -382,6 +382,14 @@ class VaultViewModel(
                 val ct = resolveContentType(file.name, file.mimeType()?.toString())
                 file.path to ct
             }
+            fileData.forEachIndexed { index, (path, _) ->
+                val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
+                localAttachmentStore.put(
+                    pendingId,
+                    payloadKey,
+                    LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
+                )
+            }
             val uniqueId = vaultRepository.uploadFile(
                 entryName = firstName,
                 files = fileData,

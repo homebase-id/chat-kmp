@@ -62,7 +62,6 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.core.vault.applyWindowPrivacy
 import id.homebase.core.vault.needsComposePrivacyOverlay
 import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
@@ -104,6 +103,7 @@ fun VaultScreen(
     vaultExtendPermissionViewModel: ExtendPermissionViewModel,
     viewModel: VaultViewModel,
     onNavigateToSettings: () -> Unit,
+    onNavigateToChats: () -> Unit,
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -126,16 +126,9 @@ fun VaultScreen(
     val biometricsEnabled by vaultPreferences.biometricsEnabled.collectAsStateWithLifecycle()
 
     DisposableEffect(biometricsEnabled) {
-        if (biometricsEnabled) {
-            vaultPreferences.setVaultScreenActive(true)
-            applyWindowPrivacy(true)
-        } else {
-            vaultPreferences.setVaultScreenActive(false)
-            applyWindowPrivacy(false)
-        }
+        vaultPreferences.setVaultScreenActive(biometricsEnabled)
         onDispose {
             vaultPreferences.setVaultScreenActive(false)
-            applyWindowPrivacy(false)
         }
     }
 
@@ -181,10 +174,12 @@ fun VaultScreen(
 
     // Lifecycle observer: track backgrounding and recheck permissions on resume
     val lifecycleOwner = LocalLifecycleOwner.current
+    var hasBeenBackgrounded by remember { mutableStateOf(false) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
+                    hasBeenBackgrounded = true
                     vaultPreferences.recordAppBackgrounded()
                     if (biometricsEnabled && needsComposePrivacyOverlay) {
                         isPrivacyOverlayVisible = true
@@ -193,10 +188,11 @@ fun VaultScreen(
                 Lifecycle.Event.ON_RESUME -> {
                     isPrivacyOverlayVisible = false
                     vaultExtendPermissionViewModel.recheckPermissions()
-                    if (vaultPreferences.biometricsEnabled.value &&
+                    if (hasBeenBackgrounded &&
+                        vaultPreferences.biometricsEnabled.value &&
                         !vaultPreferences.isAuthSessionValid()
                     ) {
-                        authorized = false
+                        onNavigateToChats()
                     }
                 }
                 else -> {}
