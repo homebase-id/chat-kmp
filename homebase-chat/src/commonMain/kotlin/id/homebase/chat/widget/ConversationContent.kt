@@ -102,6 +102,7 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.dice.DiceRollComposerSheet
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
@@ -216,6 +217,7 @@ fun ConversationContent(
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
+    var showDiceRollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -1243,6 +1245,9 @@ fun ConversationContent(
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true
+                    }, onDicesClick = {
+                        showAttachmentSheet = false
+                        showDiceRollComposer = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
@@ -1254,6 +1259,14 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showEventComposer = false },
             onSent = { showEventComposer = false },
+        )
+    }
+
+    if (showDiceRollComposer) {
+        DiceRollComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showDiceRollComposer = false },
+            onSent = { showDiceRollComposer = false },
         )
     }
 }

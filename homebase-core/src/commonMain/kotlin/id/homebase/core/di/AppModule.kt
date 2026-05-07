@@ -19,6 +19,7 @@ import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.dice.DiceRollPreferences
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -232,6 +233,7 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
+    singleOf(::DiceRollPreferences)
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.

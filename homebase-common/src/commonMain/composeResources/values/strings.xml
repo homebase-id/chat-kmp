@@ -536,6 +536,22 @@
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
 
+    <!-- Dice attachment -->
+    <string name="chat_dice_share">Dice</string>
+    <string name="chat_dice_composer_title">Roll dice</string>
+    <string name="chat_dice_count_label">Number of dice</string>
+    <string name="chat_dice_faces_label">Faces per die</string>
+    <string name="chat_dice_decrement">Fewer dice</string>
+    <string name="chat_dice_increment">More dice</string>
+    <string name="chat_dice_roll">Roll</string>
+    <string name="chat_dice_rolling">Rolling…</string>
+    <string name="chat_dice_max_dice_warning">Up to %1$d dice per roll.</string>
+    <string name="chat_dice_shake_hint">Or just shake your phone.</string>
+    <string name="chat_dice_face_content_description">d%1$d showing %2$d</string>
+    <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
+    <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
+    <string name="chat_dice_unparseable">Dice roll (unsupported format)</string>
+
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
     <string name="chat_message_attachment_contact">Contact</string>

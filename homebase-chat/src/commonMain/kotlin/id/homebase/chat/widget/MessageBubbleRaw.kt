@@ -55,6 +55,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -138,6 +139,13 @@ fun MessageBubbleRaw(
                 conversationId = message.conversationId,
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
+            )
+            return
+        }
+        is MessageContent.DiceRoll -> {
+            DiceRollBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
             )
             return
         }

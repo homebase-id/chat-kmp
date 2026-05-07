@@ -1,5 +1,6 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 
 /**
@@ -40,10 +41,14 @@ sealed interface MessageContent {
         override val displayLabel: String get() = descriptor.title
     }
 
+    /** A dice roll: chosen die size, results, sum. Renders face images + sum line. */
+    data class DiceRoll(val descriptor: DiceRollDescriptor) : MessageContent {
+        override val displayLabel: String get() = descriptor.summaryLine()
+    }
+
     // Future:
     // data class Poll(val descriptor: PollDescriptor) : MessageContent
     // data class Doodle(val descriptor: DoodleDescriptor) : MessageContent
-    // data class Dice(val descriptor: DiceDescriptor) : MessageContent
 }
 
 /**
