@@ -44,6 +44,13 @@ object ChatProtocol {
      */
     const val ChatLocationMessageDataType = 211
 
+    /**
+     * Dice-roll message kind. Like [ChatEventMessageDataType], the full descriptor
+     * (face count, per-die results, source) lives in `appData.content` — no
+     * payloads, no fetch on scroll. See [id.homebase.chat.dice.DiceRollDescriptor].
+     */
+    const val ChatDiceRollMessageDataType = 212
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */

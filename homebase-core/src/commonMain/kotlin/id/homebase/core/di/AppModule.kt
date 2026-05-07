@@ -19,6 +19,7 @@ import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.dice.DiceRollPreferences
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -30,6 +31,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
@@ -232,6 +234,7 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
+    singleOf(::DiceRollPreferences)
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.
@@ -268,10 +271,19 @@ val appModule = module {
         }
         // Detects whether a chat-message file's appData.content can be decoded
         // as the runtime payload type ChatMessageStream.mapToMessageData would
-        // pick (StatusMessageData for status messages, MessageAppData
-        // otherwise). Returns null on success, the throwable on failure.
-        // Mirrors ChatMessageStream.kt:449-466 so the Defragmenter agrees with
-        // what the conversation list actually tries to render.
+        // pick. Returns null on success, the throwable on failure. Mirrors
+        // ChatMessageStream.kt:454-496 so the Defragmenter agrees with what the
+        // conversation list actually tries to render — three branches:
+        //   1. Status messages → StatusMessageData
+        //   2. Typed rich-content (Event=210, DiceRoll=212, future polls/etc.)
+        //      → MessageContentParser.parse, which returns non-null for any
+        //      known dataType. Even malformed typed content surfaces as
+        //      MessageContent.X(null) so the bubble shows an unsupported-format
+        //      chip rather than the message vanishing — that's still "decoded"
+        //      from the Defragmenter's perspective. The unrecognized-dataType
+        //      arm is the parser returning null itself.
+        //   3. Everything else (plain text, media, link previews, Location's
+        //      dataType 211 which has no typed-parser branch) → MessageAppData.
         val decodeMessageContentProbe: suspend (HomebaseFile) -> Throwable? = { file ->
             val appData = file.fileMetadata.appData
             val content = appData.content
@@ -281,6 +293,7 @@ val appModule = module {
                     runCatching {
                         OdinSystemSerializer.deserialize<StatusMessageData>(content)
                     }.exceptionOrNull()
+                MessageContentParser.parse(appData.dataType, content) != null -> null
                 else ->
                     runCatching {
                         OdinSystemSerializer.deserialize<MessageAppData>(content)
