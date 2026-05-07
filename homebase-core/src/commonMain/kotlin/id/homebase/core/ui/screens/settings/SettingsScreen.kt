@@ -21,13 +21,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -84,7 +83,6 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
-import id.homebase.resources.vault_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -97,7 +95,6 @@ fun SettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
-    onNavigateToVaultSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -152,7 +149,6 @@ fun SettingsScreen(
             onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
-           onNavigateToVaultSettings = onNavigateToVaultSettings,
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp
         )
@@ -214,21 +210,15 @@ fun SettingsUi(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
-    onNavigateToVaultSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
-            TopAppBar(title = {
-                Text(
-                    stringResource(MR.string.settings),
-                    modifier = Modifier.testTag("settingsTitle")
-                )
-            }, navigationIcon = {
+            TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = Icons.Default.ChevronLeft,
                         contentDescription = stringResource(MR.string.menu_back)
                     )
                 }
@@ -308,7 +298,6 @@ fun SettingsUi(
                                 strokeWidth = 2.dp
                             )
                         }
-
                         NotificationVerificationStatus.OK -> {
                             Icon(
                                 imageVector = Icons.Outlined.CheckCircle,
@@ -317,7 +306,6 @@ fun SettingsUi(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-
                         NotificationVerificationStatus.ERROR -> {
                             Icon(
                                 imageVector = Icons.Outlined.Error,
@@ -366,12 +354,6 @@ fun SettingsUi(
                 onClick = onNavigateToHelp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Lock,
-                text = stringResource(MR.string.vault_settings_section),
-                onClick = onNavigateToVaultSettings,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
@@ -402,7 +384,6 @@ fun SettingsUiPreview() {
             onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
-            onNavigateToVaultSettings = {},
             onNavigateToStorage = {},
             onNavigateToHelp = {}
         )
