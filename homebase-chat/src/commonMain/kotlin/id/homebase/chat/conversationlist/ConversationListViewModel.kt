@@ -2524,7 +2524,6 @@ class ConversationListViewModel(
                             var systemIndex = 0
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 val sectionHeader = listOf(MessageListContentModel.Section(date))
-                                val nonStatus = messages.filter { !it.isStatusMessage }
                                 val items = messages.map { msg ->
                                     if (msg.isStatusMessage)
                                         MessageListContentModel.System(
