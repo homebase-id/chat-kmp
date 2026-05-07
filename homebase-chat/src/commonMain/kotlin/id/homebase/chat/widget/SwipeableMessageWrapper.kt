@@ -55,8 +55,8 @@ fun SwipeableMessageWrapper(
     }
 
     val density = LocalDensity.current
-    val thresholdPx = with(density) { 72.dp.toPx() }
-    val maxOffsetPx = with(density) { 100.dp.toPx() }
+    val thresholdPx = with(density) { 56.dp.toPx() }
+    val maxOffsetPx = with(density) { 96.dp.toPx() }
     // Use plain float state during drag (no coroutines needed), Animatable only for spring-back
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
