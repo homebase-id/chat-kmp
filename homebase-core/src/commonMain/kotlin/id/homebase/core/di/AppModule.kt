@@ -100,6 +100,7 @@ val MomentsPermissionQualifier = named("momentsPermission")
 val appModule = module {
     single { UserPreferences(get()) }
     single { MomentsPreferences(get()) }
+    singleOf(::id.homebase.core.moments.services.MomentsPostSenderService)
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.

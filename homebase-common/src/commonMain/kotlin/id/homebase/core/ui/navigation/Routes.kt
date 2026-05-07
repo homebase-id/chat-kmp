@@ -106,6 +106,14 @@ sealed class Route {
     data object Moments : Route()
 
     @Serializable
+    @SerialName("moment-detail")
+    data class MomentDetail(val momentId: String) : Route()
+
+    @Serializable
+    @SerialName("moment-create")
+    data object MomentCreate : Route()
+
+    @Serializable
     @SerialName("moments-onboarding")
     data object MomentsOnboarding : Route()
 

@@ -318,6 +318,27 @@
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Open Moments</string>
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+    <string name="moments_create_action">Create a new moment</string>
+    <string name="moments_post_open">Open moment</string>
+    <string name="moments_reaction_like">Like</string>
+    <string name="moments_detail_no_description">No description added</string>
+    <string name="moments_detail_metadata_captured">Captured</string>
+    <string name="moments_detail_metadata_device">Device</string>
+    <string name="moments_detail_comments_section">Comments</string>
+    <string name="moments_detail_no_comments">No comments yet</string>
+    <string name="moments_detail_add_comment_hint">Add a comment</string>
+    <string name="moments_detail_send_comment">Send comment</string>
+    <string name="moments_create_title">Send to</string>
+    <string name="moments_create_search_hint">Search contacts and groups</string>
+    <string name="moments_create_section_recent">Recent</string>
+    <string name="moments_create_section_quick">Quick options</string>
+    <string name="moments_create_section_groups">Groups</string>
+    <string name="moments_create_section_contacts">Contacts</string>
+    <string name="moments_create_new_group">New group</string>
+    <string name="moments_create_one_off">One-off</string>
+    <string name="moments_create_continue">Next</string>
+    <string name="moments_create_chat_group_label">Chat group</string>
+    <string name="moments_create_selected_count">%1$d selected</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>

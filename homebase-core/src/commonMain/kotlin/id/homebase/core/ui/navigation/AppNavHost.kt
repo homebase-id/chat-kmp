@@ -46,6 +46,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.toRoute
 import androidx.window.core.layout.WindowSizeClass
 import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -76,6 +77,8 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.moments.MomentCreateScreen
+import id.homebase.core.ui.screens.moments.MomentDetailScreen
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
@@ -692,7 +695,32 @@ fun AppNavHost(
                         }
 
                         composable<Route.Moments> {
-                            if (isAuthenticated) MomentsScreen()
+                            if (isAuthenticated) {
+                                MomentsScreen(
+                                    onCreateMoment = { navController.navigate(Route.MomentCreate) },
+                                    onOpenMoment = { id ->
+                                        navController.navigate(Route.MomentDetail(id))
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentDetail> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route: Route.MomentDetail = backStackEntry.toRoute()
+                                MomentDetailScreen(
+                                    momentId = route.momentId,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentCreate> {
+                            if (isAuthenticated) {
+                                MomentCreateScreen(
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
                         }
 
                         composable<Route.MomentsSettings> {
