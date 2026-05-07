@@ -83,6 +83,7 @@ data class MessageListUiState(
     val uiSheet: MessageListUiSheet? = null,
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
+    val highlightedMessageId: Uuid? = null,
 )
 
 @Immutable

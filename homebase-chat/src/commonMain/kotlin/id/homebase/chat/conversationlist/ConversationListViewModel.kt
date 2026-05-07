@@ -1142,7 +1142,8 @@ class ConversationListViewModel(
                                         ScrollPosition(
                                             firstVisibleItemIndex = indexOfMessageForScroll,
                                             triggerScroll = true
-                                        )
+                                        ),
+                                    highlightedMessageId = action.messageId,
                                 )
                             }
                         }
@@ -1150,6 +1151,10 @@ class ConversationListViewModel(
                         sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
                     }
                 }
+            }
+
+            is ConversationListUiAction.ClearHighlightedMessage -> {
+                _messagesUiState.update { it.copy(highlightedMessageId = null) }
             }
 
             is ConversationListUiAction.SaveFile -> {

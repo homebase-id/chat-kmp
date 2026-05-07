@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -187,6 +188,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -800,7 +802,7 @@ fun ConversationContent(
                             ) { item ->
                                 when (item) {
                                     is MessageListContentModel.Header -> {
-                                        Column {
+                                        Column(modifier = Modifier.animateItem()) {
                                             AvatarNameDisplay(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
@@ -840,11 +842,15 @@ fun ConversationContent(
                                     }
 
                                     is MessageListContentModel.Section -> {
-                                        MessagesSection(text = getDateSectionLabel(item.date))
+                                        Box(modifier = Modifier.animateItem()) {
+                                            MessagesSection(text = getDateSectionLabel(item.date))
+                                        }
                                     }
 
                                     is MessageListContentModel.System -> {
-                                        MessagesSystemMessage(text = item.text)
+                                        Box(modifier = Modifier.animateItem()) {
+                                            MessagesSystemMessage(text = item.text)
+                                        }
                                     }
 
                                     is MessageListContentModel.Message -> {
@@ -854,31 +860,49 @@ fun ConversationContent(
                                         val showAuthorName = conversation.conversation.isGroupConversation &&
                                             (item.clusterPosition == MessageClusterPosition.ALONE ||
                                                 item.clusterPosition == MessageClusterPosition.START)
-                                        MessageItem(
-                                            message = item.message,
-                                            userDefaultReactions = uiState.userDefaultReactions,
-                                            decryptedFiles = uiState.decryptedFiles,
-                                            currentOdinId = uiState.ownerSession?.odinId?.domainName
-                                                ?: "",
-                                            renderAuthorName = showAuthorName,
-                                            isGroupConversation = conversation.conversation.isGroupConversation,
-                                            clusterPosition = item.clusterPosition,
-                                            animatedVisibilityScope = animatedVisibilityScope,
-                                            sharedTransitionScope = sharedTransitionScope,
-                                            onUiAction = onUiAction,
-                                            downloadingFiles = uiState.downloadingFiles,
-                                            uploadStatus = uiState.uploadProgress[item.message.id],
-                                            replyMessages = replyMessages,
-                                            searchQuery = uiState.searchQuery,
-                                            isCurrentSearchResult = isFocused,
+                                        val isHighlighted = uiState.highlightedMessageId == item.message.id
+                                        val highlightAlpha by animateFloatAsState(
+                                            targetValue = if (isHighlighted) 0.15f else 0f,
+                                            animationSpec = if (isHighlighted) tween(durationMillis = 300)
+                                            else tween(durationMillis = 600),
                                         )
+                                        LaunchedEffect(isHighlighted) {
+                                            if (!isHighlighted) return@LaunchedEffect
+                                            delay(1200L)
+                                            onUiAction(ConversationListUiAction.ClearHighlightedMessage)
+                                        }
+                                        Box(
+                                            modifier = Modifier.animateItem()
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
+                                        ) {
+                                            MessageItem(
+                                                message = item.message,
+                                                userDefaultReactions = uiState.userDefaultReactions,
+                                                decryptedFiles = uiState.decryptedFiles,
+                                                currentOdinId = uiState.ownerSession?.odinId?.domainName
+                                                    ?: "",
+                                                renderAuthorName = showAuthorName,
+                                                isGroupConversation = conversation.conversation.isGroupConversation,
+                                                clusterPosition = item.clusterPosition,
+                                                animatedVisibilityScope = animatedVisibilityScope,
+                                                sharedTransitionScope = sharedTransitionScope,
+                                                onUiAction = onUiAction,
+                                                downloadingFiles = uiState.downloadingFiles,
+                                                uploadStatus = uiState.uploadProgress[item.message.id],
+                                                replyMessages = replyMessages,
+                                                searchQuery = uiState.searchQuery,
+                                                isCurrentSearchResult = isFocused,
+                                            )
+                                        }
                                     }
 
                                     is PendingOutgoingMessage -> {
-                                        PendingMessageBubble(
-                                            message = item,
-                                            uploadStatus = uiState.uploadProgress[item.id],
-                                        )
+                                        Box(modifier = Modifier.animateItem()) {
+                                            PendingMessageBubble(
+                                                message = item,
+                                                uploadStatus = uiState.uploadProgress[item.id],
+                                            )
+                                        }
                                     }
                                 }
                             }
