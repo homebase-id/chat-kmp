@@ -470,7 +470,6 @@ fun ConversationContent(
                             reaction = emoji,
                         )
                     )
-                    onUiAction(ConversationListUiAction.HideReactionDetails)
                 }
             },
             onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) },
