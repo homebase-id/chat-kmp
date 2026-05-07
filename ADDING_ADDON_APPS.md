@@ -333,16 +333,30 @@ fun FooScreen(onNavigateBack: () -> Unit) {
     val title = stringResource(MR.string.foo_biometric_prompt_title)
     val subtitle = stringResource(MR.string.foo_biometric_prompt_subtitle)
 
-    var authorized by remember { mutableStateOf(!fooPreferences.biometricsEnabled.value) }
-
-    LaunchedEffect(Unit) {
-        if (authorized) return@LaunchedEffect
-        when (authenticateBiometric(title, subtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> authorized = true
-            BiometricResult.Failure -> onNavigateBack()
-        }
+    var authorized by remember {
+        mutableStateOf(
+            !fooPreferences.biometricsEnabled.value || fooPreferences.isAuthSessionValid()
+        )
     }
-    // … render content only when `authorized`
+    var unlockAttempt by remember { mutableStateOf(0) }
+    var isAuthenticating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authorized, unlockAttempt) {
+        if (authorized || isAuthenticating) return@LaunchedEffect
+        isAuthenticating = true
+        when (authenticateBiometric(title, subtitle)) {
+            BiometricResult.Success, BiometricResult.Unavailable -> {
+                fooPreferences.recordAuthSuccess()
+                authorized = true
+            }
+            BiometricResult.Failure -> { /* stay on locked screen */ }
+        }
+        isAuthenticating = false
+    }
+
+    // When !authorized, show a locked screen with an "Unlock" button
+    // that increments unlockAttempt to re-trigger biometrics.
+    // When authorized, render the feature content.
 }
 ```
 
@@ -640,6 +654,12 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] `CLAUDE.md` UI checklist: Material 3 only, `stringResource`,
       `Icons.AutoMirrored.*` for directional icons, `collectAsStateWithLifecycle`,
       `start`/`end` padding, `contentDescription` on icons
+- [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
+      checked before creating defaults (prevents AES key mismatch on re-login)
+- [ ] Pending files: `isPendingSendTag` checked in file-to-UI mapper; local file
+      paths stored in `LocalAttachmentContextStore` for instant preview during upload
+- [ ] Typed error events: `VaultUiEvent.Error` uses a sealed `VaultError` class,
+      resolved to `stringResource()` in the screen composable (never hardcoded strings)
 
 ---
 
@@ -675,3 +695,31 @@ Copy this into your PR description and tick off each wiring point:
   you rename the VM without updating `AppModule.kt`.
 - **Fresh UUID namespace per add-on.** Reusing Vault's `0a01xx` range will corrupt
   user preferences across both features.
+- **Drive data won't sync without `mountDrive()`.** The add-on drive is NOT in
+  `mandatorySyncDrives`. If `authConnectionCoordinator.mountDrive(fooLabeledDrive)`
+  is never called, uploads work (outbox pushes directly to the server) but the drive
+  is never pulled down. On reinstall or logout+login the data disappears from the UI
+  because `DriveSyncManager` doesn't know about the drive. The fix: always call
+  `mountDrive()` during activation — `DriveRegistry.addDrive()` is idempotent so
+  calling it twice is safe.
+- **`Preferences.activated` is device-local — use `DriveRegistry` as source of truth.**
+  After logout+login, `activated` resets to `false`. If you blindly re-create default
+  content (sections, folders, etc.) with new AES keys, the server rejects with
+  "AES key must match." Before creating defaults, check
+  `driveRegistry.hasDrive(fooDriveId)` — if the drive is already registered, the
+  feature was set up before. Just restore the local `activated` flag and let sync
+  pull existing data. Only create defaults when the drive is genuinely new.
+- **Optimistic writes make files visible before payloads upload.**
+  `OptimisticWriter.writeNewFile()` inserts file metadata into the local DB and emits
+  `BatchReceived`. The UI sees the file immediately, but the payload bytes are still
+  in the outbox queue. If the UI tries to load the image from the server, it fails.
+  Fix: check `isPendingSendTag` in your file-to-UI mapper — files with that tag are
+  still uploading. Use `LocalAttachmentContextStore` (keyed by `uniqueId` +
+  `payloadKey`) to store the local file path at send time, and render the local file
+  via `AsyncImage` in your card/list composable. This matches the chat pattern in
+  `MediaItem.kt`.
+- **Biometric cancel should show a locked screen, not navigate away.** Calling
+  `onNavigateBack()` on `BiometricResult.Failure` silently ejects the user with no
+  retry option. Instead, show a locked state UI (lock icon + "Unlock" button) and
+  let the user re-trigger biometrics. Guard against rapid taps with an
+  `isAuthenticating` flag.

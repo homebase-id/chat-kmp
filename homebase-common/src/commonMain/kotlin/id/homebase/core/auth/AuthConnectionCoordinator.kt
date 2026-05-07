@@ -100,6 +100,10 @@ class AuthConnectionCoordinator(
                 // list before opening the WebSocket, so the first WS connect already
                 // subscribes to the full set — no late observer-driven reconnect.
                 val initialDrives = driveRegistry.bootstrap()
+                // Pre-mount optional drives so they're in driveSyncs when
+                // onConnected fires start() + syncAll(). mountDrive() defers
+                // the network kick while isRunning is false; syncAll() picks
+                // them up alongside the mandatory drives.
                 for (drive in initialDrives) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
