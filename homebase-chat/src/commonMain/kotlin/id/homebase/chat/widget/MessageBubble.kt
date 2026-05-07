@@ -53,12 +53,14 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -92,6 +94,7 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.message_sending
 import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -126,6 +129,7 @@ fun SentMessageBubble(
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
@@ -154,7 +158,8 @@ fun SentMessageBubble(
     val scope = rememberCoroutineScope()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
         Row(
@@ -277,6 +282,7 @@ fun SentMessageBubble(
                         message = message,
                         decryptedFiles = decryptedFiles,
                         sentByYou = true,
+                        clusterPosition = clusterPosition,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
@@ -366,6 +372,7 @@ fun ReceivedMessageBubble(
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     renderAuthorName: Boolean = false,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
@@ -407,7 +414,8 @@ fun ReceivedMessageBubble(
     val scope = rememberCoroutineScope()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
@@ -460,6 +468,7 @@ fun ReceivedMessageBubble(
                             message = message,
                             decryptedFiles = decryptedFiles,
                             sentByYou = false,
+                            clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
                             else null,
                             authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
@@ -678,7 +687,7 @@ fun DeliveryStatus(
     if (isPendingSend) {
         Icon(
             Icons.Default.Alarm,
-            contentDescription = null,
+            contentDescription = stringResource(MR.string.message_sending),
             modifier = Modifier.size(16.dp),
             tint = contentColor,
         )
@@ -812,7 +821,7 @@ fun InlineReplyPreview(
         modifier = Modifier
             .height(IntrinsicSize.Min)
             .padding(horizontal = 6.dp, vertical = 5.dp)
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 15.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
             .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically,
@@ -890,6 +899,20 @@ fun InlineReplyPreview(
             }
         }
     }
+}
+
+internal fun MessageClusterPosition.topSpacing(): Dp = when (this) {
+    MessageClusterPosition.ALONE -> 6.dp
+    MessageClusterPosition.START -> 6.dp
+    MessageClusterPosition.MIDDLE -> 1.dp
+    MessageClusterPosition.END -> 1.dp
+}
+
+internal fun MessageClusterPosition.bottomSpacing(): Dp = when (this) {
+    MessageClusterPosition.ALONE -> 6.dp
+    MessageClusterPosition.END -> 6.dp
+    MessageClusterPosition.START -> 1.dp
+    MessageClusterPosition.MIDDLE -> 1.dp
 }
 
 @Preview(widthDp = 480, heightDp = 440, )

@@ -248,7 +248,12 @@ fun LinkPreviewCard(
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
-    Column(modifier = modifier.fillMaxWidth().clickable { uriHandler.openUri(descriptor.url) }) {
+    Column(
+        modifier = modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(Dimens.Message.cornerRadius))
+            .clip(RoundedCornerShape(Dimens.Message.cornerRadius))
+            .clickable { uriHandler.openUri(descriptor.url) },
+    ) {
         if (descriptor.hasImage) {
             val imageData = remember(driveId, fileId, payloadKey) {
                 HomebaseImageData(

@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.ActionPolicy
@@ -25,6 +26,7 @@ fun MessageItem(
     currentOdinId: String,
     renderAuthorName: Boolean = false,
     isGroupConversation: Boolean = false,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedTransitionScope: SharedTransitionScope,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -124,6 +126,7 @@ fun MessageItem(
                 message = message,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
+                clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
                 onForward = onForward,
@@ -158,6 +161,7 @@ fun MessageItem(
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 renderAuthorName = renderAuthorName,
+                clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
                 onForward = onForward,
