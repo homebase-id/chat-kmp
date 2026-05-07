@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -72,29 +71,14 @@ import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
-import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
-import id.homebase.core.ui.screens.vault.VaultOnboardingScreen
-import id.homebase.core.ui.screens.vault.VaultScreen
-import id.homebase.core.ui.screens.vault.VaultSettingsScreen
-import id.homebase.core.ui.screens.vault.VaultUiEvent
-import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
-import id.homebase.core.vault.VaultPreferences
-import id.homebase.resources.MR
-import id.homebase.resources.nav_chats
-import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
-import id.homebase.resources.vault_label
-import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
@@ -106,6 +90,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
+import id.homebase.core.ui.screens.help.HelpScreen
 import kotlin.uuid.Uuid
 
 @Composable
@@ -120,17 +105,8 @@ fun AppNavHost(
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val vaultPreferences = koinInject<VaultPreferences>()
-    val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
-    val vaultViewModel: VaultViewModel = koinViewModel()
-    val topLevelRoutes = remember(vaultIconVisible) {
-        buildList {
-            add(TopLevelRoute.Chat)
-            add(TopLevelRoute.Feed)
-            if (vaultIconVisible) add(TopLevelRoute.Vault)
-            add(TopLevelRoute.Home)
-        }
-    }
+    val topLevelRoutes =
+        remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Home) }
     val uriHandler = getUriHandler()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -143,24 +119,17 @@ fun AppNavHost(
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
-    // Check if current destination is a top-level route. Uses the static route-type
-    // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
-    // when the user has hidden the Vault icon from the nav bar.
-    val isTopLevelRoute =
-        currentDestination.isTopLevelRoute() ||
-        currentDestination?.hasRoute(Route.VaultOnboarding::class) == true ||
-        topLevelRoutes.any { topLevelRoute ->
-            currentDestination?.hasRoute(topLevelRoute.route::class) == true
-        }
+    // Check if current destination is a top-level route
+    val isTopLevelRoute = topLevelRoutes.any { topLevelRoute ->
+        currentDestination?.hasRoute(topLevelRoute.route::class) == true
+    }
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
     val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
     val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
-    val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
-    val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -202,49 +171,6 @@ fun AppNavHost(
         ) {
             if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
                 permissionManager.askPermission(PermissionType.NOTIFICATION)
-            }
-        }
-    }
-
-    // Route Vault activation/dismiss events to navigation
-    LaunchedEffect(Unit) {
-        vaultViewModel.events.collect { event ->
-            when (event) {
-                VaultUiEvent.Activated -> {
-                    navController.popBackStack(Route.VaultOnboarding, inclusive = true)
-                    navController.navigate(Route.Vault) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
-
-                VaultUiEvent.CloseOnboarding -> {
-                    navController.popBackStack()
-                }
-
-                is VaultUiEvent.ShareFileReady, is VaultUiEvent.Error -> { /* handled by VaultScreen */
-                }
-            }
-        }
-    }
-
-    val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
-
-    // Open-Vault helper — if activated (or still checking), go to the Vault screen
-    // (which shows loading/biometric gate); only show onboarding when we're certain
-    // the vault has never been set up (isActivated == false, not null).
-    val openVault: () -> Unit = {
-        if (isVaultActivated == false) {
-            navController.navigate(Route.VaultOnboarding) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.Vault) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
             }
         }
     }
@@ -309,19 +235,15 @@ fun AppNavHost(
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
                             icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                            label = { Text(stringResource(topLevelRoute.labelRes)) },
+                            label = { Text(topLevelRoute.label) },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
-                                if (topLevelRoute is TopLevelRoute.Vault) {
-                                    openVault()
-                                } else {
-                                    navController.navigate(topLevelRoute.route) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
+                                navController.navigate(topLevelRoute.route) {
+                                    popUpTo(Route.ChatList) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             },
                         )
@@ -339,17 +261,13 @@ fun AppNavHost(
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
                                 icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
+                                // label = { Text(topLevelRoute.label) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
-                                    if (topLevelRoute is TopLevelRoute.Vault) {
-                                        openVault()
-                                    } else {
-                                        navController.navigate(topLevelRoute.route) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                    navController.navigate(topLevelRoute.route) {
+                                        popUpTo(Route.ChatList) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
                                 })
                         }
@@ -531,9 +449,7 @@ fun AppNavHost(
                                     connectRequestViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
-                                        )
+                                        navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(
                                             Route.CreateConversation, inclusive = true
                                         )
@@ -561,9 +477,7 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
-                                        )
+                                        navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(
                                             Route.ChatList, inclusive = false
                                         )
@@ -578,9 +492,7 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
-                                        )
+                                        navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(
                                             Route.ArchivedConversations, inclusive = true
                                         )
@@ -593,11 +505,7 @@ fun AppNavHost(
                                         )
                                     },
                                     onNavigateToGroupSettings = { conversationId ->
-                                        navController.navigate(
-                                            Route.GroupSettings(
-                                                conversationId
-                                            )
-                                        )
+                                        navController.navigate(Route.GroupSettings(conversationId))
                                     },
                                 )
                             }
@@ -634,28 +542,30 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Draw> {
-                            if (isAuthenticated) {
-                                DrawScreen(
-                                    viewModel = koinViewModel(),
-                                    onEvent = { _ ->
-                                        navController.popBackStack()
-                                    },
-                                )
-                            }
+                    composable<Route.Draw> {
+                        if (isAuthenticated) {
+                            DrawScreen(
+                                viewModel = koinViewModel(),
+                                onEvent = { _ ->
+                                    // Same shape as crop: bus delivers bytes,
+                                    // screen pops on any event.
+                                    navController.popBackStack()
+                                },
+                            )
                         }
+                    }
 
-                        composable<Route.ConversationSettings> {
-                            if (isAuthenticated) {
-                                ConversationSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
-                                    },
-                                )
-                            }
+                    composable<Route.ConversationSettings> {
+                        if (isAuthenticated) {
+                            ConversationSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                            )
                         }
+                    }
 
                         composable<Route.GroupSettings> {
                             if (isAuthenticated) {
@@ -719,9 +629,6 @@ fun AppNavHost(
                                     onNavigateToHelp = {
                                         navController.navigate(Route.Help)
                                     },
-                                    onNavigateToVaultSettings = {
-                                        navController.navigate(Route.VaultSettings)
-                                    },
                                 )
                             }
                         }
@@ -733,9 +640,7 @@ fun AppNavHost(
                                     connectRequestViewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
-                                        )
+                                        navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(
                                             Route.ChatList, inclusive = false
                                         )
@@ -757,43 +662,6 @@ fun AppNavHost(
                                 AppearanceSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
-                            }
-                        }
-
-                        composable<Route.VaultOnboarding> {
-                            if (isAuthenticated) {
-                                VaultOnboardingScreen(
-                                    viewModel = vaultViewModel,
-                                )
-                            }
-                        }
-
-                        composable<Route.Vault> {
-                            if (isAuthenticated) {
-                                VaultScreen(
-                                    vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
-                                    viewModel = vaultViewModel,
-                                    onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
-                                )
-                            }
-                        }
-
-                        composable<Route.VaultSettings> {
-                            if (isAuthenticated) {
-                                val fromVault = navController.previousBackStackEntry
-                                    ?.destination?.hasRoute(Route.Vault::class) == true
-                                VaultSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onOpenVault = openVault,
-                                    showOpenVault = !fromVault,
-                                )
-                            }
-                        }
-
-                        composable<Route.VaultEntryDetail> { _ ->
-                            if (isAuthenticated) {
-                                LaunchedEffect(Unit) { navController.popBackStack() }
                             }
                         }
 
@@ -869,22 +737,22 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
+// Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Feed::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true
+    return this?.hasRoute(Route.ChatList::class) == true || this?.hasRoute(Route.Feed::class) == true || this?.hasRoute(
+        Route.Home::class
+    ) == true
 }
 
+// Helper to check if we're navigating between top-level routes
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
 }
 
 sealed class TopLevelRoute(
-    val route: Route, val labelRes: StringResource, val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
-    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
-    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
-    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
+    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }
