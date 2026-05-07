@@ -59,8 +59,8 @@ class ChatColorPresetsTest {
     }
 
     @Test
-    fun has13SolidsAnd9Gradients() {
-        assertEquals(13, ChatColorPresets.solids.size)
-        assertEquals(9, ChatColorPresets.gradients.size)
+    fun has12SolidsAnd10Gradients() {
+        assertEquals(12, ChatColorPresets.solids.size)
+        assertEquals(10, ChatColorPresets.gradients.size)
     }
 }

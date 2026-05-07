@@ -17,7 +17,6 @@ object ChatColorPresets {
     val plum = ChatColor.Solid(id = "plum", colorArgb = 0xFFAA377A)
     val taupe = ChatColor.Solid(id = "taupe", colorArgb = 0xFF8F616A)
     val steel = ChatColor.Solid(id = "steel", colorArgb = 0xFF71717F)
-    val sage = ChatColor.Solid(id = "sage", colorArgb = 0xFF808F7C)
 
     val ember = ChatColor.Gradient(id = "ember", colorsArgb = listOf(0xFFE57C00, 0xFF5E0000), angleDegrees = 162f)
     val midnight = ChatColor.Gradient(id = "midnight", colorsArgb = listOf(0xFF2C2C3A, 0xFF787891), angleDegrees = 180f)
@@ -27,15 +26,16 @@ object ChatColorPresets {
     val basil = ChatColor.Gradient(id = "basil", colorsArgb = listOf(0xFF2F9373, 0xFF077343), angleDegrees = 180f)
     val sublime = ChatColor.Gradient(id = "sublime", colorsArgb = listOf(0xFF6281D5, 0xFF974460), angleDegrees = 180f)
     val sea = ChatColor.Gradient(id = "sea", colorsArgb = listOf(0xFF498FD4, 0xFF2C66A0), angleDegrees = 180f)
+    val tangerine = ChatColor.Gradient(id = "tangerine", colorsArgb = listOf(0xFFDB7133, 0xFF911231), angleDegrees = 192f)
 
     val solids: List<ChatColor.Solid> = listOf(
         crimson, vermilion, burlap, forest, wintergreen, teal,
-        blue, indigo, violet, plum, taupe, steel, sage,
+        blue, indigo, violet, plum, taupe, steel,
     )
 
     val gradients: List<ChatColor.Gradient> = listOf(
         ultramarine, ember, midnight, infrared, lagoon,
-        fluorescent, basil, sublime, sea,
+        fluorescent, basil, sublime, sea, tangerine,
     )
 
     val all: List<ChatColor> = listOf(ultramarine) + solids + gradients.drop(1)
