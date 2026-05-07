@@ -74,6 +74,7 @@ import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
+import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.show_more
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
@@ -361,15 +362,34 @@ fun MessageBubbleRaw(
             } else {
                 // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
                 Column {
+                    val isForwarded = message.sender != null &&
+                        message.originalAuthor != null &&
+                        message.sender != message.originalAuthor
                     Layout(
                         content = {
+                            if (isForwarded) {
+                                Text(
+                                    text = stringResource(MR.string.chat_message_forwarded),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Normal,
+                                    color = contentColor.copy(alpha = 0.6f),
+                                    modifier = Modifier.padding(
+                                        start = 12.dp, top = 8.dp, end = 12.dp,
+                                        bottom = if (authorName != null) 0.dp else 4.dp,
+                                    ),
+                                    maxLines = 1,
+                                )
+                            }
                             authorName?.let {
                                 Text(
                                     text = it,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = authorColor ?: contentColor,
                                     modifier = Modifier.padding(
-                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp,
+                                        start = 12.dp,
+                                        top = if (isForwarded) 2.dp else 8.dp,
+                                        end = 12.dp,
+                                        bottom = 4.dp,
                                     ),
                                     maxLines = 1,
                                 )
@@ -483,8 +503,9 @@ fun MessageBubbleRaw(
                             }
                         }
                     ) { measurables, constraints ->
-                        // Find MediaMessage index (after author and reply preview)
+                        // Find MediaMessage index (after forwarded label, author, and reply preview)
                         var mediaIndex = 0
+                        if (isForwarded) mediaIndex++
                         if (authorName != null) mediaIndex++
                         val replyIndex =
                             if (message.messageAppData.replyPreview != null) mediaIndex else -1
@@ -506,7 +527,8 @@ fun MessageBubbleRaw(
                             if (hasMedia && i == mediaIndex) {
                                 mediaWidth = placeable.width
                             }
-                            if (authorName != null && i == 0) {
+                            val authorIndex = if (isForwarded) 1 else 0
+                            if (authorName != null && i == authorIndex) {
                                 authorWidth = placeable.width
                             }
                         }

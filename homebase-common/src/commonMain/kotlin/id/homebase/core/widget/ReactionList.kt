@@ -53,6 +53,7 @@ fun ReactionList(
     reactionSummary: ReactionSummary,
     onReactionClick: () -> Unit,
     onAddEmoji: (() -> Unit)? = null,
+    hasOwnReaction: Boolean = false,
 ) {
     val allReactions = remember(reactionSummary) {
         reactionSummary.reactions.entries.mapNotNull { entry ->
@@ -92,7 +93,10 @@ fun ReactionList(
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onReactionClick),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = if (hasOwnReaction) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = if (hasOwnReaction) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+            else null,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
