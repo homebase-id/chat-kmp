@@ -76,6 +76,7 @@ data class MessageListUiState(
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<ReactionDisplayItem>? = null,
+    val reactionDetailsMessageId: Uuid? = null,
     val isReactionsLoading: Boolean = false,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,

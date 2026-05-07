@@ -291,8 +291,8 @@ fun SentMessageBubble(
                         ReactionList(
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                             reactionSummary = reactionSummary,
-                            onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions?.invoke() },
+                            onReactionClick = { onShowReactions?.invoke() },
+                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                         )
                     }
                 }
@@ -329,8 +329,7 @@ fun SentMessageBubbleDisplayOnly(
             ReactionList(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
             )
         }
     }
@@ -473,8 +472,8 @@ fun ReceivedMessageBubble(
                                 modifier = Modifier.align(Alignment.BottomEnd)
                                     .padding(end = 4.dp),
                                 reactionSummary = reactionSummary,
-                                onClick = { onAddReaction?.invoke(message.id, it) },
-                                onLongClick = { onShowReactions?.invoke() },
+                                onReactionClick = { onShowReactions?.invoke() },
+                                onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                             )
                         }
                     }
@@ -649,8 +648,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             ReactionList(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
             )
         }
     }
