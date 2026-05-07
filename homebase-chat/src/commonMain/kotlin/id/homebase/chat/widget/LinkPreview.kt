@@ -275,7 +275,7 @@ fun LinkPreviewCard(
                         topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
                     )
                 ),
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
                 contentDescription = descriptor.title,
 
                 )

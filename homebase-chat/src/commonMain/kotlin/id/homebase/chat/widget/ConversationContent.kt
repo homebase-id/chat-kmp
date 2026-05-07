@@ -535,7 +535,7 @@ fun ConversationContent(
                                 ConversationAvatar(
                                     modifier = Modifier.focusable(), // to avoid textfield focus
                                     avatarModel = conversation.conversation.avatarModel,
-                                    options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
+                                    options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
