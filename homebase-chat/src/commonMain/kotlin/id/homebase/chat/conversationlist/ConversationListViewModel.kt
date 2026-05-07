@@ -1694,11 +1694,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowReactionDetails -> {
+                _messagesUiState.update { it.copy(reactionDetailsMessageId = action.messageId) }
                 loadReactionDetails(action.messageId)
             }
 
             is ConversationListUiAction.HideReactionDetails -> {
-                _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false) }
+                _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false, reactionDetailsMessageId = null) }
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
