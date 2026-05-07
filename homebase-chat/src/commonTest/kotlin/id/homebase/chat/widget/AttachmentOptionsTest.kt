@@ -20,6 +20,8 @@ class AttachmentOptionsTest {
                     onFileClick = {},
                     onContactClick = {},
                     onLocationClick = {},
+                    onEventClick = {},
+                    onDicesClick = {},
                 )
             }
         }
@@ -37,6 +39,8 @@ class AttachmentOptionsTest {
                     onFileClick = {},
                     onContactClick = {},
                     onLocationClick = {},
+                    onEventClick = {},
+                    onDicesClick = {},
                 )
             }
         }
@@ -54,6 +58,8 @@ class AttachmentOptionsTest {
                     onFileClick = { clicked = true },
                     onContactClick = {},
                     onLocationClick = {},
+                    onEventClick = {},
+                    onDicesClick = {},
                 )
             }
         }

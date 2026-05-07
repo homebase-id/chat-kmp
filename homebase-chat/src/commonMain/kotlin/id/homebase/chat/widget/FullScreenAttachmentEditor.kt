@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
@@ -89,6 +90,7 @@ fun FullScreenAttachmentEditor(
     onSaveFile: (file: AttachmentPendingFile) -> Unit,
     onAddFile: () -> Unit,
     onAddImage: () -> Unit,
+    onCameraClick: () -> Unit,
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
@@ -446,6 +448,18 @@ fun FullScreenAttachmentEditor(
                         }
                     }
                 }
+            }
+            IconButton(
+                onClick = onCameraClick,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                )
             }
             IconButton(
                 onClick = if (isFileMode) onAddFile else onAddImage,

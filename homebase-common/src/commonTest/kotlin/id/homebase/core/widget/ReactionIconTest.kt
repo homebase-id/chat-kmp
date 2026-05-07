@@ -19,7 +19,6 @@ class ReactionIconTest {
                     emoji = "\uD83D\uDC4D",
                     count = 1,
                     onClick = {},
-                    onLongClick = {},
                 )
             }
         }
@@ -34,7 +33,6 @@ class ReactionIconTest {
                     emoji = "\uD83D\uDC4D",
                     count = 1,
                     onClick = {},
-                    onLongClick = {},
                 )
             }
         }
@@ -50,7 +48,6 @@ class ReactionIconTest {
                     emoji = "\uD83D\uDC4D",
                     count = 5,
                     onClick = {},
-                    onLongClick = {},
                 )
             }
         }
@@ -66,7 +63,6 @@ class ReactionIconTest {
                     emoji = "\uD83D\uDC4D",
                     count = 1,
                     onClick = { clicked = true },
-                    onLongClick = {},
                 )
             }
         }

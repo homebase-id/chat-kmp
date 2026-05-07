@@ -146,7 +146,7 @@ actual fun VideoPlayerSurface(
                         val progressJob = scope.launch {
                             var highWater = 0f
                             videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
-                                Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" }
+                                // Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" } // floods log — fires per ~4KB HTTP chunk
                                 if (p > highWater) highWater = p
                                 if (highWater < 1f) onProgress(highWater)
                             }

@@ -56,7 +56,7 @@ class VideoPreloader(
             mutexMap.getOrPut(key) { Mutex() } to progressMap.getOrPut(key) { MutableStateFlow(0f) }
         }
         val emit: (Float) -> Unit = { v ->
-            Logger.d(tag = "VideoIO") { "preload emit: ${data.fileId}/${data.payloadKey} v=$v" }
+            // Logger.d(tag = "VideoIO") { "preload emit: ${data.fileId}/${data.payloadKey} v=$v" } // floods log — fires per ~4KB HTTP chunk
             progressSink.value = v
             onProgress?.invoke(v)
         }

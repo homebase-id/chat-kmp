@@ -218,3 +218,14 @@ visibility, optional biometric gate), follow the recipe in
 [`ADDING_ADDON_APPS.md`](ADDING_ADDON_APPS.md). It covers preferences with stable UUIDs,
 routing, `AppNavHost` wiring, `AuthConnectionCoordinator` drive subscription, DI, and the
 expect/actual biometric layer.
+
+## Adding a New Typed Message Kind
+
+When adding a new chat message kind (poll, doodle, sticker — anything whose descriptor
+rides on the message header rather than as a payload), follow the recipe in
+[`ADDING_TYPED_MESSAGE_KIND.md`](ADDING_TYPED_MESSAGE_KIND.md). It covers reserving a
+`ChatProtocol` dataType integer, the `MessageContent` sealed-interface subtype with its
+nullable-descriptor parse-failure contract, choosing an `ActionPolicy`, parser/bubble/
+composer/attachment-sheet wiring, the strings the bubble needs, and the `Unknown` chip
+that gives older receivers a visible "please update the app" fallback. Existing kinds:
+Event (`dataType = 210`) and DiceRoll (`dataType = 212`).

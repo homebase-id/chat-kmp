@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
@@ -90,6 +92,7 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -127,13 +130,13 @@ fun SentMessageBubble(
     onReply: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
-    onShare: () -> Unit,
+    onShare: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: () -> Unit,
+    onShowReactions: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
@@ -217,13 +220,11 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onMessageInfo?.invoke()
                         },
-                        onReply = {
-                            popupMode = MessagePopupMode.None
-                            onReply?.invoke()
+                        onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
-                        onForward = {
-                            popupMode = MessagePopupMode.None
-                            onForward?.invoke()
+                        onForward = onForward?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
@@ -231,17 +232,15 @@ fun SentMessageBubble(
                                 clipboardManager.setClipEntry(clipEntryOf(message.content))
                             }
                         },
-                        onEdit = {
-                            popupMode = MessagePopupMode.None
-                            onEdit?.invoke()
+                        onEdit = onEdit?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
                         },
-                        onShare = {
-                            popupMode = MessagePopupMode.None
-                            onShare()
+                        onShare = onShare?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         })
                 }
             }
@@ -261,6 +260,11 @@ fun SentMessageBubble(
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
+                            }
+                        },
+                        onDoubleClick = {
+                            if (onAddReaction != null) {
+                                popupMode = MessagePopupMode.Reaction
                             }
                         },
                     )
@@ -295,8 +299,8 @@ fun SentMessageBubble(
                         ReactionList(
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                             reactionSummary = reactionSummary,
-                            onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions() },
+                            onReactionClick = { onShowReactions?.invoke() },
+                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                         )
                     }
                 }
@@ -333,8 +337,7 @@ fun SentMessageBubbleDisplayOnly(
             ReactionList(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
             )
         }
     }
@@ -369,7 +372,7 @@ fun ReceivedMessageBubble(
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: () -> Unit,
+    onShowReactions: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
@@ -420,6 +423,11 @@ fun ReceivedMessageBubble(
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
+                            }
+                        },
+                        onDoubleClick = {
+                            if (onAddReaction != null) {
+                                popupMode = MessagePopupMode.Reaction
                             }
                         },
                     )
@@ -477,8 +485,8 @@ fun ReceivedMessageBubble(
                                 modifier = Modifier.align(Alignment.BottomEnd)
                                     .padding(end = 4.dp),
                                 reactionSummary = reactionSummary,
-                                onClick = { onAddReaction?.invoke(message.id, it) },
-                                onLongClick = { onShowReactions() },
+                                onReactionClick = { onShowReactions?.invoke() },
+                                onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                             )
                         }
                     }
@@ -545,13 +553,11 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onMessageInfo?.invoke()
                         },
-                        onReply = {
-                            popupMode = MessagePopupMode.None
-                            onReply?.invoke()
+                        onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
-                        onForward = {
-                            popupMode = MessagePopupMode.None
-                            onForward?.invoke()
+                        onForward = onForward?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
@@ -655,8 +661,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             ReactionList(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
             )
         }
     }
@@ -735,25 +740,28 @@ fun InlineReplyPreview(
     replyMessage: MessageUiModel? = null,
     driveId: Uuid? = null,
 ) {
+    val currentOdinId = LocalCurrentOdinId.current
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first image payload
+    // Build HomebaseImageData from the original message's first visual payload (image or video)
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstImagePayload = replyMessage.payloads?.firstOrNull {
-            it.contentType?.startsWith("image/") == true
+        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
+            val ct = it.contentType ?: ""
+            ct.startsWith("image/") || ct.startsWith("video/") ||
+                ct == "application/vnd.apple.mpegurl"
         } ?: return@remember null
         val payloadIv = try {
-            firstImagePayload.iv?.let { Base64.decode(it) }
+            firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
             null
         } ?: return@remember null
         HomebaseImageData(
             driveId = driveId,
             fileId = replyMessage.fileId,
-            payloadKey = firstImagePayload.key,
-            previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+            payloadKey = firstVisualPayload.key,
+            previewThumbnail = firstVisualPayload.previewThumbnail?.toEmbeddedThumb()
                 ?: replyMessage.previewThumbnail
                 ?: replyPreview.previewThumbnail,
             requestedSize = ImageSize.THUMB_SMALL,
@@ -775,8 +783,30 @@ fun InlineReplyPreview(
         }
     }
 
-    val hasImage = imageData != null || replyPreview.previewThumbnail != null
-    val message = if (hasImage && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+    val hasThumb = imageData != null || thumbnailBitmap != null
+    val hasImage = hasThumb || replyPreview.previewThumbnail != null
+
+    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
+    val mediaPayloads = remember(replyMessage?.payloads) {
+        replyMessage?.payloads?.filter { payload ->
+            payload.key != ChatProtocol.DefaultPayloadKey &&
+                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        } ?: emptyList()
+    }
+    val contentLabel = messageContentLabel(
+        textContent = replyPreview.message,
+        isDeleted = replyMessage?.isDeleted ?: false,
+        firstPayload = mediaPayloads.firstOrNull(),
+        hasMultiplePayloads = mediaPayloads.size > 1,
+    )
+    val displayMessage = resolveReplyContentText(
+        replyText = replyPreview.message,
+        contentLabelText = contentLabel?.text,
+        hasThumbnail = hasThumb,
+        hasMedia = hasImage,
+        mediaFallbackLabel = stringResource(MR.string.media),
+    )
+    val showContentIcon = shouldShowContentIcon(hasThumb, contentLabel?.text)
 
     Row(
         modifier = Modifier
@@ -786,63 +816,77 @@ fun InlineReplyPreview(
             .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         // Vertical accent bar
-        Row {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(color = Color.White, shape = RoundedCornerShape(2.dp))
-            )
-            Column(
-                modifier = Modifier.weight(1f, fill = false)
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = replyPreview.authorOdinId,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = contentColor,
-                    maxLines = 1
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(color = contentColor, shape = RoundedCornerShape(2.dp))
+        )
+        Column(
+            modifier = Modifier.weight(1f)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+                val authorDisplayName = resolveReplyAuthorName(
+                    authorOdinId = replyPreview.authorOdinId,
+                    currentOdinId = currentOdinId,
+                    resolvedDisplayName = replyMessage?.displayName,
+                    youLabel = stringResource(MR.string.you),
                 )
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = authorDisplayName,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
-                    maxLines = 2
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (displayMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (showContentIcon) {
+                            contentLabel?.icon?.let { icon ->
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = contentColor.copy(alpha = 0.7f),
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                            }
+                        }
+                        Text(
+                            text = displayMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
-        }
         // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
         if (imageData != null) {
-            Row {
-                Spacer(modifier = Modifier.width(8.dp))
-                HomebaseImage(
-                    imageData = imageData,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = null,
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
+            HomebaseImage(
+                imageData = imageData,
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop,
+                contentDescription = null,
+            )
         } else {
             thumbnailBitmap?.let { bitmap ->
-                Row {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Crop,
+                )
             }
         }
     }

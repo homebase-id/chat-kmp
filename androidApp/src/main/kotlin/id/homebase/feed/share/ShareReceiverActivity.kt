@@ -38,6 +38,7 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.FullScreenAttachmentEditor
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -61,6 +62,8 @@ import java.io.File
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+private const val COLD_TAG = "ShareCold"
+
 /**
  * Activity that handles incoming share intents from other apps.
  * Shows a conversation picker, then sends the shared content to the selected conversation.
@@ -76,6 +79,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val chatMessageSenderService: ChatMessageSenderService by inject()
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
+    private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
@@ -85,12 +89,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Logger.d(tag = COLD_TAG) { "onCreate: action=${intent.action} type=${intent.type} hasData=${intent.data != null}" }
 
         // Wait for auth state to finish initializing (handles process-kill restart race)
         lifecycleScope.launch {
             val authState = youAuthFlowManager.authState
                 .dropWhile { it is YouAuthState.Initializing }
                 .first()
+            Logger.d(tag = COLD_TAG) { "onCreate: authState=${authState::class.simpleName}" }
             if (authState !is YouAuthState.Authenticated) {
                 Toast.makeText(
                     this@ShareReceiverActivity,
@@ -105,18 +111,32 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     }
 
     private fun initShareFlow() {
-        // Kick the conversation and contact loaders. start() is idempotent — a no-op
-        // when MainActivity has already booted them via AuthConnectionCoordinator's
-        // onPostAuthenticated hook. On a true cold start whose first activity is this
-        // one (process force-killed, then a generic share), MainActivity never runs,
-        // AuthConnectionCoordinator is never instantiated as a Koin singleton, and
-        // the SharePickerScreen would otherwise spin on dataReady=false forever.
+        Logger.d(tag = COLD_TAG) { "initShareFlow: enter, ownerSession=${if (ownerSessionRepository.user.value == null) "null" else "loaded"}" }
+
+        // Force-resolve AuthConnectionCoordinator so its init { authState.collect } block
+        // fires. On a cold-start share (process force-killed, then a generic share) nothing
+        // else touches this Koin singleton, so OwnerSessionRepository.load() never runs and
+        // the picker renders an empty list (ConversationEnricher short-circuits on null
+        // ownerSession). `by inject()` is lazy — reading the property here triggers
+        // resolution and the same loadProfile / drive bootstrap chain that AppViewModel
+        // gets in MainActivity.
+        @Suppress("UNUSED_EXPRESSION")
+        authConnectionCoordinator
+        Logger.d(tag = COLD_TAG) { "initShareFlow: resolved AuthConnectionCoordinator" }
+
+        // Kick the streams ourselves too — defense-in-depth no-op (start() is idempotent),
+        // so the picker still loads if Koin wiring around the coordinator changes.
         conversationStream.start()
         contactService.start()
+        Logger.d(tag = COLD_TAG) { "initShareFlow: kicked streams (conversationStream + contactService)" }
 
         // Extract shared content
         val tempDir = File(cacheDir, "share_temp")
         val sharedContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
+        Logger.d(tag = COLD_TAG) {
+            if (sharedContent == null) "initShareFlow: extract() returned null"
+            else "initShareFlow: extract() files=${sharedContent.files.size} hasText=${sharedContent.hasText} textLen=${sharedContent.text?.length ?: 0}"
+        }
         if (sharedContent == null || sharedContent.isEmpty) {
             Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
             finish()
@@ -128,6 +148,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         // 1. intent.data URI (set via shortcut's setIntents)
         // 2. EXTRA_SHORTCUT_ID (set by ChooserActivity on API 29+)
         val directShareConvoId = extractDirectShareConversationId()
+        Logger.d(tag = COLD_TAG) { "initShareFlow: directShareConvoId=$directShareConvoId" }
         if (directShareConvoId != null) {
             try {
                 val conversationId = Uuid.parse(directShareConvoId)
@@ -157,6 +178,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             }
         }
 
+        Logger.d(tag = COLD_TAG) { "initShareFlow: reached setContent (picker path)" }
         setContent {
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
@@ -196,6 +218,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             hasFiles = sharedContent.hasFiles,
                             isSending = isSending,
                             onSendToConversations = { conversationIds ->
+                                Logger.d(tag = COLD_TAG) {
+                                    "picker.onSendToConversations: count=${conversationIds.size} hasFiles=${sharedContent.hasFiles}"
+                                }
                                 if (sharedContent.hasFiles) {
                                     // Show overlay while converting files
                                     isProcessing = true
@@ -242,6 +267,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 onSaveFile = { /* Not needed in share flow */ },
                                 onAddFile = { fileLauncher.launch() },
                                 onAddImage = { galleryLauncher.launch() },
+                                onCameraClick = { /* Not available in share flow */ },
                                 onRemoveFile = { _, attachmentId ->
                                     val updated = editorAttachments.filter { it.attachmentId != attachmentId }
                                     editorAttachments = updated
@@ -475,6 +501,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         caption: String,
         files: List<AttachmentPendingFile>,
     ) {
+        Logger.d(tag = COLD_TAG) {
+            "sendEditedFiles: convoCount=${conversationIds.size} fileCount=${files.size} captionLen=${caption.length}"
+        }
         isProcessing = true
 
         lifecycleScope.launch {
@@ -527,6 +556,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     data = "homebase-fchat://conversation/${firstId}".toUri()
                     flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 }
+                Logger.d(tag = COLD_TAG) { "sendEditedFiles: launching MainActivity for convo=$firstId then finish()" }
                 startActivity(mainIntent)
 
                 // Fire sends in background scope that survives the activity finish.

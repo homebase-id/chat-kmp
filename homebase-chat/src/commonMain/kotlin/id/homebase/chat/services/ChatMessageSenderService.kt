@@ -80,6 +80,7 @@ class ChatMessageSenderService(
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
         userDate: UnixTimeUtc? = null,
+        dataType: Int = 0,
     ): SendMessageResult {
         val messageData = MessageAppData(
             replyId = null,
@@ -101,6 +102,7 @@ class ChatMessageSenderService(
             notificationText = "You have a new message",
             previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = built.payloadBundle,
+            dataType = dataType,
             userDate = userDate,
         )
     }
@@ -114,6 +116,7 @@ class ChatMessageSenderService(
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
         userDate: UnixTimeUtc? = null,
+        dataType: Int = 0,
     ): SendMessageResult {
         val messageData = MessageAppData(
             replyPreview = replyTo,
@@ -134,6 +137,7 @@ class ChatMessageSenderService(
             notificationText = "You have a new reply",
             previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = built.payloadBundle,
+            dataType = dataType,
             userDate = userDate,
         )
     }
@@ -153,8 +157,35 @@ class ChatMessageSenderService(
         notificationText = "",
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
+        dataType = ChatProtocol.ChatStatusMessageDataType,
         isStatusMessage = true,
         additionalRecipients = additionalRecipients
+    )
+
+    /**
+     * Sends a typed rich-content message (event today; poll, doodle, dice when
+     * those land). The content's JSON rides on the message header
+     * (`appData.content` + `appData.dataType` from
+     * [id.homebase.chat.services.content.MessageContentParser.dataTypeFor]) so
+     * receivers see it without fetching a payload. The notification / chat-list
+     * preview text is the content's `displayLabel`.
+     *
+     * Adding a new kind: implement [id.homebase.chat.services.content.MessageContent],
+     * add a parser branch, and call this method. No new sender entry point.
+     */
+    suspend fun sendNewTypedMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        content: id.homebase.chat.services.content.MessageContent,
+        previousMessageUniqueId: Uuid?,
+    ): SendMessageResult = sendMessageInternal(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = id.homebase.chat.services.content.MessageContentParser.serialize(content),
+        notificationText = content.displayLabel,
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = null,
+        dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
     )
 
     private suspend fun sendMessageInternal(
@@ -164,6 +195,7 @@ class ChatMessageSenderService(
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
+        dataType: Int = 0,
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList(),
         userDate: UnixTimeUtc? = null,
@@ -183,6 +215,17 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
+
+        val effectiveNotificationText = if (recipients.size > 1) {
+            val groupName = conversation.name
+            if (groupName.isNotBlank()) {
+                "$notificationText in $groupName"
+            } else {
+                "$notificationText in a group chat"
+            }
+        } else {
+            notificationText
+        }
 
         Logger.d(tag = TAG) {
             "sendMessageInternal: encrypting message=$messageUniqueId " +
@@ -205,7 +248,7 @@ class ChatMessageSenderService(
                     uniqueId = messageUniqueId,
                     groupId = conversationId,
                     fileType = ChatProtocol.MessageFileType,
-                    dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else 0,
+                    dataType = dataType,
                     userDate = effectiveUserDate.milliseconds,
                     content = content,
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
@@ -226,7 +269,7 @@ class ChatMessageSenderService(
                     typeId = conversationId.toString(),
                     tagId = messageUniqueId.toString(),
                     silent = false,
-                    unEncryptedMessage = notificationText
+                    unEncryptedMessage = effectiveNotificationText
                 )
             ),
             payloads = encryptedBundle.payloads,
@@ -468,6 +511,14 @@ class ChatMessageSenderService(
             fileOperationsProvider = fileOperationsProvider
         )
 
+        // Preserve the source's dataType so a forwarded Location stays
+        // header-tagged as a Location (and any future payload-bearing kind
+        // does the same automatically). Sources that pre-date the kind
+        // tagging carry dataType=0; their forwards inherit that — accepting
+        // the same backwards-incompatibility we accept on the original
+        // wire-level messages.
+        val forwardedDataType = sourceFile.fileMetadata.appData.dataType ?: 0
+
         return targetConversationIds.map { conversationId ->
             sendMessageInternal(
                 messageUniqueId = Uuid.random(),
@@ -475,7 +526,8 @@ class ChatMessageSenderService(
                 content = built.headerContent,
                 notificationText = "You have a new message",
                 previousMessageUniqueId = null,
-                payloadBundle = built.payloadBundle
+                payloadBundle = built.payloadBundle,
+                dataType = forwardedDataType,
             )
         }
     }

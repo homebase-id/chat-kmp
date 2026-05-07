@@ -69,6 +69,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -102,6 +103,8 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.dice.DiceRollComposerSheet
+import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.resources.chat_location_map_preview_unavailable
@@ -128,6 +131,7 @@ import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
@@ -213,6 +217,8 @@ fun ConversationContent(
     val focusRequesterSearch = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showEventComposer by remember { mutableStateOf(false) }
+    var showDiceRollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -443,6 +449,17 @@ fun ConversationContent(
             onContactClick = { odinId ->
                 onUiAction(ConversationListUiAction.ShowContactInfo(odinId))
             },
+            onAddReaction = uiState.reactionDetailsMessageId?.let { messageId ->
+                { emoji: String ->
+                    onUiAction(
+                        ConversationListUiAction.ToggleReaction(
+                            conversationId = conversation.conversation.id,
+                            messageId = messageId,
+                            reaction = emoji,
+                        )
+                    )
+                }
+            },
             onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) },
         )
     }
@@ -470,6 +487,9 @@ fun ConversationContent(
         )
     }
 
+    CompositionLocalProvider(
+        LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+    ) {
     Scaffold(
         modifier = Modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -1029,9 +1049,11 @@ fun ConversationContent(
                                 .focusProperties { canFocus = inputFocusable }) {
                             uiState.replyToMessage?.let { msg ->
                                 ReplyPreviewBar(
-                                    message = msg, onDismiss = {
+                                    message = msg,
+                                    onDismiss = {
                                         onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                                    })
+                                    },
+                                )
                             }
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1160,17 +1182,24 @@ fun ConversationContent(
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
                     visible = showAttachmentSheet && !isKeyboardVisible,
                 ) {
-                    AttachmentGallery(
-                        onImageSelected = {
-                            showAttachmentSheet = false
-                            onUiAction(
-                                ConversationListUiAction.AttachGalleryItem(
-                                    conversationId = conversation.conversation.id,
-                                    files = listOf(it)
+                    // The gallery thumb strip reads the OS photo library via GalleryCache,
+                    // which only exists on Android/iOS. On desktop/web the row would be
+                    // empty, so we skip it entirely and let the icon row sit at the top of
+                    // the sheet. The 300 dp height floor on AttachmentOptionsDisplay still
+                    // applies — desktop can host a virtual keyboard, so the floor stays.
+                    if (isMobile()) {
+                        AttachmentGallery(
+                            onImageSelected = {
+                                showAttachmentSheet = false
+                                onUiAction(
+                                    ConversationListUiAction.AttachGalleryItem(
+                                        conversationId = conversation.conversation.id,
+                                        files = listOf(it)
+                                    )
                                 )
-                            )
-                        },
-                    )
+                            },
+                        )
+                    }
                     AttachmentOptions(onGalleryClick = {
                         showAttachmentSheet = false
                         galleryLauncher.launch()
@@ -1184,11 +1213,34 @@ fun ConversationContent(
                         showAttachmentSheet = false
                         isFetchingLocation = true
                         currentLocationLauncher.launch()
+                    }, onEventClick = {
+                        showAttachmentSheet = false
+                        showEventComposer = true
+                    }, onDicesClick = {
+                        showAttachmentSheet = false
+                        showDiceRollComposer = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
     }
+
+    if (showEventComposer) {
+        EventComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showEventComposer = false },
+            onSent = { showEventComposer = false },
+        )
+    }
+
+    if (showDiceRollComposer) {
+        DiceRollComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showDiceRollComposer = false },
+            onSent = { showDiceRollComposer = false },
+        )
+    }
+    } // CompositionLocalProvider
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

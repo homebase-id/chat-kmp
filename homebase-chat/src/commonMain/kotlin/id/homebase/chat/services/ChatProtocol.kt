@@ -22,6 +22,35 @@ object ChatProtocol {
     const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
+    /**
+     * Rich-content message kinds that ride on the message header (no payload fetch
+     * on scroll). The full JSON object lives in `appData.content`; receivers branch
+     * off `appData.dataType` to choose a renderer. Polls and doodles will follow
+     * the same shape — pick the next free integer when adding one.
+     */
+    const val ChatEventMessageDataType = 210
+
+    /**
+     * Header-level kind tag for messages whose primary attachment is a Location
+     * preview ([PAYLOAD_KEY_LOCATION] payload). The receiver still dispatches off
+     * the payload key (the descriptor + map image live there), so this is purely a
+     * server-queryable kind axis: lets `QueryBatch` filter by location messages,
+     * lets future "all locations shared" features land without scanning every
+     * payload metadata blob client-side.
+     *
+     * Pre-existing Location messages on the wire have `dataType = 0` and remain
+     * indistinguishable at the header level until a defragger backfill pass tags
+     * them. New sends are stamped from now on.
+     */
+    const val ChatLocationMessageDataType = 211
+
+    /**
+     * Dice-roll message kind. Like [ChatEventMessageDataType], the full descriptor
+     * (face count, per-die results, source) lives in `appData.content` — no
+     * payloads, no fetch on scroll. See [id.homebase.chat.dice.DiceRollDescriptor].
+     */
+    const val ChatDiceRollMessageDataType = 212
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */
@@ -42,6 +71,15 @@ object ChatProtocol {
 
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
+
+    /** Local metadata tag: this GroupHealRequested status message has already been
+     *  applied on this recipient's drive. Idempotency gate for
+     *  `ConversationService.handleIncomingHealRequest` — without it, a heal status
+     *  message that is reprocessed (cursor reset, full re-sync, sibling device)
+     *  could re-classify a now-canonical local file as broken and hard-delete it
+     *  against a stale canonical-versionTag snapshot. The marker rides on the
+     *  message file's localAppData and syncs across the recipient's devices. */
+    val HealAppliedTag = Uuid.parse("c5b2e1d4-8a7f-4d6e-a3c2-1b9e8f7d6c5a")
 
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
