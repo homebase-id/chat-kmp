@@ -59,7 +59,9 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
 import id.homebase.resources.chat_dice_composer_title
 import id.homebase.resources.chat_dice_count_label
+import id.homebase.resources.chat_dice_count_value
 import id.homebase.resources.chat_dice_decrement
+import id.homebase.resources.chat_dice_face_label
 import id.homebase.resources.chat_dice_faces_label
 import id.homebase.resources.chat_dice_increment
 import id.homebase.resources.chat_dice_max_dice_warning
@@ -315,7 +317,12 @@ private fun FacesSelector(
                     selected = option == selectedFaces,
                     enabled = enabled,
                     onClick = { onFacesChange(option) },
-                    label = { Text("d$option", fontWeight = FontWeight.SemiBold) },
+                    label = {
+                        Text(
+                            text = stringResource(MR.string.chat_dice_face_label, option),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
                     colors = FilterChipDefaults.filterChipColors(),
                 )
             }
@@ -346,7 +353,7 @@ private fun CountStepper(
                 )
             }
             Text(
-                text = "${count}d",
+                text = stringResource(MR.string.chat_dice_count_value, count),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 16.dp),

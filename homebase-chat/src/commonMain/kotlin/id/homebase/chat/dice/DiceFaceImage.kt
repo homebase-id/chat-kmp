@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
@@ -30,7 +31,7 @@ import id.homebase.resources.d20_18
 import id.homebase.resources.d20_19
 import id.homebase.resources.d20_20
 import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.imageResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -52,11 +53,16 @@ fun DiceFaceImage(
     } else {
         stringResource(MR.string.chat_dice_face_placeholder_content_description, faces)
     }
+    // Bitmap overload (rather than painterResource) so we can opt into
+    // FilterQuality.High — the painter overload of `Image` doesn't expose it.
+    // Source PNGs are 256×256; on-screen sizes are 56dp–96dp, a real downscale
+    // where the default bilinear filter leaves text-on-die patterns soft.
     Image(
-        painter = painterResource(resource),
+        bitmap = imageResource(resource),
         contentDescription = description,
         modifier = modifier,
         contentScale = ContentScale.Fit,
+        filterQuality = FilterQuality.High,
     )
 }
 

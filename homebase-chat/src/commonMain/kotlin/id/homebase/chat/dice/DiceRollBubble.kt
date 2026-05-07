@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
@@ -37,8 +36,10 @@ import org.jetbrains.compose.resources.stringResource
  * In-stream bubble for a [DiceRollDescriptor]. Renders entirely from header data
  * — no payload fetch on scroll. Mirrors [id.homebase.chat.event.EventBubble].
  *
- * `null` descriptor or an invalid one (face count out of range, empty results)
- * collapses to a one-line fallback chip so a bad roll doesn't break the stream.
+ * Valid rolls render without a tonal surface, like the emoji-only message path
+ * (see `MessageBubbleRaw.kt:213` `emojiOnly`) — the dice faces have their own
+ * visual weight and look better floating on the conversation background. The
+ * unparseable chip keeps its tonal surface for legibility.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -46,15 +47,14 @@ fun DiceRollBubble(
     descriptor: DiceRollDescriptor?,
     modifier: Modifier = Modifier,
 ) {
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val contentColor = MaterialTheme.colorScheme.onSurface
-    val shape = RoundedCornerShape(20.dp)
 
     if (descriptor == null || !descriptor.isValid()) {
+        val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = modifier
-                .clip(shape)
+                .clip(RoundedCornerShape(20.dp))
                 .background(containerColor)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
@@ -76,34 +76,40 @@ fun DiceRollBubble(
 
     val critColor = MaterialTheme.colorScheme.tertiary
 
+    // Scale faces with the dice count so a 1-3 die roll renders large (closer to
+    // the 256px source, less downscale = crisper) while a 12-die spray fits the
+    // bubble width. The cell holds the optional crit border; the face image sits
+    // inside with a small inset.
+    val cellSize = if (descriptor.results.size <= 3) 96.dp else 56.dp
+    val faceInset = 4.dp
+
+    // Don't fillMaxWidth on the Column or FlowRow — the parent wrapper aligns
+    // sent messages to the end and received to the start. If the bubble spans
+    // the full conversation width, that alignment becomes a no-op and the dice
+    // appear stuck to the left for everyone.
     Column(
-        modifier = modifier
-            .clip(shape)
-            .background(containerColor)
-            .widthIn(min = 200.dp)
-            .padding(12.dp),
+        modifier = modifier.padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FlowRow(
-            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             for (value in descriptor.results) {
                 val isCrit = value == descriptor.faces || value == 1
                 val cellModifier = Modifier
-                    .size(48.dp)
+                    .size(cellSize)
                     .let {
                         if (isCrit) it
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(2.dp, critColor, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(2.dp, critColor, RoundedCornerShape(12.dp))
                         else it
                     }
                 Box(modifier = cellModifier, contentAlignment = Alignment.Center) {
                     DiceFaceImage(
                         faces = descriptor.faces,
                         value = value,
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(cellSize - faceInset * 2),
                     )
                 }
             }

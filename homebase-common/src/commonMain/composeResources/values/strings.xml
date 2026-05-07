@@ -541,6 +541,8 @@
     <string name="chat_dice_composer_title">Roll dice</string>
     <string name="chat_dice_count_label">Number of dice</string>
     <string name="chat_dice_faces_label">Faces per die</string>
+    <string name="chat_dice_face_label">d%1$d</string>
+    <string name="chat_dice_count_value">%1$dd</string>
     <string name="chat_dice_decrement">Fewer dice</string>
     <string name="chat_dice_increment">More dice</string>
     <string name="chat_dice_roll">Roll</string>

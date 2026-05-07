@@ -48,6 +48,14 @@ sealed interface MessageContent {
      * [descriptor] follows the same nullability contract as [Event.descriptor].
      */
     data class DiceRoll(val descriptor: DiceRollDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,           // rolls are immutable records of what happened
+            allowReply = true,           // people quote-reply rolls in conversation
+            allowForward = false,        // a roll without its conversation is meaningless
+            allowShare = false,          // copy-text of "Rolled 30 (3d10)" adds little
+            allowInlineReactions = true, // emoji reactions on rolls — yes
+            allowReactionDetails = true, // who reacted with what is interesting
+        )
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_DICE_LABEL
     }
 
