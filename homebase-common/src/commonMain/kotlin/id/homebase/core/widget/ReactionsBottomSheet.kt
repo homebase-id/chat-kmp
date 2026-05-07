@@ -6,7 +6,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -34,8 +33,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,7 +51,6 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reaction
-import id.homebase.resources.chat_reactions_all
 import id.homebase.resources.chat_reactions_tap_to_remove
 import id.homebase.resources.chat_reactions_title
 import id.homebase.resources.you
@@ -113,7 +111,7 @@ fun ReactionsBottomSheet(
                     ownerOdinId = ownerOdinId,
                     onContactClick = onContactClick,
                     onAddEmoji = onAddReaction?.let { { showEmojiPicker = true } },
-                    onRemoveReaction = onAddReaction,
+                    onToggleReaction = onAddReaction,
                 )
             }
         }
@@ -136,28 +134,24 @@ private fun ColumnScope.ReactionsContent(
     ownerOdinId: String?,
     onContactClick: (odinId: String) -> Unit,
     onAddEmoji: (() -> Unit)? = null,
-    onRemoveReaction: ((String) -> Unit)? = null,
+    onToggleReaction: ((String) -> Unit)? = null,
 ) {
     val grouped = remember(reactions) {
         reactions.groupBy { it.emoji }
     }
-    val emojiKeys = remember(grouped) { grouped.keys.toList() }
-    val showAllTab = emojiKeys.size > 1
+    var knownEmojiKeys by remember { mutableStateOf(grouped.keys.toList()) }
+    LaunchedEffect(grouped.keys) {
+        val currentKeys = grouped.keys
+        if (!knownEmojiKeys.containsAll(currentKeys)) {
+            knownEmojiKeys = (knownEmojiKeys + currentKeys).distinct()
+        }
+    }
     val ownerEmojis = remember(reactions, ownerOdinId) {
         reactions.filter { it.odinId == ownerOdinId }.map { it.emoji }.toSet()
     }
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-
-    val filteredReactions = remember(selectedTabIndex, reactions, grouped, emojiKeys, showAllTab, ownerOdinId) {
-        val base = if (!showAllTab || selectedTabIndex == 0) {
-            reactions
-        } else {
-            val emojiIndex = if (showAllTab) selectedTabIndex - 1 else selectedTabIndex
-            val emoji = emojiKeys.getOrNull(emojiIndex) ?: return@remember reactions
-            grouped[emoji] ?: emptyList()
-        }
-        base.sortedByDescending { it.odinId == ownerOdinId }
+    val sortedReactions = remember(reactions, ownerOdinId) {
+        reactions.sortedByDescending { it.odinId == ownerOdinId }
     }
 
     Row(
@@ -169,22 +163,13 @@ private fun ColumnScope.ReactionsContent(
         if (onAddEmoji != null) {
             AddEmojiChip(onClick = onAddEmoji)
         }
-        if (showAllTab) {
-            EmojiFilterChip(
-                selected = selectedTabIndex == 0,
-                label = "${stringResource(MR.string.chat_reactions_all)} ${reactions.size}",
-                onClick = { selectedTabIndex = 0 },
-            )
-        }
-        emojiKeys.forEachIndexed { index, emoji ->
-            val tabIndex = if (showAllTab) index + 1 else index
+        knownEmojiKeys.forEach { emoji ->
             val count = grouped[emoji]?.size ?: 0
             val isOwnReaction = emoji in ownerEmojis
-            EmojiFilterChip(
-                selected = selectedTabIndex == tabIndex,
+            EmojiToggleChip(
                 isOwnReaction = isOwnReaction,
                 label = "$emoji $count",
-                onClick = { selectedTabIndex = tabIndex },
+                onClick = { onToggleReaction?.invoke(emoji) },
             )
         }
     }
@@ -193,7 +178,7 @@ private fun ColumnScope.ReactionsContent(
 
     LazyColumn(modifier = Modifier.weight(1f)) {
         items(
-            items = filteredReactions,
+            items = sortedReactions,
             key = { "${it.odinId}_${it.emoji}" }
         ) { item ->
             val isOwner = item.odinId == ownerOdinId
@@ -201,8 +186,8 @@ private fun ColumnScope.ReactionsContent(
                 item = item,
                 isOwner = isOwner,
                 ownerOdinId = ownerOdinId,
-                onClick = if (isOwner && onRemoveReaction != null) {
-                    { onRemoveReaction(item.emoji) }
+                onClick = if (isOwner && onToggleReaction != null) {
+                    { onToggleReaction(item.emoji) }
                 } else if (!isOwner) {
                     { onContactClick(item.odinId) }
                 } else null,
@@ -213,25 +198,24 @@ private fun ColumnScope.ReactionsContent(
 }
 
 @Composable
-private fun EmojiFilterChip(
-    selected: Boolean,
+private fun EmojiToggleChip(
+    isOwnReaction: Boolean,
     label: String,
     onClick: () -> Unit,
-    isOwnReaction: Boolean = false,
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isOwnReaction -> Color(0xFF1E88E5).copy(alpha = 0.20f)
-            selected -> MaterialTheme.colorScheme.surfaceContainerHighest
-            else -> MaterialTheme.colorScheme.surfaceContainerHighest
+        targetValue = if (isOwnReaction) {
+            Color(0xFF1E88E5).copy(alpha = 0.20f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
         },
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
     )
     val textColor by animateColorAsState(
-        targetValue = when {
-            isOwnReaction -> Color(0xFF1565C0)
-            selected -> MaterialTheme.colorScheme.onSurface
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        targetValue = if (isOwnReaction) {
+            Color(0xFF1565C0)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
     )
