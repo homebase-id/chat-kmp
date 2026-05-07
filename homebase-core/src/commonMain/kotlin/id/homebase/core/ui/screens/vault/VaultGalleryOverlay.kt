@@ -169,8 +169,8 @@ fun VaultGalleryOverlay(
                 onUpdateNotes = onUpdateNotes,
             )
         },
-        containerColor = Color.Black,
-        contentColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.scrim,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             HorizontalPager(
@@ -221,7 +221,7 @@ fun VaultGalleryOverlay(
                         Column {
                             Text(
                                 text = labelText.ifBlank { null } ?: file.fileName,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.inverseOnSurface,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -233,7 +233,7 @@ fun VaultGalleryOverlay(
                                         currentPage + 1,
                                         pages.size,
                                     ),
-                                    color = Color.White.copy(alpha = 0.7f),
+                                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f),
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             }
@@ -244,7 +244,7 @@ fun VaultGalleryOverlay(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back),
-                                tint = Color.White,
+                                tint = MaterialTheme.colorScheme.inverseOnSurface,
                             )
                         }
                     },
@@ -254,14 +254,14 @@ fun VaultGalleryOverlay(
                                 Icon(
                                     imageVector = Icons.Default.Share,
                                     contentDescription = stringResource(MR.string.vault_gallery_share_page),
-                                    tint = Color.White,
+                                    tint = MaterialTheme.colorScheme.inverseOnSurface,
                                 )
                             }
                             IconButton(onClick = { pageToDelete = currentDescriptor.key }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = stringResource(MR.string.vault_gallery_delete_page),
-                                    tint = Color.White,
+                                    tint = MaterialTheme.colorScheme.inverseOnSurface,
                                 )
                             }
                         }
@@ -269,11 +269,11 @@ fun VaultGalleryOverlay(
                             file = file,
                             onShare = { currentDescriptor?.let { onSharePage(it.key) } },
                             onDelete = { onDeleteEntry() },
-                            iconTint = Color.White,
+                            iconTint = MaterialTheme.colorScheme.inverseOnSurface,
                         )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Black.copy(alpha = 0.6f),
+                        containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f),
                     ),
                 )
             }
@@ -622,13 +622,13 @@ private fun GalleryPageImage(
                     Icon(
                         imageVector = fileTypeIcon(descriptor.contentType ?: ""),
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.5f),
+                        tint = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.5f),
                         modifier = Modifier.size(64.dp),
                     )
                     Text(
                         text = stringResource(MR.string.vault_error_image_unavailable),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.5f),
                     )
                 }
             }
@@ -653,7 +653,7 @@ private fun GalleryPageNonImage(
         ) {
             Box(
                 modifier = Modifier.size(96.dp).background(
-                    color = Color.White.copy(alpha = 0.1f),
+                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(24.dp),
                 ),
                 contentAlignment = Alignment.Center,
@@ -661,7 +661,7 @@ private fun GalleryPageNonImage(
                 Icon(
                     imageVector = fileTypeIcon(descriptor.contentType ?: ""),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.inverseOnSurface,
                     modifier = Modifier.size(48.dp),
                 )
             }
@@ -669,7 +669,7 @@ private fun GalleryPageNonImage(
                 Text(
                     text = ct,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f),
                 )
             }
         }

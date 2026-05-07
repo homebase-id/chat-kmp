@@ -18,10 +18,14 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
 
     // In-memory biometric session tracking — not persisted, resets on app restart
+    @Volatile
     private var lastAuthTimeMs: Long = 0L
+    @Volatile
     private var lastBackgroundTimeMs: Long = 0L
+    @Volatile
     private var lastActionTimeMs: Long = 0L
 
+    @Volatile
     var isVaultScreenActive: Boolean = false
         private set
 

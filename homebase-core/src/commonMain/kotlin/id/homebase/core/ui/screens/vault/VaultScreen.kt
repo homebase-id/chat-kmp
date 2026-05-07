@@ -129,6 +129,9 @@ fun VaultScreen(
         if (biometricsEnabled) {
             vaultPreferences.setVaultScreenActive(true)
             applyWindowPrivacy(true)
+        } else {
+            vaultPreferences.setVaultScreenActive(false)
+            applyWindowPrivacy(false)
         }
         onDispose {
             vaultPreferences.setVaultScreenActive(false)
@@ -205,7 +208,6 @@ fun VaultScreen(
 
     ExtendPermissionDialog(viewModel = vaultExtendPermissionViewModel)
 
-    @Suppress("DEPRECATION")
     BackHandler(enabled = uiState.fullScreenOverlay != null) {
         viewModel.onAction(VaultUiAction.CloseOverlay)
     }

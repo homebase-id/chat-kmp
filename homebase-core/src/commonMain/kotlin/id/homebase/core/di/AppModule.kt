@@ -91,7 +91,6 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 
 val VaultPermissionQualifier = named("vaultPermission")
@@ -254,7 +253,7 @@ val appModule = module {
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
-    single { VaultRepository(get(), get(), get(), get(), get(), get(), get(), get()) }
+    singleOf(::VaultRepository)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -386,7 +385,18 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
-    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get(), get(), get(), get(), get()) }
+    viewModel {
+        VaultViewModel(
+            vaultPreferences = get(),
+            vaultPermissionViewModel = get(VaultPermissionQualifier),
+            vaultRepository = get(),
+            eventBus = get(),
+            authConnectionCoordinator = get(),
+            driveRegistry = get(),
+            localAttachmentStore = get(),
+            driveSyncManager = get(),
+        )
+    }
     viewModelOf(::VaultSettingsViewModel)
 }
 

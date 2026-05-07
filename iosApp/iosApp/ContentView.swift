@@ -66,10 +66,10 @@ private struct PrivacyOverlayView: View {
                     .font(.system(size: 64, weight: .thin))
                     .foregroundColor(.accentColor)
                 VStack(spacing: 8) {
-                    Text("Vault is locked")
+                    Text(String(localized: "Vault is locked"))
                         .font(.title3.weight(.medium))
                         .foregroundColor(.primary)
-                    Text("Authenticate to access your vault")
+                    Text(String(localized: "Authenticate to access your vault"))
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }

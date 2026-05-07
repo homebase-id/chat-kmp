@@ -87,6 +87,13 @@ import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.resources.MR
+import id.homebase.resources.nav_chats
+import id.homebase.resources.nav_feed
+import id.homebase.resources.nav_home
+import id.homebase.resources.vault_label
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
@@ -302,7 +309,7 @@ fun AppNavHost(
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
                             icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                            label = { Text(topLevelRoute.label) },
+                            label = { Text(stringResource(topLevelRoute.labelRes)) },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,
@@ -332,7 +339,7 @@ fun AppNavHost(
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
                                 icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                                // label = { Text(topLevelRoute.label) },
+                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
                                     if (topLevelRoute is TopLevelRoute.Vault) {
@@ -865,7 +872,8 @@ private fun NavHostController.selectConversationOnChatList(
 private fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Feed::class) == true
+            this?.hasRoute(Route.Feed::class) == true ||
+            this?.hasRoute(Route.Vault::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
@@ -873,10 +881,10 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelR
 }
 
 sealed class TopLevelRoute(
-    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val route: Route, val labelRes: StringResource, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
-    data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
-    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
-    data object Vault : TopLevelRoute(Route.Vault, "Vault", Icons.Outlined.Lock)
+    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
+    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
+    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
+    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
 }

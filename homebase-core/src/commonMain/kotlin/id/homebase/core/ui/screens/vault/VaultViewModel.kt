@@ -59,7 +59,8 @@ class VaultViewModel(
     val vaultExtendPermissionViewModel: ExtendPermissionViewModel
         get() = vaultPermissionViewModel
 
-    // Maps outbox uniqueId -> sectionId for grouping
+    // Maps outbox uniqueId -> sectionId for grouping.
+    // Thread-confined to Dispatchers.Main via viewModelScope.
     private val uploadTracker = mutableMapOf<Uuid, Uuid>()
 
     private val _isActivated = MutableStateFlow<Boolean?>(null)
