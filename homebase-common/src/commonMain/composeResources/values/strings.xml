@@ -608,6 +608,19 @@
     <string name="feed_loading">Loading feed…</string>
     <string name="pending_attachment_one">1 attachment</string>
     <string name="pending_attachment_many">%1$d attachments</string>
+    <!-- Chat Color & Wallpaper -->
+    <string name="chat_color_wallpaper_title">Chat Color &amp; Wallpaper</string>
+    <string name="chat_color_title">Chat Color</string>
+    <string name="chat_color_auto">auto</string>
+    <string name="chat_color_auto_description">Auto matches the color to the wallpaper.</string>
+    <string name="chat_color_reset">Reset Chat Colors</string>
+    <string name="chat_wallpaper_section">Wallpaper</string>
+    <string name="chat_wallpaper_set">Set Wallpaper</string>
+    <string name="chat_wallpaper_dark_dims">Dark Theme Dims Wallpaper</string>
+    <string name="chat_wallpaper_reset">Reset Wallpapers</string>
+    <string name="chat_wallpaper_choose_from_photos">Choose from Photos</string>
+    <string name="chat_wallpaper_presets">Presets</string>
+
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
     <string name="trim_start_handle">Trim start</string>

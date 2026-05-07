@@ -38,6 +38,7 @@ import id.homebase.core.settings.setPlatformSystemLocale
 import id.homebase.core.widget.SettingsClickableRow
 import id.homebase.core.widget.SettingsRowItemData
 import id.homebase.resources.MR
+import id.homebase.resources.chat_color_wallpaper_title
 import id.homebase.resources.language
 import id.homebase.resources.language_danish
 import id.homebase.resources.language_english_gb
@@ -157,7 +158,7 @@ fun AppearanceSettingsUi(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Chat Color & Wallpaper", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(MR.string.chat_color_wallpaper_title), style = MaterialTheme.typography.bodyLarge)
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                 }
             }

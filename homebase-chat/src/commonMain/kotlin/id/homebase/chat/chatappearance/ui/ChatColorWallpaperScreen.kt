@@ -33,6 +33,16 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.chatappearance.model.ChatColor
 import id.homebase.chat.chatappearance.ui.components.ChatPreviewMockup
 import id.homebase.chat.chatappearance.ui.components.ColorCircleItem
+import id.homebase.resources.MR
+import id.homebase.resources.chat_color_reset
+import id.homebase.resources.chat_color_title
+import id.homebase.resources.chat_color_wallpaper_title
+import id.homebase.resources.chat_wallpaper_dark_dims
+import id.homebase.resources.chat_wallpaper_reset
+import id.homebase.resources.chat_wallpaper_section
+import id.homebase.resources.chat_wallpaper_set
+import id.homebase.resources.menu_back
+import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,12 +58,12 @@ fun ChatColorWallpaperScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Chat Color & Wallpaper") },
+                title = { Text(stringResource(MR.string.chat_color_wallpaper_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Navigate back",
+                            contentDescription = stringResource(MR.string.menu_back),
                         )
                     }
                 },
@@ -80,7 +90,7 @@ fun ChatColorWallpaperScreen(
 
             // Chat Color section
             Text(
-                text = "Chat Color",
+                text = stringResource(MR.string.chat_color_title),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 8.dp),
@@ -103,7 +113,7 @@ fun ChatColorWallpaperScreen(
                         )
                         Spacer(Modifier.width(16.dp))
                         Text(
-                            text = "Chat Color",
+                            text = stringResource(MR.string.chat_color_title),
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f),
                         )
@@ -119,7 +129,7 @@ fun ChatColorWallpaperScreen(
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) {
                         Text(
-                            text = "Reset Chat Colors",
+                            text = stringResource(MR.string.chat_color_reset),
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -130,7 +140,7 @@ fun ChatColorWallpaperScreen(
 
             // Wallpaper section
             Text(
-                text = "Wallpaper",
+                text = stringResource(MR.string.chat_wallpaper_section),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 8.dp),
@@ -145,7 +155,7 @@ fun ChatColorWallpaperScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Set Wallpaper",
+                            text = stringResource(MR.string.chat_wallpaper_set),
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f),
                         )
@@ -163,7 +173,7 @@ fun ChatColorWallpaperScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Dark Theme Dims Wallpaper",
+                            text = stringResource(MR.string.chat_wallpaper_dark_dims),
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f),
                         )
@@ -178,7 +188,7 @@ fun ChatColorWallpaperScreen(
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) {
                         Text(
-                            text = "Reset Wallpapers",
+                            text = stringResource(MR.string.chat_wallpaper_reset),
                             color = MaterialTheme.colorScheme.error,
                         )
                     }

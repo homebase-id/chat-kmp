@@ -28,6 +28,7 @@ import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.resources.MR
+import id.homebase.resources.chat_color_wallpaper_title
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 
@@ -133,7 +134,7 @@ fun ConversationSettingsUi(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Chat Color & Wallpaper", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(MR.string.chat_color_wallpaper_title), style = MaterialTheme.typography.bodyLarge)
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                     }
                 }

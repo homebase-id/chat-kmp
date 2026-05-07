@@ -30,6 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.chatappearance.model.ChatWallpaper
 import id.homebase.chat.chatappearance.ui.components.WallpaperTileItem
+import id.homebase.resources.MR
+import id.homebase.resources.chat_wallpaper_choose_from_photos
+import id.homebase.resources.chat_wallpaper_presets
+import id.homebase.resources.chat_wallpaper_set
+import id.homebase.resources.menu_back
+import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,12 +49,12 @@ fun WallpaperPickerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Set Wallpaper") },
+                title = { Text(stringResource(MR.string.chat_wallpaper_set)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Navigate back",
+                            contentDescription = stringResource(MR.string.menu_back),
                         )
                     }
                 },
@@ -79,7 +85,7 @@ fun WallpaperPickerScreen(
                         tint = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = "Choose from Photos",
+                        text = stringResource(MR.string.chat_wallpaper_choose_from_photos),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
@@ -97,7 +103,7 @@ fun WallpaperPickerScreen(
             // Presets header
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    text = "Presets",
+                    text = stringResource(MR.string.chat_wallpaper_presets),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),

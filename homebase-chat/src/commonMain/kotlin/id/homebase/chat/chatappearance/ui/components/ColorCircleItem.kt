@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.chatappearance.model.ChatColor
+import id.homebase.resources.MR
+import id.homebase.resources.chat_color_auto
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ColorCircleItem(
@@ -59,7 +62,7 @@ fun ColorCircleItem(
     ) {
         if (isAutoItem) {
             Text(
-                text = "auto",
+                text = stringResource(MR.string.chat_color_auto),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )

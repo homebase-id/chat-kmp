@@ -32,6 +32,11 @@ import id.homebase.chat.chatappearance.model.ChatColor
 import id.homebase.chat.chatappearance.model.ChatWallpaper
 import id.homebase.chat.chatappearance.ui.components.ChatPreviewMockup
 import id.homebase.chat.chatappearance.ui.components.ColorCircleItem
+import id.homebase.resources.MR
+import id.homebase.resources.chat_color_auto_description
+import id.homebase.resources.chat_color_title
+import id.homebase.resources.menu_back
+import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,12 +50,12 @@ fun ChatColorPickerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Chat Color") },
+                title = { Text(stringResource(MR.string.chat_color_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Navigate back",
+                            contentDescription = stringResource(MR.string.menu_back),
                         )
                     }
                 },
@@ -82,7 +87,7 @@ fun ChatColorPickerScreen(
                             ),
                         ) {
                             Text(
-                                text = "Auto matches the color to the wallpaper.",
+                                text = stringResource(MR.string.chat_color_auto_description),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.padding(12.dp),
