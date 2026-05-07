@@ -614,4 +614,11 @@
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>
 
+    <!-- Delivery status -->
+    <string name="message_sending">Sending</string>
+
+    <!-- Settings section headers -->
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_danger_zone">Danger Zone</string>
+
 </resources>

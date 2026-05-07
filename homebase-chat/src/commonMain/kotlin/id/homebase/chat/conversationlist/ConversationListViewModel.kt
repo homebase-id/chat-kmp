@@ -2523,15 +2523,25 @@ class ConversationListViewModel(
 
                             var systemIndex = 0
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
-                                listOf(MessageListContentModel.Section(date)) + messages.map {
-                                    if (it.isStatusMessage)
+                                val sectionHeader = listOf(MessageListContentModel.Section(date))
+                                val items = messages.map { msg ->
+                                    if (msg.isStatusMessage)
                                         MessageListContentModel.System(
-                                            it.content,
-                                            it.userDate,
+                                            msg.content,
+                                            msg.userDate,
                                             systemIndex++
                                         )
                                     else
-                                        MessageListContentModel.Message(it)
+                                        MessageListContentModel.Message(msg)
+                                }
+                                val messageItems = items.filterIsInstance<MessageListContentModel.Message>()
+                                val clustered = computeClusterPositions(messageItems)
+                                val clusteredMap = clustered.associateBy { it.message.id }
+                                sectionHeader + items.map { item ->
+                                    if (item is MessageListContentModel.Message)
+                                        clusteredMap[item.message.id] ?: item
+                                    else
+                                        item
                                 }
                             })
 
@@ -3437,3 +3447,4 @@ internal fun resolveNotificationTap(
     if (tap == null) return null
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
+
