@@ -24,17 +24,25 @@ struct ContentView: View {
     var body: some View {
         ComposeView()
             .ignoresSafeArea()
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    // Nudge the Metal layer to redraw after returning from background,
-                    // working around stale Skia glyph-atlas caches on iOS.
-                    DispatchQueue.main.async {
-                        let view = MainViewControllerRef.shared.instance?.view
-                        view?.setNeedsLayout()
-                        view?.layer.setNeedsDisplay()
-                    }
+            .onAppear {
+                // Cold-start: .onChange(of: scenePhase) won't fire when .active
+                // is already the initial phase, so the glyph-atlas stays stale.
+                // Post a delayed nudge to cover the first-launch path.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    nudgeMetalLayer()
                 }
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    nudgeMetalLayer()
+                }
+            }
+    }
+
+    private func nudgeMetalLayer() {
+        let view = MainViewControllerRef.shared.instance?.view
+        view?.setNeedsLayout()
+        view?.layer.setNeedsDisplay()
     }
 }
 

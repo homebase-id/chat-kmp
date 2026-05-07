@@ -57,6 +57,7 @@ import id.homebase.chat.chatappearance.model.ChatColor
 import id.homebase.chat.chatappearance.model.ChatColorPresets
 import id.homebase.chat.chatappearance.ui.LocalActiveChatColor
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
@@ -113,6 +114,7 @@ fun MessageBubbleRaw(
     message: MessageUiModel,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     sentByYou: Boolean,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
@@ -266,14 +268,26 @@ fun MessageBubbleRaw(
             )
         }
 
-    val shape = remember {
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-            bottomStart =
-                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        )
+    val big = Dimens.Message.cornerRadius
+    val small = Dimens.Message.cornerCollapseRadius
+    val shape = remember(sentByYou, clusterPosition, mediaOnly) {
+        if (mediaOnly) {
+            RoundedCornerShape(big)
+        } else if (sentByYou) {
+            when (clusterPosition) {
+                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+                MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
+                MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
+                MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
+            }
+        } else {
+            when (clusterPosition) {
+                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+                MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
+                MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
+                MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
+            }
+        }
     }
 
     Surface(
@@ -375,7 +389,7 @@ fun MessageBubbleRaw(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = authorColor ?: contentColor,
                                     modifier = Modifier.padding(
-                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
+                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp,
                                     ),
                                     maxLines = 1,
                                 )

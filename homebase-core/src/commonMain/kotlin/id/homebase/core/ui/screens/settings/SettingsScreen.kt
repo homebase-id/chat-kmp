@@ -18,10 +18,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -83,6 +83,8 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
+import id.homebase.resources.settings_section_danger_zone
+import id.homebase.resources.settings_section_general
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -218,7 +220,7 @@ fun SettingsUi(
             TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
-                        imageVector = Icons.Default.ChevronLeft,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(MR.string.menu_back)
                     )
                 }
@@ -265,6 +267,7 @@ fun SettingsUi(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsSectionHeader(stringResource(MR.string.settings_section_general))
             SettingsItemAction(
                 imageVector = Icons.Outlined.People,
                 text = stringResource(MR.string.settings_connections),
@@ -353,24 +356,37 @@ fun SettingsUi(
                 text = stringResource(MR.string.settings_help),
                 onClick = onNavigateToHelp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsSectionHeader(stringResource(MR.string.settings_section_danger_zone))
             SettingsItemAction(
                 modifier = Modifier.testTag("deleteAccountButton"),
                 imageVector = Icons.Outlined.Delete,
                 text = stringResource(MR.string.settings_delete_account),
+                tint = MaterialTheme.colorScheme.error,
                 onClick = { onAction(SettingsUiAction.DeleteAccount) }
             )
             SettingsItemAction(
                 modifier = Modifier.testTag("logoutButton"),
                 imageVector = Icons.AutoMirrored.Outlined.Logout,
                 text = stringResource(MR.string.settings_logout),
+                tint = MaterialTheme.colorScheme.error,
                 onClick = { onAction(SettingsUiAction.LogoutClicked) }
             )
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+    )
 }
 
 @Preview

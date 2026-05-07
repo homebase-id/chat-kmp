@@ -1,5 +1,7 @@
 homebase.log
 .claude
+docs/DEEP_UI_AUDIT.md
+docs/SIGNAL_VS_HOMEBASE_AUDIT.md
 *.iml
 desktopApp/odin.db
 desktopApp/odin-2.db
@@ -32,3 +34,4 @@ hs_err_pid*.log
 replay_pid*.log
 /.agent
 /.superpowers
+.worktrees

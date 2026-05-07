@@ -43,9 +43,9 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -120,6 +120,7 @@ import id.homebase.resources.chat_location_permission_denied
 import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -568,7 +569,7 @@ fun ConversationContent(
                                 ConversationAvatar(
                                     modifier = Modifier.focusable(), // to avoid textfield focus
                                     avatarModel = conversation.conversation.avatarModel,
-                                    options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
+                                    options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
@@ -619,7 +620,7 @@ fun ConversationContent(
                     if (showBackButton && !uiState.isSearchActive) {
                         IconButton(onClick = onBackClick) {
                             Icon(
-                                imageVector = Icons.Default.ChevronLeft,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back)
                             )
                         }
@@ -815,7 +816,6 @@ fun ConversationContent(
                     if (!uiState.isLoadingMessages) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
                             state = listState,
                             contentPadding = PaddingValues(
                                 top = 24.dp,
@@ -885,14 +885,18 @@ fun ConversationContent(
                                         val isFocused = uiState.searchResultMessageIds.getOrNull(
                                             uiState.currentSearchResultIndex
                                         ) == item.message.id
+                                        val showAuthorName = conversation.conversation.isGroupConversation &&
+                                            (item.clusterPosition == MessageClusterPosition.ALONE ||
+                                                item.clusterPosition == MessageClusterPosition.START)
                                         MessageItem(
                                             message = item.message,
                                             userDefaultReactions = uiState.userDefaultReactions,
                                             decryptedFiles = uiState.decryptedFiles,
                                             currentOdinId = uiState.ownerSession?.odinId?.domainName
                                                 ?: "",
-                                            renderAuthorName = conversation.conversation.isGroupConversation,
+                                            renderAuthorName = showAuthorName,
                                             isGroupConversation = conversation.conversation.isGroupConversation,
+                                            clusterPosition = item.clusterPosition,
                                             animatedVisibilityScope = animatedVisibilityScope,
                                             sharedTransitionScope = sharedTransitionScope,
                                             onUiAction = onUiAction,
