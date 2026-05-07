@@ -96,7 +96,10 @@ fun DiceRollBubble(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             for (value in descriptor.results) {
-                val isCrit = value == descriptor.faces || value == 1
+                // Crit border is a d20 thing — natural 20 / natural 1 are the
+                // only rolls that "matter" outside their numeric value. On
+                // smaller dice, hitting min or max is unremarkable.
+                val isCrit = descriptor.faces == 20 && (value == 20 || value == 1)
                 val cellModifier = Modifier
                     .size(cellSize)
                     .let {
