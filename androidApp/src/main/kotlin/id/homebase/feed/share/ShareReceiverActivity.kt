@@ -267,6 +267,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 onSaveFile = { /* Not needed in share flow */ },
                                 onAddFile = { fileLauncher.launch() },
                                 onAddImage = { galleryLauncher.launch() },
+                                onCameraClick = { /* Not available in share flow */ },
                                 onRemoveFile = { _, attachmentId ->
                                     val updated = editorAttachments.filter { it.attachmentId != attachmentId }
                                     editorAttachments = updated
