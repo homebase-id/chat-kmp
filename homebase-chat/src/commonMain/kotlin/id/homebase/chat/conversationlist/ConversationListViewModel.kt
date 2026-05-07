@@ -1239,8 +1239,9 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
+                    if (action.reaction.isEmpty()) return@launch
+                    val previousReactions = _messagesUiState.value.messageReactions
                     try {
-                        if (action.reaction.isEmpty()) return@launch
                         val newTopReactions =
                             _messagesUiState.value.userDefaultReactions.toMutableList()
                         newTopReactions.remove(action.reaction)
@@ -1252,12 +1253,45 @@ class ConversationListViewModel(
                             userPreferences.preferredUserReactions = newTopReactions.take(6)
                         }
 
+                        _messagesUiState.update { state ->
+                            if (state.reactionDetailsMessageId != action.messageId) {
+                                return@update state
+                            }
+                            val ownerSession = state.ownerSession
+                                ?: return@update state
+                            val ownerOdinId = ownerSession.odinId.domainName
+                            val current = state.messageReactions ?: emptyList()
+                            val hasReaction = current.any {
+                                it.odinId == ownerOdinId && it.emoji == action.reaction
+                            }
+                            val updated = if (hasReaction) {
+                                current.filterNot {
+                                    it.odinId == ownerOdinId && it.emoji == action.reaction
+                                }
+                            } else {
+                                current + ReactionDisplayItem(
+                                    odinId = ownerOdinId,
+                                    displayName = ownerSession.displayName ?: ownerOdinId,
+                                    emoji = action.reaction,
+                                )
+                            }
+                            if (updated.isEmpty()) {
+                                state.copy(
+                                    messageReactions = null,
+                                    reactionDetailsMessageId = null,
+                                )
+                            } else {
+                                state.copy(messageReactions = updated)
+                            }
+                        }
+
                         chatMessageActionService.toggleReaction(
                             action.conversationId,
                             action.messageId,
                             action.reaction
                         )
                     } catch (e: Exception) {
+                        _messagesUiState.update { it.copy(messageReactions = previousReactions) }
                         sendEvent(
                             ShowErrorMessage(
                                 "Failed to toggle reaction: ${e.message}"
