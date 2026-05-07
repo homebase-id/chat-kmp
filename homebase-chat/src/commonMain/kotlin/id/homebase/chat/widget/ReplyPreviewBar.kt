@@ -111,6 +111,8 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
         ) {
             // Author + content preview
             Column(modifier = Modifier.weight(1f)) {
+                val isYou = currentOdinId.isNotEmpty() &&
+                    message.originalAuthor?.domainName == currentOdinId
                 Text(
                     text = resolveReplyAuthorName(
                         authorOdinId = message.originalAuthor?.domainName ?: "",

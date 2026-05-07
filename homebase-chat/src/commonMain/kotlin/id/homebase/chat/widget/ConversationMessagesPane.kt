@@ -34,6 +34,7 @@ import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.util.rememberCameraManager
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,17 @@ fun ConversationMessagesPane(
                 ConversationListUiAction.AttachPlatformFile(
                     conversation.conversation.id,
                     listOf(file),
+                )
+            )
+        }
+    }
+    val cameraLauncher = rememberCameraManager { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.conversation.id,
+                    files = listOf(file),
+                    isImage = true,
                 )
             )
         }
@@ -252,6 +264,7 @@ fun ConversationMessagesPane(
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
+                            onCameraClick = { cameraLauncher.launch() },
                             onRemoveFile = { conversationId, attachmentId ->
                                 onUiAction(UnAttachFile(conversationId, attachmentId))
                             },
