@@ -110,7 +110,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
             // Author + content preview
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = message.originalAuthor?.domainName ?: "",
+                    text = message.displayName,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,

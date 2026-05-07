@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
@@ -730,22 +731,24 @@ fun InlineReplyPreview(
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first image payload
+    // Build HomebaseImageData from the original message's first visual payload (image or video)
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstImagePayload = replyMessage.payloads?.firstOrNull {
-            it.contentType?.startsWith("image/") == true
+        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
+            val ct = it.contentType ?: ""
+            ct.startsWith("image/") || ct.startsWith("video/") ||
+                ct == "application/vnd.apple.mpegurl"
         } ?: return@remember null
         val payloadIv = try {
-            firstImagePayload.iv?.let { Base64.decode(it) }
+            firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
             null
         } ?: return@remember null
         HomebaseImageData(
             driveId = driveId,
             fileId = replyMessage.fileId,
-            payloadKey = firstImagePayload.key,
-            previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+            payloadKey = firstVisualPayload.key,
+            previewThumbnail = firstVisualPayload.previewThumbnail?.toEmbeddedThumb()
                 ?: replyMessage.previewThumbnail
                 ?: replyPreview.previewThumbnail,
             requestedSize = ImageSize.THUMB_SMALL,
@@ -768,7 +771,22 @@ fun InlineReplyPreview(
     }
 
     val hasImage = imageData != null || replyPreview.previewThumbnail != null
-    val message = if (hasImage && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+
+    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
+    val mediaPayloads = remember(replyMessage?.payloads) {
+        replyMessage?.payloads?.filter { payload ->
+            payload.key != ChatProtocol.DefaultPayloadKey &&
+                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        } ?: emptyList()
+    }
+    val contentLabel = messageContentLabel(
+        textContent = replyPreview.message,
+        isDeleted = replyMessage?.isDeleted ?: false,
+        firstPayload = mediaPayloads.firstOrNull(),
+        hasMultiplePayloads = mediaPayloads.size > 1,
+    )
+    val displayMessage = contentLabel?.text
+        ?: replyPreview.message.ifEmpty { if (hasImage) stringResource(MR.string.media) else "" }
 
     Row(
         modifier = Modifier
@@ -793,18 +811,31 @@ fun InlineReplyPreview(
                     .padding(horizontal = 8.dp, vertical = 10.dp)
             ) {
                 Text(
-                    text = replyPreview.authorOdinId,
+                    text = replyMessage?.displayName ?: replyPreview.authorOdinId,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
-                    maxLines = 2
-                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    contentLabel?.icon?.let { icon ->
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = contentColor,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = displayMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = contentColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
