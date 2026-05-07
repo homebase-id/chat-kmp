@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.resources.MR
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_onboarding_body_1
@@ -40,6 +41,8 @@ import org.jetbrains.compose.resources.stringResource
 fun VaultOnboardingScreen(
     viewModel: VaultViewModel,
 ) {
+    ExtendPermissionDialog(viewModel = viewModel.vaultExtendPermissionViewModel)
+
     Scaffold(
         topBar = {
             TopAppBar(

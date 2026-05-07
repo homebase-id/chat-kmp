@@ -88,13 +88,13 @@ class VaultViewModel(
             }
         }
 
-        // Collector for permission dialog callback only — when user grants permissions
-        // via the dialog, permissionsGranted changes from false→true and this fires.
+        // When user grants permissions via the extend-permission dialog (browser callback),
+        // automatically proceed with vault activation — no need to tap Setup again.
         viewModelScope.launch {
             vaultPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    if (_uiState.value.isCheckingPermissions) {
+                    if (_isActivated.value != true) {
                         handleActivation()
                     }
                 }
