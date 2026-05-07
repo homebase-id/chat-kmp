@@ -91,6 +91,7 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -738,6 +739,7 @@ fun InlineReplyPreview(
     replyMessage: MessageUiModel? = null,
     driveId: Uuid? = null,
 ) {
+    val currentOdinId = LocalCurrentOdinId.current
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
@@ -814,14 +816,20 @@ fun InlineReplyPreview(
                 modifier = Modifier
                     .width(3.dp)
                     .fillMaxHeight()
-                    .background(color = Color.White, shape = RoundedCornerShape(2.dp))
+                    .background(color = contentColor, shape = RoundedCornerShape(2.dp))
             )
             Column(
                 modifier = Modifier.weight(1f, fill = false)
                     .padding(horizontal = 8.dp, vertical = 10.dp)
             ) {
+                val replyAuthorIsYou = currentOdinId.isNotEmpty() &&
+                    replyPreview.authorOdinId == currentOdinId
+                val authorDisplayName = when {
+                    replyAuthorIsYou -> stringResource(MR.string.you)
+                    else -> replyMessage?.displayName ?: replyPreview.authorOdinId
+                }
                 Text(
-                    text = replyMessage?.displayName ?: replyPreview.authorOdinId,
+                    text = authorDisplayName,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,

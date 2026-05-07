@@ -34,6 +34,7 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
+import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
@@ -49,6 +50,7 @@ import kotlin.io.encoding.Base64
  */
 @Composable
 fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val currentOdinId = LocalCurrentOdinId.current
     // Filter out non-media payloads (default payload key and payload descriptor keys)
     val mediaPayloads = remember(message.payloads) {
         message.payloads?.filter { payload ->
@@ -109,8 +111,10 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
         ) {
             // Author + content preview
             Column(modifier = Modifier.weight(1f)) {
+                val isYou = currentOdinId.isNotEmpty() &&
+                    message.originalAuthor?.domainName == currentOdinId
                 Text(
-                    text = message.displayName,
+                    text = if (isYou) stringResource(MR.string.you) else message.displayName,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
