@@ -20,21 +20,61 @@ struct ComposeView: UIViewControllerRepresentable {
 
 struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
+    @State private var showPrivacyOverlay = false
 
     var body: some View {
-        ComposeView()
-            .ignoresSafeArea()
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    // Nudge the Metal layer to redraw after returning from background,
-                    // working around stale Skia glyph-atlas caches on iOS.
-                    DispatchQueue.main.async {
-                        let view = MainViewControllerRef.shared.instance?.view
-                        view?.setNeedsLayout()
-                        view?.layer.setNeedsDisplay()
+        ZStack {
+            ComposeView()
+                .ignoresSafeArea()
+
+            if showPrivacyOverlay {
+                PrivacyOverlayView()
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .inactive:
+                if VaultPrivacyBridge.shared.shouldProtect {
+                    withAnimation(.easeIn(duration: 0.15)) {
+                        showPrivacyOverlay = true
                     }
                 }
+            case .active:
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPrivacyOverlay = false
+                }
+                DispatchQueue.main.async {
+                    let view = MainViewControllerRef.shared.instance?.view
+                    view?.setNeedsLayout()
+                    view?.layer.setNeedsDisplay()
+                }
+            default:
+                break
             }
+        }
+    }
+}
+
+private struct PrivacyOverlayView: View {
+    var body: some View {
+        ZStack {
+            Color(UIColor.systemBackground)
+            VStack(spacing: 24) {
+                Image(systemName: "lock")
+                    .font(.system(size: 64, weight: .thin))
+                    .foregroundColor(.accentColor)
+                VStack(spacing: 8) {
+                    Text("Vault is locked")
+                        .font(.title3.weight(.medium))
+                        .foregroundColor(.primary)
+                    Text("Authenticate to access your vault")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
     }
 }
 

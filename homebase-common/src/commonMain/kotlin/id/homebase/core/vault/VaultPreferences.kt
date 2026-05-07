@@ -22,6 +22,13 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     private var lastBackgroundTimeMs: Long = 0L
     private var lastActionTimeMs: Long = 0L
 
+    var isVaultScreenActive: Boolean = false
+        private set
+
+    fun setVaultScreenActive(active: Boolean) {
+        isVaultScreenActive = active
+    }
+
     fun recordAuthSuccess() {
         val now = Clock.System.now().toEpochMilliseconds()
         lastAuthTimeMs = now

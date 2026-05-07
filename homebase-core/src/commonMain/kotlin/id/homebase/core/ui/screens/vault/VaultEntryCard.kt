@@ -227,7 +227,7 @@ fun VaultEntryCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
-                            text = "${file.pageCount}",
+                            text = file.pageCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.inverseOnSurface,
                         )

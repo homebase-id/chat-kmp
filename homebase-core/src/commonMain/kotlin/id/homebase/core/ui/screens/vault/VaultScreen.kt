@@ -7,15 +7,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import id.homebase.core.HomebaseConstants
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +62,7 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.vault.applyWindowPrivacy
 import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
 import id.homebase.resources.vault_biometric_prompt_subtitle
@@ -118,6 +122,21 @@ fun VaultScreen(
     var unlockAttempt by remember { mutableStateOf(0) }
     var isAuthenticating by remember { mutableStateOf(false) }
 
+    val biometricsEnabled by vaultPreferences.biometricsEnabled.collectAsStateWithLifecycle()
+
+    DisposableEffect(biometricsEnabled) {
+        if (biometricsEnabled) {
+            vaultPreferences.setVaultScreenActive(true)
+            applyWindowPrivacy(true)
+        }
+        onDispose {
+            vaultPreferences.setVaultScreenActive(false)
+            applyWindowPrivacy(false)
+        }
+    }
+
+    var isPrivacyOverlayVisible by remember { mutableStateOf(false) }
+
     LaunchedEffect(authorized, unlockAttempt) {
         if (authorized || isAuthenticating) return@LaunchedEffect
         isAuthenticating = true
@@ -161,8 +180,14 @@ fun VaultScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> vaultPreferences.recordAppBackgrounded()
+                Lifecycle.Event.ON_STOP -> {
+                    vaultPreferences.recordAppBackgrounded()
+                    if (biometricsEnabled) {
+                        isPrivacyOverlayVisible = true
+                    }
+                }
                 Lifecycle.Event.ON_RESUME -> {
+                    isPrivacyOverlayVisible = false
                     vaultExtendPermissionViewModel.recheckPermissions()
                     if (vaultPreferences.biometricsEnabled.value &&
                         !vaultPreferences.isAuthSessionValid()
@@ -349,6 +374,15 @@ fun VaultScreen(
                     )
                 }
             }
+        }
+
+        if (isPrivacyOverlayVisible && biometricsEnabled) {
+            VaultLockedContent(
+                onUnlock = { },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface),
+            )
         }
     }
 
