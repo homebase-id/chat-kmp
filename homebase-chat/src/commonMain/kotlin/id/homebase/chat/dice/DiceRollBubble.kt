@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_dice_summary
+import id.homebase.resources.chat_dice_summary_single
 import id.homebase.resources.chat_dice_unparseable
 import org.jetbrains.compose.resources.stringResource
 
@@ -130,12 +131,19 @@ fun DiceRollBubble(
                 )
                 Spacer(Modifier.width(6.dp))
             }
-            Text(
-                text = stringResource(
+            // For a single die the breakdown duplicates the sum (`4 (4)`), so
+            // we use a separate resource without the parenthetical.
+            val summaryText = if (descriptor.results.size == 1) {
+                stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
+            } else {
+                stringResource(
                     MR.string.chat_dice_summary,
                     descriptor.sum,
                     descriptor.results.joinToString("+"),
-                ),
+                )
+            }
+            Text(
+                text = summaryText,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = contentColor,

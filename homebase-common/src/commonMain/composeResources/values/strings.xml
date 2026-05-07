@@ -552,6 +552,7 @@
     <string name="chat_dice_face_content_description">d%1$d showing %2$d</string>
     <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
     <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
+    <string name="chat_dice_summary_single">You rolled %1$d</string>
     <string name="chat_dice_unparseable">Unable to display this dice roll. Please update the app.</string>
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
