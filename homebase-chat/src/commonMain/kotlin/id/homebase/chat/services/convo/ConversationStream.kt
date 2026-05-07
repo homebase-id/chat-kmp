@@ -96,8 +96,12 @@ class ConversationStream(
      * [StatusMessage.GroupHealRequested] status. Wired in AppModule to
      * [ConversationService.handleIncomingHealRequest]. Side effect only —
      * does not affect message-list dispatch.
+     *
+     * The status-message [HomebaseFile] is passed through so the handler can
+     * read/write its `localAppData.tags` and short-circuit on
+     * [ChatProtocol.HealAppliedTag] (per-message idempotency gate).
      */
-    var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId) -> Unit)? = null
+    var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -250,7 +254,7 @@ class ConversationStream(
             }.getOrNull() ?: continue
             if (status.statusMessage != StatusMessage.GroupHealRequested) continue
             try {
-                handler(status, sender)
+                handler(status, sender, file)
             } catch (e: Exception) {
                 Logger.e(e) { "ConversationStream: heal-request handler threw for sender=${sender.domainName}: ${e.message}" }
             }

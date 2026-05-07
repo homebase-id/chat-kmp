@@ -205,8 +205,8 @@ val appModule = module {
                 // endregion
 
                 // region Heal group: incoming GroupHealRequested status
-                conversationStream.onIncomingHealRequest = { status, sender ->
-                    conversationService.handleIncomingHealRequest(status, sender)
+                conversationStream.onIncomingHealRequest = { status, sender, messageFile ->
+                    conversationService.handleIncomingHealRequest(status, sender, messageFile)
                 }
                 // endregion
 

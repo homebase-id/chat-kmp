@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.content.MessageContent
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.time.Instant
@@ -63,6 +64,15 @@ data class MessageUiModel(
 
     /** Indicates if this was created by the app/system and should be rendered differently **/
     val isStatusMessage: Boolean = false,
+
+    /**
+     * Typed rich-content parsed from `appData.dataType` + `appData.content` (event
+     * today; poll and doodle later). Null for plain text + media messages — those
+     * keep their existing rendering path. When non-null, [content] is set to a
+     * short display label suitable for notifications and the conversation-list
+     * preview.
+     */
+    val messageContent: MessageContent? = null,
 
     val hasMore: Boolean
 ) {

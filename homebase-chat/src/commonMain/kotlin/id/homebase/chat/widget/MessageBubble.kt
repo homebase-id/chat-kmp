@@ -127,13 +127,13 @@ fun SentMessageBubble(
     onReply: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
-    onShare: () -> Unit,
+    onShare: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: () -> Unit,
+    onShowReactions: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
@@ -217,13 +217,11 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onMessageInfo?.invoke()
                         },
-                        onReply = {
-                            popupMode = MessagePopupMode.None
-                            onReply?.invoke()
+                        onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
-                        onForward = {
-                            popupMode = MessagePopupMode.None
-                            onForward?.invoke()
+                        onForward = onForward?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
@@ -231,17 +229,15 @@ fun SentMessageBubble(
                                 clipboardManager.setClipEntry(clipEntryOf(message.content))
                             }
                         },
-                        onEdit = {
-                            popupMode = MessagePopupMode.None
-                            onEdit?.invoke()
+                        onEdit = onEdit?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
                         },
-                        onShare = {
-                            popupMode = MessagePopupMode.None
-                            onShare()
+                        onShare = onShare?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         })
                 }
             }
@@ -296,7 +292,7 @@ fun SentMessageBubble(
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                             reactionSummary = reactionSummary,
                             onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions() },
+                            onLongClick = { onShowReactions?.invoke() },
                         )
                     }
                 }
@@ -369,7 +365,7 @@ fun ReceivedMessageBubble(
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: () -> Unit,
+    onShowReactions: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
@@ -478,7 +474,7 @@ fun ReceivedMessageBubble(
                                     .padding(end = 4.dp),
                                 reactionSummary = reactionSummary,
                                 onClick = { onAddReaction?.invoke(message.id, it) },
-                                onLongClick = { onShowReactions() },
+                                onLongClick = { onShowReactions?.invoke() },
                             )
                         }
                     }
@@ -545,13 +541,11 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onMessageInfo?.invoke()
                         },
-                        onReply = {
-                            popupMode = MessagePopupMode.None
-                            onReply?.invoke()
+                        onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
-                        onForward = {
-                            popupMode = MessagePopupMode.None
-                            onForward?.invoke()
+                        onForward = onForward?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None

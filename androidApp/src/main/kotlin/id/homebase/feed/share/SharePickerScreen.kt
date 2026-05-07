@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.convo.ConversationEnricher
@@ -71,6 +73,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val RECENTS_COUNT = 5
+private const val COLD_TAG = "ShareCold"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -147,6 +150,24 @@ fun SharePickerScreen(
                 .filter { it.conversation.isGroupConversation && it.conversation.id !in recentIds }
                 .sortedBy { it.getDisplayName().lowercase() }
         }
+    }
+
+    // Diagnostic breadcrumbs: log each gating signal as it changes so we can see
+    // which dependency is missing if the picker hangs again. Cheap (one log per
+    // transition, not per recomposition).
+    LaunchedEffect(conversationsData.dataReady) {
+        Logger.d(tag = COLD_TAG) {
+            "picker: dataReady=${conversationsData.dataReady} items=${conversationsData.items.size}"
+        }
+    }
+    LaunchedEffect(ownerSession == null) {
+        Logger.d(tag = COLD_TAG) { "picker: ownerSession=${if (ownerSession == null) "null" else "loaded"}" }
+    }
+    LaunchedEffect(contactsState.isEmpty()) {
+        Logger.d(tag = COLD_TAG) { "picker: contactsState size=${contactsState.size}" }
+    }
+    LaunchedEffect(enrichedConversations.size) {
+        Logger.d(tag = COLD_TAG) { "picker: enrichedConversations size=${enrichedConversations.size}" }
     }
 
     Scaffold(

@@ -505,8 +505,36 @@
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
-    <string name="chat_location_unavailable">Couldn\'t get your location. Try again outdoors or check that Location is enabled.</string>
+    <string name="chat_location_unavailable">Couldn't get your location. Try again outdoors or check that Location is enabled.</string>
     <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
+
+    <!-- Event attachment -->
+    <string name="chat_event_share">Event</string>
+    <string name="chat_event_create_title">New event</string>
+    <string name="chat_event_field_title">Title</string>
+    <string name="chat_event_field_description">Description</string>
+    <string name="chat_event_field_starts">Starts</string>
+    <string name="chat_event_field_ends">Ends</string>
+    <string name="chat_event_field_timezone">Time zone</string>
+    <string name="chat_event_field_location">Location</string>
+    <string name="chat_event_field_meeting_url">Meeting URL</string>
+    <string name="chat_event_use_current_location">Use current location</string>
+    <string name="chat_event_open_in_maps">Open in maps</string>
+    <string name="chat_event_join_meeting">Join meeting</string>
+    <string name="chat_event_add_to_google_calendar">Add to Google Calendar</string>
+    <string name="chat_event_download_ics">Download calendar file (.ics)</string>
+    <string name="chat_event_rsvp_yes">Going</string>
+    <string name="chat_event_rsvp_no">Can't make it</string>
+    <string name="chat_event_rsvp_maybe">Maybe</string>
+    <string name="chat_event_starting_soon">Starting in %1$s</string>
+    <string name="chat_event_live_now">Live now</string>
+    <string name="chat_event_past">Past event</string>
+    <string name="chat_event_rsvp_summary">%1$s going · %2$s no · %3$s maybe</string>
+    <string name="chat_event_unparseable">Event (unsupported format)</string>
+    <string name="chat_event_send">Send event</string>
+    <string name="chat_event_your_time_in_zone">your time: %1$s %2$s</string>
+    <string name="chat_event_add_end_time">Add end time</string>
+    <string name="chat_event_remove_end_time">Remove end time</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
@@ -672,6 +700,7 @@
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
+    <string name="feed_loading">Loading feed…</string>
     <string name="pending_attachment_one">1 attachment</string>
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>

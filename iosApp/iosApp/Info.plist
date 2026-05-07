@@ -27,6 +27,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Used to add chat events to your calendar.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to share your current location in chat.</string>
 	<key>NSUserActivityTypes</key>

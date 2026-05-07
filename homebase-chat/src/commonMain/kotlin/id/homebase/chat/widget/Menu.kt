@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
@@ -208,14 +209,15 @@ fun ReceivedMessagePopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
-    onReply: () -> Unit,
-    onForward: () -> Unit,
+    onReply: (() -> Unit)?,
+    onForward: (() -> Unit)?,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     onBlock: () -> Unit,
     onReport: () -> Unit,
 ) {
-    val actionMenu = remember {
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val actionMenu = remember(policy) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -234,18 +236,22 @@ fun ReceivedMessagePopup(
                         text = stringResource(MR.string.chat_message_info),
                         imageVector = Icons.Default.Info,
                     )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onReply,
-                        text = stringResource(MR.string.chat_message_reply),
-                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                    )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onForward,
-                        text = stringResource(MR.string.chat_message_forward),
-                        imageVector = HomebaseIcons.MessageForward,
-                    )
+                    if (onReply != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onReply,
+                            text = stringResource(MR.string.chat_message_reply),
+                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                    }
+                    if (onForward != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onForward,
+                            text = stringResource(MR.string.chat_message_forward),
+                            imageVector = HomebaseIcons.MessageForward,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onCopy,
@@ -278,15 +284,19 @@ fun ReceivedMessagePopup(
 
     when (mode) {
         MessagePopupMode.Reaction -> {
-            Popup(
-                onDismissRequest = dismissMenu
-            ) {
-                ReactionMenu(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    userDefaultReactions = userDefaultReactions,
-                    onSelect = onSelectEmoji,
-                    onShowAllEmojis = onShowAllEmojis,
-                )
+            // Defensive: this mode is only entered for kinds that allow inline
+            // reactions, so the gate is mostly belt-and-braces.
+            if (policy.allowInlineReactions) {
+                Popup(
+                    onDismissRequest = dismissMenu
+                ) {
+                    ReactionMenu(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        userDefaultReactions = userDefaultReactions,
+                        onSelect = onSelectEmoji,
+                        onShowAllEmojis = onShowAllEmojis,
+                    )
+                }
             }
         }
         MessagePopupMode.Menu -> {
@@ -335,21 +345,24 @@ fun ReceivedMessagePopup(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Layer 2: ReactionMenu + ActionMenu - always centered, independent of bubble height
+                    // Layer 2: ReactionMenu (when allowed) + ActionMenu — always centered,
+                    // independent of bubble height
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.Center),
                         horizontalAlignment = Alignment.Start
                     ) {
-                        ReactionMenu(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            userDefaultReactions = userDefaultReactions,
-                            onSelect = onSelectEmoji,
-                            onShowAllEmojis = onShowAllEmojis,
-                        )
+                        if (policy.allowInlineReactions) {
+                            ReactionMenu(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                userDefaultReactions = userDefaultReactions,
+                                onSelect = onSelectEmoji,
+                                onShowAllEmojis = onShowAllEmojis,
+                            )
 
-                        Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                            Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                        }
 
                         Box(
                             modifier = Modifier.onGloballyPositioned { coordinates ->
@@ -377,14 +390,15 @@ fun SentMessagePopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
-    onReply: () -> Unit,
-    onForward: () -> Unit,
+    onReply: (() -> Unit)?,
+    onForward: (() -> Unit)?,
     onCopy: () -> Unit,
-    onShare: () -> Unit,
-    onEdit: () -> Unit,
+    onShare: (() -> Unit)?,
+    onEdit: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
-    val actionMenu = remember {
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val actionMenu = remember(policy) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -403,37 +417,43 @@ fun SentMessagePopup(
                         text = stringResource(MR.string.chat_message_info),
                         imageVector = Icons.Default.Info,
                     )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onReply,
-                        text = stringResource(MR.string.chat_message_reply),
-                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                    )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onForward,
-                        text = stringResource(MR.string.chat_message_forward),
-                        imageVector = HomebaseIcons.MessageForward,
-                    )
+                    if (onReply != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onReply,
+                            text = stringResource(MR.string.chat_message_reply),
+                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                    }
+                    if (onForward != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onForward,
+                            text = stringResource(MR.string.chat_message_forward),
+                            imageVector = HomebaseIcons.MessageForward,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onCopy,
                         text = stringResource(MR.string.chat_message_copy),
                         imageVector = Icons.Default.ContentCopy,
                     )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onEdit,
-                        text = stringResource(MR.string.chat_message_edit),
-                        imageVector = Icons.Filled.Edit,
-                    )
+                    if (onEdit != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onEdit,
+                            text = stringResource(MR.string.chat_message_edit),
+                            imageVector = Icons.Filled.Edit,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onDelete,
                         text = stringResource(MR.string.delete),
                         imageVector = Icons.Filled.Delete,
                     )
-                    if (isMobile()) {
+                    if (isMobile() && onShare != null) {
                         ListItemActionNormalIcon(
                             onClick = onShare,
                             text = stringResource(MR.string.share),
@@ -447,15 +467,17 @@ fun SentMessagePopup(
 
     when (mode) {
         MessagePopupMode.Reaction -> {
-            Popup(
-                onDismissRequest = dismissMenu
-            ) {
-                ReactionMenu(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    userDefaultReactions = userDefaultReactions,
-                    onSelect = onSelectEmoji,
-                    onShowAllEmojis = onShowAllEmojis,
-                )
+            if (policy.allowInlineReactions) {
+                Popup(
+                    onDismissRequest = dismissMenu
+                ) {
+                    ReactionMenu(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        userDefaultReactions = userDefaultReactions,
+                        onSelect = onSelectEmoji,
+                        onShowAllEmojis = onShowAllEmojis,
+                    )
+                }
             }
         }
 
@@ -506,21 +528,24 @@ fun SentMessagePopup(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Layer 2: ReactionMenu + ActionMenu - always centered, independent of bubble height
+                    // Layer 2: ReactionMenu (when allowed) + ActionMenu — always centered,
+                    // independent of bubble height
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.Center),
                         horizontalAlignment = Alignment.End
                     ) {
-                        ReactionMenu(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            userDefaultReactions = userDefaultReactions,
-                            onSelect = onSelectEmoji,
-                            onShowAllEmojis = onShowAllEmojis,
-                        )
+                        if (policy.allowInlineReactions) {
+                            ReactionMenu(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                userDefaultReactions = userDefaultReactions,
+                                onSelect = onSelectEmoji,
+                                onShowAllEmojis = onShowAllEmojis,
+                            )
 
-                        Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                            Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+                        }
 
                         Box(
                             modifier = Modifier.onGloballyPositioned { coordinates ->

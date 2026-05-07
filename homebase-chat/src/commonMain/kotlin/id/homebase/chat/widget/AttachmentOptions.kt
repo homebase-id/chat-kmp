@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayCircle
@@ -62,6 +63,7 @@ import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
+import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_location_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
@@ -238,7 +240,8 @@ fun AttachmentOptions(
     onGalleryClick: () -> Unit,
     onFileClick: () -> Unit,
     onContactClick: () -> Unit,
-    onLocationClick: () -> Unit
+    onLocationClick: () -> Unit,
+    onEventClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -275,6 +278,14 @@ fun AttachmentOptions(
                         onClick = onLocationClick,
                     )
                 }
+            }
+            item {
+                AttachmentOption(
+                    modifier = Modifier.testTag("attachment_event"),
+                    icon = Icons.Default.Event,
+                    label = stringResource(MR.string.chat_event_share),
+                    onClick = onEventClick,
+                )
             }
         }
     }

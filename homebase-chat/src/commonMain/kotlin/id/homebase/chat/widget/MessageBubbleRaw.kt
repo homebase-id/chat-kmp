@@ -55,7 +55,9 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.event.EventBubble
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.Dimens
@@ -122,6 +124,25 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
 ) {
+
+    // Typed rich-content (event today; poll/doodle later) bypasses the text+media
+    // path entirely — each kind paints its own bubble, with its own background and
+    // click handling. Long-press / reactions / replies are added per-kind in their
+    // own slice.
+    when (val content = message.messageContent) {
+        is MessageContent.Event -> {
+            EventBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
+            )
+            return
+        }
+        null -> Unit // fall through to text + media rendering
+    }
 
     val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
