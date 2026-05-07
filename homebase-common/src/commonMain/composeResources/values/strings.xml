@@ -530,11 +530,32 @@
     <string name="chat_event_live_now">Live now</string>
     <string name="chat_event_past">Past event</string>
     <string name="chat_event_rsvp_summary">%1$s going · %2$s no · %3$s maybe</string>
-    <string name="chat_event_unparseable">Event (unsupported format)</string>
+    <string name="chat_event_unparseable">Unable to display this event. Please update the app.</string>
     <string name="chat_event_send">Send event</string>
     <string name="chat_event_your_time_in_zone">your time: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
+
+    <!-- Dice attachment -->
+    <string name="chat_dice_share">Dice</string>
+    <string name="chat_dice_composer_title">Roll dice</string>
+    <string name="chat_dice_count_label">Number of dice</string>
+    <string name="chat_dice_faces_label">Faces per die</string>
+    <string name="chat_dice_face_label">d%1$d</string>
+    <string name="chat_dice_count_value">%1$dd</string>
+    <string name="chat_dice_decrement">Fewer dice</string>
+    <string name="chat_dice_increment">More dice</string>
+    <string name="chat_dice_roll">Roll</string>
+    <string name="chat_dice_rolling">Rolling…</string>
+    <string name="chat_dice_max_dice_warning">Up to %1$d dice per roll.</string>
+    <string name="chat_dice_shake_hint">Or just shake your phone.</string>
+    <string name="chat_dice_face_content_description">d%1$d showing %2$d</string>
+    <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
+    <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
+    <string name="chat_dice_summary_single">You rolled %1$d</string>
+    <string name="chat_dice_unparseable">Unable to display this dice roll. Please update the app.</string>
+    <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
+    <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
