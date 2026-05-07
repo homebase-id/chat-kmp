@@ -69,6 +69,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -501,6 +502,9 @@ fun ConversationContent(
         )
     }
 
+    CompositionLocalProvider(
+        LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+    ) {
     Scaffold(
         modifier = Modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -1099,9 +1103,11 @@ fun ConversationContent(
                                 .focusProperties { canFocus = inputFocusable }) {
                             uiState.replyToMessage?.let { msg ->
                                 ReplyPreviewBar(
-                                    message = msg, onDismiss = {
+                                    message = msg,
+                                    onDismiss = {
                                         onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                                    })
+                                    },
+                                )
                             }
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1288,6 +1294,7 @@ fun ConversationContent(
             onSent = { showDiceRollComposer = false },
         )
     }
+    } // CompositionLocalProvider
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
