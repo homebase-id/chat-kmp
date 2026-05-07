@@ -77,8 +77,8 @@ val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, labe
 val vaultLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
-        type = Uuid.parse("00000000-0000-0000-0000-000000000001"),
-//        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"), //Uncomment when not pushing to PROD
+//        type = Uuid.parse("00000000-0000-0000-0000-000000000001"), // Use this for Frodo or peter.parker.demo.rocks
+        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"),
     ),
     label = "Vault",
 )
@@ -153,6 +153,7 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // the profile drive synced into the local SQLDelight index.
 val mandatorySyncDrives: List<LabeledDrive> =
     listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
+
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
