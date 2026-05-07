@@ -366,19 +366,19 @@ class VaultRepository(
     // TODO: Add optimistic deletes with rollback for section + child files
     suspend fun deleteSection(sectionUniqueId: Uuid, sectionFileId: Uuid): Boolean {
         return try {
-            outboxSync.tryEnqueue(
+            val childrenEnqueued = outboxSync.tryEnqueue(
                 request = DeleteFilesByGroupIdOutboxRequest(
                     driveId = driveId,
                     groupIds = listOf(sectionUniqueId),
                 ),
             )
-            outboxSync.tryEnqueue(
+            val sectionEnqueued = outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
                     driveId = driveId,
                     fileIds = listOf(sectionFileId),
                 ),
             )
-            true
+            childrenEnqueued && sectionEnqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to delete vault section: $sectionUniqueId" }
             false

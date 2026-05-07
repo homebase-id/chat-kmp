@@ -163,8 +163,9 @@ class StorageSettingsViewModel(
         val mountedDrives = driveSyncManager.driveStatuses.value.values
             .map { it.driveId to it.label }
         val mountedIds = mountedDrives.map { it.first }.toSet()
-        val optionalDrives = runCatching { driveRegistry.loadDrives() }
-            .getOrElse { emptyList() }
+        val optionalDrives = try { driveRegistry.loadDrives() }
+            catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e }
+            catch (_: Exception) { emptyList() }
             .filter { it.drive.alias !in mountedIds }
             .map { it.drive.alias to it.label }
         val drives = (mountedDrives + optionalDrives).sortedBy { it.second }
