@@ -33,6 +33,14 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+        .onAppear {
+            // Cold-start: .onChange(of: scenePhase) won't fire when .active
+            // is already the initial phase, so the glyph-atlas stays stale.
+            // Post a delayed nudge to cover the first-launch path.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                nudgeMetalLayer()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .inactive:
@@ -45,15 +53,17 @@ struct ContentView: View {
                 withAnimation(.easeOut(duration: 0.15)) {
                     showPrivacyOverlay = false
                 }
-                DispatchQueue.main.async {
-                    let view = MainViewControllerRef.shared.instance?.view
-                    view?.setNeedsLayout()
-                    view?.layer.setNeedsDisplay()
-                }
+                nudgeMetalLayer()
             default:
                 break
             }
         }
+    }
+
+    private func nudgeMetalLayer() {
+        let view = MainViewControllerRef.shared.instance?.view
+        view?.setNeedsLayout()
+        view?.layer.setNeedsDisplay()
     }
 }
 
@@ -77,6 +87,3 @@ private struct PrivacyOverlayView: View {
         }
     }
 }
-
-
-
