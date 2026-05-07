@@ -530,7 +530,7 @@
     <string name="chat_event_live_now">Live now</string>
     <string name="chat_event_past">Past event</string>
     <string name="chat_event_rsvp_summary">%1$s going · %2$s no · %3$s maybe</string>
-    <string name="chat_event_unparseable">Event (unsupported format)</string>
+    <string name="chat_event_unparseable">Unable to display this event. Please update the app.</string>
     <string name="chat_event_send">Send event</string>
     <string name="chat_event_your_time_in_zone">your time: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
@@ -550,7 +550,9 @@
     <string name="chat_dice_face_content_description">d%1$d showing %2$d</string>
     <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
     <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
-    <string name="chat_dice_unparseable">Dice roll (unsupported format)</string>
+    <string name="chat_dice_unparseable">Unable to display this dice roll. Please update the app.</string>
+    <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
+    <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

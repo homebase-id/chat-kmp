@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertIs
 
 class DiceRollDescriptorTest {
 
@@ -75,18 +76,21 @@ class DiceRollDescriptorTest {
             ChatProtocol.ChatDiceRollMessageDataType,
             serialized,
         )
-        assertNotNull(parsed)
-        assertTrue(parsed is MessageContent.DiceRoll)
-        assertEquals(original, parsed.descriptor)
-        assertEquals(38, parsed.descriptor.sum)
-        assertEquals("Rolled 38 (4d20)", parsed.descriptor.summaryLine())
+        val diceRoll = assertIs<MessageContent.DiceRoll>(parsed)
+        val descriptor = assertNotNull(diceRoll.descriptor)
+        assertEquals(original, descriptor)
+        assertEquals(38, descriptor.sum)
+        assertEquals("Rolled 38 (4d20)", descriptor.summaryLine())
     }
 
     @Test
-    fun parser_returns_null_for_invalid_descriptor() {
+    fun parser_returns_dice_with_null_descriptor_for_invalid_payload() {
         // Hand-crafted JSON with disallowed `faces` value — parser must reject
-        // without throwing so the message stream falls back to the unparseable
-        // bubble instead of crashing.
+        // it as a valid descriptor but still surface the message as a DiceRoll
+        // kind (with a null descriptor) so MessageBubbleRaw renders the
+        // unsupported-format chip rather than dropping the message into the
+        // text-fallback path, where the descriptor JSON would fail to
+        // deserialize as MessageAppData and the message would vanish.
         val bogus = OdinSystemSerializer.serialize(
             baseDescriptor().copy(faces = 7, results = listOf(1, 2, 3)),
         )
@@ -94,7 +98,9 @@ class DiceRollDescriptorTest {
             ChatProtocol.ChatDiceRollMessageDataType,
             bogus,
         )
-        assertNull(parsed)
+        val diceRoll = assertIs<MessageContent.DiceRoll>(parsed)
+        assertNull(diceRoll.descriptor)
+        assertEquals(MessageContent.UNPARSEABLE_DICE_LABEL, diceRoll.displayLabel)
     }
 
     @Test

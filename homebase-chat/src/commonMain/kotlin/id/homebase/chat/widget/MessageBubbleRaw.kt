@@ -149,6 +149,13 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.Unknown -> {
+            UnknownMessageBubble(
+                dataType = content.dataType,
+                modifier = modifier,
+            )
+            return
+        }
         null -> Unit // fall through to text + media rendering
     }
 
