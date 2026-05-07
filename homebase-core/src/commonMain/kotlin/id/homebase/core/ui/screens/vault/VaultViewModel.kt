@@ -109,6 +109,10 @@ class VaultViewModel(
             driveSyncManager.driveStatuses
                 .map { it[vaultLabeledDrive.drive.alias]?.state }
                 .collect { state ->
+                    if (state != null && _isActivated.value != true) {
+                        _isActivated.value = true
+                        Logger.i(tag = TAG) { "observeDriveSyncStatus: vault drive appeared in driveStatuses — setting isActivated=true" }
+                    }
                     val isSyncing = state is DriveState.Synchronizing
                     _uiState.update { it.copy(isSyncing = isSyncing) }
                 }

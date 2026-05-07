@@ -14,3 +14,5 @@ actual fun applyWindowPrivacy(active: Boolean) {
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 }
+
+actual val needsComposePrivacyOverlay: Boolean = false

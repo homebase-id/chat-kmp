@@ -63,6 +63,7 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.vault.applyWindowPrivacy
+import id.homebase.core.vault.needsComposePrivacyOverlay
 import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
 import id.homebase.resources.vault_biometric_prompt_subtitle
@@ -182,7 +183,7 @@ fun VaultScreen(
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
                     vaultPreferences.recordAppBackgrounded()
-                    if (biometricsEnabled) {
+                    if (biometricsEnabled && needsComposePrivacyOverlay) {
                         isPrivacyOverlayVisible = true
                     }
                 }
