@@ -22,12 +22,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.chatappearance.model.BubbleContentColor
+import id.homebase.chat.chatappearance.model.ChatColor
+import id.homebase.chat.chatappearance.ui.LocalActiveChatColor
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.services.ChatProtocol
@@ -129,7 +133,14 @@ private fun MediaPlaceholderBubble(
     Surface(
         modifier = Modifier.clip(bubbleShape),
         shape = bubbleShape,
-        color = HomebaseTheme.extendedColors.bubbleSentSurface,
+        color = run {
+            val chatColor = LocalActiveChatColor.current
+            when (chatColor) {
+                is ChatColor.Solid -> Color(chatColor.colorArgb)
+                is ChatColor.Gradient -> Color(chatColor.colorsArgb.first())
+                else -> HomebaseTheme.extendedColors.bubbleSentSurface
+            }
+        },
     ) {
         Column {
             MediaMessage(
@@ -173,8 +184,13 @@ private fun GenericPendingBubble(message: PendingOutgoingMessage) {
         bottomStart = Dimens.Message.cornerRadius,
         bottomEnd = 4.dp,
     )
-    val backgroundColor = HomebaseTheme.extendedColors.bubbleSentSurface
-    val contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface
+    val chatColor = LocalActiveChatColor.current
+    val backgroundColor = when (chatColor) {
+        is ChatColor.Solid -> Color(chatColor.colorArgb)
+        is ChatColor.Gradient -> Color(chatColor.colorsArgb.first())
+        else -> HomebaseTheme.extendedColors.bubbleSentSurface
+    }
+    val contentColor = Color(BubbleContentColor.forBubble(chatColor))
 
     Surface(
         modifier = Modifier.clip(shape),

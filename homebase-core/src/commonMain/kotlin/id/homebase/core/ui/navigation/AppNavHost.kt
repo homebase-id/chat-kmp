@@ -50,7 +50,12 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
+import androidx.navigation.toRoute
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
+import id.homebase.chat.chatappearance.ui.ChatColorPickerScreen
+import id.homebase.chat.chatappearance.ui.ChatColorWallpaperScreen
+import id.homebase.chat.chatappearance.ui.ChatColorWallpaperViewModel
+import id.homebase.chat.chatappearance.ui.WallpaperPickerScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
@@ -90,6 +95,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import id.homebase.core.ui.screens.help.HelpScreen
 import kotlin.uuid.Uuid
 
@@ -563,6 +569,9 @@ fun AppNavHost(
                                 onShowContactInfo = {
                                     navController.navigate(Route.ContactInfo(it))
                                 },
+                                onNavigateToChatColorWallpaper = { conversationId ->
+                                    navController.navigate(Route.ChatColorWallpaper(conversationId))
+                                },
                             )
                         }
                     }
@@ -661,7 +670,9 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 AppearanceSettingsScreen(
                                     viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
+                                    onBackClick = { navController.popBackStack() },
+                                    onNavigateToChatColorWallpaper = { navController.navigate(Route.ChatColorWallpaper()) },
+                                )
                             }
                         }
 
@@ -702,6 +713,53 @@ fun AppNavHost(
                                 DefragmenterScreen(
                                     viewModel = koinViewModel(),
                                     onClose = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.ChatColorWallpaper> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ChatColorWallpaper>()
+                                val viewModel: ChatColorWallpaperViewModel = koinViewModel { parametersOf(route.conversationId) }
+                                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                                ChatColorWallpaperScreen(
+                                    uiState = uiState,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToChatColorPicker = { navController.navigate(Route.ChatColorPicker(route.conversationId)) },
+                                    onNavigateToWallpaperPicker = { navController.navigate(Route.WallpaperPicker(route.conversationId)) },
+                                    onDimInDarkThemeChanged = viewModel::setDimInDarkTheme,
+                                    onResetChatColors = viewModel::resetChatColors,
+                                    onResetWallpapers = viewModel::resetWallpapers,
+                                )
+                            }
+                        }
+
+                        composable<Route.ChatColorPicker> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ChatColorPicker>()
+                                val viewModel: ChatColorWallpaperViewModel = koinViewModel { parametersOf(route.conversationId) }
+                                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                                ChatColorPickerScreen(
+                                    activeChatColor = uiState.activeChatColor,
+                                    activeWallpaper = uiState.activeWallpaper,
+                                    allColors = uiState.allBubbleColors,
+                                    onColorSelected = viewModel::setChatColor,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.WallpaperPicker> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.WallpaperPicker>()
+                                val viewModel: ChatColorWallpaperViewModel = koinViewModel { parametersOf(route.conversationId) }
+                                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                                WallpaperPickerScreen(
+                                    activeWallpaper = uiState.activeWallpaper,
+                                    allPresets = uiState.allWallpaperPresets,
+                                    onWallpaperSelected = viewModel::setWallpaper,
+                                    onChooseFromPhotos = { },
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }

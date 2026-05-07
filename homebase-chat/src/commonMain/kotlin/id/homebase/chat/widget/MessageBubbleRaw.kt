@@ -52,6 +52,10 @@ import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.chatappearance.model.BubbleContentColor
+import id.homebase.chat.chatappearance.model.ChatColor
+import id.homebase.chat.chatappearance.model.ChatColorPresets
+import id.homebase.chat.chatappearance.ui.LocalActiveChatColor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
@@ -211,13 +215,29 @@ fun MessageBubbleRaw(
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
     val mediaOnly = remember { !message.content.hasContent() && hasMedia }
     val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
+    val activeChatColor = LocalActiveChatColor.current
+    val resolvedBubbleColor = remember(activeChatColor) {
+        when (activeChatColor) {
+            is ChatColor.Solid -> Color(activeChatColor.colorArgb)
+            is ChatColor.Gradient -> Color(activeChatColor.colorsArgb.first())
+            else -> null
+        }
+    }
+    val resolvedContentColor = remember(activeChatColor) {
+        Color(BubbleContentColor.forBubble(activeChatColor))
+    }
+    val bubbleGradientBrush = remember(activeChatColor) {
+        if (activeChatColor is ChatColor.Gradient) {
+            Brush.linearGradient(colors = activeChatColor.colorsArgb.map { Color(it) })
+        } else null
+    }
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
-        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+        else if (sentByYou) resolvedBubbleColor ?: HomebaseTheme.extendedColors.bubbleSentSurface
         else MaterialTheme.colorScheme.surfaceContainerHigh
     val contentColor =
         if (emojiOnly) MaterialTheme.colorScheme.onSurface
-        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+        else if (sentByYou) resolvedContentColor
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)

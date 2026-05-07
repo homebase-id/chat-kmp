@@ -20,6 +20,8 @@ import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.dice.DiceRollPreferences
+import id.homebase.chat.chatappearance.data.ChatAppearanceRepository
+import id.homebase.chat.chatappearance.ui.ChatColorWallpaperViewModel
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -215,6 +217,8 @@ val appModule = module {
     singleOf(::ShareContentProcessor)
     singleOf(::LocalAttachmentContextStore)
 
+    single { ChatAppearanceRepository(get()) }
+
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
@@ -369,6 +373,12 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
+    viewModel { params ->
+        ChatColorWallpaperViewModel(
+            repository = get(),
+            conversationId = params.getOrNull(),
+        )
+    }
 }
 
 // Common module that each platform will implement

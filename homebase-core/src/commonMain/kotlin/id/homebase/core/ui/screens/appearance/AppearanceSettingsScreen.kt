@@ -1,26 +1,33 @@
 package id.homebase.core.ui.screens.appearance
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -50,6 +57,7 @@ import org.jetbrains.compose.resources.stringResource
 fun AppearanceSettingsScreen(
     viewModel: AppearanceSettingsViewModel,
     onBackClick: () -> Unit,
+    onNavigateToChatColorWallpaper: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -68,6 +76,7 @@ fun AppearanceSettingsScreen(
         uiState = uiState,
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
+        onNavigateToChatColorWallpaper = onNavigateToChatColorWallpaper,
     )
 }
 
@@ -77,6 +86,7 @@ fun AppearanceSettingsUi(
     uiState: AppearanceSettingsUiState,
     onAction: (AppearanceSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToChatColorWallpaper: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -137,6 +147,20 @@ fun AppearanceSettingsUi(
                     onAction(AppearanceSettingsUiAction.ThemeSelected(it))
                 },
             )
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToChatColorWallpaper() }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Chat Color & Wallpaper", style = MaterialTheme.typography.bodyLarge)
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                }
+            }
         }
     }
 }

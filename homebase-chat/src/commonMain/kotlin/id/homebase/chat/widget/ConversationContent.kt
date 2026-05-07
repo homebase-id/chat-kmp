@@ -83,6 +83,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
@@ -102,7 +103,14 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
+import androidx.compose.foundation.isSystemInDarkTheme
 import co.touchlab.kermit.Logger
+import id.homebase.chat.chatappearance.model.ChatColor
+import id.homebase.chat.chatappearance.model.ChatColorPresets
+import id.homebase.chat.chatappearance.model.ChatWallpaper
+import id.homebase.chat.chatappearance.ui.LocalActiveChatColor
+import id.homebase.chat.chatappearance.ui.LocalActiveWallpaper
+import id.homebase.chat.chatappearance.ui.LocalWallpaperDimInDarkTheme
 import id.homebase.chat.dice.DiceRollComposerSheet
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
@@ -502,11 +510,37 @@ fun ConversationContent(
         )
     }
 
+    // TODO: Wire to ViewModel in Task 13
+    val effectiveChatColor: ChatColor = ChatColorPresets.default
+    val effectiveWallpaper: ChatWallpaper = ChatWallpaper.None
+    val dimInDarkTheme = true
+
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+        LocalActiveChatColor provides effectiveChatColor,
+        LocalActiveWallpaper provides effectiveWallpaper,
+        LocalWallpaperDimInDarkTheme provides dimInDarkTheme,
     ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Wallpaper layer
+        val wallpaper = LocalActiveWallpaper.current
+        when (wallpaper) {
+            is ChatWallpaper.SolidColor -> Box(Modifier.fillMaxSize().background(Color(wallpaper.colorArgb)))
+            is ChatWallpaper.GradientColor -> Box(
+                Modifier.fillMaxSize().background(
+                    Brush.linearGradient(colors = wallpaper.colorsArgb.map { Color(it) })
+                )
+            )
+            is ChatWallpaper.Photo -> { /* Photo wallpaper rendering - future task */ }
+            is ChatWallpaper.None -> { }
+        }
+        // Dark mode dim overlay
+        if (isSystemInDarkTheme() && LocalWallpaperDimInDarkTheme.current && wallpaper !is ChatWallpaper.None) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
+        }
     Scaffold(
         modifier = Modifier,
+        containerColor = if (wallpaper is ChatWallpaper.None) MaterialTheme.colorScheme.background else Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -1294,6 +1328,7 @@ fun ConversationContent(
             onSent = { showDiceRollComposer = false },
         )
     }
+    } // Box (wallpaper wrapper)
     } // CompositionLocalProvider
 }
 
