@@ -46,5 +46,8 @@ sealed interface MomentsRecipient {
         override val avatarInitials: String,
         override val avatarUrl: String,
         val memberCount: Int,
+        /** The underlying `MomentGroup.id` so callers can preserve group
+         *  provenance on the moment's [MomentSource.Audience]. */
+        val groupId: Uuid,
     ) : MomentsRecipient
 }

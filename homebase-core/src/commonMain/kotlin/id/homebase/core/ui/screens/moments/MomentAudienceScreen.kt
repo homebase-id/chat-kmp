@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Group
@@ -46,9 +47,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.moments_audience_create_group
 import id.homebase.resources.moments_audience_post
 import id.homebase.resources.moments_audience_section_contacts
-import id.homebase.resources.moments_audience_section_conversations
+import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
 import id.homebase.resources.moments_audience_title
 import id.homebase.resources.moments_compose_comments_enabled
@@ -62,6 +64,7 @@ fun MomentAudienceScreen(
     viewModel: MomentAudienceViewModel,
     onNavigateBack: () -> Unit,
     onPosted: () -> Unit,
+    onCreateGroup: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -76,8 +79,9 @@ fun MomentAudienceScreen(
 
     val searchHint = stringResource(MR.string.moments_create_search_hint)
     val recentLabel = stringResource(MR.string.moments_audience_section_recent)
-    val conversationsLabel = stringResource(MR.string.moments_audience_section_conversations)
+    val groupsLabel = stringResource(MR.string.moments_audience_section_groups)
     val contactsLabel = stringResource(MR.string.moments_audience_section_contacts)
+    val createGroupLabel = stringResource(MR.string.moments_audience_create_group)
 
     Scaffold(
         topBar = {
@@ -103,7 +107,7 @@ fun MomentAudienceScreen(
         },
     ) { innerPadding ->
         val recent = uiState.filteredRecent
-        val conversationsSection = uiState.filteredConversations
+        val groupsSection = uiState.filteredGroups
         val contactsSection = uiState.filteredContacts
 
         LazyColumn(
@@ -168,17 +172,20 @@ fun MomentAudienceScreen(
                 }
             }
 
-            if (conversationsSection.isNotEmpty()) {
-                section(conversationsLabel)
-                items(conversationsSection, key = { "v-${it.id.raw}" }) { recipient ->
-                    RecipientRow(
-                        recipient = recipient,
-                        selected = recipient.id in uiState.selected,
-                        onClick = {
-                            viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
-                        },
-                    )
-                }
+            // Groups section is always shown so the "Create new group" entry
+            // is reachable even when the user has no groups yet.
+            section(groupsLabel)
+            item(key = "create-group") {
+                CreateGroupRow(label = createGroupLabel, onClick = onCreateGroup)
+            }
+            items(groupsSection, key = { "g-${it.id.raw}" }) { recipient ->
+                RecipientRow(
+                    recipient = recipient,
+                    selected = recipient.id in uiState.selected,
+                    onClick = {
+                        viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
+                    },
+                )
             }
 
             if (contactsSection.isNotEmpty()) {
@@ -255,6 +262,39 @@ private fun RecipientRow(
             }
         }
         SelectionIndicator(selected = selected)
+    }
+}
+
+@Composable
+private fun CreateGroupRow(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

@@ -31,4 +31,10 @@ object MomentsProtocol {
     const val MomentCommentFileType = 7052
 
     const val MomentCommentVersionNumberOne = 1
+
+    const val MomentGroupFileType = 7053
+
+    const val MomentGroupVersionNumberOne = 1
+
+    const val MomentGroupLeaveFileType = 7054
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.MomentsRecipientId
@@ -76,6 +77,20 @@ class MomentAudienceViewModel(
             state.recipients.all.filter { it.id in state.selected }
         val odinIds = selectedRecipients.flatMap { it.odinIds }.distinct()
 
+        // Preserve audience provenance: which moments groups were picked, and
+        // which standalone individuals. Drop source entirely when nothing
+        // structured was selected (only individuals → recipients list IS the
+        // source of truth, no need to duplicate). Only set `Audience` when
+        // at least one group is in the selection.
+        val groupIds = selectedRecipients.filterIsInstance<MomentsRecipient.Group>()
+            .map { it.groupId }
+        val individualIds = selectedRecipients.filterIsInstance<MomentsRecipient.Individual>()
+            .map { it.odinId }
+            .distinct()
+        val source: MomentSource? = if (groupIds.isNotEmpty()) {
+            MomentSource.Audience(groupIds = groupIds, individuals = individualIds)
+        } else null
+
         _uiState.update { it.copy(isPosting = true) }
 
         viewModelScope.launch {
@@ -87,6 +102,7 @@ class MomentAudienceViewModel(
                     attachments = draft.attachments.map { it.toAttachmentInput() },
                     description = draft.description,
                     recipients = odinIds,
+                    source = source,
                     // Aligned-by-index list of optional EXIF info per attachment.
                     // Null when the attachment isn't an image or the user didn't
                     // opt in to anything; the sender drops nulls before keying

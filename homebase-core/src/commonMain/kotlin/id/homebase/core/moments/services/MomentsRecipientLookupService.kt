@@ -4,10 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
-import id.homebase.chat.data.ConversationState
-import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.util.initials
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +28,7 @@ private const val TAG = "MomentsRecipientLookupService"
  */
 class MomentsRecipientLookupService(
     private val contactService: ContactService,
-    private val conversationStream: ConversationStream,
+    private val groupService: MomentGroupService,
     private val mruStore: MomentsRecipientMruStore,
     private val credentialsManager: CredentialsManager,
     private val scope: CoroutineScope,
@@ -52,14 +50,14 @@ class MomentsRecipientLookupService(
         scope.launch {
             combine(
                 contactService.contacts,
-                conversationStream.conversations,
+                groupService.groups,
                 mruStore.stableKeys,
-            ) { contacts, conversationsData, mru ->
-                Triple(contacts, conversationsData.items, mru)
-            }.collect { (contacts, conversations, mru) ->
+            ) { contacts, groups, mru ->
+                Triple(contacts, groups, mru)
+            }.collect { (contacts, groups, mru) ->
                 val activeUserDomain = credentialsManager.getActiveDomain()
                 val (snapshot, keyMap) =
-                    buildRecipients(contacts, conversations, mru, activeUserDomain)
+                    buildRecipients(contacts, groups, mru, activeUserDomain)
                 stableKeyById = keyMap
                 _recipients.value = snapshot
             }
@@ -101,19 +99,12 @@ class MomentsRecipientLookupService(
 
     private fun buildRecipients(
         contacts: List<ContactUiModel>,
-        conversations: List<ConversationUiModel>,
+        groups: List<MomentGroup>,
         mru: List<String>,
         activeUserDomain: OdinId?,
     ): Pair<MomentsRecipientsSnapshot, Map<MomentsRecipientId, String>> {
-        // Build two parallel raw lists, one per source. The same person can
-        // legitimately appear in BOTH (a contact-card entry AND a 1:1 chat
-        // conversation): they're different concepts — "address book" vs
-        // "active conversation thread" — so the picker surfaces them in
-        // different sections rather than deduping. Posting routes through
-        // `odinIds` either way, so the resulting send is functionally
-        // identical.
         val contactsRaw = mutableListOf<Pair<MomentsRecipient, String>>()
-        val conversationsRaw = mutableListOf<Pair<MomentsRecipient, String>>()
+        val groupsRaw = mutableListOf<Pair<MomentsRecipient, String>>()
 
         for (contact in contacts) {
             // Self-contact (if the drive ever lists the active user) is not a
@@ -130,48 +121,31 @@ class MomentsRecipientLookupService(
             contactsRaw += recipient to "contact:${contact.odinId.domainName}"
         }
 
-        for (convo in conversations) {
-            if (convo.isWithSelf) continue
-            if (convo.conversationState == ConversationState.Left) continue
-            if (convo.conversationState == ConversationState.Removed) continue
-            if (convo.conversationState == ConversationState.RejoinPending) continue
-            if (convo.conversationState == ConversationState.Invalid) continue
-
-            val others = convo.participants.filterNot { it == activeUserDomain }
+        for (group in groups) {
+            // Members may include self for "groups I'm in" semantics, but
+            // transit recipients must not.
+            val others = group.members.filterNot { it == activeUserDomain }
             if (others.isEmpty()) continue
 
-            val recipient = if (convo.isGroupConversation) {
-                MomentsRecipient.Group(
-                    id = MomentsRecipientId(Uuid.random()),
-                    displayName = convo.getDisplayName(),
-                    odinIds = others,
-                    avatarInitials = convo.avatarInitials,
-                    avatarUrl = convo.avatarUrl,
-                    memberCount = others.size,
-                )
-            } else {
-                MomentsRecipient.Individual(
-                    id = MomentsRecipientId(Uuid.random()),
-                    displayName = convo.getDisplayName(),
-                    odinIds = others,
-                    avatarInitials = convo.avatarInitials,
-                    avatarUrl = convo.avatarUrl,
-                )
-            }
-            conversationsRaw += recipient to "conversation:${convo.id}"
+            val recipient = MomentsRecipient.Group(
+                id = MomentsRecipientId(Uuid.random()),
+                displayName = group.title,
+                odinIds = others,
+                avatarInitials = group.title.initials(),
+                avatarUrl = "",
+                memberCount = others.size,
+                groupId = group.id,
+            )
+            groupsRaw += recipient to "momentgroup:${group.id}"
         }
 
-        // Partition each source into recent (MRU-bumped) vs the rest. Recent
-        // items get pulled into a single mixed-source `recent` section so
-        // they sit at the top regardless of provenance. Conversations and
-        // contacts then list their non-recent rows alphabetically.
         val mruIndex = mru.withIndex().associate { (i, k) -> k to i }
         fun isMru(p: Pair<MomentsRecipient, String>) = mruIndex.containsKey(p.second)
 
-        val recentRaw = (contactsRaw + conversationsRaw).filter { isMru(it) }
+        val recentRaw = (contactsRaw + groupsRaw).filter { isMru(it) }
         val recentSorted = recentRaw.sortedBy { mruIndex.getValue(it.second) }
 
-        val nonRecentConversations = conversationsRaw
+        val nonRecentGroups = groupsRaw
             .filterNot { isMru(it) }
             .sortedBy { it.first.displayName.lowercase() }
         val nonRecentContacts = contactsRaw
@@ -180,10 +154,10 @@ class MomentsRecipientLookupService(
 
         val snapshot = MomentsRecipientsSnapshot(
             recent = recentSorted.map { it.first },
-            conversations = nonRecentConversations.map { it.first },
+            groups = nonRecentGroups.map { it.first },
             contacts = nonRecentContacts.map { it.first },
         )
-        val keyMap = (recentSorted + nonRecentConversations + nonRecentContacts)
+        val keyMap = (recentSorted + nonRecentGroups + nonRecentContacts)
             .associate { (recipient, key) -> recipient.id to key }
         return snapshot to keyMap
     }
@@ -192,34 +166,25 @@ class MomentsRecipientLookupService(
 /**
  * Recipient list snapshot for the moments composer's audience picker.
  *
- * Sources are kept separate (`conversations` vs `contacts`) instead of
- * partitioning by recipient TYPE (Group vs Individual): a person can
- * legitimately appear in both an active 1:1 chat AND the contact list, and
- * those represent different concepts to the user — the conversation row
- * means "the chat thread I have with them," the contact row means "this
- * person from my address book." Posting resolves to the same `odinIds`
- * either way, so the choice is purely UX framing.
- *
- * @property recent         MRU-bumped recipients in MRU order (most recent
- *                          first). May contain entries from either source.
- *                          Empty for fresh users who have never posted.
- * @property conversations  Chat conversations (groups + 1:1) NOT in [recent],
- *                          sorted alphabetically by displayName.
- * @property contacts       Address-book contacts NOT in [recent], sorted
- *                          alphabetically by displayName.
+ * @property recent    MRU-bumped recipients in MRU order (most recent first).
+ *                     May contain entries from either source.
+ * @property groups    Moments groups (defined via `MomentGroupService`) NOT in
+ *                     [recent], sorted alphabetically by title.
+ * @property contacts  Address-book contacts NOT in [recent], sorted
+ *                     alphabetically by displayName.
  */
 data class MomentsRecipientsSnapshot(
     val recent: List<MomentsRecipient>,
-    val conversations: List<MomentsRecipient>,
+    val groups: List<MomentsRecipient>,
     val contacts: List<MomentsRecipient>,
 ) {
-    /** Flat MRU-first view — recent + conversations + contacts. */
-    val all: List<MomentsRecipient> get() = recent + conversations + contacts
+    /** Flat MRU-first view — recent + groups + contacts. */
+    val all: List<MomentsRecipient> get() = recent + groups + contacts
 
     companion object {
         fun empty(): MomentsRecipientsSnapshot = MomentsRecipientsSnapshot(
             recent = emptyList(),
-            conversations = emptyList(),
+            groups = emptyList(),
             contacts = emptyList(),
         )
     }

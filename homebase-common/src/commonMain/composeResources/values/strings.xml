@@ -356,9 +356,14 @@
     <string name="cd_moment_toggle_include_location">Toggle including this photo&#8217;s location</string>
     <string name="moments_audience_title">Send to</string>
     <string name="moments_audience_section_recent">Recent</string>
-    <string name="moments_audience_section_conversations">Conversations</string>
+    <string name="moments_audience_section_groups">Groups</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
+    <string name="moments_audience_create_group">Create new group</string>
+    <string name="moments_create_group_title">New group</string>
+    <string name="moments_create_group_name_hint">Group name</string>
+    <string name="moments_create_group_section_members">Members</string>
+    <string name="moments_create_group_create">Create</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>

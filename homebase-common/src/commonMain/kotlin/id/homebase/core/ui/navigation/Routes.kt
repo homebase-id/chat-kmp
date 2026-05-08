@@ -127,6 +127,10 @@ sealed class Route {
     data object MomentAudience : Route()
 
     @Serializable
+    @SerialName("create-moment-group")
+    data object CreateMomentGroup : Route()
+
+    @Serializable
     @SerialName("moments-onboarding")
     data object MomentsOnboarding : Route()
 

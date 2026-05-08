@@ -61,7 +61,9 @@ import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
+import id.homebase.core.moments.services.MomentGroupService
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsRecipientMruStore
@@ -132,6 +134,7 @@ val appModule = module {
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
     singleOf(::MomentCommentsService)
+    singleOf(::MomentGroupService)
     single { MomentCreateFlowState() }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
@@ -223,6 +226,7 @@ val appModule = module {
                 get<MomentsRecipientMruStore>().start()
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
+                get<MomentGroupService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -408,6 +412,7 @@ val appModule = module {
     viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
+    viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
     viewModelOf(::MomentDetailViewModel)
     viewModelOf(::SettingsViewModel)

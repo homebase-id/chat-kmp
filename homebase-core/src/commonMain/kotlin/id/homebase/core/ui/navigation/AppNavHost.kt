@@ -76,6 +76,7 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
 import id.homebase.core.ui.screens.moments.MomentDetailScreen
@@ -758,6 +759,19 @@ fun AppNavHost(
                                             inclusive = false,
                                         )
                                     },
+                                    onCreateGroup = {
+                                        navController.navigate(Route.CreateMomentGroup)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.CreateMomentGroup> {
+                            if (isAuthenticated) {
+                                CreateMomentGroupScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onCreated = { navController.popBackStack() },
                                 )
                             }
                         }

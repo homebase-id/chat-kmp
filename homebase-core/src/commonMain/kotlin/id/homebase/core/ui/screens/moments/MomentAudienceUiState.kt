@@ -18,9 +18,9 @@ data class MomentAudienceUiState(
     val filteredRecent: List<MomentsRecipient>
         get() = recipients.recent.matching(query)
 
-    /** Chat conversations (group + 1:1) matching the search query. */
-    val filteredConversations: List<MomentsRecipient>
-        get() = recipients.conversations.matching(query)
+    /** Moments groups matching the search query. */
+    val filteredGroups: List<MomentsRecipient>
+        get() = recipients.groups.matching(query)
 
     /** Address-book contacts matching the search query. */
     val filteredContacts: List<MomentsRecipient>

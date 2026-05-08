@@ -103,10 +103,13 @@ class MomentsPostSenderService(
         )
 
         // Unencrypted, queryable: lets callers find moments tied to a
-        // conversation via `tagsMatchAtLeastOne = listOf(conversationId)`
-        // without decrypting `MomentPostContent`.
-        val tags: List<Uuid>? = (source as? MomentSource.Conversation)?.let {
-            listOf(it.conversationId)
+        // source (conversation id or any of the audience's groups) via
+        // `tagsMatchAtLeastOne = listOf(...)` without decrypting
+        // `MomentPostContent`.
+        val tags: List<Uuid>? = when (source) {
+            is MomentSource.Conversation -> listOf(source.conversationId)
+            is MomentSource.Audience -> source.groupIds.ifEmpty { null }
+            null -> null
         }
 
         val unencryptedMetadata = UploadFileMetadata(

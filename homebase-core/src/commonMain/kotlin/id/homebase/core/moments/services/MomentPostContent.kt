@@ -61,4 +61,19 @@ sealed interface MomentSource {
         @Serializable(with = UuidSerializer::class)
         val conversationId: Uuid,
     ) : MomentSource
+
+    /**
+     * Composite audience: zero or more moments groups plus any standalone
+     * individuals that weren't picked via a group. The full distribution
+     * recipient list still lives on `MomentPostContent.recipients` (flattened);
+     * this variant preserves the breakdown so UI can render "Posted to Family
+     * + Carol" and the queryable `appData.tags` entries cover every selected
+     * group.
+     */
+    @Serializable
+    @SerialName("audience")
+    data class Audience(
+        val groupIds: List<@Serializable(with = UuidSerializer::class) Uuid> = emptyList(),
+        val individuals: List<OdinId> = emptyList(),
+    ) : MomentSource
 }
