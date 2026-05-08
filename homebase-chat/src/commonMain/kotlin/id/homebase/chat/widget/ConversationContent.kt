@@ -13,6 +13,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -78,6 +81,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -189,6 +193,8 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -231,6 +237,7 @@ fun ConversationContent(
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val coroutineScope = rememberCoroutineScope()
     var showScrollToBottom by remember { mutableStateOf(false) }
+    var showFloatingDate by remember { mutableStateOf(false) }
 
     // Hoisted composer staging slot. Owned at this level so user-initiated attachments
     // (location, contact, etc.) can be appended from outside the input bar (e.g. from the
@@ -319,6 +326,19 @@ fun ConversationContent(
                 ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collectLatest { scrolling ->
+                if (scrolling) {
+                    showFloatingDate = true
+                } else {
+                    delay(400L)
+                    showFloatingDate = false
+                }
+            }
     }
 
     // Auto-follow: when the list grows (new sent or received message) and the
@@ -778,6 +798,20 @@ fun ConversationContent(
                     }
                 }
 
+                val currentMergedItems by rememberUpdatedState(mergedItems)
+                val floatingDateLabel by remember {
+                    derivedStateOf {
+                        val firstVisibleIndex = listState.firstVisibleItemIndex
+                        for (i in firstVisibleIndex downTo 0) {
+                            val item = currentMergedItems.getOrNull(i)
+                            if (item is MessageListContentModel.Section) {
+                                return@derivedStateOf item.date
+                            }
+                        }
+                        null
+                    }
+                }
+
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
@@ -915,6 +949,42 @@ fun ConversationContent(
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                             state = listState
                         )
+
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter)
+                                .padding(top = 8.dp),
+                        ) {
+                            var lastDateText by remember { mutableStateOf("") }
+                            floatingDateLabel?.let { lastDateText = getDateSectionLabel(it) }
+
+                            AnimatedVisibility(
+                                visible = showFloatingDate && floatingDateLabel != null,
+                                enter = slideInVertically(
+                                    initialOffsetY = { -it },
+                                    animationSpec = tween(100),
+                                ) + fadeIn(animationSpec = tween(100)),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { -it },
+                                    animationSpec = tween(100),
+                                ) + fadeOut(animationSpec = tween(100)),
+                            ) {
+                                Surface(
+                                    shape = FloatingDateShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shadowElevation = 4.dp,
+                                ) {
+                                    Text(
+                                        text = lastDateText,
+                                        modifier = Modifier.padding(
+                                            horizontal = 12.dp,
+                                            vertical = 6.dp,
+                                        ),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
 
                         Column(
                             modifier = Modifier.align(Alignment.BottomEnd)
@@ -1649,6 +1719,8 @@ fun RecipientItem(
     }
 
 }
+
+private val FloatingDateShape = RoundedCornerShape(12.dp)
 
 @Composable
 private fun getDateSectionLabel(messageDate: LocalDate): String {
