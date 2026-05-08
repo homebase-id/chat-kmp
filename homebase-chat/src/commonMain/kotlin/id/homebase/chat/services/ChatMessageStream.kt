@@ -14,6 +14,7 @@ import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -400,8 +401,14 @@ class ChatMessageStream(
                     ?: false
 
             val localReadTimestamp = metadata.localAppData?.readTime
+            // localReactions on the wire are JSON-encoded ReactionContent objects
+            // (`{"emoji":"X"}`). Decode to bare emoji here so the rest of the UI
+            // can compare against reactionPreview entries by simple string match.
             val ownReactions = metadata.localAppData?.localReactions
                 .orEmpty()
+                .mapNotNull { raw ->
+                    runCatching { OdinSystemSerializer.deserialize<ReactionContent>(raw).emoji }.getOrNull()
+                }
                 .toPersistentList()
 
             try {

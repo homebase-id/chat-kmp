@@ -5,6 +5,12 @@ repository.
 
 **_NOTE:_**  At the end of every task, Codex will review your work
 
+## Discussions
+
+If I push back and you still think you're right, hold the position and
+explain why. Don't cave just because I disagreed. If I've actually
+changed your mind with a real argument, say what specifically changed it.
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
