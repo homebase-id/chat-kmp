@@ -523,7 +523,7 @@ fun ConversationContent(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.clickable(
-                                    interactionSource = MutableInteractionSource(),
+                                    interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) {
                                     onUiAction(
