@@ -46,7 +46,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.toRoute
 import androidx.window.core.layout.WindowSizeClass
 import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -77,7 +76,8 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
-import id.homebase.core.ui.screens.moments.MomentCreateScreen
+import id.homebase.core.ui.screens.moments.MomentAudienceScreen
+import id.homebase.core.ui.screens.moments.MomentComposeScreen
 import id.homebase.core.ui.screens.moments.MomentDetailScreen
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
@@ -697,28 +697,54 @@ fun AppNavHost(
                         composable<Route.Moments> {
                             if (isAuthenticated) {
                                 MomentsScreen(
-                                    onCreateMoment = { navController.navigate(Route.MomentCreate) },
-                                    onOpenMoment = { id ->
-                                        navController.navigate(Route.MomentDetail(id))
+                                    viewModel = koinViewModel(),
+                                    onCreateMoment = {
+                                        navController.navigate(Route.MomentCompose)
+                                    },
+                                    onOpenMoment = { id, payloadKey ->
+                                        navController.navigate(
+                                            Route.MomentDetail(id, payloadKey)
+                                        )
                                     },
                                 )
                             }
                         }
 
-                        composable<Route.MomentDetail> { backStackEntry ->
+                        composable<Route.MomentDetail> {
                             if (isAuthenticated) {
-                                val route: Route.MomentDetail = backStackEntry.toRoute()
                                 MomentDetailScreen(
-                                    momentId = route.momentId,
+                                    viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
 
-                        composable<Route.MomentCreate> {
+                        composable<Route.MomentCompose> {
                             if (isAuthenticated) {
-                                MomentCreateScreen(
+                                MomentComposeScreen(
+                                    viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToAudience = {
+                                        navController.navigate(Route.MomentAudience)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentAudience> {
+                            if (isAuthenticated) {
+                                MomentAudienceScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onPosted = {
+                                        // After post: clear the compose flow back
+                                        // to the feed. Pop everything between
+                                        // here and the Moments root.
+                                        navController.popBackStack(
+                                            route = Route.Moments,
+                                            inclusive = false,
+                                        )
+                                    },
                                 )
                             }
                         }

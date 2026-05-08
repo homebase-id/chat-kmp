@@ -1,30 +1,47 @@
-# MomentsPostSenderService — handoff
+# Moments services — handoff
 
 Branch: `moments-framing`
 
 ## What this is
 
-A new service in the moments app that lets a caller post a moment (description +
-N image/video attachments) by reusing the chat module's attachment-build and
-payload-encryption pipeline, then enqueueing an `UploadFileRequest` to the
-existing `OutboxSync` so the low-level transport (`DriveOutboxUploader` →
-`DriveUploadProvider`) does the actual upload. The low-level transport is
-unmodified.
+Two services in the moments app:
+
+1. **`MomentsPostSenderService`** — lets a caller post or edit a moment
+   (description + N image/video attachments) by reusing the chat module's
+   attachment-build and payload-encryption pipeline, then enqueueing an
+   `UploadFileRequest` / `UpdateFileByUniqueIdRequest` to the existing
+   `OutboxSync`. The low-level transport (`DriveOutboxUploader` →
+   `DriveUploadProvider`) is unmodified.
+
+2. **`MomentsRecipientLookupService`** — aggregates available recipients
+   (chat conversations + contacts) into a single MRU-ordered list of
+   moments-domain `MomentsRecipient`s for the composer's recipient picker.
+   Source-agnostic public type so future selection sources can land without
+   touching the picker.
 
 ## Files added
 
 ```
 homebase-core/src/commonMain/kotlin/id/homebase/core/moments/services/
-├── MomentsProtocol.kt           # MomentsAppId, MomentPostFileType=7050, version
-├── MomentPostContent.kt         # @Serializable { version, description }
-└── MomentsPostSenderService.kt  # postMoment(...) → PostMomentResult
+├── MomentsProtocol.kt                  # MomentsAppId, MomentPostFileType=7050, version
+├── MomentPostContent.kt                # @Serializable { version, description }
+├── MomentsPostSenderService.kt         # postMoment / updateMoment
+├── MomentsRecipient.kt                 # sealed type + Individual/Group + opaque id
+├── MomentsRecipientMruStore.kt         # persisted bounded MRU list
+└── MomentsRecipientLookupService.kt    # combine(contacts, conversations, mru) → recipients
 ```
 
 ## File touched
 
-`homebase-core/src/commonMain/kotlin/id/homebase/core/di/AppModule.kt` —
-added `singleOf(::id.homebase.core.moments.services.MomentsPostSenderService)`
-right after the `MomentsPreferences` line.
+`homebase-core/src/commonMain/kotlin/id/homebase/core/di/AppModule.kt`:
+
+- Imports for `MomentsPostSenderService`, `MomentsRecipientMruStore`,
+  `MomentsRecipientLookupService`.
+- Three `singleOf(...)` registrations right after the `MomentsPreferences` line.
+- `MomentsRecipientLookupService.start()` invocation inside the
+  `onPostAuthenticated` block, alongside `ContactService.start()` /
+  `ConversationStream.start()` (the lookup service depends on both being
+  started, so it slots in as a third).
 
 ## Architectural decisions baked in (from the design conversation)
 
@@ -47,9 +64,16 @@ suspend fun postMoment(
     momentUniqueId: Uuid = Uuid.random(),
     userDate: UnixTimeUtc? = null,
 ): PostMomentResult                       // { uniqueId: Uuid }
+
+suspend fun updateMoment(
+    momentUniqueId: Uuid,
+    versionTag: Uuid,                     // CAS check against the on-disk file
+    description: String,                  // description-only edit (media preserved)
+    recipients: List<OdinId>,
+): UpdateMomentResult                     // { uniqueId: Uuid }
 ```
 
-Internally:
+`postMoment` internally:
 
 1. `MessageAttachmentBuilder.build(...)` produces a `PayloadBundle` (handles
    thumbnail generation, video/audio/image branching).
@@ -63,6 +87,23 @@ Internally:
    `TransitOptions(recipients, sendContents = All, useAppNotification = !isLocalOnly)`.
 6. `outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)`.
 
+`updateMoment` internally (mirrors `ChatMessageSenderService.updateMessage`):
+
+1. `DriveFileProvider.getFileHeaderByUid(...)` to read the current file header
+   (network call — see "Open items").
+2. CAS check: `existing.fileMetadata.versionTag == versionTag`, else error.
+3. New `KeyHeader` with fresh random IV but **reuses the original moment's
+   AES key** so existing media payloads stay decryptable.
+4. `UploadFileMetadata.versionTag = versionTag` set on the request, so the
+   server applies the update against the same generation we read.
+5. `UpdateManifest.build(payloads = null, toDeletePayloads = null, ...)` —
+   empty manifest. Media payloads on the file are left intact (description-
+   only edit).
+6. `UpdateFileByUniqueIdRequest` with `FileUpdateInstructionSet(locale = Local,
+   recipients = recipients, useAppNotification = false)`.
+7. `outboxSync.replaceEnqueue(...)` — supersedes any still-pending earlier
+   post or edit for the same `(driveId, uniqueId)` rather than racing.
+
 ## What is NOT included (deliberate v1 cuts vs. ChatMessageSenderService)
 
 - **No optimistic write** — moment will only appear after the outbox drains and
@@ -72,32 +113,21 @@ Internally:
   moment is independent. If we want strict send order while offline, add a
   per-user (not per-conversation) chain like
   `ChatMessageSenderService.lastEnqueuedPerConversation`.
-- **No editing / no version-tag handling** — there's no `updateMoment(...)`.
 - **No reply / no status-message / no forwarding.**
+- **`updateMoment` is description-only.** No way to add/remove/replace media
+  on an existing moment; media changes require deleting and re-posting. To
+  add media editing later, build a `PayloadBundle` from the new attachments
+  and pass payloads + a `toDeletePayloads` list (derived from
+  `existing.fileMetadata.payloads`) into `UpdateManifest.build(...)`.
+- **`updateMoment` makes a network call to read the file header** (no local
+  moments cache yet — chat avoids this via `chatMessageStream` which is a
+  local DB lookup). Means edit fails offline. Future work: a moments local
+  store that mirrors the `MessageLookup` pattern.
 - **Push notification text is hardcoded English** (`"New moment posted"`).
   Should move to `compose-resources` / `stringResource` and probably be passed
   in by the caller (since recipients differ per moment).
 - **No tests yet.** Mirror `homebase-chat/src/jvmTest/.../ChatMessageSenderServiceTest`
   patterns to add some.
-
-## Wiring it up to the UI (next step)
-
-The screen and ViewModel exist but have no compose action yet:
-
-- `homebase-core/.../ui/screens/moments/MomentsScreen.kt:67` — the FAB calls
-  `onCreateMoment()`. Currently the create flow is a no-op.
-- `homebase-core/.../ui/screens/moments/MomentsViewModel.kt` — needs to take
-  `MomentsPostSenderService` via constructor injection (add to the Koin
-  `viewModel { MomentsViewModel(...) }` declaration in
-  `AppModule.kt:368`) and expose a `postMoment(description, attachments, recipients)`
-  action that calls `momentsPostSenderService.postMoment(...)`.
-- A composer screen needs to be built (image/video picker + description
-  TextField + recipient picker + Post button). Pattern to follow:
-  `homebase-chat/.../ui/.../MessageComposer.kt` and how attachments flow into
-  `ChatMessageSenderService` via `AttachmentInput`.
-- Once a moment is enqueued, the screen also needs a feed query that filters
-  `momentsLabeledDrive` by `appData.fileType == MomentsProtocol.MomentPostFileType`
-  to render the timeline (currently `MomentsScreen.samplePosts()` is hard-coded).
 
 ## Open items
 
@@ -124,3 +154,59 @@ The screen and ViewModel exist but have no compose action yet:
 # JVM-only smoke compile (avoids the unrelated nativeMain break in chat)
 ./gradlew :homebase-core:compileKotlinJvm
 ```
+
+---
+
+## MomentsRecipientLookupService
+
+### Public surface
+
+```kotlin
+class MomentsRecipientLookupService(...) {
+    val recipients: StateFlow<List<MomentsRecipient>>
+    fun start()
+    suspend fun recordUsed(recipient: MomentsRecipient)
+}
+```
+
+`MomentsRecipient` is a sealed interface (`Individual` | `Group`) — see
+`MomentsRecipient.kt`. It carries an opaque per-emission `MomentsRecipientId`
+(random Uuid). The id is **not persistable** by callers; it changes on every
+re-emission.
+
+### Behavior
+
+- Subscribes to `ContactService.contacts`, `ConversationStream.conversations`,
+  and `MomentsRecipientMruStore.stableKeys` via `combine`. Re-emits whenever
+  any source changes.
+- Filters out: self-contact, with-self conversation, conversations in
+  `Left` / `Removed` / `RejoinPending` / `Invalid` states, and conversations
+  whose only remaining participant is the active user.
+- Each contact → `Individual`. Each group conversation → `Group`. Each 1:1
+  conversation → `Individual` (intentionally **not** deduped against a
+  matching contact — both rows surface, per design).
+- Sort: MRU-listed recipients first (in MRU order), then alphabetical by
+  display name (case-insensitive).
+- `recordUsed(recipient)` looks up the per-emission `id → stableKey` map
+  built during the most recent emission and bumps that key in the MRU store.
+  Stable keys are `contact:<odinId.domainName>` and `conversation:<uuid>`.
+
+### MomentsRecipientMruStore
+
+- One `KeyValue` row at Uuid `…0a0203` (the `0a02xx` namespace `MomentsPreferences`
+  uses).
+- Stores newline-joined stable keys (max 20 entries).
+- API: `bump(stableKey)` moves to the front, `forget(stableKey)` removes.
+- Exposes `stableKeys: StateFlow<List<String>>` so the lookup service rebuilds
+  ordering reactively.
+
+### Open items
+
+- [ ] **Stale MRU entries**: if a contact / conversation is removed, its
+      stable key stays in the MRU list (just doesn't sort anything to the
+      front since no live recipient matches it). Acceptable for v1; a periodic
+      cleanup pass could call `mruStore.forget(...)` for keys not in the
+      current snapshot.
+- [ ] **Search / filter**: lookup currently returns the full list. If the
+      contact list grows large enough that filtering at the source becomes
+      worth it, move into the service.

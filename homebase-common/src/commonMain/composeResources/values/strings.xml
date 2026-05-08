@@ -339,6 +339,17 @@
     <string name="moments_create_continue">Next</string>
     <string name="moments_create_chat_group_label">Chat group</string>
     <string name="moments_create_selected_count">%1$d selected</string>
+    <string name="moments_compose_title">New moment</string>
+    <string name="moments_compose_add_media">Add photo or video</string>
+    <string name="moments_compose_remove_media">Remove</string>
+    <string name="moments_compose_description_hint">Add a description</string>
+    <string name="moments_compose_comments_enabled">Allow reactions and comments</string>
+    <string name="moments_compose_continue">Next</string>
+    <string name="moments_audience_title">Send to</string>
+    <string name="moments_audience_section_recent">Recent</string>
+    <string name="moments_audience_section_conversations">Conversations</string>
+    <string name="moments_audience_section_contacts">Contacts</string>
+    <string name="moments_audience_post">Post</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>

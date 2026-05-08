@@ -7,9 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
@@ -31,36 +30,47 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.resources.MR
 import id.homebase.resources.moments_create_action
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
 import id.homebase.resources.moments_reaction_like
+import id.homebase.resources.moments_welcome
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * Page 1 — Main Feed / Timeline.
  *
- * Skeleton only: hard-coded sample posts so the layout can be evaluated. The
- * 2×2 grid cells, indicator badges, FAB, and post tap are all wired as empty
- * placeholders for the real components to slot into.
+ * Subscribes to [MomentsFeedViewModel] for the live moment list and renders
+ * each post via [MomentMediaGallery] (which delegates to MomentMediaItem for
+ * the single-payload case). Empty state shows a placeholder + the FAB.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MomentsScreen(
+    viewModel: MomentsFeedViewModel,
     onCreateMoment: () -> Unit = {},
-    onOpenMoment: (momentId: String) -> Unit = {},
+    /**
+     * Open the detail view for a moment. `payloadKey` is the specific media
+     * item the user tapped (so the detail carousel can land on that page);
+     * `null` for taps that aren't on a specific cell (e.g. the indicator
+     * row), which fall back to page 0.
+     */
+    onOpenMoment: (momentId: String, payloadKey: String?) -> Unit = { _, _ -> },
 ) {
-    val posts = remember { samplePosts() }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val openLabel = stringResource(MR.string.moments_post_open)
 
     Scaffold(
         topBar = {
@@ -75,57 +85,89 @@ fun MomentsScreen(
             }
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding),
-            contentPadding = PaddingValues(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            items(posts, key = { it.id }) { post ->
-                MomentPostCard(
-                    post = post,
-                    onClick = { onOpenMoment(post.id) },
-                )
+        if (uiState.moments.isEmpty()) {
+            EmptyMomentsState(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding)
+                    .padding(innerPadding),
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding)
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(uiState.moments, key = { it.id.toString() }) { moment ->
+                    MomentPostCard(
+                        moment = moment,
+                        onCardClick = { onOpenMoment(moment.id.toString(), null) },
+                        onMediaClick = { payloadKey ->
+                            onOpenMoment(moment.id.toString(), payloadKey)
+                        },
+                        onClickLabel = openLabel,
+                    )
+                }
             }
         }
     }
 }
 
-private data class MomentPost(
-    val id: String,
-    val assetCount: Int,
-    val hasDescription: Boolean,
-    val commentCount: Int,
-    val isLiked: Boolean,
-)
-
-private fun samplePosts(): List<MomentPost> = listOf(
-    MomentPost(id = "1", assetCount = 4, hasDescription = true, commentCount = 3, isLiked = false),
-    MomentPost(id = "2", assetCount = 1, hasDescription = false, commentCount = 0, isLiked = true),
-    MomentPost(id = "3", assetCount = 8, hasDescription = true, commentCount = 7, isLiked = false),
-    MomentPost(id = "4", assetCount = 2, hasDescription = false, commentCount = 1, isLiked = false),
-)
-
 @Composable
 private fun MomentPostCard(
-    post: MomentPost,
-    onClick: () -> Unit,
+    moment: MomentFeedItem,
+    onCardClick: () -> Unit,
+    onMediaClick: (payloadKey: String) -> Unit,
+    onClickLabel: String,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(MaterialTheme.shapes.large)
-            .clickable(
-                onClick = onClick,
-                onClickLabel = stringResource(MR.string.moments_post_open),
-            ),
+            // Card-level clickable handles taps that aren't on a media cell
+            // (overlay indicators, padding, description-only tiles). The
+            // gallery's per-cell onMediaClick consumes cell taps and routes
+            // them through with the payload key so the detail carousel can
+            // land on the specific page the user picked.
+            .clickable(onClick = onCardClick, onClickLabel = onClickLabel),
     ) {
-        AssetGridTeaser(seedPrefix = post.id)
+        if (moment.payloads.isEmpty()) {
+            // Description-only / corrupt-payload moment — still render a tile so
+            // the user sees something tappable.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(24.dp),
+            ) {
+                Text(
+                    text = moment.description.ifBlank { "—" },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else {
+            MomentMediaGallery(
+                payloads = moment.payloads,
+                fileId = moment.fileId,
+                driveId = moment.driveId,
+                previewThumbnail = moment.previewThumbnail,
+                keyHeader = moment.keyHeader,
+                messageId = moment.id,
+                downloadingFiles = emptySet(),
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                onMediaClick = { payload -> onMediaClick(payload.key) },
+            )
+        }
 
-        // Overlay indicators in the bottom-right corner of the thumbnail.
+        // Overlay indicators in the bottom-right of the thumbnail. Reaction
+        // counts / comments toggle aren't wired through the post yet, so the
+        // info badge stands in for "has description" and the heart is the
+        // toggleable reaction placeholder.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -133,50 +175,41 @@ private fun MomentPostCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (post.hasDescription) IndicatorBadge(Icons.Outlined.Info)
-            if (post.commentCount > 0) IndicatorBadge(Icons.Outlined.ChatBubbleOutline)
+            if (moment.description.isNotBlank()) {
+                IndicatorBadge(Icons.Outlined.Info)
+            }
+            // Comments indicator placeholder — shown unconditionally for now.
+            // When the comments-enabled flag round-trips through MomentPostContent,
+            // gate this on it.
+            IndicatorBadge(Icons.Outlined.ChatBubbleOutline)
             IndicatorBadge(
-                imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                imageVector = Icons.Outlined.FavoriteBorder,
                 contentDescription = stringResource(MR.string.moments_reaction_like),
             )
         }
     }
 }
 
-/**
- * 2×2 grid of placeholder asset cells. Real implementation will fan out the
- * post's assets into the four slots (collapsing single-asset posts onto the
- * full square, etc.). Skeleton uses seeded picsum.photos URLs so each post's
- * grid is stable across recompositions.
- */
 @Composable
-private fun AssetGridTeaser(seedPrefix: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        repeat(2) { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                repeat(2) { col ->
-                    val cellIndex = row * 2 + col
-                    AsyncImage(
-                        model = "https://picsum.photos/seed/$seedPrefix-$cellIndex/400/400",
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .weight(1f)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    )
-                }
-            }
+private fun EmptyMomentsState(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 32.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(96.dp),
+            )
+            Text(
+                text = stringResource(MR.string.moments_welcome),
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 24.dp),
+            )
         }
     }
 }

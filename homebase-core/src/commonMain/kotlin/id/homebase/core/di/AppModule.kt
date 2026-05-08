@@ -59,6 +59,11 @@ import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.moments.services.MomentsPostSenderService
+import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentsRecipientMruStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -77,6 +82,10 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
+import id.homebase.core.ui.screens.moments.MomentComposeViewModel
+import id.homebase.core.ui.screens.moments.MomentDetailViewModel
+import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -100,7 +109,28 @@ val MomentsPermissionQualifier = named("momentsPermission")
 val appModule = module {
     single { UserPreferences(get()) }
     single { MomentsPreferences(get()) }
-    singleOf(::id.homebase.core.moments.services.MomentsPostSenderService)
+    singleOf(::MomentsPostSenderService)
+    // MRU store mirrors DriveRegistry's wiring — narrow lambda deps for the
+    // write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
+    // for uploadFile/updateFileByUniqueId) so tests can swap in fakes.
+    single {
+        val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
+        val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+        MomentsRecipientMruStore(
+            credentialsManager = get(),
+            databaseManager = get(),
+            getFileHeaderByUid = { driveId, uniqueId ->
+                files.getFileHeaderByUid(driveId, uniqueId)
+            },
+            uploadFile = { request -> uploader.uploadFile(request) },
+            updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
+            eventBus = get(),
+            scope = get(),
+        )
+    }
+    singleOf(::MomentsRecipientLookupService)
+    singleOf(::MomentsFeedService)
+    single { MomentCreateFlowState() }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -185,6 +215,12 @@ val appModule = module {
                 val conversationStream = get<ConversationStream>()
                 conversationStream.start()
                 get<ContactService>().start()
+                // MRU store before lookup: lookup's combine() reads
+                // mruStore.stableKeys, and started-first means the cold-load
+                // emits before the lookup builds its first list.
+                get<MomentsRecipientMruStore>().start()
+                get<MomentsRecipientLookupService>().start()
+                get<MomentsFeedService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -368,6 +404,10 @@ val appModule = module {
     viewModel(MomentsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getMomentsPermissionExtensionConfig()) }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
+    viewModelOf(::MomentComposeViewModel)
+    viewModelOf(::MomentAudienceViewModel)
+    viewModelOf(::MomentsFeedViewModel)
+    viewModelOf(::MomentDetailViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)

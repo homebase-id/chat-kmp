@@ -9,4 +9,22 @@ object MomentsProtocol {
     const val MomentPostFileType = 7050
 
     const val MomentPostVersionNumberOne = 1
+
+    /**
+     * File type for the recipient-MRU singleton on the moments drive. One file
+     * per identity; never distributed (`allowDistribution = false`,
+     * `recipients = emptyList()`). Combined with [MomentsRecipientMruUniqueId]
+     * resolves to exactly one file per tenant.
+     */
+    const val MomentsRecipientMruFileType = 7051
+
+    /**
+     * Well-known `uniqueId` of the recipient-MRU singleton on the moments
+     * drive. Stable across builds — two devices writing concurrently land on
+     * the same file and resolve via `versionTag`.
+     */
+    val MomentsRecipientMruUniqueId: Uuid =
+        Uuid.parse("00000000-0000-0000-0000-0000004d7200")
+
+    const val MomentsRecipientMruVersionNumberOne = 1
 }
