@@ -9,15 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,41 +67,35 @@ fun ChatColorPickerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 72.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Preview spanning full width
+            // Preview spanning full width — matches Signal's 16dp/24dp padding
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     ChatPreviewMockup(
                         chatColor = activeChatColor,
                         wallpaper = activeWallpaper,
+                        modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp),
                     )
-                    Spacer(Modifier.height(8.dp))
                     if (activeChatColor is ChatColor.Auto) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            ),
-                        ) {
-                            Text(
-                                text = stringResource(MR.string.chat_color_auto_description),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                        }
+                        Text(
+                            text = stringResource(MR.string.chat_color_auto_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
                     }
-                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(4.dp))
                 }
             }
 
-            // Auto item
+            // Auto item — Signal: 68dp container, 56dp circle
             item {
                 Box(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(68.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     ColorCircleItem(
@@ -109,6 +103,7 @@ fun ChatColorPickerScreen(
                         isSelected = activeChatColor is ChatColor.Auto,
                         isAutoItem = true,
                         onClick = { onColorSelected(ChatColor.Auto) },
+                        modifier = Modifier.size(56.dp),
                     )
                 }
             }
@@ -116,13 +111,14 @@ fun ChatColorPickerScreen(
             // All preset colors
             items(allColors, key = { it.id }) { color ->
                 Box(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(68.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     ColorCircleItem(
                         chatColor = color,
                         isSelected = activeChatColor.id == color.id,
                         onClick = { onColorSelected(color) },
+                        modifier = Modifier.size(56.dp),
                     )
                 }
             }

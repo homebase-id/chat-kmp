@@ -88,7 +88,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import id.homebase.chat.chatappearance.ui.components.angledLinearGradient
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
@@ -110,8 +110,8 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import androidx.compose.foundation.isSystemInDarkTheme
 import co.touchlab.kermit.Logger
+import id.homebase.chat.chatappearance.data.ChatAppearanceRepository
 import id.homebase.chat.chatappearance.model.ChatColor
-import id.homebase.chat.chatappearance.model.ChatColorPresets
 import id.homebase.chat.chatappearance.model.ChatWallpaper
 import id.homebase.chat.chatappearance.ui.LocalActiveChatColor
 import id.homebase.chat.chatappearance.ui.LocalActiveWallpaper
@@ -533,10 +533,10 @@ fun ConversationContent(
         )
     }
 
-    // TODO: Wire to ViewModel in Task 13
-    val effectiveChatColor: ChatColor = ChatColorPresets.default
-    val effectiveWallpaper: ChatWallpaper = ChatWallpaper.None
-    val dimInDarkTheme = true
+    val chatAppearanceRepository = koinInject<ChatAppearanceRepository>()
+    val effectiveChatColor: ChatColor = remember { chatAppearanceRepository.getGlobalChatColor() }
+    val effectiveWallpaper: ChatWallpaper = remember { chatAppearanceRepository.getGlobalWallpaper() }
+    val dimInDarkTheme = remember { chatAppearanceRepository.getGlobalDimInDarkTheme() }
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
@@ -551,7 +551,7 @@ fun ConversationContent(
             is ChatWallpaper.SolidColor -> Box(Modifier.fillMaxSize().background(Color(wallpaper.colorArgb)))
             is ChatWallpaper.GradientColor -> Box(
                 Modifier.fillMaxSize().background(
-                    Brush.linearGradient(colors = wallpaper.colorsArgb.map { Color(it) })
+                    angledLinearGradient(colors = wallpaper.colorsArgb.map { Color(it) }, angleDegrees = wallpaper.angleDegrees)
                 )
             )
             is ChatWallpaper.Photo -> { /* Photo wallpaper rendering - future task */ }

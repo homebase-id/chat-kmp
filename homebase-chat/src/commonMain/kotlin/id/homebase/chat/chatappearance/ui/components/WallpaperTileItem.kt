@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.chatappearance.model.ChatWallpaper
@@ -49,7 +48,7 @@ fun WallpaperTileItem(
                     )
 
                     is ChatWallpaper.GradientColor -> Modifier.background(
-                        Brush.linearGradient(wallpaper.colorsArgb.map { Color(it) }),
+                        angledLinearGradient(colors = wallpaper.colorsArgb.map { Color(it) }, angleDegrees = wallpaper.angleDegrees),
                         shape,
                     )
 
@@ -62,18 +61,18 @@ fun WallpaperTileItem(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        if (wallpaper is ChatWallpaper.None && !isSelected) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (isSelected) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = null,
                 tint = Color.White,
-            )
-        }
-        if (wallpaper is ChatWallpaper.None) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

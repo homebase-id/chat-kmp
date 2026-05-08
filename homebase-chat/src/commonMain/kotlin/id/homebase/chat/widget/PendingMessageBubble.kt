@@ -168,7 +168,7 @@ private fun MediaPlaceholderBubble(
                 Text(
                     text = message.text,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    color = Color(BubbleContentColor.forBubble(LocalActiveChatColor.current)),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 )
             }

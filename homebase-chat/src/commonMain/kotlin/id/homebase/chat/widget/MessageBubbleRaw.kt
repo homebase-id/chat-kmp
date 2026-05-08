@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import id.homebase.chat.chatappearance.ui.components.angledLinearGradient
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -230,7 +231,7 @@ fun MessageBubbleRaw(
     }
     val bubbleGradientBrush = remember(activeChatColor) {
         if (activeChatColor is ChatColor.Gradient) {
-            Brush.linearGradient(colors = activeChatColor.colorsArgb.map { Color(it) })
+            angledLinearGradient(colors = activeChatColor.colorsArgb.map { Color(it) }, angleDegrees = activeChatColor.angleDegrees)
         } else null
     }
     val backgroundColor =
