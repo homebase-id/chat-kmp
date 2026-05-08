@@ -52,7 +52,18 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("notification_include_muted_badge", false)
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
 
-   
+    var globalChatColorId: String
+        get() = settings.getString("global_chat_color_id", "auto")
+        set(value) { settings.putString("global_chat_color_id", value) }
+
+    var globalWallpaperJson: String
+        get() = settings.getString("global_wallpaper_json", "")
+        set(value) { settings.putString("global_wallpaper_json", value) }
+
+    var globalWallpaperDimInDarkTheme: Boolean
+        get() = settings.getBoolean("global_wallpaper_dim_dark", true)
+        set(value) { settings.putBoolean("global_wallpaper_dim_dark", value) }
+
     fun getConversationScrollIndex(conversationId: String): Int? {
         return settings.getIntOrNull("conversationScrollIndex-$conversationId")
     }

@@ -76,7 +76,7 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.getOdinIdColor
+import id.homebase.chat.chatappearance.model.GroupNameColors
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -447,11 +447,13 @@ fun ReceivedMessageBubble(
             ) {
                 Column {
                     val authorNameTxt = message.displayName
-                    val authorOdinColor =
-                        getOdinIdColor(message.originalAuthor?.domainName ?: "")
                     val isDark = isSystemInDarkTheme()
-                    val finalAuthorColor =
-                        if (isDark) authorOdinColor.darkTheme else authorOdinColor.lightTheme
+                    val finalAuthorColor = Color(
+                        GroupNameColors.getColor(
+                            odinId = message.originalAuthor?.domainName ?: "",
+                            isDarkTheme = isDark,
+                        )
+                    )
 
                     if (renderAuthorName && !hasVisibleBackground) {
                         Text(

@@ -108,4 +108,16 @@ sealed class Route {
     @Serializable
     @SerialName("draw")
     data class Draw(val requestId: String) : Route()
+
+    @Serializable
+    @SerialName("chat-color-wallpaper")
+    data class ChatColorWallpaper(val conversationId: String? = null) : Route()
+
+    @Serializable
+    @SerialName("chat-color-picker")
+    data class ChatColorPicker(val conversationId: String? = null) : Route()
+
+    @Serializable
+    @SerialName("wallpaper-picker")
+    data class WallpaperPicker(val conversationId: String? = null) : Route()
 }
