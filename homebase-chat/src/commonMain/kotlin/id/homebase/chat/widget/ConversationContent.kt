@@ -1509,6 +1509,14 @@ fun ConversationContentSheets(
                                                 sheet.selectedRecipients
                                             )
                                         )
+                                        // Dismiss optimistically — the sheet is an intent picker, not a
+                                        // progress dialog. Errors surface via snackbar. Animate-hiding
+                                        // before clearing state avoids the ghost-scrim freeze that
+                                        // occurs when ModalBottomSheet is yanked from composition.
+                                        scope.launch {
+                                            sheetState.hide()
+                                            onUiAction(ConversationListUiAction.DismissSheet)
+                                        }
                                     },
                                     enabled = !uiState.isSendingMessage,
                                     imageVector = Icons.AutoMirrored.Filled.Send,

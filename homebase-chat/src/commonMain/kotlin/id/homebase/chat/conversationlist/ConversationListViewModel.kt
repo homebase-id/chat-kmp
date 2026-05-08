@@ -1713,7 +1713,6 @@ class ConversationListViewModel(
                             sourceMessageUniqueId = action.message.id,
                             targetConversationIds = conversationIds
                         )
-                        _messagesUiState.update { it.copy(uiSheet = null) }
                         sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
                     } catch (e: Exception) {
                         Logger.e("Failed to send forward message", e)
