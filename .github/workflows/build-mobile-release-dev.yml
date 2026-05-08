@@ -73,6 +73,14 @@ jobs:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
 
+      - name: Upload R8 mapping
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-mapping-dev-${{ steps.version.outputs.VERSION_CODE }}
+          path: androidApp/build/outputs/mapping/dev/mapping.txt
+          retention-days: 90
+
       - name: Create Google Play Service Account JSON
         run: |
           echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
