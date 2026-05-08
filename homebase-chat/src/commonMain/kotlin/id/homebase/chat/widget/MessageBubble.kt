@@ -98,7 +98,11 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.cd_reply_thumbnail
+import id.homebase.resources.message_delivered
+import id.homebase.resources.message_read
 import id.homebase.resources.message_sending
+import id.homebase.resources.message_sent
 import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -456,7 +460,7 @@ fun ReceivedMessageBubble(
         ) {
             Box(
                 modifier = if (isMobile()) {
-                    Modifier.fillMaxWidth().combinedClickable(
+                    Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
@@ -729,7 +733,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Read.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_read),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -738,7 +742,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Delivered.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndDelivered,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_delivered),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,)
             }
@@ -746,7 +750,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Sent.value -> {
                 Icon(
                     HomebaseIcons.MessageSent,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_sent),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -916,13 +920,13 @@ fun InlineReplyPreview(
                     .size(40.dp)
                     .clip(RoundedCornerShape(4.dp)),
                 contentScale = ContentScale.Crop,
-                contentDescription = null,
+                contentDescription = stringResource(MR.string.cd_reply_thumbnail),
             )
         } else {
             thumbnailBitmap?.let { bitmap ->
                 Image(
                     bitmap = bitmap,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.cd_reply_thumbnail),
                     modifier = Modifier
                         .padding(end = 4.dp)
                         .size(40.dp)
