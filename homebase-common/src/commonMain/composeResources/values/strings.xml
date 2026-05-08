@@ -604,11 +604,6 @@
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
 
-    <!-- Bottom navigation labels -->
-    <string name="nav_chats">Chats</string>
-    <string name="nav_feed">Feed</string>
-    <string name="nav_home">Home</string>
-
     <!-- Vault -->
     <string name="vault_label">Vault</string>
     <string name="vault_onboarding_title">Your personal document vault</string>
