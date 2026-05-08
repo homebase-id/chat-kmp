@@ -319,7 +319,7 @@ fun SentMessageBubble(
                             reactionSummary = reactionSummary,
                             onReactionClick = { onShowReactions?.invoke() },
                             onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
-                            hasOwnReaction = message.ownReactions.isNotEmpty(),
+                            ownReactions = message.ownReactions,
                         )
                     }
                 }
@@ -357,7 +357,7 @@ fun SentMessageBubbleDisplayOnly(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
                 onReactionClick = { },
-                hasOwnReaction = message.ownReactions.isNotEmpty(),
+                ownReactions = message.ownReactions,
             )
         }
     }
@@ -533,7 +533,7 @@ fun ReceivedMessageBubble(
                                 reactionSummary = reactionSummary,
                                 onReactionClick = { onShowReactions?.invoke() },
                                 onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
-                                hasOwnReaction = message.ownReactions.isNotEmpty(),
+                                ownReactions = message.ownReactions,
                             )
                         }
                     }
@@ -709,7 +709,7 @@ fun ReceivedMessageBubbleDisplayOnly(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
                 onReactionClick = { },
-                hasOwnReaction = message.ownReactions.isNotEmpty(),
+                ownReactions = message.ownReactions,
             )
         }
     }

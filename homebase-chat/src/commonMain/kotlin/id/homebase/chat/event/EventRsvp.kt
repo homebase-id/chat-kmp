@@ -37,9 +37,7 @@ object EventRsvp {
 
     /** Returns the user's current RSVP emoji, or null if none. */
     fun currentRsvp(ownReactions: Iterable<String>): String? =
-        ownReactions.asSequence()
-            .mapNotNull { emojiOf(it) }
-            .firstOrNull { it in ALL }
+        ownReactions.firstOrNull { it in ALL }
 
     /**
      * Aggregate count of each RSVP across all reactors, read from the

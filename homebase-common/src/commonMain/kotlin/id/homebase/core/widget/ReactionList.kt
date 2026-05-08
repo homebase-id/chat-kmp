@@ -4,10 +4,12 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,7 +58,13 @@ fun ReactionList(
     reactionSummary: ReactionSummary,
     onReactionClick: () -> Unit,
     onAddEmoji: (() -> Unit)? = null,
-    hasOwnReaction: Boolean = false,
+    /**
+     * Emojis the current user has reacted with on this message (from
+     * `MessageUiModel.ownReactions`). Each emoji slice rendered in the merged pill
+     * gets a tinted background when its emoji matches one of these — others'
+     * reactions stay neutral. Pass an empty list to disable highlighting.
+     */
+    ownReactions: ImmutableList<String> = persistentListOf(),
 ) {
     val allReactions = remember(reactionSummary) {
         reactionSummary.reactions.entries.mapNotNull { entry ->
@@ -65,7 +73,6 @@ fun ReactionList(
     }
     if (allReactions.isEmpty()) return
 
-    val displayEmojis = remember(allReactions) { allReactions.take(3) }
     val totalCount = remember(allReactions) { allReactions.sumOf { it.second } }
 
     var animatePop by remember { mutableStateOf(false) }
@@ -85,47 +92,74 @@ fun ReactionList(
         prevCount.intValue = totalCount
     }
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    BoxWithConstraints(modifier = modifier) {
+        // Show up to 7 emojis in the merged pill, scaling down to fit the available
+        // width when the bubble is narrow. Per-emoji slot is ~24dp (16sp emoji +
+        // 4dp horiz padding + 2dp arrangement spacing). Outer Surface eats ~12dp
+        // of horizontal padding; the count digit uses ~28dp when shown. The "+"
+        // chip from `onAddEmoji` (24dp + 4dp arrangement) is reserved separately
+        // when present so the merged pill never visually crowds it out.
+        val perEmojiDp = 24f
+        val pillPadDp = 12f
+        val countDp = if (totalCount > 1) 28f else 0f
+        val addChipDp = if (onAddEmoji != null) 28f else 0f
+        val maxAvailDp = if (maxWidth.value.isFinite()) maxWidth.value else Float.POSITIVE_INFINITY
+        val budgetDp = (maxAvailDp - pillPadDp - countDp - addChipDp).coerceAtLeast(perEmojiDp)
+        val fitCount = (budgetDp / perEmojiDp).toInt()
+            .coerceIn(1, 7)
+            .coerceAtMost(allReactions.size)
+        val displayEmojis = remember(allReactions, fitCount) { allReactions.take(fitCount) }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         Surface(
             modifier = Modifier
                 .scale(scaleValue)
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onReactionClick),
             shape = RoundedCornerShape(16.dp),
-            color = if (hasOwnReaction) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = if (hasOwnReaction) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-            else null,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 displayEmojis.forEach { (emoji, _) ->
-                    Text(
-                        text = emoji,
-                        fontSize = 16.sp,
-                    )
+                    val isOwn = ownReactions.containsEmoji(emoji)
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isOwn) MaterialTheme.colorScheme.primaryContainer
+                                else Color.Transparent
+                            )
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = 16.sp,
+                            color = if (isOwn) MaterialTheme.colorScheme.onPrimaryContainer
+                            else Color.Unspecified,
+                        )
+                    }
                 }
                 if (totalCount > 1) {
                     Text(
                         text = totalCount.toString(),
                         fontSize = 13.sp,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (hasOwnReaction) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp, end = 2.dp),
                     )
                 }
             }
         }
-        if (onAddEmoji != null) {
-            AddReactionChip(onClick = onAddEmoji)
+            if (onAddEmoji != null) {
+                AddReactionChip(onClick = onAddEmoji)
+            }
         }
     }
 }
