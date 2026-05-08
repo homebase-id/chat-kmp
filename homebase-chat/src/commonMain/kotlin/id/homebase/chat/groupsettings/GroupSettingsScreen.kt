@@ -18,11 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Healing
@@ -80,6 +80,7 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_admin_file_delivered
@@ -259,7 +260,7 @@ fun GroupSettingsUi(
                 navigationIcon = {
                     IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -284,7 +285,7 @@ fun GroupSettingsUi(
                 if (uiState.isLoading) {
                     LoadingListItem()
                 } else {
-                    ErrorInfoItem("No group could be loaded")
+                    ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
                 }
             }
             uiState.conversation?.let { conversation ->

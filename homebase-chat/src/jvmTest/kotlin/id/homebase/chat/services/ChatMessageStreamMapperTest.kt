@@ -43,8 +43,9 @@ class ChatMessageStreamMapperTest {
     private val sampleLocalReactionsJson =
         """["{\"emoji\":\"❤️\"}", "{\"emoji\":\"🚀\"}"]"""
 
-    private val expectedOwnReactions =
-        listOf("""{"emoji":"❤️"}""", """{"emoji":"🚀"}""")
+    // Mapper decodes the JSON-encoded wire format into bare emoji strings, so the
+    // rest of the UI can compare against reactionPreview entries directly.
+    private val expectedOwnReactions = listOf("❤️", "🚀")
 
     /**
      * Builds a minimal chat-message HomebaseFile JSON.

@@ -32,6 +32,7 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
+import id.homebase.resources.cd_upload_complete
 import id.homebase.resources.upload_compressing
 import id.homebase.resources.upload_done
 import id.homebase.resources.upload_encrypting
@@ -259,7 +260,7 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                 UploadStatus.Completed -> {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_upload_complete),
                         tint = Color.White,
                         modifier = Modifier.size(40.dp),
                     )

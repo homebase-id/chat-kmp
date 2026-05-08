@@ -540,7 +540,7 @@ fun MessageTextFieldCompact(
     LaunchedEffect(isMicrophonePressed) {
         if (isMicrophonePressed) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-            delay(1000)
+            delay(300)
 
             if (!recordAudioPermissionState.hasPermission) {
                 recordAudioPermissionState.requestPermission()

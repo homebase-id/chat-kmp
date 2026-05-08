@@ -42,6 +42,7 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -184,7 +185,7 @@ fun LocationPreviewCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_location_pin),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(40.dp),
                         )
@@ -274,7 +275,7 @@ fun LocationPreviewCard(
             ) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.cd_location_pin),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(40.dp),
                 )

@@ -18,6 +18,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
+import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.chat.services.renderer.PayloadRenderer
@@ -194,7 +196,9 @@ class ConversationListViewModel(
 
     private val _messagesUiState = MutableStateFlow(
         MessageListUiState(
-            userDefaultReactions = userPreferences.preferredUserReactions.toPersistentList()
+            userDefaultReactions = userPreferences.preferredUserReactions
+                .distinctByEmoji()
+                .toPersistentList()
         )
     )
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
@@ -1142,7 +1146,8 @@ class ConversationListViewModel(
                                         ScrollPosition(
                                             firstVisibleItemIndex = indexOfMessageForScroll,
                                             triggerScroll = true
-                                        )
+                                        ),
+                                    highlightedMessageId = action.messageId,
                                 )
                             }
                         }
@@ -1150,6 +1155,10 @@ class ConversationListViewModel(
                         sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
                     }
                 }
+            }
+
+            is ConversationListUiAction.ClearHighlightedMessage -> {
+                _messagesUiState.update { it.copy(highlightedMessageId = null) }
             }
 
             is ConversationListUiAction.SaveFile -> {
@@ -1242,17 +1251,6 @@ class ConversationListViewModel(
                     if (action.reaction.isEmpty()) return@launch
                     val previousReactions = _messagesUiState.value.messageReactions
                     try {
-                        val newTopReactions =
-                            _messagesUiState.value.userDefaultReactions.toMutableList()
-                        newTopReactions.remove(action.reaction)
-                        newTopReactions.add(0, action.reaction)
-                        _messagesUiState.update {
-                            it.copy(userDefaultReactions = newTopReactions.toPersistentList())
-                        }
-                        if (newTopReactions.isNotEmpty()) {
-                            userPreferences.preferredUserReactions = newTopReactions.take(6)
-                        }
-
                         _messagesUiState.update { state ->
                             if (state.reactionDetailsMessageId != action.messageId) {
                                 return@update state
@@ -1285,11 +1283,25 @@ class ConversationListViewModel(
                             }
                         }
 
-                        chatMessageActionService.toggleReaction(
+                        val result = chatMessageActionService.toggleReaction(
                             action.conversationId,
                             action.messageId,
                             action.reaction
                         )
+
+                        // Only promote to the top of the quick-react popup when this
+                        // toggle ADDED the reaction. A remove must not bump the just-
+                        // removed emoji to the front of the user's preferred list.
+                        if (result.resultType == ToggleReactionResultType.Added) {
+                            val promoted = (listOf(action.reaction) +
+                                _messagesUiState.value.userDefaultReactions)
+                                .distinctByEmoji()
+                                .toPersistentList()
+                            _messagesUiState.update {
+                                it.copy(userDefaultReactions = promoted)
+                            }
+                            userPreferences.preferredUserReactions = promoted.take(6)
+                        }
                     } catch (e: Exception) {
                         _messagesUiState.update { it.copy(messageReactions = previousReactions) }
                         sendEvent(
@@ -1708,7 +1720,6 @@ class ConversationListViewModel(
                             sourceMessageUniqueId = action.message.id,
                             targetConversationIds = conversationIds
                         )
-                        _messagesUiState.update { it.copy(uiSheet = null) }
                         sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
                     } catch (e: Exception) {
                         Logger.e("Failed to send forward message", e)
@@ -2523,17 +2534,44 @@ class ConversationListViewModel(
 
                             var systemIndex = 0
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
-                                listOf(MessageListContentModel.Section(date)) + messages.map {
-                                    if (it.isStatusMessage)
+                                val sectionHeader = listOf(MessageListContentModel.Section(date))
+                                val items = messages.map { msg ->
+                                    if (msg.isStatusMessage)
                                         MessageListContentModel.System(
-                                            it.content,
-                                            it.userDate,
+                                            msg.content,
+                                            msg.userDate,
                                             systemIndex++
                                         )
                                     else
-                                        MessageListContentModel.Message(it)
+                                        MessageListContentModel.Message(msg)
+                                }
+                                val messageItems = items.filterIsInstance<MessageListContentModel.Message>()
+                                val clustered = computeClusterPositions(messageItems)
+                                val clusteredMap = clustered.associateBy { it.message.id }
+                                sectionHeader + items.map { item ->
+                                    if (item is MessageListContentModel.Message)
+                                        clusteredMap[item.message.id] ?: item
+                                    else
+                                        item
                                 }
                             })
+
+                            // Insert "New Messages" separator before the first unread message
+                            val convoModel = _uiState.value.activeConversations
+                                .find { it.conversation.id == conversationId }
+                                ?.conversation
+                            val lastRead = convoModel?.lastRead
+                            val currentOdinId = _uiState.value.ownerSession?.odinId
+                            if (lastRead != null && convoModel.unreadCount > 0) {
+                                val firstUnreadIdx = messagesModels.indexOfFirst {
+                                    it is MessageListContentModel.Message &&
+                                        it.message.sender != currentOdinId &&
+                                        it.message.userDate > lastRead
+                                }
+                                if (firstUnreadIdx > 0) {
+                                    messagesModels.add(firstUnreadIdx, MessageListContentModel.UnreadSeparator)
+                                }
+                            }
 
                             // Scroll handling: navigate to a specific message (search results,
                             // cross-conversation jumps, etc.). The user's own just-sent messages
@@ -3437,3 +3475,4 @@ internal fun resolveNotificationTap(
     if (tap == null) return null
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
+

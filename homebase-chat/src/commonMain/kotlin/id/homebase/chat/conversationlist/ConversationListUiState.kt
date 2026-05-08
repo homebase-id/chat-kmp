@@ -83,6 +83,7 @@ data class MessageListUiState(
     val uiSheet: MessageListUiSheet? = null,
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
+    val highlightedMessageId: Uuid? = null,
 )
 
 @Immutable
@@ -143,13 +144,24 @@ sealed interface ConversationListContentModel {
     data class Header(val resource: StringResource) : ConversationListContentModel
 }
 
+enum class MessageClusterPosition {
+    ALONE,
+    START,
+    MIDDLE,
+    END,
+}
+
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data object Header : MessageListContentModel("header")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
     data class System(val text: String, val userDate: Instant, val index: Int) : MessageListContentModel("system-$index")
-    data class Message(val message: MessageUiModel) :
-        MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+    data class Message(
+        val message: MessageUiModel,
+        val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+
+    data object UnreadSeparator : MessageListContentModel("unread-separator")
 }
 
 @Immutable

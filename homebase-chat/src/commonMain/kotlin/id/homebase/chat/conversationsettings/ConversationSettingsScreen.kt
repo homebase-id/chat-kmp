@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,6 +20,7 @@ import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.resources.MR
+import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 
@@ -66,7 +67,7 @@ fun ConversationSettingsUi(
                 navigationIcon = {
                     IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -81,7 +82,7 @@ fun ConversationSettingsUi(
                 if (uiState.isLoading) {
                     LoadingListItem()
                 } else {
-                    ErrorInfoItem("No group could be loaded")
+                    ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
                 }
             }
 

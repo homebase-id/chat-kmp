@@ -42,6 +42,12 @@ import id.homebase.core.ui.screens.defragmenter.ui.Win98ProgressBar
 import id.homebase.core.ui.screens.defragmenter.ui.Win98WindowFrame
 import id.homebase.resources.MR
 import id.homebase.resources.defragmenter_analyze
+import id.homebase.resources.defragmenter_issue_bad_header
+import id.homebase.resources.defragmenter_issue_bad_message
+import id.homebase.resources.defragmenter_issue_legacy_user_date
+import id.homebase.resources.defragmenter_issue_orphan_messages
+import id.homebase.resources.defragmenter_issue_soft_delete_drift
+import id.homebase.resources.defragmenter_issue_unmappable_convo
 import id.homebase.resources.defragmenter_cancel
 import id.homebase.resources.defragmenter_close
 import id.homebase.resources.defragmenter_drive_label_all
@@ -296,32 +302,32 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
             // in mid-analyze shrink the grid panel above and visibly clip
             // its bottom row of cells.
             IssueTallyRow(
-                label = "Legacy userDate=0",
+                label = stringResource(MR.string.defragmenter_issue_legacy_user_date),
                 count = state.issueCountLegacyUserDateZero,
                 activeColor = Win98Palette.IssueLegacyUserDateZeroFill,
             )
             IssueTallyRow(
-                label = "Soft-delete drift",
+                label = stringResource(MR.string.defragmenter_issue_soft_delete_drift),
                 count = state.issueCountArchivalMismatch,
                 activeColor = Win98Palette.IssueArchivalMismatchFill,
             )
             IssueTallyRow(
-                label = "Bad header blocks",
+                label = stringResource(MR.string.defragmenter_issue_bad_header),
                 count = state.issueCountCorruptJson,
                 activeColor = Win98Palette.IssueCorruptJsonFill,
             )
             IssueTallyRow(
-                label = "Unmappable conversation",
+                label = stringResource(MR.string.defragmenter_issue_unmappable_convo),
                 count = state.issueCountUnmappableConvo,
                 activeColor = Win98Palette.IssueUnmappableConvoFill,
             )
             IssueTallyRow(
-                label = "Orphan messages",
+                label = stringResource(MR.string.defragmenter_issue_orphan_messages),
                 count = state.issueCountOrphanMessage,
                 activeColor = Win98Palette.IssueOrphanMessageFill,
             )
             IssueTallyRow(
-                label = "Bad message blocks",
+                label = stringResource(MR.string.defragmenter_issue_bad_message),
                 count = state.issueCountCorruptMessageContent,
                 activeColor = Win98Palette.IssueCorruptMessageContentFill,
             )
