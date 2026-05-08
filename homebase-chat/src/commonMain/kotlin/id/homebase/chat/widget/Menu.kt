@@ -293,6 +293,7 @@ fun ReceivedMessagePopup(
                     ReactionMenu(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         userDefaultReactions = userDefaultReactions,
+                        ownReactions = message.ownReactions,
                         onSelect = onSelectEmoji,
                         onShowAllEmojis = onShowAllEmojis,
                     )
@@ -357,6 +358,7 @@ fun ReceivedMessagePopup(
                             ReactionMenu(
                                 modifier = Modifier.padding(horizontal = 16.dp),
                                 userDefaultReactions = userDefaultReactions,
+                                ownReactions = message.ownReactions,
                                 onSelect = onSelectEmoji,
                                 onShowAllEmojis = onShowAllEmojis,
                             )
@@ -474,6 +476,7 @@ fun SentMessagePopup(
                     ReactionMenu(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         userDefaultReactions = userDefaultReactions,
+                        ownReactions = message.ownReactions,
                         onSelect = onSelectEmoji,
                         onShowAllEmojis = onShowAllEmojis,
                     )
@@ -540,6 +543,7 @@ fun SentMessagePopup(
                             ReactionMenu(
                                 modifier = Modifier.padding(horizontal = 16.dp),
                                 userDefaultReactions = userDefaultReactions,
+                                ownReactions = message.ownReactions,
                                 onSelect = onSelectEmoji,
                                 onShowAllEmojis = onShowAllEmojis,
                             )

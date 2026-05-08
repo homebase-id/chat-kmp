@@ -357,6 +357,7 @@ fun SentMessageBubbleDisplayOnly(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
                 onReactionClick = { },
+                hasOwnReaction = message.ownReactions.isNotEmpty(),
             )
         }
     }
@@ -708,6 +709,7 @@ fun ReceivedMessageBubbleDisplayOnly(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                 reactionSummary = reactionSummary,
                 onReactionClick = { },
+                hasOwnReaction = message.ownReactions.isNotEmpty(),
             )
         }
     }
