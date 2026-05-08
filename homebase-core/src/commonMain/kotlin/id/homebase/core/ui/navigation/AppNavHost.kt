@@ -87,12 +87,10 @@ import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.resources.MR
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.vault_label
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
@@ -155,10 +153,10 @@ fun AppNavHost(
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute =
         currentDestination.isTopLevelRoute() ||
-        currentDestination?.hasRoute(Route.VaultOnboarding::class) == true ||
-        topLevelRoutes.any { topLevelRoute ->
-            currentDestination?.hasRoute(topLevelRoute.route::class) == true
-        }
+                currentDestination?.hasRoute(Route.VaultOnboarding::class) == true ||
+                topLevelRoutes.any { topLevelRoute ->
+                    currentDestination?.hasRoute(topLevelRoute.route::class) == true
+                }
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
     val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
@@ -315,7 +313,12 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
+                            icon = {
+                                Icon(
+                                    topLevelRoute.icon,
+                                    contentDescription = stringResource(topLevelRoute.labelRes)
+                                )
+                            },
                             label = { Text(stringResource(topLevelRoute.labelRes)) },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
@@ -345,7 +348,12 @@ fun AppNavHost(
                     NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
-                                icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
+                                icon = {
+                                    Icon(
+                                        topLevelRoute.icon,
+                                        contentDescription = stringResource(topLevelRoute.labelRes)
+                                    )
+                                },
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
@@ -782,7 +790,10 @@ fun AppNavHost(
                                     viewModel = vaultViewModel,
                                     onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
                                     onNavigateToChats = {
-                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                        navController.popBackStack(
+                                            Route.ChatList,
+                                            inclusive = false
+                                        )
                                     },
                                 )
                             }
@@ -891,7 +902,9 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelR
 }
 
 sealed class TopLevelRoute(
-    val route: Route, val labelRes: StringResource, val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val route: Route,
+    val labelRes: StringResource,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
