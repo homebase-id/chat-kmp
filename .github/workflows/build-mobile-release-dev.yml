@@ -168,9 +168,12 @@ jobs:
 
       - name: Inject CI build optimizations
         run: |
-          echo "" >> iosApp/Configuration/Config.xcconfig
-          echo "// CI optimizations" >> iosApp/Configuration/Config.xcconfig
-          echo "COMPILER_INDEX_STORE_ENABLE = NO" >> iosApp/Configuration/Config.xcconfig
+          cat >> iosApp/Configuration/Config.xcconfig << 'XCEOF'
+
+          // CI optimizations
+          COMPILER_INDEX_STORE_ENABLE = NO
+          FRAMEWORK_SEARCH_PATHS = $(inherited) $(SRCROOT)/../homebase-core/build/bin/iosArm64/releaseFramework
+          XCEOF
 
       - name: Pre-build KMP framework
         run: ./gradlew :homebase-core:linkReleaseFrameworkIosArm64
@@ -179,6 +182,8 @@ jobs:
 
       - name: Build iOS
         uses: yukiarrr/ios-build-action@v1.12.0
+        env:
+          OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED: "YES"
         with:
           project-path: iosApp/iosApp.xcodeproj
           workspace-path: iosApp/iosApp.xcodeproj/project.xcworkspace
