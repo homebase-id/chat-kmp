@@ -41,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
@@ -205,7 +204,7 @@ private fun EmojiToggleChip(
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isOwnReaction) {
-            Color(0xFF1E88E5).copy(alpha = 0.20f)
+            MaterialTheme.colorScheme.primaryContainer
         } else {
             MaterialTheme.colorScheme.surfaceContainerHighest
         },
@@ -213,7 +212,7 @@ private fun EmojiToggleChip(
     )
     val textColor by animateColorAsState(
         targetValue = if (isOwnReaction) {
-            Color(0xFF1565C0)
+            MaterialTheme.colorScheme.onPrimaryContainer
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
