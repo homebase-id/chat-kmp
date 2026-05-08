@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -186,7 +187,13 @@ fun SentMessageBubble(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row {
+            // The bubble Box reserves 26dp at the bottom for the reaction pill
+            // when reactions are present, which drags `CenterVertically` ~13dp
+            // below the colored bubble's actual middle. Shift the hover-icons
+            // row (and its popup anchor) back up by that half so the icons
+            // align with the colored bubble's center, not the bubble+pill.
+            val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
+            Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
                 if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
@@ -276,7 +283,15 @@ fun SentMessageBubble(
             }
 
             Box(
-                modifier = Modifier.fillMaxWidth(),
+                // Mirror ReceivedMessageBubble's layout: on desktop the outer box
+                // wraps the bubble's content width instead of filling, so the
+                // hover-revealed icons row (which sits earlier in the parent Row)
+                // ends up immediately left of the bubble under Arrangement.End,
+                // and the action Popup anchored inside that row is adjacent to
+                // the bubble — matching Signal-style behavior. Mobile keeps
+                // fillMaxWidth so the combinedClickable target spans the row.
+                modifier = if (isMobile()) Modifier.fillMaxWidth()
+                else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Box(
@@ -578,8 +593,11 @@ fun ReceivedMessageBubble(
                     }
                 }
             }
+            // See SentMessageBubble for rationale — compensates the 26dp pill
+            // reservation so hover icons stay centered on the colored bubble.
+            val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(
-                modifier = Modifier.wrapContentWidth(),
+                modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
                 if (onAddReaction != null && isDesktop() && !message.isDeleted) {
                     IconButton(
