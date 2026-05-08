@@ -101,8 +101,13 @@ fun ReactionList(
         // when present so the merged pill never visually crowds it out.
         val perEmojiDp = 24f
         val pillPadDp = 12f
-        val countDp = if (totalCount > 1) 28f else 0f
-        val addChipDp = if (onAddEmoji != null) 28f else 0f
+        val countDp = if (totalCount > 1) 32f else 0f
+        // 36dp absorbs both the AddReactionChip's actual rendered width (~28dp
+        // surface + 4dp arrangement spacing) and a bit of extra slack so narrow
+        // bubbles don't render one-too-many emojis. This conservative reservation
+        // shrinks the budget from the start instead of subtracting from the
+        // final count, which would have capped wide bubbles at 6.
+        val addChipDp = if (onAddEmoji != null) 36f else 0f
         val maxAvailDp = if (maxWidth.value.isFinite()) maxWidth.value else Float.POSITIVE_INFINITY
         val budgetDp = (maxAvailDp - pillPadDp - countDp - addChipDp).coerceAtLeast(perEmojiDp)
         val fitCount = (budgetDp / perEmojiDp).toInt()
