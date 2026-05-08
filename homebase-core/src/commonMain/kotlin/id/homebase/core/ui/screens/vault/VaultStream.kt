@@ -66,8 +66,29 @@ class VaultStream(
     private val deletedEntryIds = mutableSetOf<Uuid>()
 
     init {
-        scope.launch { loadAll() }
         scope.launch { observeEvents() }
+    }
+
+    /**
+     * Load vault data from the local DB. Must be called after authentication
+     * (from [onPostAuthenticated]) so the singleton picks up the new user's
+     * data instead of retaining stale state from a previous session.
+     */
+    fun start() {
+        scope.launch { loadAll() }
+    }
+
+    /**
+     * Clear all in-memory state so a subsequent [start] loads cleanly for
+     * a different identity. Called during logout before the DB wipe.
+     */
+    fun reset() {
+        _sections.value = emptyList()
+        _entriesBySection.value = emptyMap()
+        _isLoaded.value = false
+        _pendingPageDeletes.value = emptyMap()
+        deletedSectionIds.clear()
+        deletedEntryIds.clear()
     }
 
     // region Cold load

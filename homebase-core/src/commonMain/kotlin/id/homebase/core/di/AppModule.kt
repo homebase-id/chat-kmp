@@ -191,6 +191,7 @@ val appModule = module {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
+                conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
 
@@ -218,6 +219,9 @@ val appModule = module {
                     conversationService.unarchiveConversation(conversationId)
                 }
                 // endregion
+
+                get<VaultPreferences>().reset()
+                get<VaultStream>().apply { reset(); start() }
             }
         )
     }

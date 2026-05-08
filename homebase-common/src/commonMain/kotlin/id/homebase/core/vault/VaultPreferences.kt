@@ -30,6 +30,15 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
         isVaultScreenActive = active
     }
 
+    fun reset() {
+        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
+        lastAuthTimeMs = 0L
+        lastBackgroundTimeMs = 0L
+        lastActionTimeMs = 0L
+        isVaultScreenActive = false
+    }
+
     fun recordAuthSuccess() {
         val now = Clock.System.now().toEpochMilliseconds()
         lastAuthTimeMs = now

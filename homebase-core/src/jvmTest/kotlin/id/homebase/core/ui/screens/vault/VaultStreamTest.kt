@@ -492,6 +492,93 @@ class VaultStreamTest {
         assertEquals(0, stream.entriesBySection.value[sectionId]?.size ?: 0)
     }
 
+    // ---------------------------------------------------------------
+    // reset — identity isolation across logout/login
+    // ---------------------------------------------------------------
+
+    @Test
+    fun reset_clearsAllInMemoryState() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId, title = "UserA"))
+        stream.insertOptimisticEntry(
+            buildEntry(groupId = sectionId, fileName = "secret.jpg"), sectionId,
+        )
+        assertTrue(stream.sections.value.isNotEmpty())
+        assertTrue(stream.entriesBySection.value.isNotEmpty())
+
+        stream.reset()
+
+        assertEquals(0, stream.sections.value.size)
+        assertEquals(0, stream.entriesBySection.value.size)
+        assertFalse(stream.isLoaded.value)
+    }
+
+    @Test
+    fun reset_clearsResurrectionSetsAllowingReuse() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+
+        // Delete — IDs enter the resurrection-prevention sets
+        stream.removeSection(sectionId)
+        assertEquals(0, stream.sections.value.size)
+
+        // Simulate logout → login: reset then re-add same IDs (new user
+        // could theoretically reuse UUIDs, or same user re-syncs)
+        stream.reset()
+
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId, title = "UserB"))
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+
+        assertEquals(1, stream.sections.value.size)
+        assertEquals("UserB", stream.sections.value[0].title)
+        assertEquals(1, stream.entriesBySection.value[sectionId]?.size)
+    }
+
+    @Test
+    fun reset_clearsPendingPageDeletes() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+
+        val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
+            payloadDescriptors = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = "def"),
+            ),
+        )
+        stream.insertOptimisticEntry(entry, sectionId)
+        stream.markPayloadPendingDelete(entryId, "vlt_pg_01")
+
+        stream.reset()
+
+        // After reset, re-insert the same entry with both pages — vlt_pg_01
+        // should NOT be filtered because pendingPageDeletes was cleared.
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+        stream.insertOptimisticEntry(entry, sectionId)
+
+        val result = stream.entriesBySection.value[sectionId]!!.first()
+        assertEquals(2, result.payloadDescriptors.size)
+    }
+
+    // ---------------------------------------------------------------
+    // updateOptimisticEntry — pending append preservation
+    // ---------------------------------------------------------------
+
     @Test
     fun updateOptimisticEntry_preservesPendingAppendDescriptors() = runTest {
         val stream = createStream()
