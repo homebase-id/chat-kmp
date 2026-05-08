@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -50,6 +51,7 @@ import id.homebase.resources.moments_audience_section_contacts
 import id.homebase.resources.moments_audience_section_conversations
 import id.homebase.resources.moments_audience_section_recent
 import id.homebase.resources.moments_audience_title
+import id.homebase.resources.moments_compose_comments_enabled
 import id.homebase.resources.moments_create_search_hint
 import id.homebase.resources.moments_create_selected_count
 import org.jetbrains.compose.resources.stringResource
@@ -124,6 +126,30 @@ fun MomentAudienceScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
+            }
+
+            // Comments toggle — moved here from the compose screen so the
+            // user makes the recipient + reactions decision together.
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(MR.string.moments_compose_comments_enabled),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = uiState.commentsEnabled,
+                        onCheckedChange = {
+                            viewModel.onAction(MomentAudienceUiAction.CommentsEnabledChanged(it))
+                        },
+                    )
+                }
+                HorizontalDivider()
             }
 
             // Recent (MRU) — preserves the order returned by the lookup service

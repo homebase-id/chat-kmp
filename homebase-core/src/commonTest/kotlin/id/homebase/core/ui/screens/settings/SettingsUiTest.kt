@@ -24,6 +24,7 @@ class SettingsUiTest {
                     onNavigateToAppearance = {},
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
                 )
             }
         }
@@ -43,6 +44,8 @@ class SettingsUiTest {
                     onNavigateToAppearance = {},
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
+
                 )
             }
         }
@@ -68,6 +71,8 @@ class SettingsUiTest {
                     onNavigateToAppearance = {},
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
+
                 )
             }
         }
@@ -89,6 +94,8 @@ class SettingsUiTest {
                     onNavigateToAppearance = { navigated = true },
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
+
                 )
             }
         }
@@ -114,6 +121,8 @@ class SettingsUiTest {
                     onNavigateToAppearance = {},
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
+
                 )
             }
         }
@@ -139,6 +148,7 @@ class SettingsUiTest {
                     onNavigateToAppearance = {},
                     onNavigateToStorage = {},
                     onNavigateToHelp = {},
+                    onNavigateToMomentsSettings = {}
                 )
             }
         }

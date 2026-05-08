@@ -4,19 +4,31 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.moments.services.MomentCommentsService
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.ui.navigation.Route
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+private const val TAG = "MomentDetailViewModel"
 
 /**
  * Resolves a single moment by id from the live feed flow. We deliberately
@@ -28,10 +40,17 @@ import kotlin.uuid.Uuid
  *    re-renders automatically.
  *  - On cold start before the feed has loaded, `moment` stays null and the
  *    screen shows a loading state until the feed populates.
+ *
+ * Comments stream from [MomentCommentsService.commentsFor] for the same
+ * `momentId` — the service handles cold-load + live event-bus updates so the
+ * VM just merges the snapshot into uiState.
  */
 class MomentDetailViewModel(
     savedStateHandle: SavedStateHandle,
     feedService: MomentsFeedService,
+    private val commentsService: MomentCommentsService,
+    private val postSender: MomentsPostSenderService,
+    private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.MomentDetail>()
@@ -39,17 +58,51 @@ class MomentDetailViewModel(
     private val initialPayloadKey: String? = route.initialPayloadKey
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
+    private val _selfOdinId = MutableStateFlow<OdinId?>(null)
+
+    /** Compose-screen-local state for the comments section. */
+    private data class CommentLocalState(
+        val draft: String = "",
+        val isPosting: Boolean = false,
+        val editingId: Uuid? = null,
+        val editingDraft: String = "",
+        val isSavingEdit: Boolean = false,
+    )
+
+    private val _commentLocal = MutableStateFlow(CommentLocalState())
+
+    private val _events = MutableSharedFlow<MomentDetailUiEvent>(extraBufferCapacity = 4)
+    val events: SharedFlow<MomentDetailUiEvent> = _events.asSharedFlow()
+
+    init {
+        // Self-identity for "is this comment mine" checks. Owner-side files
+        // also tend to have a null senderOdinId, so the UI's "mine" predicate
+        // accepts either null or a match on this id.
+        viewModelScope.launch {
+            _selfOdinId.value = credentialsManager.getActiveCredentials()?.domain
+        }
+    }
 
     val uiState: StateFlow<MomentDetailUiState> = combine(
         feedService.feed,
         _overlay,
-    ) { list, overlay ->
-        val match = list.firstOrNull { it.id == momentId }
+        commentsService.commentsFor(momentId),
+        _commentLocal,
+        _selfOdinId,
+    ) { feed, overlay, comments, local, self ->
+        val match = feed.firstOrNull { it.id == momentId }
         MomentDetailUiState(
             moment = match,
             isLoading = match == null,
             fullScreenOverlay = overlay,
             initialPayloadKey = initialPayloadKey,
+            comments = comments,
+            selfOdinId = self,
+            commentDraft = local.draft,
+            isPostingComment = local.isPosting,
+            editingCommentId = local.editingId,
+            editingCommentDraft = local.editingDraft,
+            isSavingCommentEdit = local.isSavingEdit,
         )
     }.stateIn(
         viewModelScope,
@@ -116,6 +169,86 @@ class MomentDetailViewModel(
 
             MomentDetailUiAction.CloseFullScreenOverlay -> {
                 _overlay.value = null
+            }
+
+            is MomentDetailUiAction.CommentDraftChanged ->
+                _commentLocal.update { it.copy(draft = action.text) }
+
+            MomentDetailUiAction.PostComment -> postComment()
+
+            is MomentDetailUiAction.StartEditComment -> {
+                val target = uiState.value.comments.firstOrNull { it.id == action.commentId } ?: return
+                _commentLocal.update {
+                    it.copy(editingId = action.commentId, editingDraft = target.body)
+                }
+            }
+
+            is MomentDetailUiAction.EditCommentDraftChanged ->
+                _commentLocal.update { it.copy(editingDraft = action.text) }
+
+            MomentDetailUiAction.SaveCommentEdit -> saveCommentEdit()
+
+            MomentDetailUiAction.CancelCommentEdit ->
+                _commentLocal.update { it.copy(editingId = null, editingDraft = "") }
+        }
+    }
+
+    private fun postComment() {
+        val local = _commentLocal.value
+        val body = local.draft.trim()
+        if (body.isEmpty() || local.isPosting) return
+
+        _commentLocal.update { it.copy(isPosting = true) }
+        viewModelScope.launch {
+            try {
+                postSender.postComment(
+                    momentId = momentId,
+                    attachments = emptyList(),
+                    body = body,
+                )
+                _commentLocal.update { it.copy(draft = "", isPosting = false) }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "postComment failed: ${t.message}" }
+                _commentLocal.update { it.copy(isPosting = false) }
+                _events.tryEmit(MomentDetailUiEvent.CommentPostFailed(t.message))
+            }
+        }
+    }
+
+    private fun saveCommentEdit() {
+        val local = _commentLocal.value
+        val commentId = local.editingId ?: return
+        val body = local.editingDraft.trim()
+        if (body.isEmpty() || local.isSavingEdit) return
+
+        // The version tag is needed to submit; if we don't have one yet (still
+        // optimistic), bail rather than racing with the in-flight initial post.
+        val current = uiState.value.comments.firstOrNull { it.id == commentId }
+        val versionTag = current?.versionTag
+        if (versionTag == null) {
+            _events.tryEmit(
+                MomentDetailUiEvent.CommentEditFailed(
+                    "Comment is still being posted — try again in a moment."
+                )
+            )
+            return
+        }
+
+        _commentLocal.update { it.copy(isSavingEdit = true) }
+        viewModelScope.launch {
+            try {
+                postSender.updateComment(
+                    commentUniqueId = commentId,
+                    versionTag = versionTag,
+                    body = body,
+                )
+                _commentLocal.update {
+                    it.copy(editingId = null, editingDraft = "", isSavingEdit = false)
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "updateComment failed: ${t.message}" }
+                _commentLocal.update { it.copy(isSavingEdit = false) }
+                _events.tryEmit(MomentDetailUiEvent.CommentEditFailed(t.message))
             }
         }
     }

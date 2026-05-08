@@ -1,66 +1,65 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
-import id.homebase.chat.services.builder.AttachmentInput
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
+import id.homebase.core.ui.screens.moments.widget.MomentFullScreenEditor
+import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.menu_back
-import id.homebase.resources.moments_compose_add_media
-import id.homebase.resources.moments_compose_comments_enabled
 import id.homebase.resources.moments_compose_continue
-import id.homebase.resources.moments_compose_description_hint
-import id.homebase.resources.moments_compose_remove_media
+import id.homebase.resources.moments_compose_empty_hero
 import id.homebase.resources.moments_compose_title
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.path
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,31 +67,84 @@ fun MomentComposeScreen(
     viewModel: MomentComposeViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAudience: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
+    onNavigateToDrawer: (Uuid) -> Unit,
+    onSaveFileToDevice: (filePath: String, fileName: String) -> Unit = { _, _ -> },
+    onShowError: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    val textFieldState: RichTextState = rememberRichTextState()
+
+    // Two-way sync between the rich text editor and the VM's plain-string
+    // description. The editor owns the live state; we mirror toMarkdown() into
+    // the VM whenever the user types so navigation/draft persistence sees the
+    // current text without forcing a recomposition through the VM on every
+    // keystroke.
+    //
+    // On first composition we seed the editor from the VM's description so a
+    // back-nav from the audience picker rehydrates the text. The seed runs
+    // before the snapshotFlow collector starts so the initial emission matches
+    // what the VM already has — no clobber of the restored description.
+    LaunchedEffect(textFieldState) {
+        val restored = viewModel.uiState.value.description
+        if (restored.isNotEmpty()) {
+            textFieldState.setMarkdown(restored)
+        }
+        snapshotFlow { textFieldState.toMarkdown() }
+            .distinctUntilChanged()
+            .collect { md ->
+                viewModel.onAction(MomentComposeUiAction.DescriptionChanged(md.trimEnd()))
+            }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 MomentComposeUiEvent.NavigateToAudience -> onNavigateToAudience()
+                is MomentComposeUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
+                is MomentComposeUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
+                is MomentComposeUiEvent.SaveFileToDevice ->
+                    onSaveFileToDevice(event.filePath, event.fileName)
+
+                is MomentComposeUiEvent.ShowError -> onShowError(event.message)
             }
         }
     }
 
-    val mediaPicker = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file ?: return@rememberFilePickerLauncher
-        val contentType = file.mimeType()?.toString() ?: guessContentType(file.name)
-        viewModel.onAction(
-            MomentComposeUiAction.AttachmentsAdded(
-                listOf(
-                    AttachmentInput(
-                        filePath = file.path,
-                        contentType = contentType,
-                        displayName = file.name,
-                    ),
-                ),
-            ),
-        )
+    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
+        file?.let {
+            val ct = it.mimeType()?.toString().orEmpty()
+            val pending = when {
+                ct.startsWith("video/") ->
+                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
+
+                else -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+            }
+            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
+        }
+    }
+
+    val fileLauncher = rememberFilePickerLauncher { file ->
+        file?.let {
+            viewModel.onAction(
+                MomentComposeUiAction.AttachmentsAdded(
+                    listOf(AttachmentPendingFile.File(Uuid.generateV7(), it))
+                )
+            )
+        }
+    }
+
+    val cameraLauncher = rememberCameraManager { file ->
+        file?.let {
+            val ct = it.mimeType()?.toString().orEmpty()
+            val pending = if (ct.startsWith("video/")) {
+                AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
+            } else {
+                AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+            }
+            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
+        }
     }
 
     Scaffold(
@@ -116,49 +168,42 @@ fun MomentComposeScreen(
             )
         },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(innerPadding),
         ) {
-            MediaStrip(
-                attachments = uiState.attachments,
-                videoThumbnails = uiState.videoThumbnails,
-                onAdd = { mediaPicker.launch() },
-                onRemove = { path ->
-                    viewModel.onAction(MomentComposeUiAction.AttachmentRemoved(path))
-                },
-            )
-
-            OutlinedTextField(
-                value = uiState.description,
-                onValueChange = {
-                    viewModel.onAction(MomentComposeUiAction.DescriptionChanged(it))
-                },
-                placeholder = { Text(stringResource(MR.string.moments_compose_description_hint)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 96.dp),
-                minLines = 3,
-                maxLines = 8,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(MR.string.moments_compose_comments_enabled),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
+            if (uiState.attachments.isEmpty()) {
+                EmptyComposeState(
+                    textFieldState = textFieldState,
+                    onAddImage = { galleryLauncher.launch() },
+                    onCameraClick = { cameraLauncher.launch() },
                 )
-                Switch(
-                    checked = uiState.commentsEnabled,
-                    onCheckedChange = {
-                        viewModel.onAction(MomentComposeUiAction.CommentsEnabledChanged(it))
+            } else {
+                MomentFullScreenEditor(
+                    attachments = uiState.attachments,
+                    textFieldState = textFieldState,
+                    currentPage = uiState.currentPage,
+                    onPageChanged = { viewModel.onAction(MomentComposeUiAction.PageChanged(it)) },
+                    onSaveFile = { viewModel.onAction(MomentComposeUiAction.SaveFile(it)) },
+                    onAddFile = { fileLauncher.launch() },
+                    onAddImage = { galleryLauncher.launch() },
+                    onCameraClick = { cameraLauncher.launch() },
+                    onRemoveFile = { id ->
+                        viewModel.onAction(MomentComposeUiAction.AttachmentRemoved(id))
+                    },
+                    onCropImage = { id ->
+                        viewModel.onAction(MomentComposeUiAction.RequestCrop(id))
+                    },
+                    onDrawImage = { id ->
+                        viewModel.onAction(MomentComposeUiAction.RequestDraw(id))
+                    },
+                    onTrimChange = { id, startMs, endMs ->
+                        viewModel.onAction(MomentComposeUiAction.ApplyTrim(id, startMs, endMs))
+                    },
+                    onToggleIncludeLocation = { id ->
+                        viewModel.onAction(MomentComposeUiAction.ToggleIncludeLocation(id))
                     },
                 )
             }
@@ -167,146 +212,96 @@ fun MomentComposeScreen(
 }
 
 @Composable
-private fun MediaStrip(
-    attachments: List<AttachmentInput>,
-    videoThumbnails: Map<String, ByteArray>,
-    onAdd: () -> Unit,
-    onRemove: (String) -> Unit,
+private fun EmptyComposeState(
+    textFieldState: RichTextState,
+    onAddImage: () -> Unit,
+    onCameraClick: () -> Unit,
 ) {
-    if (attachments.isEmpty()) {
-        OutlinedButton(
-            onClick = onAdd,
+    // Skeleton mirrors `MomentFullScreenEditor`: hero placeholder where the
+    // pager would render, the same camera + add strip row, and the same
+    // composer at the bottom. The composer stays usable while empty so the
+    // user can pre-write a description before picking media — its state
+    // survives the empty → populated transition because it lives in the
+    // screen, not in either branch.
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                .clickable(onClick = onAddImage),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(24.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Image,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(64.dp),
+                )
+                Text(
+                    text = stringResource(MR.string.moments_compose_empty_hero),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Strip row: camera + add. Same look as the populated editor's
+        // trailing controls so the layout doesn't shift on first attach.
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onCameraClick,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                )
+            }
+            IconButton(
+                onClick = onAddImage,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                )
+            }
+        }
+
+        // Reserve the vertical space the edit-tools row occupies in the
+        // populated editor so the composer doesn't jump up when the first
+        // attachment lands. Empty visually, but keeps layout stable.
+        Spacer(modifier = Modifier.height(48.dp))
+
+        MomentDescriptionField(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-            )
-            Text(
-                text = stringResource(MR.string.moments_compose_add_media),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-    } else {
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(attachments, key = { it.filePath }) { attachment ->
-                AttachmentThumb(
-                    attachment = attachment,
-                    videoThumbnailBytes = videoThumbnails[attachment.filePath],
-                    onRemove = { onRemove(attachment.filePath) },
-                )
-            }
-            item {
-                AddMoreCell(onClick = onAdd)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AttachmentThumb(
-    attachment: AttachmentInput,
-    videoThumbnailBytes: ByteArray?,
-    onRemove: () -> Unit,
-) {
-    val contentType = attachment.contentType
-    val isImage = contentType.startsWith("image/")
-    val isVideo = contentType.startsWith("video/") ||
-            contentType == "application/vnd.apple.mpegurl"
-
-    Box(
-        modifier = Modifier
-            .size(120.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-    ) {
-        when {
-            isImage -> {
-                AsyncImage(
-                    model = attachment.filePath,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-
-            isVideo -> {
-                // Poster frame extracted async via VideoThumbnailExtractor — the
-                // bytes land in uiState.videoThumbnails once ready. Until then,
-                // show a blank surface tile; the play overlay still renders so
-                // the user knows it's a video.
-                if (videoThumbnailBytes != null) {
-                    AsyncImage(
-                        model = videoThumbnailBytes,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.PlayCircle,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(36.dp),
-                )
-            }
-
-            else -> {
-                // Fallback for non-image/non-video uploads (shouldn't happen
-                // through the ImageAndVideo file picker, but keep the row
-                // tappable just in case).
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = attachment.displayName
-                            ?: attachment.filePath.substringAfterLast('/'),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(8.dp),
-                    )
-                }
-            }
-        }
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.5f)),
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = stringResource(MR.string.moments_compose_remove_media),
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun AddMoreCell(onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(120.dp),
-    ) {
-        Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                .padding(16.dp)
+                .imePadding(),
+            state = textFieldState,
+        )
     }
 }
 
@@ -337,16 +332,4 @@ private fun ComposeBottomBar(
             }
         }
     }
-}
-
-private fun guessContentType(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-    "jpg", "jpeg" -> "image/jpeg"
-    "png" -> "image/png"
-    "gif" -> "image/gif"
-    "heic" -> "image/heic"
-    "webp" -> "image/webp"
-    "mp4", "m4v" -> "video/mp4"
-    "mov" -> "video/quicktime"
-    "webm" -> "video/webm"
-    else -> "application/octet-stream"
 }

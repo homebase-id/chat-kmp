@@ -133,6 +133,7 @@ kotlin {
 
             implementation(libs.kotlinx.html.jvm)
 
+            implementation(libs.metadata.extractor)
         }
 
         // Provide Skia native binaries for JVM image tests (platform-specific)

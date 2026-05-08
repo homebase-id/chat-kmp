@@ -60,6 +60,7 @@ import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.moments.services.MomentCommentsService
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
@@ -130,6 +131,7 @@ val appModule = module {
     }
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
+    singleOf(::MomentCommentsService)
     single { MomentCreateFlowState() }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's

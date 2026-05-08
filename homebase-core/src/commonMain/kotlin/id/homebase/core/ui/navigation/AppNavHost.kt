@@ -106,6 +106,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
+import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -733,6 +734,12 @@ fun AppNavHost(
                                     onNavigateToAudience = {
                                         navController.navigate(Route.MomentAudience)
                                     },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(Route.Crop(requestId.toString()))
+                                    },
+                                    onNavigateToDrawer = { requestId ->
+                                        navController.navigate(Route.Draw(requestId.toString()))
+                                    },
                                 )
                             }
                         }
@@ -887,6 +894,6 @@ sealed class TopLevelRoute(
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
-    data object Moments : TopLevelRoute(Route.Moments, "Moments", Icons.Outlined.AutoAwesome)
+    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
 }

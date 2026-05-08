@@ -13,7 +13,7 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
     private val _activated = MutableStateFlow(readBoolean(ACTIVATED_KEY, default = false))
     val activated: StateFlow<Boolean> = _activated.asStateFlow()
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
+    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = false))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     suspend fun setActivated(value: Boolean) {

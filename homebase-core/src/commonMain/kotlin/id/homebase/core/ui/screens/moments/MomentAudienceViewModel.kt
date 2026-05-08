@@ -58,6 +58,9 @@ class MomentAudienceViewModel(
                     it.copy(selected = next)
                 }
 
+            is MomentAudienceUiAction.CommentsEnabledChanged ->
+                _uiState.update { it.copy(commentsEnabled = action.enabled) }
+
             MomentAudienceUiAction.PostClicked -> post()
         }
     }
@@ -78,9 +81,19 @@ class MomentAudienceViewModel(
         viewModelScope.launch {
             try {
                 postSender.postMoment(
-                    attachments = draft.attachments,
+                    // Editor stores AttachmentPendingFile so back-nav can
+                    // rehydrate the composer; convert to AttachmentInput at
+                    // the post boundary (HEIC/trim/etc. metadata flows through).
+                    attachments = draft.attachments.map { it.toAttachmentInput() },
                     description = draft.description,
                     recipients = odinIds,
+                    // Aligned-by-index list of optional EXIF info per attachment.
+                    // Null when the attachment isn't an image or the user didn't
+                    // opt in to anything; the sender drops nulls before keying
+                    // by payload key, so an all-null list yields no `mediaInfo`.
+                    mediaInfoByAttachment = draft.attachments
+                        .map { it.toMediaInfo() }
+                        .takeIf { list -> list.any { it != null } },
                 )
                 // recordUsed is fire-and-forget on the lookup service's own
                 // singleton scope — see its KDoc. Calling it from

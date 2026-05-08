@@ -27,4 +27,8 @@ object MomentsProtocol {
         Uuid.parse("00000000-0000-0000-0000-0000004d7200")
 
     const val MomentsRecipientMruVersionNumberOne = 1
+
+    const val MomentCommentFileType = 7052
+
+    const val MomentCommentVersionNumberOne = 1
 }

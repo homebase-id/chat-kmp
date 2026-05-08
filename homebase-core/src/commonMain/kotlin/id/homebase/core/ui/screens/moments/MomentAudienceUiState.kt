@@ -10,6 +10,7 @@ data class MomentAudienceUiState(
     val query: String = "",
     val isPosting: Boolean = false,
     val draftReady: Boolean = false,
+    val commentsEnabled: Boolean = false,
 ) {
     val canPost: Boolean get() = draftReady && selected.isNotEmpty() && !isPosting
 
@@ -33,6 +34,7 @@ data class MomentAudienceUiState(
 sealed interface MomentAudienceUiAction {
     data class QueryChanged(val text: String) : MomentAudienceUiAction
     data class ToggleRecipient(val id: MomentsRecipientId) : MomentAudienceUiAction
+    data class CommentsEnabledChanged(val enabled: Boolean) : MomentAudienceUiAction
     data object PostClicked : MomentAudienceUiAction
 }
 

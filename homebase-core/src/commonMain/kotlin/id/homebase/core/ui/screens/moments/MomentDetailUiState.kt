@@ -1,7 +1,10 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
+import kotlin.uuid.Uuid
 
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
@@ -13,6 +16,25 @@ data class MomentDetailUiState(
      * the pager at page 0.
      */
     val initialPayloadKey: String? = null,
+
+    /** Live comment list for this moment, newest-first (matches the service emit order). */
+    val comments: List<MomentCommentItem> = emptyList(),
+    /**
+     * Self-identity used for "is this comment mine?" checks. Null while
+     * credentials are still loading; UI should treat that as "not mine"
+     * until it lands.
+     */
+    val selfOdinId: OdinId? = null,
+    val commentDraft: String = "",
+    val isPostingComment: Boolean = false,
+    /**
+     * Comment currently being edited inline. Null when no edit is active.
+     * Tap an own comment's "edit" affordance to enter edit mode; cancel or
+     * save to leave it.
+     */
+    val editingCommentId: Uuid? = null,
+    val editingCommentDraft: String = "",
+    val isSavingCommentEdit: Boolean = false,
 )
 
 sealed interface MomentDetailUiAction {
@@ -26,4 +48,17 @@ sealed interface MomentDetailUiAction {
 
     /** Dismiss whichever full-screen viewer is showing. */
     data object CloseFullScreenOverlay : MomentDetailUiAction
+
+    data class CommentDraftChanged(val text: String) : MomentDetailUiAction
+    data object PostComment : MomentDetailUiAction
+
+    data class StartEditComment(val commentId: Uuid) : MomentDetailUiAction
+    data class EditCommentDraftChanged(val text: String) : MomentDetailUiAction
+    data object SaveCommentEdit : MomentDetailUiAction
+    data object CancelCommentEdit : MomentDetailUiAction
+}
+
+sealed interface MomentDetailUiEvent {
+    data class CommentPostFailed(val message: String?) : MomentDetailUiEvent
+    data class CommentEditFailed(val message: String?) : MomentDetailUiEvent
 }

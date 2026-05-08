@@ -64,6 +64,10 @@ import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_detail_add_comment_hint
+import id.homebase.resources.moments_detail_comment_cancel
+import id.homebase.resources.moments_detail_comment_edit
+import id.homebase.resources.moments_detail_comment_save
+import id.homebase.resources.moments_detail_comment_you
 import id.homebase.resources.moments_detail_comments_section
 import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
@@ -189,6 +193,7 @@ private fun DetailContent(
             }
         } else {
             MomentDetailContent(
+                uiState = uiState,
                 moment = moment,
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
@@ -203,6 +208,7 @@ private fun DetailContent(
 
 @Composable
 private fun MomentDetailContent(
+    uiState: MomentDetailUiState,
     moment: MomentFeedItem,
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
@@ -308,8 +314,9 @@ private fun MomentDetailContent(
             )
         }
 
-        // Comments — placeholder always-on section. Wire to
-        // `MomentPostContent.commentsEnabled` once that flag round-trips.
+        // Comments — live stream from MomentCommentsService via the VM.
+        // Wire visibility to `MomentPostContent.commentsEnabled` once that
+        // flag round-trips through the post pipeline.
         item {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             CommentsHeader(
@@ -318,12 +325,38 @@ private fun MomentDetailContent(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        // Comment list is always empty for now — no comments service yet.
-        item {
-            CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        if (uiState.comments.isEmpty()) {
+            item {
+                CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        } else {
+            // Service emits newest-first; reverse for chat-style chronological
+            // ordering (oldest at top, newest just above the input).
+            items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
+                val isMine = comment.senderOdinId == null ||
+                    (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+                CommentRow(
+                    comment = comment,
+                    isMine = isMine,
+                    isEditing = uiState.editingCommentId == comment.id,
+                    editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+                    isSaving = uiState.isSavingCommentEdit,
+                    onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+                    onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+                    onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+                    onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
         item {
             AddCommentRow(
+                draft = uiState.commentDraft,
+                isPosting = uiState.isPostingComment,
+                onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                onSend = { onAction(MomentDetailUiAction.PostComment) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -460,8 +493,14 @@ private fun CommentsEmpty(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AddCommentRow(modifier: Modifier = Modifier) {
-    var draft by remember { mutableStateOf("") }
+private fun AddCommentRow(
+    draft: String,
+    isPosting: Boolean,
+    onDraftChanged: (String) -> Unit,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canSend = draft.isNotBlank() && !isPosting
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -469,16 +508,113 @@ private fun AddCommentRow(modifier: Modifier = Modifier) {
     ) {
         OutlinedTextField(
             value = draft,
-            onValueChange = { draft = it },
+            onValueChange = onDraftChanged,
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
             modifier = Modifier.weight(1f),
             singleLine = true,
+            enabled = !isPosting,
         )
-        IconButton(onClick = { /* TODO: post comment */ }) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.Send,
-                contentDescription = stringResource(MR.string.moments_detail_send_comment),
+        IconButton(onClick = onSend, enabled = canSend) {
+            if (isPosting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = stringResource(MR.string.moments_detail_send_comment),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentRow(
+    comment: id.homebase.core.moments.services.MomentCommentItem,
+    isMine: Boolean,
+    isEditing: Boolean,
+    editDraft: String,
+    isSaving: Boolean,
+    onEditClick: () -> Unit,
+    onEditDraftChanged: (String) -> Unit,
+    onSaveEdit: () -> Unit,
+    onCancelEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = if (isMine) stringResource(MR.string.moments_detail_comment_you)
+                else comment.senderOdinId?.domainName ?: "",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
             )
+            Text(
+                text = formatCapturedAt(comment.userDateMs),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (isEditing) {
+            // Inline edit field — replaces the body until Save or Cancel.
+            // Disabled while a save is in flight so the user can't double-tap.
+            OutlinedTextField(
+                value = editDraft,
+                onValueChange = onEditDraftChanged,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaving,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                androidx.compose.material3.TextButton(
+                    onClick = onCancelEdit,
+                    enabled = !isSaving,
+                ) {
+                    Text(stringResource(MR.string.moments_detail_comment_cancel))
+                }
+                androidx.compose.material3.TextButton(
+                    onClick = onSaveEdit,
+                    enabled = !isSaving && editDraft.isNotBlank(),
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(stringResource(MR.string.moments_detail_comment_save))
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = comment.body,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // Edit affordance only on own comments and only once the comment
+            // has a server-confirmed versionTag. While the comment is still
+            // optimistic the version is null and the service rejects the edit.
+            if (isMine && comment.versionTag != null) {
+                androidx.compose.material3.TextButton(
+                    onClick = onEditClick,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                ) {
+                    Text(stringResource(MR.string.moments_detail_comment_edit))
+                }
+            }
         }
     }
 }

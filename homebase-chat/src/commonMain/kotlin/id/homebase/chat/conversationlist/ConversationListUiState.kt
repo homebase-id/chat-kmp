@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.api.image.ImageMetadata
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -218,7 +219,19 @@ sealed interface FullScreenOverlay {
 }
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
-    data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
+    /**
+     * @param metadata EXIF / image-file metadata, populated asynchronously after
+     *   the picker callback. Null until the read finishes (or the read fails).
+     * @param includeLocation Per-image opt-in for embedding GPS coordinates in the
+     *   eventual post. Date / camera / dimensions always travel when known —
+     *   only the privacy-sensitive bit is gated. Defaults false.
+     */
+    data class FileImage(
+        val id: Uuid,
+        val file: PlatformFile,
+        val metadata: ImageMetadata? = null,
+        val includeLocation: Boolean = false,
+    ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,
         val file: PlatformFile,
