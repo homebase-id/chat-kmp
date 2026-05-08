@@ -631,7 +631,8 @@ fun MessageBubbleRaw(
                                             textPlaceable.height +
                                             (showMorePlaceable.height) +
                                             infoPlaceable.height +
-                                            8.dp.roundToPx()
+                                            8.dp.roundToPx() +
+                                            4.dp.roundToPx()
                             }
                         } else {
                             finalWidth = maxOf(
@@ -645,7 +646,7 @@ fun MessageBubbleRaw(
                                 placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width
                             finalHeight =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height + 4.dp.roundToPx()
                         }
 
                         layout(finalWidth, finalHeight) {

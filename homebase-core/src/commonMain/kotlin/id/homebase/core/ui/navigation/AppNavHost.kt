@@ -106,6 +106,13 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
+import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.resources.MR
+import id.homebase.resources.nav_chats
+import id.homebase.resources.nav_feed
+import id.homebase.resources.nav_home
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 @Composable
@@ -308,7 +315,7 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
+                            icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
                             label = { Text(stringResource(topLevelRoute.labelRes)) },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
@@ -338,7 +345,7 @@ fun AppNavHost(
                     NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
-                                icon = { Icon(topLevelRoute.icon, contentDescription = null) },
+                                icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {

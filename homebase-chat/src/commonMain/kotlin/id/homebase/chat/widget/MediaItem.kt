@@ -59,6 +59,7 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
+import id.homebase.resources.cd_play_video
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_message_video_thumbnail
 import kotlinx.collections.immutable.ImmutableMap
@@ -372,7 +373,7 @@ fun MediaItem(
                     if (!isUploading) {
                         Icon(
                             imageVector = Icons.Default.PlayCircle,
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_play_video),
                             modifier = Modifier
                                 .size(48.dp)
                                 .align(Alignment.Center),

@@ -4,7 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -78,6 +80,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -89,6 +92,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -182,6 +186,7 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
+import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
@@ -887,6 +892,17 @@ fun ConversationContent(
                                         }
                                     }
 
+                                    is MessageListContentModel.UnreadSeparator -> {
+                                        Box(
+                                            modifier = Modifier.animateItem(
+                                                fadeInSpec = tween(300),
+                                                fadeOutSpec = tween(400),
+                                            ),
+                                        ) {
+                                            UnreadMessagesSeparator()
+                                        }
+                                    }
+
                                     is MessageListContentModel.Message -> {
                                         val isFocused = uiState.searchResultMessageIds.getOrNull(
                                             uiState.currentSearchResultIndex
@@ -986,31 +1002,17 @@ fun ConversationContent(
                             }
                         }
 
-                        Column(
+                        ScrollToBottomButton(
+                            visible = showScrollToBottom,
+                            unreadCount = conversation.conversation.unreadCount,
                             modifier = Modifier.align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp),
-                        ) {
-                            AnimatedVisibility(
-                                visible = showScrollToBottom,
-                                enter = fadeIn() + scaleIn(),
-                                exit = fadeOut() + scaleOut(),
-                            ) {
-                                SmallFloatingActionButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                        }
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
-                                    )
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
                                 }
-                            }
-                        }
+                            },
+                        )
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -1612,7 +1614,7 @@ private fun ConnectIdentityRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
                         tint = SuccessGreen,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1746,6 +1748,74 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
                 day()
             }
             messageDate.format(format)
+        }
+    }
+}
+
+@Composable
+private fun ScrollToBottomButton(
+    visible: Boolean,
+    unreadCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = unreadCount > 0,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                val badgeScale = remember { Animatable(1f) }
+                var previousCount by remember { mutableIntStateOf(unreadCount) }
+                LaunchedEffect(unreadCount) {
+                    if (unreadCount > previousCount) {
+                        badgeScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = keyframes {
+                                durationMillis = 300
+                                1.25f at 100
+                                0.95f at 200
+                                1f at 300
+                            },
+                        )
+                    }
+                    previousCount = unreadCount
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = badgeScale.value
+                            scaleY = badgeScale.value
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Text(
+                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+            SmallFloatingActionButton(
+                onClick = onClick,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
+                )
+            }
         }
     }
 }

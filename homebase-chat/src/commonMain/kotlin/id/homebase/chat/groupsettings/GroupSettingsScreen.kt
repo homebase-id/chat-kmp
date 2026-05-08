@@ -80,6 +80,7 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_admin_file_delivered
@@ -284,7 +285,7 @@ fun GroupSettingsUi(
                 if (uiState.isLoading) {
                     LoadingListItem()
                 } else {
-                    ErrorInfoItem("No group could be loaded")
+                    ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
                 }
             }
             uiState.conversation?.let { conversation ->
