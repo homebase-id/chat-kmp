@@ -184,7 +184,9 @@ jobs:
           XCEOF
 
       - name: Pre-build KMP framework
-        run: ./gradlew :homebase-core:linkReleaseFrameworkIosArm64
+        run: |
+          ./gradlew :homebase-core:linkReleaseFrameworkIosArm64
+          ./gradlew :homebase-core:syncComposeResourcesForIos
         env:
           JDK_17: ${{ env.JAVA_HOME }}
 
