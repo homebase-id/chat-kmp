@@ -389,7 +389,10 @@ fun MessageBubbleRaw(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = authorColor ?: contentColor,
                                     modifier = Modifier.padding(
-                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp,
+                                        start = 12.dp,
+                                        top = 8.dp,
+                                        end = 12.dp,
+                                        bottom = 4.dp,
                                     ),
                                     maxLines = 1,
                                 )
@@ -526,7 +529,8 @@ fun MessageBubbleRaw(
                             if (hasMedia && i == mediaIndex) {
                                 mediaWidth = placeable.width
                             }
-                            if (authorName != null && i == 0) {
+                            val authorIndex = 0
+                            if (authorName != null && i == authorIndex) {
                                 authorWidth = placeable.width
                             }
                         }

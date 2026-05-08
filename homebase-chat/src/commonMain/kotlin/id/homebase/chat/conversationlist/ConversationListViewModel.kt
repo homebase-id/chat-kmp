@@ -1142,7 +1142,8 @@ class ConversationListViewModel(
                                         ScrollPosition(
                                             firstVisibleItemIndex = indexOfMessageForScroll,
                                             triggerScroll = true
-                                        )
+                                        ),
+                                    highlightedMessageId = action.messageId,
                                 )
                             }
                         }
@@ -1150,6 +1151,10 @@ class ConversationListViewModel(
                         sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
                     }
                 }
+            }
+
+            is ConversationListUiAction.ClearHighlightedMessage -> {
+                _messagesUiState.update { it.copy(highlightedMessageId = null) }
             }
 
             is ConversationListUiAction.SaveFile -> {
@@ -1708,7 +1713,6 @@ class ConversationListViewModel(
                             sourceMessageUniqueId = action.message.id,
                             targetConversationIds = conversationIds
                         )
-                        _messagesUiState.update { it.copy(uiSheet = null) }
                         sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
                     } catch (e: Exception) {
                         Logger.e("Failed to send forward message", e)
