@@ -135,39 +135,39 @@ fun VaultScreen(
     // Picker active tracking (passed to biometric gate to suppress background detection)
     var isPickerActive by remember { mutableStateOf(false) }
 
-    // Camera picker
+    var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
+
+    // Camera picker — dispatches to append or add based on fileForAppend
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
-            activeSectionForEntry?.let { section ->
-                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, listOf(it)))
+            val appendFile = fileForAppend
+            if (appendFile != null) {
+                viewModel.onAction(VaultUiAction.AppendPages(appendFile, listOf(it)))
+                fileForAppend = null
+            } else {
+                activeSectionForEntry?.let { section ->
+                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, listOf(it)))
+                }
             }
         }
     }
 
-    // File picker wired to active section
+    // File picker — dispatches to append or add based on fileForAppend
     val filePicker = rememberFilePickerLauncher(
         type = FileKitType.Image,
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
-            activeSectionForEntry?.let { section ->
-                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+            val appendFile = fileForAppend
+            if (appendFile != null) {
+                viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
+                fileForAppend = null
+            } else {
+                activeSectionForEntry?.let { section ->
+                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+                }
             }
         }
-    }
-
-    var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
-
-    val appendPicker = rememberFilePickerLauncher(
-        type = FileKitType.Image,
-        mode = FileKitMode.Multiple(),
-    ) { files ->
-        if (!files.isNullOrEmpty()) {
-            fileForAppend?.let { f ->
-                viewModel.onAction(VaultUiAction.AppendPages(f, files))
-            }
-        }
-        fileForAppend = null
     }
 
     VaultBiometricGate(
@@ -214,6 +214,7 @@ fun VaultScreen(
                     transitionSpec = {
                         fadeIn(tween(transitionDuration)) togetherWith fadeOut(tween(transitionDuration))
                     },
+                    contentKey = { it?.let { "gallery" } },
                 ) { overlay ->
                     if (overlay == null) {
                         VaultContent(
@@ -254,8 +255,7 @@ fun VaultScreen(
                             },
                             onAppendPages = {
                                 fileForAppend = overlay.file
-                                isPickerActive = true
-                                appendPicker.launch()
+                                showImageAddSheet = true
                             },
                             onUpdateLabel = { label ->
                                 viewModel.onAction(VaultUiAction.UpdateLabel(overlay.file, label))
@@ -322,6 +322,7 @@ fun VaultScreen(
             onDismiss = {
                 showImageAddSheet = false
                 activeSectionForEntry = null
+                fileForAppend = null
             },
         )
     }

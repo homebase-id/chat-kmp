@@ -37,10 +37,13 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.image.HomebaseImage
+import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.resources.MR
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import org.jetbrains.compose.resources.stringResource
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -117,10 +120,19 @@ fun VaultEntryCard(
                 val localImage = localCtx as? LocalAttachmentContext.Image
 
                 if (file.isImage && localImage != null) {
+                    var imageModifier: Modifier = Modifier.fillMaxSize()
+                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                        with(sharedTransitionScope) {
+                            imageModifier = imageModifier.sharedBounds(
+                                rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
+                        }
+                    }
                     AsyncImage(
                         model = localImage.localFilePath,
                         contentDescription = description,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = imageModifier,
                         contentScale = ContentScale.Crop,
                     )
                 } else if (file.isImage) {
@@ -175,25 +187,18 @@ fun VaultEntryCard(
 
                 // Upload status overlay
                 when (val status = file.uploadStatus) {
-                    is VaultUploadStatus.Preparing -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        }
-                    }
-
+                    is VaultUploadStatus.Preparing,
                     is VaultUploadStatus.Uploading -> {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.inversePrimary,
+                            )
                         }
                     }
 
@@ -206,7 +211,7 @@ fun VaultEntryCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.ErrorOutline,
-                                contentDescription = null,
+                                contentDescription = stringResource(MR.string.vault_upload_failed),
                                 tint = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier = Modifier.size(24.dp),
                             )

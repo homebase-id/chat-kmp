@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -28,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -50,8 +52,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -76,6 +82,7 @@ fun VaultGalleryDetailSheet(
     onAppendPages: () -> Unit,
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
+    localAttachmentStore: LocalAttachmentContextStore,
 ) {
     val scope = rememberCoroutineScope()
     val thumbnailListState = rememberLazyListState()
@@ -126,34 +133,63 @@ fun VaultGalleryDetailSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isImage) {
-                        val thumbImageData = remember(file.fileId, descriptor.key, descriptor.lastModified) {
-                            val payloadIv = descriptor.iv?.let {
-                                try {
-                                    Base64.decode(it)
-                                } catch (_: Exception) {
-                                    null
-                                }
-                            } ?: return@remember null
-                            HomebaseImageData(
-                                driveId = file.driveId,
-                                fileId = file.fileId,
-                                payloadKey = descriptor.key,
-                                previewThumbnail = file.previewThumbnail,
-                                lastModified = descriptor.lastModified,
-                                isEncrypted = file.isEncrypted,
-                                keyHeader = KeyHeader(
-                                    iv = payloadIv, aesKey = file.keyHeader.aesKey
-                                ),
+                        val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
+                            .collectAsStateWithLifecycle(
+                                initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
                             )
-                        }
-                        if (thumbImageData != null) {
-                            HomebaseImage(
-                                imageData = thumbImageData,
-                                modifier = Modifier.size(48.dp)
-                                    .background(Color.Transparent, RoundedCornerShape(6.dp)),
-                                contentScale = ContentScale.Crop,
+                        val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
+
+                        val isPending = descriptor.iv == null
+                        if (localFilePath != null) {
+                            AsyncImage(
+                                model = localFilePath,
                                 contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                contentScale = ContentScale.Crop,
                             )
+                            if (isPending) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.inversePrimary,
+                                    )
+                                }
+                            }
+                        } else {
+                            val thumbImageData = remember(file.fileId, descriptor.key, descriptor.lastModified) {
+                                val payloadIv = descriptor.iv?.let {
+                                    try {
+                                        Base64.decode(it)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                } ?: return@remember null
+                                HomebaseImageData(
+                                    driveId = file.driveId,
+                                    fileId = file.fileId,
+                                    payloadKey = descriptor.key,
+                                    previewThumbnail = file.previewThumbnail,
+                                    lastModified = descriptor.lastModified,
+                                    isEncrypted = file.isEncrypted,
+                                    keyHeader = KeyHeader(
+                                        iv = payloadIv, aesKey = file.keyHeader.aesKey
+                                    ),
+                                )
+                            }
+                            if (thumbImageData != null) {
+                                HomebaseImage(
+                                    imageData = thumbImageData,
+                                    modifier = Modifier.size(48.dp)
+                                        .background(Color.Transparent, RoundedCornerShape(6.dp)),
+                                    contentScale = ContentScale.Crop,
+                                    contentDescription = null,
+                                )
+                            }
                         }
                     } else {
                         Icon(

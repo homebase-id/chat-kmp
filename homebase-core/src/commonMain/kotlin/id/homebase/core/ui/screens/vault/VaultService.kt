@@ -231,7 +231,7 @@ class VaultService(
                 iv = ByteArrayUtil.getRndByteArray(16),
                 aesKey = keyHeader.aesKey
             )
-            val metadata = UploadFileMetadata(
+            val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
                 appData = UploadAppFileMetaData(
@@ -240,9 +240,9 @@ class VaultService(
                     fileType = VAULT_SECTION_TYPE,
                 ),
                 versionTag = versionTag,
-            ).encryptContent(newKeyHeader)
+            )
 
-            outboxSync.tryEnqueue(
+            val enqueued = outboxSync.tryEnqueue(
                 request = UpdateFileByUniqueIdRequest(
                     driveId = driveId,
                     uniqueId = sectionUniqueId,
@@ -253,9 +253,19 @@ class VaultService(
                         recipients = emptyList(),
                         manifest = UpdateManifest.build(),
                     ),
-                    metadata = metadata,
+                    metadata = unencryptedMetadata.encryptContent(newKeyHeader),
                 ),
             )
+
+            if (enqueued) {
+                try {
+                    optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)
+                } catch (e: Exception) {
+                    Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for section: $sectionUniqueId" }
+                }
+            }
+
+            enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue section update: $sectionUniqueId" }
             false

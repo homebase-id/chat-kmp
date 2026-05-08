@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.vault.gallery
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,8 +30,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -44,12 +50,19 @@ import org.jetbrains.compose.resources.stringResource
 fun VaultZoomableImage(
     file: VaultEntry,
     descriptor: PayloadDescriptor,
+    localAttachmentStore: LocalAttachmentContextStore,
     onToggleUI: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     var scale by remember(descriptor.key) { mutableStateOf(1f) }
     var offset by remember(descriptor.key) { mutableStateOf(Offset.Zero) }
+
+    val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
+        .collectAsStateWithLifecycle(
+            initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
+        )
+    val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
 
     val pageImageData = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
         val payloadIv = descriptor.iv?.let {
@@ -71,6 +84,13 @@ fun VaultZoomableImage(
         )
     }
 
+    val zoomableModifier = Modifier.fillMaxSize().graphicsLayer(
+        scaleX = scale,
+        scaleY = scale,
+        translationX = offset.x,
+        translationY = offset.y,
+    )
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val viewportWidth = constraints.maxWidth.toFloat()
         val viewportHeight = constraints.maxHeight.toFloat()
@@ -91,26 +111,45 @@ fun VaultZoomableImage(
             }
         }
 
-        if (pageImageData != null) {
+        val gestureModifier = Modifier.transformable(
+            state = transformState,
+            canPan = { scale > 1f },
+        ).pointerInput(Unit) {
+            detectTapGestures(
+                onDoubleTap = {
+                    scale = if (scale > 1f) 1f else 2f
+                    if (scale == 1f) offset = Offset.Zero
+                },
+                onTap = { onToggleUI() },
+            )
+        }
+
+        val isPending = descriptor.iv == null
+        if (localFilePath != null) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = localFilePath,
+                    contentDescription = file.label?.ifBlank { null } ?: file.fileName,
+                    modifier = zoomableModifier.then(gestureModifier),
+                    contentScale = ContentScale.Fit,
+                )
+                if (isPending) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(48.dp),
+                            color = MaterialTheme.colorScheme.inversePrimary,
+                        )
+                    }
+                }
+            }
+        } else if (pageImageData != null) {
             HomebaseImage(
                 imageData = pageImageData,
-                modifier = Modifier.fillMaxSize().graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offset.x,
-                    translationY = offset.y,
-                ).transformable(
-                    state = transformState,
-                    canPan = { scale > 1f },
-                ).pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            scale = if (scale > 1f) 1f else 2f
-                            if (scale == 1f) offset = Offset.Zero
-                        },
-                        onTap = { onToggleUI() },
-                    )
-                },
+                modifier = zoomableModifier.then(gestureModifier),
                 contentScale = ContentScale.Fit,
                 contentDescription = file.label?.ifBlank { null } ?: file.fileName,
                 sharedTransitionScope = sharedTransitionScope,

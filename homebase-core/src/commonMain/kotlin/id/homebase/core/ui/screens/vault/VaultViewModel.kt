@@ -108,7 +108,7 @@ class VaultViewModel(
     init {
         viewModelScope.launch {
             val hasDrive = isVaultRegistered()
-            _isActivated.value = hasDrive
+            _isActivated.update { hasDrive }
             Logger.i(tag = TAG) { "init: isActivated=$hasDrive" }
             if (hasDrive) {
                 try {
@@ -143,16 +143,16 @@ class VaultViewModel(
                 .map { it[vaultLabeledDrive.drive.alias]?.state }
                 .collect { state ->
                     if (state != null && _isActivated.value != true) {
-                        _isActivated.value = true
+                        _isActivated.update { true }
                         Logger.i(tag = TAG) { "observeDriveSyncStatus: vault drive appeared in driveStatuses — setting isActivated=true" }
                     }
-                    _syncingState.value = state is DriveState.Synchronizing
+                    _syncingState.update { state is DriveState.Synchronizing }
                 }
         }
     }
 
     private suspend fun handleActivation() {
-        _checkingPermissions.value = false
+        _checkingPermissions.update { false }
         val alreadyRegistered = isVaultRegistered()
         if (!alreadyRegistered) {
             Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
@@ -162,7 +162,7 @@ class VaultViewModel(
             Logger.i(tag = TAG) { "activation: vault already registered — mounting drive" }
             authConnectionCoordinator.mountDrive(vaultLabeledDrive)
         }
-        _isActivated.value = true
+        _isActivated.update { true }
         _events.tryEmit(VaultUiEvent.Activated)
     }
 
@@ -203,7 +203,7 @@ class VaultViewModel(
 
         when (action) {
             VaultUiAction.SetupClicked -> {
-                _checkingPermissions.value = true
+                _checkingPermissions.update { true }
                 if (vaultPermissionViewModel.permissionsGranted.value) {
                     viewModelScope.launch { handleActivation() }
                 } else {
@@ -285,6 +285,7 @@ class VaultViewModel(
     }
 
     private fun handleDeleteSection(section: VaultSection) {
+        vaultStream.removeSection(section.sectionId)
         viewModelScope.launch {
             val success = vaultService.deleteSection(section.sectionId, section.fileId)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteSectionFailed))
@@ -327,7 +328,9 @@ class VaultViewModel(
                 bKey,
             )
             if (!aSuccess || !bSuccess) {
-                vaultStream.loadAll()
+                vaultStream.updateOptimisticSection(a)
+                vaultStream.updateOptimisticSection(b)
+                vaultStream.resortSections()
             }
         }
     }
@@ -344,6 +347,27 @@ class VaultViewModel(
         val firstContentType = resolveContentType(firstName, files.first().mimeType()?.toString())
         val pendingId = Uuid.random()
 
+        val fileData = files.map { file ->
+            val ct = resolveContentType(file.name, file.mimeType()?.toString())
+            file.path to ct
+        }
+
+        val placeholderDescriptors = fileData.mapIndexed { index, (_, contentType) ->
+            PayloadDescriptor(
+                key = "vlt_pg_${index.toString().padStart(2, '0')}",
+                contentType = contentType,
+            )
+        }
+
+        fileData.forEachIndexed { index, (path, _) ->
+            val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
+            localAttachmentStore.put(
+                pendingId,
+                payloadKey,
+                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
+            )
+        }
+
         val pendingItem = VaultEntry(
             fileId = pendingId,
             uniqueId = pendingId,
@@ -359,23 +383,12 @@ class VaultViewModel(
             uploadStatus = VaultUploadStatus.Preparing,
             pendingFileUri = files.first().path,
             groupId = action.sectionId,
+            payloadDescriptors = placeholderDescriptors,
         )
 
         vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
 
         viewModelScope.launch {
-            val fileData = files.map { file ->
-                val ct = resolveContentType(file.name, file.mimeType()?.toString())
-                file.path to ct
-            }
-            fileData.forEachIndexed { index, (path, _) ->
-                val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
-                localAttachmentStore.put(
-                    pendingId,
-                    payloadKey,
-                    LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-                )
-            }
             val uniqueId = vaultUploaderService.uploadFile(
                 entryName = firstName,
                 files = fileData,
@@ -417,8 +430,9 @@ class VaultViewModel(
     }
 
     private fun handleRenameFile(action: VaultUiAction.RenameFile) {
+        val file = action.file
+        vaultStream.updateOptimisticEntry(file.copy(fileName = action.newName))
         viewModelScope.launch {
-            val file = action.file
             val success = vaultService.renameEntry(
                 uniqueId = file.uniqueId,
                 newName = action.newName,
@@ -433,37 +447,42 @@ class VaultViewModel(
     }
 
     private fun handleDeleteFile(action: VaultUiAction.DeleteFile) {
+        _overlayState.update { null }
+        vaultStream.removeEntry(action.file.uniqueId)
         viewModelScope.launch {
             val success = vaultService.deleteEntry(action.file.uniqueId, action.file.fileId)
-            if (success) {
-                _overlayState.update { null }
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteFileFailed(action.file.fileName)))
-            }
+            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteFileFailed(action.file.fileName)))
         }
     }
 
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
-        viewModelScope.launch {
-            val fileData = action.newFiles.map { file ->
-                val ct = resolveContentType(file.name, file.mimeType()?.toString())
-                file.path to ct
-            }
+        val fileData = action.newFiles.map { file ->
+            val ct = resolveContentType(file.name, file.mimeType()?.toString())
+            file.path to ct
+        }
 
-            val existingMax = action.file.payloadDescriptors
-                .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-                .maxOrNull() ?: -1
-            val placeholders = fileData.mapIndexed { i, (_, contentType) ->
-                PayloadDescriptor(
-                    key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}",
-                    contentType = contentType,
-                )
-            }
-            val optimisticEntry = action.file.copy(
-                payloadDescriptors = action.file.payloadDescriptors + placeholders,
+        val existingMax = action.file.payloadDescriptors
+            .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
+            .maxOrNull() ?: -1
+        val placeholders = fileData.mapIndexed { i, (_, contentType) ->
+            val key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}"
+            PayloadDescriptor(key = key, contentType = contentType)
+        }
+
+        fileData.forEachIndexed { i, (path, _) ->
+            localAttachmentStore.put(
+                action.file.uniqueId,
+                placeholders[i].key,
+                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
             )
-            vaultStream.updateOptimisticEntry(optimisticEntry)
+        }
 
+        val optimisticEntry = action.file.copy(
+            payloadDescriptors = action.file.payloadDescriptors + placeholders,
+        )
+        vaultStream.updateOptimisticEntry(optimisticEntry)
+
+        viewModelScope.launch {
             val success = vaultUploaderService.appendPages(
                 file = action.file,
                 newFiles = fileData,
@@ -478,17 +497,24 @@ class VaultViewModel(
 
     private fun handleDeletePage(action: VaultUiAction.DeletePage) {
         val isLastPage = action.file.payloadDescriptors.size <= 1
+        if (isLastPage) {
+            _overlayState.update { null }
+            vaultStream.removeEntry(action.file.uniqueId)
+        } else {
+            vaultStream.markPayloadPendingDelete(action.file.uniqueId, action.payloadKey)
+            val updated = action.file.copy(
+                payloadDescriptors = action.file.payloadDescriptors.filter { it.key != action.payloadKey },
+            )
+            vaultStream.updateOptimisticEntry(updated)
+        }
         viewModelScope.launch {
             val success = vaultUploaderService.deletePage(action.file, action.payloadKey)
-            if (success) {
-                if (isLastPage) _overlayState.update { null }
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DeletePageFailed))
-            }
+            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.DeletePageFailed))
         }
     }
 
     private fun handleUpdateNotes(action: VaultUiAction.UpdateNotes) {
+        vaultStream.updateOptimisticEntry(action.file.copy(notes = action.notes))
         viewModelScope.launch {
             val success = vaultService.updateNotes(action.file, action.notes)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.SaveNotesFailed))
@@ -496,11 +522,13 @@ class VaultViewModel(
     }
 
     private fun handleUpdateLabel(action: VaultUiAction.UpdateLabel) {
+        val normalizedLabel = action.label?.ifBlank { null }
+        vaultStream.updateOptimisticEntry(action.file.copy(label = normalizedLabel))
         viewModelScope.launch {
             val success = vaultService.updateLabel(
                 uniqueId = action.file.uniqueId,
                 existingName = action.file.fileName,
-                newLabel = action.label?.ifBlank { null },
+                newLabel = normalizedLabel,
                 existingNotes = action.file.notes,
                 groupId = action.file.groupId,
                 versionTag = action.file.versionTag,

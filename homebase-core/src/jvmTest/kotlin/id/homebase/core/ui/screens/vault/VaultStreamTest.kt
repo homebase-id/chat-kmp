@@ -13,6 +13,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -167,6 +168,23 @@ class VaultStreamTest {
         assertEquals("Documents", sections[0].title)
         assertTrue(sections[0].isFirst)
         assertTrue(sections[0].isLast)
+    }
+
+    @Test
+    fun insertOptimisticSection_skipsIfSectionIdAlreadyExists() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val original = buildSection(sectionId = sectionId, title = "Original", sortOrder = 0)
+        stream.insertOptimisticSection(original)
+
+        val duplicate = buildSection(sectionId = sectionId, title = "Duplicate", sortOrder = 1)
+        stream.insertOptimisticSection(duplicate)
+
+        val sections = stream.sections.value
+        assertEquals(1, sections.size)
+        assertEquals("Original", sections[0].title)
     }
 
     @Test
@@ -379,5 +397,130 @@ class VaultStreamTest {
         val sections = stream.sections.value
         assertEquals(1, sections.size)
         assertEquals("Only", sections[0].title)
+    }
+
+    // ---------------------------------------------------------------
+    // markPayloadPendingDelete + updateOptimisticEntry
+    // ---------------------------------------------------------------
+
+    @Test
+    fun markPayloadPendingDelete_removesDescriptorFromOptimisticUpdate() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+
+        val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
+            payloadDescriptors = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = "def"),
+                PayloadDescriptor(key = "vlt_pg_02", contentType = "image/jpeg", iv = "ghi"),
+            ),
+        )
+        stream.insertOptimisticEntry(entry, sectionId)
+
+        stream.markPayloadPendingDelete(entryId, "vlt_pg_01")
+        val updated = entry.copy(
+            payloadDescriptors = entry.payloadDescriptors.filter { it.key != "vlt_pg_01" },
+        )
+        stream.updateOptimisticEntry(updated)
+
+        val result = stream.entriesBySection.value[sectionId]!!.first()
+        assertEquals(2, result.payloadDescriptors.size)
+        assertEquals("vlt_pg_00", result.payloadDescriptors[0].key)
+        assertEquals("vlt_pg_02", result.payloadDescriptors[1].key)
+    }
+
+    // ---------------------------------------------------------------
+    // Resurrection prevention (deletedSectionIds / deletedEntryIds)
+    // ---------------------------------------------------------------
+
+    @Test
+    fun removeSection_preventsResurrectionViaInsertOptimisticSection() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val section = buildSection(sectionId = sectionId, title = "Deleted")
+        stream.insertOptimisticSection(section)
+        stream.removeSection(sectionId)
+
+        // Attempt to re-add the same section — should be silently ignored
+        stream.insertOptimisticSection(section)
+        assertEquals(0, stream.sections.value.size)
+    }
+
+    @Test
+    fun removeSection_preventsResurrectionViaInsertOptimisticEntry() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+        stream.removeSection(sectionId)
+
+        // Entry's section was deleted — re-inserting should be blocked
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+        assertFalse(stream.entriesBySection.value.containsKey(sectionId))
+    }
+
+    @Test
+    fun removeEntry_preventsResurrectionViaInsertOptimisticEntry() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+        stream.removeEntry(entryId)
+
+        // Re-inserting deleted entry — should be blocked
+        stream.insertOptimisticEntry(
+            buildEntry(uniqueId = entryId, groupId = sectionId), sectionId,
+        )
+        assertEquals(0, stream.entriesBySection.value[sectionId]?.size ?: 0)
+    }
+
+    @Test
+    fun updateOptimisticEntry_preservesPendingAppendDescriptors() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        val sectionId = Uuid.random()
+        val entryId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId))
+
+        val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
+            payloadDescriptors = listOf(
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
+            ),
+        )
+        stream.insertOptimisticEntry(entry, sectionId)
+
+        val withPlaceholder = entry.copy(
+            payloadDescriptors = entry.payloadDescriptors + PayloadDescriptor(
+                key = "vlt_pg_01", contentType = "image/png",
+            ),
+        )
+        stream.updateOptimisticEntry(withPlaceholder)
+
+        val staleUpdate = entry.copy(fileName = "renamed.jpg")
+        stream.updateOptimisticEntry(staleUpdate)
+
+        val result = stream.entriesBySection.value[sectionId]!!.first()
+        assertEquals("renamed.jpg", result.fileName)
+        assertEquals(1, result.payloadDescriptors.size)
+        assertEquals("vlt_pg_00", result.payloadDescriptors[0].key)
     }
 }

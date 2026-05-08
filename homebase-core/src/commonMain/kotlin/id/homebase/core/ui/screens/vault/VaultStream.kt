@@ -60,6 +60,11 @@ class VaultStream(
     private val _isLoaded = MutableStateFlow(false)
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
 
+    private val _pendingPageDeletes = MutableStateFlow<Map<Uuid, Set<String>>>(emptyMap())
+
+    private val deletedSectionIds = mutableSetOf<Uuid>()
+    private val deletedEntryIds = mutableSetOf<Uuid>()
+
     init {
         scope.launch { loadAll() }
         scope.launch { observeEvents() }
@@ -104,7 +109,12 @@ class VaultStream(
             val allEntries = fileRecords.mapNotNull { it.toVaultEntry() }
             val groupedEntries = allEntries.filter { it.groupId != null }.groupBy { it.groupId!! }
 
-            val sortedPairs = sectionPairs.sortedBy { it.second.sortOrder }
+            val sortedPairs = sectionPairs
+                .filter { (file, _) ->
+                    val id = file.fileMetadata.appData.uniqueId ?: file.fileId
+                    id !in deletedSectionIds
+                }
+                .sortedBy { it.second.sortOrder }
             val sectionModels = sortedPairs.mapIndexed { index, pair ->
                 pair.toVaultSection(
                     isFirst = index == 0,
@@ -112,8 +122,14 @@ class VaultStream(
                 )
             }
 
+            val filteredEntries = groupedEntries
+                .filterKeys { it !in deletedSectionIds }
+                .mapValues { (_, entries) ->
+                    entries.filterNot { it.uniqueId in deletedEntryIds }
+                }
+
             _sections.value = sectionModels
-            _entriesBySection.value = groupedEntries
+            _entriesBySection.value = filteredEntries
 
             Logger.d(tag = TAG) {
                 "loadAll: ${sectionModels.size} section(s), ${allEntries.size} entry(ies)"
@@ -182,6 +198,7 @@ class VaultStream(
     private fun upsertSection(file: HomebaseFile) {
         val content = file.toVaultSectionModel() ?: return
         val sectionId = file.fileMetadata.appData.uniqueId ?: file.fileId
+        if (sectionId in deletedSectionIds) return
 
         _sections.update { current ->
             val mutable = current.toMutableList()
@@ -199,12 +216,41 @@ class VaultStream(
     private fun upsertEntry(file: HomebaseFile) {
         val entry = file.toVaultEntry() ?: return
         val sectionId = entry.groupId ?: return
+        if (entry.uniqueId in deletedEntryIds) return
+        if (sectionId in deletedSectionIds) return
+
+        val pendingDeletes = _pendingPageDeletes.value[entry.uniqueId].orEmpty()
 
         _entriesBySection.update { current ->
             val list = current[sectionId]?.toMutableList() ?: mutableListOf()
             val idx = list.indexOfFirst { it.uniqueId == entry.uniqueId }
-            if (idx >= 0) list[idx] = entry else list.add(entry)
+            if (idx >= 0) {
+                val existing = list[idx]
+                val pendingAppends = existing.payloadDescriptors.filter { desc ->
+                    desc.iv == null && entry.payloadDescriptors.none { it.key == desc.key }
+                }
+                val filteredDescriptors = if (pendingDeletes.isNotEmpty()) {
+                    entry.payloadDescriptors.filter { it.key !in pendingDeletes }
+                } else {
+                    entry.payloadDescriptors
+                }
+                list[idx] = entry.copy(payloadDescriptors = filteredDescriptors + pendingAppends)
+            } else {
+                list.add(entry)
+            }
             current + (sectionId to list.toList())
+        }
+
+        if (pendingDeletes.isNotEmpty()) {
+            val serverKeys = entry.payloadDescriptors.map { it.key }.toSet()
+            val confirmed = pendingDeletes.filter { it !in serverKeys }
+            if (confirmed.isNotEmpty()) {
+                _pendingPageDeletes.update { current ->
+                    val remaining = current[entry.uniqueId].orEmpty() - confirmed.toSet()
+                    if (remaining.isEmpty()) current - entry.uniqueId
+                    else current + (entry.uniqueId to remaining)
+                }
+            }
         }
     }
 
@@ -217,7 +263,9 @@ class VaultStream(
      * Called by VaultService after creating a section.
      */
     fun insertOptimisticSection(section: VaultSection) {
+        if (section.sectionId in deletedSectionIds) return
         _sections.update { current ->
+            if (current.any { it.sectionId == section.sectionId }) return@update current
             val mutable = current.toMutableList()
             mutable.add(section)
             val sorted = mutable.sortedBy { it.sortOrder }
@@ -246,6 +294,8 @@ class VaultStream(
      * Insert an entry optimistically (before the outbox confirms).
      */
     fun insertOptimisticEntry(entry: VaultEntry, sectionId: Uuid) {
+        if (entry.uniqueId in deletedEntryIds) return
+        if (sectionId in deletedSectionIds) return
         _entriesBySection.update { current ->
             val list = current[sectionId]?.toMutableList() ?: mutableListOf()
             list.add(entry)
@@ -276,6 +326,7 @@ class VaultStream(
      * Remove an entry from all sections. Called after a delete is enqueued.
      */
     fun removeEntry(uniqueId: Uuid) {
+        deletedEntryIds += uniqueId
         _entriesBySection.update { current ->
             current.mapValues { (_, entries) ->
                 entries.filterNot { it.uniqueId == uniqueId }
@@ -287,6 +338,10 @@ class VaultStream(
      * Remove a section and all its entries. Called after a section delete is enqueued.
      */
     fun removeSection(sectionId: Uuid) {
+        deletedSectionIds += sectionId
+        val entryIds = _entriesBySection.value[sectionId]?.map { it.uniqueId }.orEmpty()
+        deletedEntryIds += entryIds
+
         _entriesBySection.update { current ->
             current - sectionId
         }
@@ -296,6 +351,17 @@ class VaultStream(
             filtered.mapIndexed { index, section ->
                 section.copy(isFirst = index == 0, isLast = index == filtered.size - 1)
             }
+        }
+    }
+
+    /**
+     * Mark a payload key as pending delete so [upsertEntry] won't restore it
+     * from stale DB data. Cleared automatically when the server confirms the
+     * delete (the incoming entry no longer has the key).
+     */
+    fun markPayloadPendingDelete(entryId: Uuid, payloadKey: String) {
+        _pendingPageDeletes.update { current ->
+            current + (entryId to (current[entryId].orEmpty() + payloadKey))
         }
     }
 

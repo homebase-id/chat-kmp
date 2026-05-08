@@ -5,18 +5,24 @@ package id.homebase.core.ui.screens.vault.gallery
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -50,9 +56,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
@@ -67,8 +76,12 @@ import id.homebase.resources.vault_gallery_delete_page_confirm
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_gallery_share_page
 import id.homebase.resources.vault_permission_cancel
+import id.homebase.chat.services.LocalAttachmentContextStore
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +98,7 @@ fun VaultGalleryScreen(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
     val pages = file.payloadDescriptors
     if (pages.isEmpty()) return
 
@@ -92,6 +106,13 @@ fun VaultGalleryScreen(
         initialPage = initialPage.coerceIn(0, maxOf(0, pages.size - 1)),
         pageCount = { pages.size },
     )
+
+    // When a page is deleted, keep the pager on the nearest valid page
+    LaunchedEffect(pages.size) {
+        if (pagerState.currentPage >= pages.size && pages.isNotEmpty()) {
+            pagerState.scrollToPage(pages.size - 1)
+        }
+    }
 
     // Hoisted so the top bar title reflects live edits
     var labelText by remember(file.label) { mutableStateOf(file.label ?: "") }
@@ -102,6 +123,10 @@ fun VaultGalleryScreen(
     val scaffoldState = rememberBottomSheetScaffoldState()
     val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Swipe-to-dismiss
+    val dismissOffset = remember { Animatable(0f) }
+    val dismissThresholdPx = with(LocalDensity.current) { 150.dp.toPx() }
 
     // Force dark theme — gallery always displays images on a dark background
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -143,12 +168,39 @@ fun VaultGalleryScreen(
                     onAppendPages = onAppendPages,
                     onUpdateLabel = onUpdateLabel,
                     onUpdateNotes = onUpdateNotes,
+                    localAttachmentStore = localAttachmentStore,
                 )
             },
             containerColor = MaterialTheme.colorScheme.scrim,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
+                    .graphicsLayer {
+                        val progress = (abs(dismissOffset.value) / dismissThresholdPx).coerceIn(0f, 1f)
+                        val s = 1f - (progress * 0.1f)
+                        scaleX = s
+                        scaleY = s
+                    }
+                    .draggable(
+                        state = rememberDraggableState { delta ->
+                            scope.launch { dismissOffset.snapTo(dismissOffset.value + delta) }
+                        },
+                        orientation = Orientation.Vertical,
+                        enabled = scaffoldState.bottomSheetState.currentValue != SheetValue.Expanded,
+                        onDragStopped = { velocity ->
+                            scope.launch {
+                                if (abs(dismissOffset.value) > dismissThresholdPx || abs(velocity) > 1500f) {
+                                    onDismiss()
+                                } else {
+                                    dismissOffset.animateTo(0f, spring())
+                                }
+                            }
+                        },
+                    ),
+            ) {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
@@ -171,6 +223,7 @@ fun VaultGalleryScreen(
                         VaultZoomableImage(
                             file = file,
                             descriptor = descriptor,
+                            localAttachmentStore = localAttachmentStore,
                             onToggleUI = onTapImage,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
@@ -179,6 +232,23 @@ fun VaultGalleryScreen(
                         GalleryPageNonImage(
                             descriptor = descriptor,
                             onToggleUI = onTapImage,
+                        )
+                    }
+                }
+
+                // Page indicator pill — visible when chrome is hidden
+                if (pages.size > 1) {
+                    AnimatedVisibility(
+                        visible = !showUI,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 140.dp),
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                    ) {
+                        PageIndicatorPill(
+                            currentPage = pagerState.currentPage + 1,
+                            totalPages = pages.size,
                         )
                     }
                 }
@@ -287,6 +357,27 @@ fun VaultGalleryScreen(
                     Text(stringResource(MR.string.vault_permission_cancel))
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun PageIndicatorPill(
+    currentPage: Int,
+    totalPages: Int,
+) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = stringResource(MR.string.vault_gallery_page_counter, currentPage, totalPages),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
         )
     }
 }
