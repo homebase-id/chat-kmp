@@ -106,17 +106,25 @@ class VaultViewModel(
     }
 
     init {
+        // React to VaultStream reset/load cycles (logout → login as different user).
+        // When isLoaded flips false (reset) → null out activation so the UI shows
+        // loading. When it flips true (loadAll done) → re-check DriveRegistry.
         viewModelScope.launch {
-            val hasDrive = isVaultRegistered()
-            _isActivated.update { hasDrive }
-            Logger.i(tag = TAG) { "init: isActivated=$hasDrive" }
-            if (hasDrive) {
-                try {
-                    authConnectionCoordinator.mountDrive(vaultLabeledDrive)
-                    Logger.i(tag = TAG) { "init: mountDrive succeeded" }
-                    driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "mountDrive/sync on init failed (non-fatal)" }
+            vaultStream.isLoaded.collect { loaded ->
+                if (!loaded) {
+                    _isActivated.value = null
+                } else if (_isActivated.value == null) {
+                    val hasDrive = isVaultRegistered()
+                    _isActivated.value = hasDrive
+                    Logger.i(tag = TAG) { "isLoaded→true: isActivated=$hasDrive" }
+                    if (hasDrive) {
+                        try {
+                            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+                            driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
+                        } catch (e: Exception) {
+                            Logger.w(e, TAG) { "mountDrive/sync failed (non-fatal)" }
+                        }
+                    }
                 }
             }
         }

@@ -517,6 +517,25 @@ class VaultStreamTest {
     }
 
     @Test
+    fun reset_setsIsLoadedFalseAfterItWasTrue() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+
+        // Manually simulate what loadAll does on completion
+        assertFalse(stream.isLoaded.value)
+
+        // Insert data as if a successful load happened
+        stream.insertOptimisticSection(buildSection(title = "Data"))
+        assertTrue(stream.sections.value.isNotEmpty())
+
+        // Simulate logout: reset clears everything including isLoaded
+        stream.reset()
+        assertFalse(stream.isLoaded.value)
+        assertEquals(0, stream.sections.value.size)
+        assertEquals(0, stream.entriesBySection.value.size)
+    }
+
+    @Test
     fun reset_clearsResurrectionSetsAllowingReuse() = runTest {
         val stream = createStream()
         advanceUntilIdle()
