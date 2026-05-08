@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.ui.screens.vault.VaultUiAction
+import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_onboarding_body_1

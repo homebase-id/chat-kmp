@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer

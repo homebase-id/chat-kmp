@@ -38,13 +38,35 @@ homebase-common/src/
   jvmMain/.../foo/FooBiometricAuth.jvm.kt   # returns Unavailable
 
 homebase-core/src/commonMain/kotlin/id/homebase/core/ui/screens/foo/
-  FooScreen.kt                   # authenticated content (biometric gate)
-  FooOnboardingScreen.kt         # intro + Setup/Dismiss buttons + permission dialog
-  FooViewModel.kt                # onboarding state + UiEvents
-  FooUiState.kt                  # UiState data class + UiAction + UiEvent
-  FooSettingsScreen.kt           # Settings sub-page
-  FooSettingsViewModel.kt
-  FooSettingsUiState.kt
+  FooScreen.kt                   # coordinator: scaffold, pickers, dialogs
+  FooContent.kt                  # list/grid body (loading, empty, populated states)
+  FooViewModel.kt                # single VM: combines streams, dispatches actions
+  FooUiState.kt                  # UiState + UiAction + UiEvent + FooError
+
+  FooStream.kt                   # EventBus → incremental StateFlow (real-time data)
+  FooService.kt                  # metadata CRUD via OutboxSync + OptimisticWriter
+  FooUploaderService.kt          # upload/download/append orchestration (if file-backed)
+
+  auth/
+    FooBiometricGate.kt          # biometric session + privacy overlay (if gated)
+  gallery/                       # (if media-heavy)
+    FooGalleryScreen.kt          # scaffold + pager + top bar
+    FooGalleryDetailSheet.kt     # editing sheet
+    FooZoomableImage.kt          # pinch-zoom-pan composable
+  components/
+    FooLockedContent.kt          # lock screen (if biometric-gated)
+    FooEmptyState.kt             # empty state prompt
+    ...                          # feature-specific reusable composables
+  model/
+    FooEntry.kt                  # domain model + HomebaseFile mapper
+    FooSection.kt                # grouping model (if applicable)
+    FooFileContent.kt            # @Serializable JSON schemas for appData.content
+  settings/
+    FooSettingsScreen.kt
+    FooSettingsViewModel.kt
+    FooSettingsUiState.kt
+  onboarding/
+    FooOnboardingScreen.kt       # intro + Setup/Dismiss buttons
 ```
 
 Class names are load-bearing: Koin's `viewModelOf(::FooViewModel)` binds by
@@ -387,6 +409,256 @@ and drop the biometric Switch in Step 7.
 
 ---
 
+## Step 6b — Data layer (three-service pattern)
+
+Reference: `VaultStream.kt`, `VaultService.kt`, `VaultUploaderService.kt`,
+`VaultViewModel.kt`. Chat equivalents: `ConversationStream`, `ConversationService`,
+`ChatMessageSenderService`.
+
+Any add-on backed by an encrypted drive should split its data layer into three
+services. This pattern gives you real-time updates, optimistic UI, and testable
+units with clear boundaries.
+
+### The three services
+
+| Service | Responsibility | Dependencies |
+|---------|---------------|--------------|
+| `FooStream` | Real-time data observation via EventBus; holds in-memory StateFlows; provides optimistic mutation methods | `DatabaseManager`, `CredentialsManager`, `EventBus`, `CoroutineScope` |
+| `FooService` | Metadata CRUD (create/rename/delete/reorder items); enqueues to outbox with optimistic DB writes | `OutboxSync`, `OptimisticWriter` |
+| `FooUploaderService` | File upload/download/append; encryption + thumbnails; depends on `FooService` for metadata updates that accompany payload changes | `OutboxSync`, `OptimisticWriter`, `PayloadBundleEncryptionService`, `FileOperationsProvider`, `DriveFileProvider`, `LocalAttachmentContextStore`, `FooService` |
+
+### FooStream — real-time observation
+
+Cold-loads all data from the local DB on init, then observes `EventBus` for
+incremental updates. Exposes two `StateFlow`s that the ViewModel combines:
+
+```kotlin
+class FooStream(
+    private val databaseManager: DatabaseManager,
+    private val credentialsManager: CredentialsManager,
+    private val eventBus: EventBus,
+    private val scope: CoroutineScope,
+) {
+    private val driveId = fooLabeledDrive.drive.alias
+
+    private val _items = MutableStateFlow<List<FooItem>>(emptyList())
+    val items: StateFlow<List<FooItem>> = _items.asStateFlow()
+
+    private val _isLoaded = MutableStateFlow(false)
+    val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
+
+    init {
+        scope.launch { loadAll() }
+        scope.launch { observeEvents() }
+    }
+
+    suspend fun loadAll() { /* QueryBatch from local DB → emit to StateFlows */ }
+
+    private suspend fun observeEvents() {
+        eventBus.events.collect { event ->
+            when (event) {
+                // Incremental: merge new/updated files into in-memory state
+                is BackendEvent.DriveEvent.BatchReceived ->
+                    if (event.driveId == driveId) processBatch(event.batchData)
+                // Full reload: outbox confirmed, DB has authoritative state
+                is BackendEvent.OutboxEvent.ItemCompleted ->
+                    if (event.driveId == driveId) loadAll()
+                is BackendEvent.OutboxEvent.ItemFailed ->
+                    if (event.driveId == driveId) loadAll()
+                else -> {}
+            }
+        }
+    }
+
+    // Optimistic mutations — called by ViewModel after service enqueue succeeds
+    fun insertOptimistic(item: FooItem) { _items.update { it + item } }
+    fun updateOptimistic(item: FooItem) { /* replace by uniqueId */ }
+    fun remove(uniqueId: Uuid) { _items.update { it.filter { i -> i.uniqueId != uniqueId } } }
+}
+```
+
+**Key design decisions:**
+
+- **Incremental on BatchReceived, full reload on outbox events.** Batch events
+  carry the actual `HomebaseFile` objects so you can merge them in-memory. Outbox
+  completion/failure events don't carry data — reload from DB to get confirmed state.
+- **Stream owns no business logic.** It only holds data and provides mutation methods.
+  The ViewModel decides *when* to call them.
+- **CoroutineScope comes from Koin.** `ApiModule` registers a
+  `single<CoroutineScope>` with `SupervisorJob() + Dispatchers.Default`. Use
+  `singleOf(::FooStream)` — Koin auto-resolves the scope. Don't create a separate one.
+
+### FooService — metadata CRUD
+
+Handles all non-file mutations. No encryption, no file I/O.
+
+```kotlin
+class FooService(
+    private val outboxSync: OutboxSync,
+    private val optimisticWriter: OptimisticWriter,
+) {
+    suspend fun createItem(id: Uuid, content: FooContent, keyHeader: KeyHeader): Boolean {
+        val metadata = buildMetadata(id, content)
+        val enqueued = outboxSync.tryEnqueue(UploadFileRequest(...))
+        if (enqueued) {
+            optimisticWriter.writeNewFile(driveId, keyHeader, metadata, 0, FileSystemType.Standard)
+        }
+        return enqueued
+    }
+
+    suspend fun deleteItem(uniqueId: Uuid, fileId: Uuid): Boolean { /* DeleteLocalFilesByFileIdRequest */ }
+    suspend fun updateMetadata(...): Boolean { /* UpdateFileByUniqueIdRequest */ }
+}
+```
+
+### FooUploaderService — file operations
+
+Only needed if your add-on handles file uploads (images, documents, etc.). Depends
+on `FooService` for metadata updates that accompany payload changes (e.g., append
+pages updates the file's metadata + adds new payloads in one request).
+
+### ViewModel — combine streams into UI state
+
+The ViewModel combines Stream flows via `combine().stateIn()`. It never holds
+duplicate state — the Stream is the single source of truth for data.
+
+```kotlin
+class FooViewModel(
+    private val fooStream: FooStream,
+    private val fooService: FooService,
+    private val fooUploaderService: FooUploaderService,
+    // ... other deps
+) : ViewModel() {
+
+    private val _overlayState = MutableStateFlow<FooOverlay?>(null)
+
+    val uiState: StateFlow<FooUiState> = combine(
+        fooStream.items,
+        fooStream.isLoaded,
+        _overlayState,
+    ) { items, isLoaded, overlay ->
+        FooUiState(items = items, isLoading = !isLoaded, overlay = overlay)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FooUiState())
+
+    fun onAction(action: FooUiAction) { /* dispatch to service layer */ }
+}
+```
+
+### Two layers of optimistic updates
+
+There are two independent mechanisms for making the UI feel instant:
+
+| Layer | Where | Speed | Survives loadAll()? |
+|-------|-------|-------|---------------------|
+| **OptimisticWriter** (Layer 1) | Writes to local SQLite DB | Visible on next `loadAll()` (outbox completion) | Yes — it IS the DB |
+| **Stream mutations** (Layer 2) | Updates in-memory StateFlow | Instant — UI recomposes immediately | No — `loadAll()` overwrites with DB state |
+
+**Layer 1** happens automatically inside `FooService.enqueueFileContentUpdate()`.
+**Layer 2** must be explicitly triggered by the ViewModel after a successful enqueue.
+
+Use both layers for operations where the user expects instant feedback:
+
+```kotlin
+// In ViewModel — after service enqueue succeeds, update the stream
+private fun handleRename(item: FooItem, newName: String) {
+    viewModelScope.launch {
+        val success = fooService.rename(item, newName)
+        if (success) {
+            fooStream.updateOptimistic(item.copy(name = newName))
+        } else {
+            _events.tryEmit(FooUiEvent.Error(FooError.RenameFailed))
+        }
+    }
+}
+```
+
+For operations with placeholder data (e.g., appending pages where the real
+payload descriptors aren't available yet), insert placeholders into the Stream
+and revert on failure:
+
+```kotlin
+private fun handleAppend(item: FooItem, newFiles: List<PlatformFile>) {
+    viewModelScope.launch {
+        // Optimistic: add placeholders so count updates immediately
+        val placeholders = buildPlaceholders(item, newFiles)
+        val optimistic = item.copy(pages = item.pages + placeholders)
+        fooStream.updateOptimistic(optimistic)
+
+        val success = fooUploaderService.append(item, newFiles)
+        if (!success) {
+            fooStream.updateOptimistic(item) // revert
+            _events.tryEmit(FooUiEvent.Error(FooError.AppendFailed))
+        }
+        // On success: outbox completion fires loadAll(), replacing placeholders
+        // with real data from the DB
+    }
+}
+```
+
+### Model files
+
+Define your domain models in a `model/` sub-package. Each model has:
+- An `@Immutable data class` with UI-relevant fields
+- A `HomebaseFile.toFooItem()` extension mapper
+- A `@Serializable` content class matching your `appData.content` JSON schema
+
+```kotlin
+// model/FooEntry.kt
+@Immutable
+data class FooEntry(
+    val fileId: Uuid,
+    val uniqueId: Uuid,
+    val name: String,
+    // ... fields the UI needs
+)
+
+fun HomebaseFile.toFooEntry(): FooEntry? {
+    val content = /* deserialize appData.content */ ?: return null
+    // Check isPendingSendTag for upload status detection
+    return FooEntry(...)
+}
+
+// model/FooFileContent.kt
+@Serializable
+data class FooFileContent(val name: String, val label: String? = null)
+const val FOO_FILE_TYPE = 5574  // reserve with the team
+```
+
+### DI registration
+
+```kotlin
+// AppModule.kt
+singleOf(::FooStream)           // CoroutineScope auto-resolved from ApiModule
+singleOf(::FooService)
+singleOf(::FooUploaderService)  // only if file-backed
+
+viewModel {
+    FooViewModel(
+        fooStream = get(),
+        fooService = get(),
+        fooUploaderService = get(),
+        // ... other deps
+    )
+}
+```
+
+### File size guidelines
+
+Aim for **under 300 lines per file**. When a file grows past that, look for
+extraction opportunities:
+
+- Screen coordinator > 400 lines → extract `FooContent.kt` (list body),
+  `auth/FooBiometricGate.kt` (biometric logic)
+- Gallery overlay > 300 lines → split into `gallery/FooGalleryScreen.kt` (scaffold),
+  `gallery/FooGalleryDetailSheet.kt` (editing), `gallery/FooZoomableImage.kt` (gestures)
+- Dialogs, bottom sheets, FABs → `components/` sub-package
+
+The ViewModel is the natural exception — it holds all action dispatch logic and
+tends toward 400-500 lines. This is consistent with the chat module
+(`ConversationListViewModel` is 3,478 lines).
+
+---
+
 ## Step 7 — Settings entry + sub-page
 
 Reference: `SettingsScreen.kt`, `VaultSettingsScreen.kt`, `VaultSettingsViewModel.kt`.
@@ -635,9 +907,11 @@ and omit the biometrics switch from Settings.
 
 Copy this into your PR description and tick off each wiring point:
 
+**Shell (navigation, preferences, UI chrome):**
+
 - [ ] `FooPreferences` with fresh stable UUIDs (new `0a0Nxx` namespace)
 - [ ] Strings under `foo_*` prefix in `strings.xml`
-- [ ] Three `Route.Foo* ` entries in `Routes.kt`
+- [ ] Three `Route.Foo*` entries in `Routes.kt`
 - [ ] `FooOnboardingScreen`, `FooScreen`, `FooSettingsScreen`
 - [ ] `FooViewModel` + `FooUiState` + `FooSettingsViewModel` + `FooSettingsUiState`
 - [ ] `TopLevelRoute.Foo`, reactive `topLevelRoutes`, `openFoo()` helper in
@@ -645,21 +919,40 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
 - [ ] Settings row + `onNavigateToFooSettings` wired
+- [ ] (Optional) `FooBiometricAuth` expect + three actuals
+- [ ] (Optional) `auth/FooBiometricGate.kt` extracted from screen
+
+**Data layer (three-service pattern):**
+
+- [ ] `FooStream` — EventBus observation, incremental StateFlows, optimistic mutations
+- [ ] `FooService` — metadata CRUD via `OutboxSync` + `OptimisticWriter`
+- [ ] `FooUploaderService` — file operations (only if file-backed)
+- [ ] `model/FooEntry.kt` — domain model + `HomebaseFile.toFooEntry()` mapper
+- [ ] `model/FooFileContent.kt` — `@Serializable` content schemas + file type constants
+- [ ] ViewModel uses `combine(stream.items, stream.isLoaded, ...).stateIn()`
+- [ ] Optimistic Stream updates for user-visible mutations (create, rename, append)
+- [ ] Optimistic revert on failure for placeholder-based operations (append pages)
+
+**Drive + DI:**
+
 - [ ] `fooLabeledDrive` constant in `AppConfig.kt` (do NOT add to
       `mandatorySyncDrives` — optional drives live in `DriveRegistry`)
-- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf` — no
-      changes to `DriveSyncManager`, `DriveRegistry`, or `AuthConnectionCoordinator`
-      bindings (they are generic and already wired)
-- [ ] (Optional) `FooBiometricAuth` expect + three actuals
+- [ ] `AppModule`: `singleOf(::FooStream)`, `singleOf(::FooService)`,
+      `singleOf(::FooUploaderService)`, `viewModel { FooViewModel(...) }`,
+      `viewModelOf(::FooSettingsViewModel)`
+- [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
+      checked before creating defaults (prevents AES key mismatch on re-login)
+
+**Quality:**
+
 - [ ] `CLAUDE.md` UI checklist: Material 3 only, `stringResource`,
       `Icons.AutoMirrored.*` for directional icons, `collectAsStateWithLifecycle`,
       `start`/`end` padding, `contentDescription` on icons
-- [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
-      checked before creating defaults (prevents AES key mismatch on re-login)
 - [ ] Pending files: `isPendingSendTag` checked in file-to-UI mapper; local file
       paths stored in `LocalAttachmentContextStore` for instant preview during upload
-- [ ] Typed error events: `VaultUiEvent.Error` uses a sealed `VaultError` class,
-      resolved to `stringResource()` in the screen composable (never hardcoded strings)
+- [ ] Typed error events: sealed `FooError` class, resolved to `stringResource()`
+      in the screen composable (never hardcoded strings)
+- [ ] No file exceeds 300 lines (ViewModel is the natural exception at 400-500)
 
 ---
 

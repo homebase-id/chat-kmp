@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
+import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.resources.MR
 import id.homebase.resources.vault_entry_add
 import id.homebase.resources.vault_section_delete
@@ -50,9 +51,9 @@ import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun VaultSectionCard(
-    section: VaultSectionUiModel,
+    section: VaultSection,
     localAttachmentStore: LocalAttachmentContextStore,
-    onEntryClick: (VaultFileItem) -> Unit,
+    onEntryClick: (VaultEntry) -> Unit,
     onAddEntry: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
@@ -102,7 +103,7 @@ fun VaultSectionCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(end = 4.dp),
                 ) {
-                    items(section.entries, key = { it.fileId }) { entry ->
+                    items(section.entries, key = { it.uniqueId }) { entry ->
                         VaultEntryCard(
                             file = entry,
                             sectionTitle = section.title,

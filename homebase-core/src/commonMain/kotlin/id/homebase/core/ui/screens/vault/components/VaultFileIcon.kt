@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.util.formatFileSize
 import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
@@ -34,7 +35,7 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Returns the appropriate icon for a given MIME content type.
  */
-internal fun fileTypeIcon(contentType: String): ImageVector = when {
+fun fileTypeIcon(contentType: String): ImageVector = when {
     contentType.startsWith("image/") -> Icons.Outlined.Image
     contentType.startsWith("video/") -> Icons.Outlined.VideoFile
     contentType.startsWith("audio/") -> Icons.Outlined.AudioFile
@@ -45,7 +46,7 @@ internal fun fileTypeIcon(contentType: String): ImageVector = when {
 /**
  * Formats a file's size and creation date into a short display string.
  */
-internal fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
+fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
     val size = sizeBytes.formatFileSize()
     val date = formatShortDate(Instant.fromEpochMilliseconds(createdAt))
     return "$size · $date"
@@ -55,10 +56,10 @@ internal fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
  * Three-dot dropdown menu for vault file actions (share, delete).
  */
 @Composable
-internal fun VaultFileDropdownMenu(
-    file: VaultFileItem,
-    onShare: (VaultFileItem) -> Unit,
-    onDelete: (VaultFileItem) -> Unit,
+fun VaultFileDropdownMenu(
+    file: VaultEntry,
+    onShare: (VaultEntry) -> Unit,
+    onDelete: (VaultEntry) -> Unit,
     iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     var expanded by remember { mutableStateOf(false) }

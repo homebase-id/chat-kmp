@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.vault
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.DriveSyncManager
@@ -15,23 +16,27 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
-import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
-import id.homebase.core.ui.screens.vault.model.toSectionUiModel
+import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
+import id.homebase.core.ui.screens.vault.model.VaultSectionContent
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.sync.DriveState
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.path
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import id.homebase.api.sync.DriveState
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -42,7 +47,9 @@ private const val TAG = "VaultViewModel"
 class VaultViewModel(
     private val vaultPreferences: VaultPreferences,
     private val vaultPermissionViewModel: ExtendPermissionViewModel,
-    private val vaultRepository: VaultRepository,
+    private val vaultStream: VaultStream,
+    private val vaultService: VaultService,
+    private val vaultUploaderService: VaultUploaderService,
     private val eventBus: EventBus,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val driveRegistry: DriveRegistry,
@@ -50,18 +57,43 @@ class VaultViewModel(
     private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(VaultUiState())
-    val uiState: StateFlow<VaultUiState> = _uiState.asStateFlow()
+    private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
+    private val _syncingState = MutableStateFlow(false)
+    private val _checkingPermissions = MutableStateFlow(false)
+
+    val uiState: StateFlow<VaultUiState> = combine(
+        combine(vaultStream.sections, vaultStream.entriesBySection, vaultStream.isLoaded) { s, e, l ->
+            Triple(s, e, l)
+        },
+        _overlayState,
+        _syncingState,
+        _checkingPermissions,
+    ) { (sections, entriesBySection, isLoaded), overlay, syncing, checkingPermissions ->
+        val sectionModels = sections.mapIndexed { index, section ->
+            section.copy(
+                entries = entriesBySection[section.sectionId] ?: emptyList(),
+                isFirst = index == 0,
+                isLast = index == sections.size - 1,
+            )
+        }
+        val refreshedOverlay = (overlay as? VaultOverlay.Gallery)?.let { gallery ->
+            val freshFile = sectionModels.flatMap { it.entries }.find { it.uniqueId == gallery.file.uniqueId }
+            if (freshFile != null) gallery.copy(file = freshFile) else gallery
+        }
+        VaultUiState(
+            sections = sectionModels,
+            isLoading = !isLoaded,
+            isSyncing = syncing,
+            isCheckingPermissions = checkingPermissions,
+            fullScreenOverlay = refreshedOverlay ?: overlay,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VaultUiState())
 
     private val _events = MutableSharedFlow<VaultUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<VaultUiEvent> = _events.asSharedFlow()
 
     val vaultExtendPermissionViewModel: ExtendPermissionViewModel
         get() = vaultPermissionViewModel
-
-    // Maps outbox uniqueId -> sectionId for grouping.
-    // Thread-confined to Dispatchers.Main via viewModelScope.
-    private val uploadTracker = mutableMapOf<Uuid, Uuid>()
 
     private val _isActivated = MutableStateFlow<Boolean?>(null)
     val isActivated: StateFlow<Boolean?> = _isActivated.asStateFlow()
@@ -82,8 +114,9 @@ class VaultViewModel(
                 try {
                     authConnectionCoordinator.mountDrive(vaultLabeledDrive)
                     Logger.i(tag = TAG) { "init: mountDrive succeeded" }
+                    driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
                 } catch (e: Exception) {
-                    Logger.w(e, TAG) { "mountDrive on init failed (non-fatal)" }
+                    Logger.w(e, TAG) { "mountDrive/sync on init failed (non-fatal)" }
                 }
             }
         }
@@ -100,7 +133,6 @@ class VaultViewModel(
                 }
         }
 
-        observeVaultData()
         observeDriveSyncStatus()
         observeOutboxFailures()
     }
@@ -114,14 +146,13 @@ class VaultViewModel(
                         _isActivated.value = true
                         Logger.i(tag = TAG) { "observeDriveSyncStatus: vault drive appeared in driveStatuses — setting isActivated=true" }
                     }
-                    val isSyncing = state is DriveState.Synchronizing
-                    _uiState.update { it.copy(isSyncing = isSyncing) }
+                    _syncingState.value = state is DriveState.Synchronizing
                 }
         }
     }
 
     private suspend fun handleActivation() {
-        _uiState.update { it.copy(isCheckingPermissions = false) }
+        _checkingPermissions.value = false
         val alreadyRegistered = isVaultRegistered()
         if (!alreadyRegistered) {
             Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
@@ -136,14 +167,13 @@ class VaultViewModel(
     }
 
     private suspend fun createDefaultSections() {
-        val existingIds = vaultRepository.loadAllVaultData().sections
-            .mapNotNull { (file, _) -> file.fileMetadata.appData.uniqueId }
-            .toSet()
+        vaultStream.loadAll()
+        val existingIds = vaultStream.sections.value.map { it.sectionId }.toSet()
         Logger.i(tag = TAG) { "createDefaultSections: ${existingIds.size} existing section(s) in local DB" }
         vaultDefaultSections.forEachIndexed { index, (id, title) ->
             if (id !in existingIds) {
                 Logger.i(tag = TAG) { "createDefaultSections: creating '$title' ($id)" }
-                vaultRepository.createSection(id, VaultSectionContent(title, index))
+                vaultService.createSection(id, VaultSectionContent(title, index))
             } else {
                 Logger.d(tag = TAG) { "createDefaultSections: '$title' ($id) already exists — skipping" }
             }
@@ -173,7 +203,7 @@ class VaultViewModel(
 
         when (action) {
             VaultUiAction.SetupClicked -> {
-                _uiState.update { it.copy(isCheckingPermissions = true) }
+                _checkingPermissions.value = true
                 if (vaultPermissionViewModel.permissionsGranted.value) {
                     viewModelScope.launch { handleActivation() }
                 } else {
@@ -203,138 +233,102 @@ class VaultViewModel(
             is VaultUiAction.ShareFile -> handleShareFile(action)
             is VaultUiAction.RenameFile -> handleRenameFile(action)
             is VaultUiAction.DeleteFile -> handleDeleteFile(action)
-            VaultUiAction.CloseOverlay -> _uiState.update { it.copy(fullScreenOverlay = null) }
-            VaultUiAction.RefreshFiles -> { /* handled by observeVaultData Flow */
+            VaultUiAction.CloseOverlay -> _overlayState.update { null }
+            VaultUiAction.RefreshFiles -> { /* handled by VaultStream event observation */
             }
         }
     }
 
-    // region Data observation
-
-    private var hasSyncedOnce = false
-
-    private fun observeVaultData() {
-        viewModelScope.launch {
-            vaultRepository.observeVaultData().collect { data ->
-                val sortedSections = data.sections.sortedBy { it.second.sortOrder }
-                val sectionModels = sortedSections.mapIndexed { index, pair ->
-                    val (file, _) = pair
-                    val sectionId = file.fileMetadata.appData.uniqueId ?: file.fileId
-                    val entries = data.filesBySection[sectionId] ?: emptyList()
-                    pair.toSectionUiModel(
-                        entries = entries,
-                        isFirst = index == 0,
-                        isLast = index == sortedSections.size - 1,
-                    )
-                }
-                val fileCount = data.filesBySection.values.sumOf { it.size }
-                Logger.i(tag = TAG) { "observeVaultData: ${sectionModels.size} section(s), $fileCount file(s)" }
-
-                if (sectionModels.isEmpty() && !hasSyncedOnce) {
-                    hasSyncedOnce = true
-                    Logger.i(tag = TAG) { "observeVaultData: empty — triggering syncDrive" }
-                    try {
-                        driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
-                    } catch (e: Exception) {
-                        Logger.d(tag = TAG) { "syncDrive on empty load: ${e.message}" }
-                    }
-                }
-                _uiState.update { current ->
-                    val refreshedOverlay = (current.fullScreenOverlay as? VaultOverlay.Gallery)?.let { gallery ->
-                        val freshFile = sectionModels
-                            .flatMap { it.entries }
-                            .find { it.uniqueId == gallery.file.uniqueId }
-                        if (freshFile != null) gallery.copy(file = freshFile) else gallery
-                    }
-                    current.copy(
-                        sections = sectionModels,
-                        isLoading = false,
-                        fullScreenOverlay = refreshedOverlay ?: current.fullScreenOverlay,
-                    )
-                }
-            }
-        }
-    }
-
+    // region Section handlers
 
     private fun handleAddSection(title: String) {
         viewModelScope.launch {
-            val sections = _uiState.value.sections
+            val sections = vaultStream.sections.value
             val maxOrder = sections.maxOfOrNull { it.sortOrder } ?: -1
             val sectionId = Uuid.random()
-            val success = vaultRepository.createSection(
+            val keyHeader = KeyHeader.newRandom16()
+            val success = vaultService.createSection(
                 sectionId,
                 VaultSectionContent(title, maxOrder + 1),
+                keyHeader,
             )
             if (success) {
-                _uiState.update { state ->
-                    val updated = state.sections + VaultSectionUiModel(
-                        sectionId = sectionId,
-                        fileId = sectionId,
-                        title = title,
-                        sortOrder = maxOrder + 1,
-                        entries = emptyList(),
-                        isFirst = sections.isEmpty(),
-                        isLast = true,
-                    )
-                    state.copy(sections = updated)
-                }
+                vaultStream.insertOptimisticSection(VaultSection(
+                    sectionId = sectionId,
+                    fileId = sectionId,
+                    title = title,
+                    sortOrder = maxOrder + 1,
+                    entries = emptyList(),
+                    keyHeader = keyHeader,
+                ))
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.CreateSectionFailed))
             }
         }
     }
 
-    private fun handleRenameSection(section: VaultSectionUiModel, newTitle: String) {
+    private fun handleRenameSection(section: VaultSection, newTitle: String) {
         viewModelScope.launch {
             val keyHeader = section.keyHeader ?: return@launch
-            val success = vaultRepository.updateSection(
+            val success = vaultService.updateSection(
                 sectionUniqueId = section.sectionId,
                 sectionContent = VaultSectionContent(newTitle, section.sortOrder),
                 versionTag = section.versionTag,
                 keyHeader = keyHeader,
             )
-            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.RenameSectionFailed))
+            if (success) {
+                vaultStream.updateOptimisticSection(section.copy(title = newTitle))
+            } else {
+                _events.tryEmit(VaultUiEvent.Error(VaultError.RenameSectionFailed))
+            }
         }
     }
 
-    private fun handleDeleteSection(section: VaultSectionUiModel) {
+    private fun handleDeleteSection(section: VaultSection) {
         viewModelScope.launch {
-            val success = vaultRepository.deleteSection(section.sectionId, section.fileId)
+            val success = vaultService.deleteSection(section.sectionId, section.fileId)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteSectionFailed))
         }
     }
 
-    private fun handleMoveSectionUp(section: VaultSectionUiModel) {
-        val sections = _uiState.value.sections
+    private fun handleMoveSectionUp(section: VaultSection) {
+        val sections = vaultStream.sections.value
         val idx = sections.indexOfFirst { it.sectionId == section.sectionId }
         if (idx <= 0) return
         swapSectionOrder(sections[idx], sections[idx - 1])
     }
 
-    private fun handleMoveSectionDown(section: VaultSectionUiModel) {
-        val sections = _uiState.value.sections
+    private fun handleMoveSectionDown(section: VaultSection) {
+        val sections = vaultStream.sections.value
         val idx = sections.indexOfFirst { it.sectionId == section.sectionId }
         if (idx < 0 || idx >= sections.size - 1) return
         swapSectionOrder(sections[idx], sections[idx + 1])
     }
 
-    private fun swapSectionOrder(a: VaultSectionUiModel, b: VaultSectionUiModel) {
+    private fun swapSectionOrder(a: VaultSection, b: VaultSection) {
+        val aKey = a.keyHeader ?: return
+        val bKey = b.keyHeader ?: return
+
+        vaultStream.updateOptimisticSection(a.copy(sortOrder = b.sortOrder))
+        vaultStream.updateOptimisticSection(b.copy(sortOrder = a.sortOrder))
+        vaultStream.resortSections()
+
         viewModelScope.launch {
-            val aKey = a.keyHeader ?: return@launch
-            val bKey = b.keyHeader ?: return@launch
-            vaultRepository.updateSection(
+            val aSuccess = vaultService.updateSection(
                 a.sectionId,
                 VaultSectionContent(a.title, b.sortOrder),
                 a.versionTag,
                 aKey,
             )
-            vaultRepository.updateSection(
+            val bSuccess = vaultService.updateSection(
                 b.sectionId,
                 VaultSectionContent(b.title, a.sortOrder),
                 b.versionTag,
                 bKey,
             )
+            if (!aSuccess || !bSuccess) {
+                vaultStream.loadAll()
+            }
         }
     }
 
@@ -350,7 +344,7 @@ class VaultViewModel(
         val firstContentType = resolveContentType(firstName, files.first().mimeType()?.toString())
         val pendingId = Uuid.random()
 
-        val pendingItem = VaultFileItem(
+        val pendingItem = VaultEntry(
             fileId = pendingId,
             uniqueId = pendingId,
             driveId = Uuid.NIL,
@@ -367,15 +361,7 @@ class VaultViewModel(
             groupId = action.sectionId,
         )
 
-        _uiState.update { state ->
-            state.copy(
-                sections = state.sections.map { section ->
-                    if (section.sectionId == action.sectionId) {
-                        section.copy(entries = section.entries + pendingItem)
-                    } else section
-                },
-            )
-        }
+        vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
 
         viewModelScope.launch {
             val fileData = files.map { file ->
@@ -390,38 +376,17 @@ class VaultViewModel(
                     LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
                 )
             }
-            val uniqueId = vaultRepository.uploadFile(
+            val uniqueId = vaultUploaderService.uploadFile(
                 entryName = firstName,
                 files = fileData,
                 scope = viewModelScope,
                 groupId = action.sectionId,
+                uniqueId = pendingId,
             )
-            if (uniqueId != null) {
-                uploadTracker[uniqueId] = action.sectionId
-                fileData.forEachIndexed { index, (path, _) ->
-                    val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
-                    localAttachmentStore.put(
-                        uniqueId,
-                        payloadKey,
-                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-                    )
-                }
-            } else {
-                _uiState.update { state ->
-                    state.copy(
-                        sections = state.sections.map { section ->
-                            if (section.sectionId == action.sectionId) {
-                                section.copy(
-                                    entries = section.entries.map { entry ->
-                                        if (entry.fileId == pendingId) {
-                                            entry.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
-                                        } else entry
-                                    },
-                                )
-                            } else section
-                        },
-                    )
-                }
+            if (uniqueId == null) {
+                vaultStream.updateOptimisticEntry(
+                    pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
+                )
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
             }
         }
@@ -429,8 +394,10 @@ class VaultViewModel(
 
     private fun handleEntryClicked(action: VaultUiAction.EntryClicked) {
         val file = action.file
-        if (file.isPending || file.uploadStatus != null) return
-        _uiState.update { it.copy(fullScreenOverlay = VaultOverlay.Gallery(file)) }
+        val isUploading = file.uploadStatus is VaultUploadStatus.Preparing ||
+            file.uploadStatus is VaultUploadStatus.Uploading
+        if (file.isPending || isUploading) return
+        _overlayState.update { VaultOverlay.Gallery(file) }
     }
 
     private fun handleShareFile(action: VaultUiAction.ShareFile) {
@@ -438,7 +405,7 @@ class VaultViewModel(
         if (file.isPending) return
         viewModelScope.launch {
             val firstKey = file.payloadDescriptors.firstOrNull()?.key ?: return@launch
-            val tempPath = vaultRepository.downloadPayload(file, firstKey)
+            val tempPath = vaultUploaderService.downloadPayload(file, firstKey)
             if (tempPath != null) {
                 _events.tryEmit(
                     VaultUiEvent.ShareFileReady(tempPath, file.fileName, file.contentType),
@@ -452,7 +419,7 @@ class VaultViewModel(
     private fun handleRenameFile(action: VaultUiAction.RenameFile) {
         viewModelScope.launch {
             val file = action.file
-            val success = vaultRepository.renameFile(
+            val success = vaultService.renameEntry(
                 uniqueId = file.uniqueId,
                 newName = action.newName,
                 existingLabel = file.label,
@@ -467,9 +434,9 @@ class VaultViewModel(
 
     private fun handleDeleteFile(action: VaultUiAction.DeleteFile) {
         viewModelScope.launch {
-            val success = vaultRepository.deleteFile(action.file.uniqueId, action.file.fileId)
+            val success = vaultService.deleteEntry(action.file.uniqueId, action.file.fileId)
             if (success) {
-                _uiState.update { it.copy(fullScreenOverlay = null) }
+                _overlayState.update { null }
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteFileFailed(action.file.fileName)))
             }
@@ -482,21 +449,39 @@ class VaultViewModel(
                 val ct = resolveContentType(file.name, file.mimeType()?.toString())
                 file.path to ct
             }
-            val success = vaultRepository.appendPages(
+
+            val existingMax = action.file.payloadDescriptors
+                .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
+                .maxOrNull() ?: -1
+            val placeholders = fileData.mapIndexed { i, (_, contentType) ->
+                PayloadDescriptor(
+                    key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}",
+                    contentType = contentType,
+                )
+            }
+            val optimisticEntry = action.file.copy(
+                payloadDescriptors = action.file.payloadDescriptors + placeholders,
+            )
+            vaultStream.updateOptimisticEntry(optimisticEntry)
+
+            val success = vaultUploaderService.appendPages(
                 file = action.file,
                 newFiles = fileData,
                 scope = viewModelScope,
             )
-            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+            if (!success) {
+                vaultStream.updateOptimisticEntry(action.file)
+                _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+            }
         }
     }
 
     private fun handleDeletePage(action: VaultUiAction.DeletePage) {
         val isLastPage = action.file.payloadDescriptors.size <= 1
         viewModelScope.launch {
-            val success = vaultRepository.deletePage(action.file, action.payloadKey)
+            val success = vaultUploaderService.deletePage(action.file, action.payloadKey)
             if (success) {
-                if (isLastPage) _uiState.update { it.copy(fullScreenOverlay = null) }
+                if (isLastPage) _overlayState.update { null }
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.DeletePageFailed))
             }
@@ -505,14 +490,14 @@ class VaultViewModel(
 
     private fun handleUpdateNotes(action: VaultUiAction.UpdateNotes) {
         viewModelScope.launch {
-            val success = vaultRepository.updateNotes(action.file, action.notes)
+            val success = vaultService.updateNotes(action.file, action.notes)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.SaveNotesFailed))
         }
     }
 
     private fun handleUpdateLabel(action: VaultUiAction.UpdateLabel) {
         viewModelScope.launch {
-            val success = vaultRepository.updateLabel(
+            val success = vaultService.updateLabel(
                 uniqueId = action.file.uniqueId,
                 existingName = action.file.fileName,
                 newLabel = action.label?.ifBlank { null },
@@ -529,7 +514,7 @@ class VaultViewModel(
 
     private fun handleSharePage(action: VaultUiAction.SharePage) {
         viewModelScope.launch {
-            val tempPath = vaultRepository.downloadPayload(action.file, action.payloadKey)
+            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
             if (tempPath != null) {
                 val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
                 val contentType = descriptor?.contentType ?: action.file.contentType
@@ -550,27 +535,12 @@ class VaultViewModel(
         val vaultDriveId = vaultLabeledDrive.drive.alias
         viewModelScope.launch {
             eventBus.events
-                .filter { it is BackendEvent.OutboxEvent.ItemCompleted && it.driveId == vaultDriveId }
-                .collect { event ->
-                    event as BackendEvent.OutboxEvent.ItemCompleted
-                    uploadTracker.remove(event.uniqueId)
-                }
-        }
-        viewModelScope.launch {
-            eventBus.events
                 .filter {
                     (it is BackendEvent.OutboxEvent.ItemFailed && it.driveId == vaultDriveId) ||
-                            (it is BackendEvent.OutboxEvent.OutboxItemDropped && it.driveId == vaultDriveId)
+                        (it is BackendEvent.OutboxEvent.OutboxItemDropped && it.driveId == vaultDriveId)
                 }
-                .collect { event ->
-                    val uniqueId = when (event) {
-                        is BackendEvent.OutboxEvent.ItemFailed -> event.uniqueId
-                        is BackendEvent.OutboxEvent.OutboxItemDropped -> event.uniqueId
-                        else -> return@collect
-                    }
-                    if (uploadTracker.remove(uniqueId) != null) {
-                        _events.tryEmit(VaultUiEvent.Error(VaultError.OutboxUploadFailed))
-                    }
+                .collect {
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.OutboxUploadFailed))
                 }
         }
     }

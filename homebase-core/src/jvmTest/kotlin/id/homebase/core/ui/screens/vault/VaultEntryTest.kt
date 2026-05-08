@@ -15,6 +15,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.ui.screens.vault.model.VaultFileContent
+import id.homebase.core.ui.screens.vault.model.toVaultEntry
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,9 +28,9 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Unit tests for [toVaultFileItem] mapper and [detectContentTypeFromExtensionOrHint] utility.
+ * Unit tests for [toVaultEntry] mapper and [detectContentTypeFromExtensionOrHint] utility.
  */
-class VaultFileItemTest {
+class VaultEntryTest {
 
     // ---------------------------------------------------------------
     // Helpers
@@ -90,11 +92,11 @@ class VaultFileItemTest {
     }
 
     // ---------------------------------------------------------------
-    // toVaultFileItem() — happy paths
+    // toVaultEntry() — happy paths
     // ---------------------------------------------------------------
 
     @Test
-    fun toVaultFileItem_mapsImagePayloadCorrectly() {
+    fun toVaultEntry_mapsImagePayloadCorrectly() {
         val fileId = Uuid.random()
         val driveId = Uuid.random()
         val versionTag = Uuid.random()
@@ -114,7 +116,7 @@ class VaultFileItemTest {
             versionTag = versionTag,
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals(fileId, item.fileId)
@@ -135,7 +137,7 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_mapsPdfPayloadCorrectly() {
+    fun toVaultEntry_mapsPdfPayloadCorrectly() {
         val file = buildHomebaseFile(
             payloads = listOf(
                 PayloadDescriptor(
@@ -147,7 +149,7 @@ class VaultFileItemTest {
             contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "report.pdf")),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals("report.pdf", item.fileName)
@@ -159,7 +161,7 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_usesFirstPayloadWhenMultiplePresent() {
+    fun toVaultEntry_usesFirstPayloadWhenMultiplePresent() {
         val file = buildHomebaseFile(
             payloads = listOf(
                 PayloadDescriptor(key = "first", contentType = "image/png", bytesWritten = 100L),
@@ -169,7 +171,7 @@ class VaultFileItemTest {
             contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "multi.png")),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals("first", item.payloadDescriptors.first().key)
@@ -178,7 +180,7 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_mapsPreviewThumbnail() {
+    fun toVaultEntry_mapsPreviewThumbnail() {
         val thumb = EmbeddedThumb(
             pixelWidth = 200,
             pixelHeight = 150,
@@ -187,7 +189,7 @@ class VaultFileItemTest {
         )
         val file = buildHomebaseFile(previewThumb = thumb)
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertNotNull(item.previewThumbnail)
@@ -196,56 +198,56 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_handlesNullContentTypeInPayload() {
+    fun toVaultEntry_handlesNullContentTypeInPayload() {
         val file = buildHomebaseFile(
             payloads = listOf(
                 PayloadDescriptor(key = "k", contentType = null, bytesWritten = 10L)
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals("", item.contentType)
     }
 
     @Test
-    fun toVaultFileItem_handlesNullBytesWrittenInPayload() {
+    fun toVaultEntry_handlesNullBytesWrittenInPayload() {
         val file = buildHomebaseFile(
             payloads = listOf(
                 PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = null)
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals(0L, item.sizeBytes)
     }
 
     @Test
-    fun toVaultFileItem_handlesNullVersionTag() {
+    fun toVaultEntry_handlesNullVersionTag() {
         val file = buildHomebaseFile(versionTag = null)
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertNull(item.versionTag)
     }
 
     // ---------------------------------------------------------------
-    // toVaultFileItem() — label field
+    // toVaultEntry() — label field
     // ---------------------------------------------------------------
 
     @Test
-    fun toVaultFileItem_mapsLabelWhenPresent() {
+    fun toVaultEntry_mapsLabelWhenPresent() {
         val file = buildHomebaseFile(
             contentJson = OdinSystemSerializer.serialize(
                 VaultFileContent(name = "photo.jpg", label = "Shelly")
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals("Shelly", item.label)
@@ -253,28 +255,28 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_labelIsNullByDefault() {
+    fun toVaultEntry_labelIsNullByDefault() {
         val file = buildHomebaseFile(
             contentJson = OdinSystemSerializer.serialize(
                 VaultFileContent(name = "photo.jpg")
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertNull(item.label)
     }
 
     @Test
-    fun toVaultFileItem_mapsLabelAndNotesTogether() {
+    fun toVaultEntry_mapsLabelAndNotesTogether() {
         val file = buildHomebaseFile(
             contentJson = OdinSystemSerializer.serialize(
                 VaultFileContent(name = "passport.jpg", label = "Gabriel", notes = "Expires 2028")
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals("Gabriel", item.label)
@@ -283,7 +285,7 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_handlesMultiplePayloadDescriptors() {
+    fun toVaultEntry_handlesMultiplePayloadDescriptors() {
         val file = buildHomebaseFile(
             payloads = listOf(
                 PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", bytesWritten = 500L),
@@ -292,7 +294,7 @@ class VaultFileItemTest {
             ),
         )
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNotNull(item)
         assertEquals(3, item.pageCount)
@@ -366,11 +368,11 @@ class VaultFileItemTest {
     }
 
     @Test
-    fun toVaultFileItem_backwardCompatibility_legacyContentWithoutLabel() {
+    fun toVaultEntry_backwardCompatibility_legacyContentWithoutLabel() {
         val file = buildHomebaseFile(
             contentJson = """{"name":"legacy_photo.jpg","notes":"old note"}""",
         )
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
         assertNotNull(item)
         assertEquals("legacy_photo.jpg", item.fileName)
         assertNull(item.label)
@@ -379,7 +381,7 @@ class VaultFileItemTest {
 
     // ---------------------------------------------------------------
     // Update operation field preservation
-    // Simulates what each VaultRepository update method does:
+    // Simulates what each VaultService update method does:
     // constructs a VaultFileContent and round-trips through serialization.
     // ---------------------------------------------------------------
 
@@ -466,51 +468,51 @@ class VaultFileItemTest {
     }
 
     // ---------------------------------------------------------------
-    // toVaultFileItem() — null/invalid cases
+    // toVaultEntry() — null/invalid cases
     // ---------------------------------------------------------------
 
     @Test
-    fun toVaultFileItem_returnsNullWhenPayloadsNull() {
+    fun toVaultEntry_returnsNullWhenPayloadsNull() {
         val file = buildHomebaseFile(payloads = null)
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNull(item)
     }
 
     @Test
-    fun toVaultFileItem_returnsNullWhenPayloadsEmpty() {
+    fun toVaultEntry_returnsNullWhenPayloadsEmpty() {
         val file = buildHomebaseFile(payloads = emptyList())
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNull(item)
     }
 
     @Test
-    fun toVaultFileItem_returnsNullWhenContentNull() {
+    fun toVaultEntry_returnsNullWhenContentNull() {
         val file = buildHomebaseFile(contentJson = null)
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNull(item)
     }
 
     @Test
-    fun toVaultFileItem_returnsNullWhenContentIsInvalidJson() {
+    fun toVaultEntry_returnsNullWhenContentIsInvalidJson() {
         val file = buildHomebaseFile(contentJson = "not valid json {{{")
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         assertNull(item)
     }
 
     @Test
-    fun toVaultFileItem_returnsNullWhenContentIsMismatchedJsonSchema() {
+    fun toVaultEntry_returnsNullWhenContentIsMismatchedJsonSchema() {
         // Valid JSON but wrong shape -- missing "name" field
         val file = buildHomebaseFile(contentJson = """{"foo":"bar"}""")
 
-        val item = file.toVaultFileItem()
+        val item = file.toVaultEntry()
 
         // kotlinx.serialization may or may not throw depending on config;
         // if it deserializes with defaults the mapper may succeed.

@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add

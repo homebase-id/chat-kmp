@@ -7,21 +7,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import id.homebase.core.HomebaseConstants
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,38 +26,32 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.widget.ExtendPermissionDialog
-import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
+import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
+import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
+import id.homebase.core.ui.screens.vault.components.VaultImageAddSheet
+import id.homebase.core.ui.screens.vault.components.VaultNewSectionSheet
+import id.homebase.core.ui.screens.vault.gallery.VaultGalleryScreen
+import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.core.vault.needsComposePrivacyOverlay
-import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
-import id.homebase.resources.vault_biometric_prompt_subtitle
-import id.homebase.resources.vault_biometric_prompt_title
 import id.homebase.resources.vault_error_append_pages
 import id.homebase.resources.vault_error_create_section
 import id.homebase.resources.vault_error_delete_file
@@ -92,7 +77,6 @@ import id.homebase.resources.vault_settings
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -109,43 +93,8 @@ fun VaultScreen(
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
     val fileSystemHandler = getUriHandler()
     val snackbarHostState = remember { SnackbarHostState() }
-    val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
-    val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-    var authorized by remember {
-        mutableStateOf(
-            !vaultPreferences.biometricsEnabled.value || vaultPreferences.isAuthSessionValid()
-        )
-    }
-
-    var unlockAttempt by remember { mutableStateOf(0) }
-    var isAuthenticating by remember { mutableStateOf(false) }
-
-    val biometricsEnabled by vaultPreferences.biometricsEnabled.collectAsStateWithLifecycle()
-
-    DisposableEffect(biometricsEnabled) {
-        vaultPreferences.setVaultScreenActive(biometricsEnabled)
-        onDispose {
-            vaultPreferences.setVaultScreenActive(false)
-        }
-    }
-
-    var isPrivacyOverlayVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(authorized, unlockAttempt) {
-        if (authorized || isAuthenticating) return@LaunchedEffect
-        isAuthenticating = true
-        when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> {
-                vaultPreferences.recordAuthSuccess()
-                authorized = true
-            }
-            BiometricResult.Failure -> { /* stay on locked screen */ }
-        }
-        isAuthenticating = false
-    }
 
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
@@ -172,38 +121,6 @@ fun VaultScreen(
         }
     }
 
-    // Lifecycle observer: track backgrounding and recheck permissions on resume
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var hasBeenBackgrounded by remember { mutableStateOf(false) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    hasBeenBackgrounded = true
-                    vaultPreferences.recordAppBackgrounded()
-                    if (biometricsEnabled && needsComposePrivacyOverlay) {
-                        isPrivacyOverlayVisible = true
-                    }
-                }
-                Lifecycle.Event.ON_RESUME -> {
-                    isPrivacyOverlayVisible = false
-                    vaultExtendPermissionViewModel.recheckPermissions()
-                    if (hasBeenBackgrounded &&
-                        vaultPreferences.biometricsEnabled.value &&
-                        !vaultPreferences.isAuthSessionValid()
-                    ) {
-                        onNavigateToChats()
-                    }
-                }
-                else -> {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    ExtendPermissionDialog(viewModel = vaultExtendPermissionViewModel)
-
     BackHandler(enabled = uiState.fullScreenOverlay != null) {
         viewModel.onAction(VaultUiAction.CloseOverlay)
     }
@@ -211,9 +128,12 @@ fun VaultScreen(
     // Section dialog state
     var showNewSectionSheet by remember { mutableStateOf(false) }
     var showImageAddSheet by remember { mutableStateOf(false) }
-    var activeSectionForEntry by remember { mutableStateOf<VaultSectionUiModel?>(null) }
-    var sectionToDelete by remember { mutableStateOf<VaultSectionUiModel?>(null) }
-    var sectionToRename by remember { mutableStateOf<VaultSectionUiModel?>(null) }
+    var activeSectionForEntry by remember { mutableStateOf<VaultSection?>(null) }
+    var sectionToDelete by remember { mutableStateOf<VaultSection?>(null) }
+    var sectionToRename by remember { mutableStateOf<VaultSection?>(null) }
+
+    // Picker active tracking (passed to biometric gate to suppress background detection)
+    var isPickerActive by remember { mutableStateOf(false) }
 
     // Camera picker
     val cameraLauncher = rememberCameraManager { file ->
@@ -236,7 +156,7 @@ fun VaultScreen(
         }
     }
 
-    var fileForAppend by remember { mutableStateOf<VaultFileItem?>(null) }
+    var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 
     val appendPicker = rememberFilePickerLauncher(
         type = FileKitType.Image,
@@ -250,138 +170,108 @@ fun VaultScreen(
         fileForAppend = null
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            if (uiState.fullScreenOverlay == null) {
-                TopAppBar(
-                    title = { Text(stringResource(MR.string.vault_label)) },
-                    actions = {
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(
-                                imageVector = Icons.Outlined.Settings,
-                                contentDescription = stringResource(MR.string.vault_settings),
-                            )
-                        }
-                    },
-                )
-            }
-        },
-        floatingActionButton = {
-            if (authorized && uiState.sections.isNotEmpty() && uiState.fullScreenOverlay == null) {
-                VaultAddSectionControl(onAddSection = { showNewSectionSheet = true })
-            }
-        },
-    ) { innerPadding ->
-        val contentModifier = Modifier
-            .fillMaxSize()
-            .consumeWindowInsets(innerPadding)
-            .padding(innerPadding)
-
-        val transitionDuration = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
-
-        SharedTransitionLayout {
-            AnimatedContent(
-                targetState = uiState.fullScreenOverlay,
-                transitionSpec = {
-                    fadeIn(tween(transitionDuration)) togetherWith fadeOut(tween(transitionDuration))
-                },
-            ) { overlay ->
-                if (overlay == null) {
-                    if (!authorized) {
-                        VaultLockedContent(
-                            onUnlock = { unlockAttempt++ },
-                            modifier = contentModifier,
-                        )
-                    } else {
-                        when {
-                            (uiState.isLoading || uiState.isSyncing) && uiState.sections.isEmpty() -> {
-                                Box(
-                                    modifier = contentModifier,
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-
-                            uiState.sections.isEmpty() -> {
-                                VaultEmptyState(
-                                    onAddSection = { showNewSectionSheet = true },
-                                    modifier = contentModifier,
+    VaultBiometricGate(
+        vaultPreferences = vaultPreferences,
+        vaultExtendPermissionViewModel = vaultExtendPermissionViewModel,
+        onExpired = onNavigateToChats,
+        isPickerActive = isPickerActive,
+        onPickerHandled = { isPickerActive = false },
+    ) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                if (uiState.fullScreenOverlay == null) {
+                    TopAppBar(
+                        title = { Text(stringResource(MR.string.vault_label)) },
+                        actions = {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Settings,
+                                    contentDescription = stringResource(MR.string.vault_settings),
                                 )
                             }
-
-                            else -> {
-                                LazyColumn(
-                                    modifier = contentModifier,
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    items(uiState.sections, key = { it.sectionId }) { section ->
-                                        VaultSectionCard(
-                                            section = section,
-                                            localAttachmentStore = localAttachmentStore,
-                                            onEntryClick = {
-                                                viewModel.onAction(VaultUiAction.EntryClicked(it))
-                                            },
-                                            onAddEntry = {
-                                                activeSectionForEntry = section
-                                                showImageAddSheet = true
-                                            },
-                                            onMoveUp = {
-                                                viewModel.onAction(VaultUiAction.MoveSectionUp(section))
-                                            },
-                                            onMoveDown = {
-                                                viewModel.onAction(VaultUiAction.MoveSectionDown(section))
-                                            },
-                                            onRenameSection = { sectionToRename = section },
-                                            onDeleteSection = { sectionToDelete = section },
-                                            sharedTransitionScope = this@SharedTransitionLayout,
-                                            animatedVisibilityScope = this@AnimatedContent,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else if (overlay is VaultOverlay.Gallery) {
-                    VaultGalleryOverlay(
-                        file = overlay.file,
-                        initialPage = overlay.initialPage,
-                        onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
-                        onSharePage = { key ->
-                            viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
                         },
-                        onDeletePage = { key ->
-                            viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
-                        },
-                        onAppendPages = {
-                            fileForAppend = overlay.file
-                            appendPicker.launch()
-                        },
-                        onUpdateLabel = { label ->
-                            viewModel.onAction(VaultUiAction.UpdateLabel(overlay.file, label))
-                        },
-                        onUpdateNotes = { notes ->
-                            viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
-                        },
-                        onDeleteEntry = {
-                            viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
-                        },
-                        sharedTransitionScope = this@SharedTransitionLayout,
-                        animatedVisibilityScope = this@AnimatedContent,
                     )
                 }
-            }
-        }
+            },
+            floatingActionButton = {
+                if (uiState.sections.isNotEmpty() && uiState.fullScreenOverlay == null) {
+                    VaultAddSectionControl(onAddSection = { showNewSectionSheet = true })
+                }
+            },
+        ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
 
-        if (isPrivacyOverlayVisible && biometricsEnabled) {
-            VaultLockedContent(
-                onUnlock = { },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface),
-            )
+            val transitionDuration =
+                HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
+
+            SharedTransitionLayout {
+                AnimatedContent(
+                    targetState = uiState.fullScreenOverlay,
+                    transitionSpec = {
+                        fadeIn(tween(transitionDuration)) togetherWith fadeOut(tween(transitionDuration))
+                    },
+                ) { overlay ->
+                    if (overlay == null) {
+                        VaultContent(
+                            sections = uiState.sections,
+                            isLoading = uiState.isLoading,
+                            isSyncing = uiState.isSyncing,
+                            localAttachmentStore = localAttachmentStore,
+                            onEntryClick = {
+                                viewModel.onAction(VaultUiAction.EntryClicked(it))
+                            },
+                            onAddEntry = { section ->
+                                activeSectionForEntry = section
+                                showImageAddSheet = true
+                            },
+                            onMoveUp = {
+                                viewModel.onAction(VaultUiAction.MoveSectionUp(it))
+                            },
+                            onMoveDown = {
+                                viewModel.onAction(VaultUiAction.MoveSectionDown(it))
+                            },
+                            onRenameSection = { sectionToRename = it },
+                            onDeleteSection = { sectionToDelete = it },
+                            onAddSection = { showNewSectionSheet = true },
+                            modifier = contentModifier,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@AnimatedContent,
+                        )
+                    } else if (overlay is VaultOverlay.Gallery) {
+                        VaultGalleryScreen(
+                            file = overlay.file,
+                            initialPage = overlay.initialPage,
+                            onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
+                            onSharePage = { key ->
+                                viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                            },
+                            onDeletePage = { key ->
+                                viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
+                            },
+                            onAppendPages = {
+                                fileForAppend = overlay.file
+                                isPickerActive = true
+                                appendPicker.launch()
+                            },
+                            onUpdateLabel = { label ->
+                                viewModel.onAction(VaultUiAction.UpdateLabel(overlay.file, label))
+                            },
+                            onUpdateNotes = { notes ->
+                                viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
+                            },
+                            onDeleteEntry = {
+                                viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
+                            },
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            animatedVisibilityScope = this@AnimatedContent,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -403,8 +293,14 @@ fun VaultScreen(
     var pendingPickerAction by remember { mutableStateOf<VaultPickerAction?>(null) }
     LaunchedEffect(pendingPickerAction) {
         when (pendingPickerAction) {
-            VaultPickerAction.Camera -> cameraLauncher.launch()
-            VaultPickerAction.Gallery -> filePicker.launch()
+            VaultPickerAction.Camera -> {
+                isPickerActive = true
+                cameraLauncher.launch()
+            }
+            VaultPickerAction.Gallery -> {
+                isPickerActive = true
+                filePicker.launch()
+            }
             null -> {}
         }
         pendingPickerAction = null

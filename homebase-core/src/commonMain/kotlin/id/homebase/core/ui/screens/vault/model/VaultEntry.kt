@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalUuidApi::class)
 
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.model
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
@@ -9,35 +9,15 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import kotlinx.serialization.Serializable
-
-
-const val VAULT_FILE_TYPE = 5572
-const val VAULT_SECTION_TYPE = 5573
-
-/**
- * JSON content stored in appData.content for vault files.
- */
-@Serializable
-data class VaultFileContent(
-    val name: String,
-    val label: String? = null,
-    val notes: String? = null,
-)
-
-@Serializable
-data class VaultSectionContent(
-    val title: String,
-    val sortOrder: Int,
-)
 
 /**
  * Represents a vault file in the UI layer.
  */
 @Immutable
-data class VaultFileItem(
+data class VaultEntry(
     val fileId: Uuid,
     val uniqueId: Uuid,
     val driveId: Uuid,
@@ -71,20 +51,10 @@ data class VaultFileItem(
 }
 
 /**
- * Represents the upload status of a vault file.
- */
-sealed interface VaultUploadStatus {
-    data object Preparing : VaultUploadStatus
-    data class Uploading(val progress: Float) : VaultUploadStatus
-    data object Completed : VaultUploadStatus
-    data class Failed(val error: String) : VaultUploadStatus
-}
-
-/**
- * Maps a [HomebaseFile] to a [VaultFileItem], or returns null if the file
+ * Maps a [HomebaseFile] to a [VaultEntry], or returns null if the file
  * has no payloads or the content cannot be parsed.
  */
-fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
+fun HomebaseFile.toVaultEntry(): VaultEntry? {
     val payloads = fileMetadata.payloads
     if (payloads.isNullOrEmpty()) return null
 
@@ -97,8 +67,10 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
 
     val isPending = fileMetadata.localAppData?.tags
         ?.contains(ChatProtocol.isPendingSendTag) == true
+    val hasPayloadData = payloads.any { (it.bytesWritten ?: 0L) > 0L }
+    val isReallyUploading = isPending && !hasPayloadData
 
-    return VaultFileItem(
+    return VaultEntry(
         fileId = fileId,
         uniqueId = fileMetadata.appData.uniqueId ?: fileId,
         driveId = driveId,
@@ -111,22 +83,9 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
         keyHeader = keyHeader,
         isEncrypted = fileMetadata.isEncrypted,
         versionTag = fileMetadata.versionTag,
-        uploadStatus = if (isPending) VaultUploadStatus.Uploading(0f) else null,
+        uploadStatus = if (isReallyUploading) VaultUploadStatus.Uploading(0f) else null,
         groupId = fileMetadata.appData.groupId,
         payloadDescriptors = payloads,
         notes = vaultFileContent.notes,
     )
-}
-
-/**
- * Maps a [HomebaseFile] to a [VaultSectionContent], or returns null if the file
- * has no content or the content cannot be parsed.
- */
-fun HomebaseFile.toVaultSection(): VaultSectionContent? {
-    val contentJson = fileMetadata.appData.content ?: return null
-    return try {
-        OdinSystemSerializer.deserialize<VaultSectionContent>(contentJson)
-    } catch (e: Exception) {
-        null
-    }
 }

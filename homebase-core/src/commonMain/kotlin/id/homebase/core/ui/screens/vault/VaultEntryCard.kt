@@ -34,6 +34,8 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -48,7 +50,7 @@ private val CARD_CORNER = 12.dp
 
 @Composable
 fun VaultEntryCard(
-    file: VaultFileItem,
+    file: VaultEntry,
     sectionTitle: String,
     localAttachmentStore: LocalAttachmentContextStore,
     onClick: () -> Unit,

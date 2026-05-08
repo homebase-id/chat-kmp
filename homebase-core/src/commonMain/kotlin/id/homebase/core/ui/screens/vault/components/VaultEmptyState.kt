@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,10 +8,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,14 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.vault_locked_subtitle
-import id.homebase.resources.vault_locked_title
-import id.homebase.resources.vault_locked_unlock
+import id.homebase.resources.vault_empty_add_prompt
+import id.homebase.resources.vault_empty_add_section
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun VaultLockedContent(
-    onUnlock: () -> Unit,
+fun VaultEmptyState(
+    onAddSection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -44,21 +44,24 @@ fun VaultLockedContent(
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = stringResource(MR.string.vault_locked_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = stringResource(MR.string.vault_locked_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
+            text = stringResource(MR.string.vault_empty_add_prompt),
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(24.dp))
-        FilledTonalButton(onClick = onUnlock) {
-            Text(stringResource(MR.string.vault_locked_unlock))
-        }
+        ExtendedFloatingActionButton(
+            onClick = onAddSection,
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                )
+            },
+            text = {
+                Text(text = stringResource(MR.string.vault_empty_add_section))
+            },
+        )
     }
 }

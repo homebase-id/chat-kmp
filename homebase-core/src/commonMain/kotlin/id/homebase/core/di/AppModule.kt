@@ -55,8 +55,10 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.core.ui.screens.vault.VaultRepository
-import id.homebase.core.ui.screens.vault.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultService
+import id.homebase.core.ui.screens.vault.VaultStream
+import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
@@ -256,7 +258,9 @@ val appModule = module {
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
-    singleOf(::VaultRepository)
+    singleOf(::VaultStream)
+    singleOf(::VaultService)
+    singleOf(::VaultUploaderService)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -402,7 +406,9 @@ val appModule = module {
         VaultViewModel(
             vaultPreferences = get(),
             vaultPermissionViewModel = get(VaultPermissionQualifier),
-            vaultRepository = get(),
+            vaultStream = get(),
+            vaultService = get(),
+            vaultUploaderService = get(),
             eventBus = get(),
             authConnectionCoordinator = get(),
             driveRegistry = get(),

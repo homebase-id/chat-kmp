@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.vault
+package id.homebase.core.ui.screens.vault.settings
 
 data class VaultSettingsUiState(
     val iconVisible: Boolean = true,

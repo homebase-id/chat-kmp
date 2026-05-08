@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.vault
 
-import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
+import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -10,12 +11,12 @@ data class VaultUiState(
     val isCheckingPermissions: Boolean = false,
     val isLoading: Boolean = true,
     val isSyncing: Boolean = false,
-    val sections: List<VaultSectionUiModel> = emptyList(),
+    val sections: List<VaultSection> = emptyList(),
     val fullScreenOverlay: VaultOverlay? = null,
 )
 
 sealed interface VaultOverlay {
-    data class Gallery(val file: VaultFileItem, val initialPage: Int = 0) : VaultOverlay
+    data class Gallery(val file: VaultEntry, val initialPage: Int = 0) : VaultOverlay
 }
 
 sealed interface VaultUiAction {
@@ -23,10 +24,10 @@ sealed interface VaultUiAction {
     data object DismissOnboardingClicked : VaultUiAction
 
     data class AddSection(val title: String) : VaultUiAction
-    data class RenameSection(val section: VaultSectionUiModel, val newTitle: String) : VaultUiAction
-    data class DeleteSection(val section: VaultSectionUiModel) : VaultUiAction
-    data class MoveSectionUp(val section: VaultSectionUiModel) : VaultUiAction
-    data class MoveSectionDown(val section: VaultSectionUiModel) : VaultUiAction
+    data class RenameSection(val section: VaultSection, val newTitle: String) : VaultUiAction
+    data class DeleteSection(val section: VaultSection) : VaultUiAction
+    data class MoveSectionUp(val section: VaultSection) : VaultUiAction
+    data class MoveSectionDown(val section: VaultSection) : VaultUiAction
 
     data class AddEntryToSection(
         val sectionId: Uuid,
@@ -34,30 +35,30 @@ sealed interface VaultUiAction {
     ) : VaultUiAction
 
     data class AppendPages(
-        val file: VaultFileItem,
+        val file: VaultEntry,
         val newFiles: List<PlatformFile>,
     ) : VaultUiAction
 
     data class DeletePage(
-        val file: VaultFileItem,
+        val file: VaultEntry,
         val payloadKey: String,
     ) : VaultUiAction
 
     data class UpdateNotes(
-        val file: VaultFileItem,
+        val file: VaultEntry,
         val notes: String?,
     ) : VaultUiAction
 
     data class UpdateLabel(
-        val file: VaultFileItem,
+        val file: VaultEntry,
         val label: String?,
     ) : VaultUiAction
 
-    data class EntryClicked(val file: VaultFileItem) : VaultUiAction
-    data class ShareFile(val file: VaultFileItem) : VaultUiAction
-    data class SharePage(val file: VaultFileItem, val payloadKey: String) : VaultUiAction
-    data class RenameFile(val file: VaultFileItem, val newName: String) : VaultUiAction
-    data class DeleteFile(val file: VaultFileItem) : VaultUiAction
+    data class EntryClicked(val file: VaultEntry) : VaultUiAction
+    data class ShareFile(val file: VaultEntry) : VaultUiAction
+    data class SharePage(val file: VaultEntry, val payloadKey: String) : VaultUiAction
+    data class RenameFile(val file: VaultEntry, val newName: String) : VaultUiAction
+    data class DeleteFile(val file: VaultEntry) : VaultUiAction
     data object CloseOverlay : VaultUiAction
     data object RefreshFiles : VaultUiAction
 }
