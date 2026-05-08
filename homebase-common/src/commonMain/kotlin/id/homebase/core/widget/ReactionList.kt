@@ -1,5 +1,6 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -35,6 +36,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -51,6 +53,7 @@ fun ReactionList(
     reactionSummary: ReactionSummary,
     onReactionClick: () -> Unit,
     onAddEmoji: (() -> Unit)? = null,
+    hasOwnReaction: Boolean = false,
 ) {
     val allReactions = remember(reactionSummary) {
         reactionSummary.reactions.entries.mapNotNull { entry ->
@@ -90,26 +93,52 @@ fun ReactionList(
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(onClick = onReactionClick),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = if (hasOwnReaction) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = if (hasOwnReaction) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+            else null,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                displayEmojis.forEach { (emoji, _) ->
+                displayEmojis.forEachIndexed { index, (emoji, _) ->
+                    val emojiScale = remember(emoji) { Animatable(0f) }
+                    LaunchedEffect(emoji) {
+                        delay(index * 50L)
+                        emojiScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow,
+                            )
+                        )
+                    }
                     Text(
                         text = emoji,
                         fontSize = 16.sp,
+                        modifier = Modifier.scale(emojiScale.value),
                     )
                 }
                 if (totalCount > 1) {
+                    val countScale = remember { Animatable(1f) }
+                    LaunchedEffect(totalCount) {
+                        countScale.snapTo(0.6f)
+                        countScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium,
+                            )
+                        )
+                    }
                     Text(
                         text = totalCount.toString(),
                         fontSize = 13.sp,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp),
+                        modifier = Modifier.padding(start = 2.dp).scale(countScale.value),
                     )
                 }
             }

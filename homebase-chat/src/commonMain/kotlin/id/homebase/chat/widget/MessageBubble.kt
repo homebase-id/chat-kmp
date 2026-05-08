@@ -309,6 +309,7 @@ fun SentMessageBubble(
                             reactionSummary = reactionSummary,
                             onReactionClick = { onShowReactions?.invoke() },
                             onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                            hasOwnReaction = message.ownReactions.isNotEmpty(),
                         )
                     }
                 }
@@ -498,6 +499,7 @@ fun ReceivedMessageBubble(
                                 reactionSummary = reactionSummary,
                                 onReactionClick = { onShowReactions?.invoke() },
                                 onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                                hasOwnReaction = message.ownReactions.isNotEmpty(),
                             )
                         }
                     }
