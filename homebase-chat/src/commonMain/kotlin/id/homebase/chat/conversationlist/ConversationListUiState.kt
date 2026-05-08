@@ -160,6 +160,8 @@ sealed class MessageListContentModel(val id: String) {
         val message: MessageUiModel,
         val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+
+    data object UnreadSeparator : MessageListContentModel("unread-separator")
 }
 
 @Immutable

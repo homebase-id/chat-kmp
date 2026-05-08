@@ -33,6 +33,7 @@ import id.homebase.api.image.toImageBitmap
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_person
+import id.homebase.resources.cd_group_avatar
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
@@ -94,7 +95,7 @@ fun AvatarImage(
                     // Fallback composable on error and loading
                     if (isGroup) {
                         // Show group icon
-                        Icon(Icons.Default.People, contentDescription = null)
+                        Icon(Icons.Default.People, contentDescription = stringResource(MR.string.cd_group_avatar))
                     } else {
                         Text(
                             text = avatarInitials,
@@ -107,7 +108,7 @@ fun AvatarImage(
             }
         } else if (isGroup) {
             // Show group icon
-            Icon(Icons.Default.People, contentDescription = null)
+            Icon(Icons.Default.People, contentDescription = stringResource(MR.string.cd_group_avatar))
         } else {
             // Show initials when no avatar URL
             Text(

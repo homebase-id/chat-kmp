@@ -46,6 +46,8 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
+import id.homebase.resources.storage_orphan_coil_body
+import id.homebase.resources.storage_orphan_coil_title
 import id.homebase.resources.storage_cache_coil_memory
 import id.homebase.resources.storage_cache_payloads
 import id.homebase.resources.storage_cache_profile_images
@@ -453,10 +455,8 @@ private fun EmptyRow(text: String) {
 @Composable
 private fun OrphanCoilCacheWarning(bytes: Long) {
     ErrorCard(
-        title = "Orphan Coil disk cache detected",
-        body = "${formatBytes(bytes)} in cache/coil3_disk_cache. Coil's default disk " +
-                "cache should be off — this directory means something is bypassing " +
-                "the Homebase cache layer. Tap \"Clear caches\" to delete it.",
+        title = stringResource(MR.string.storage_orphan_coil_title),
+        body = stringResource(MR.string.storage_orphan_coil_body, formatBytes(bytes)),
     )
 }
 

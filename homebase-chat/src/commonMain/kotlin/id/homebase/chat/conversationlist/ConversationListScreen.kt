@@ -61,6 +61,7 @@ import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktop
@@ -97,6 +98,9 @@ import id.homebase.resources.chat_leave_and_delete_conversation_title
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.discard
+import id.homebase.resources.error_unknown
+import id.homebase.resources.file_save_failed
+import id.homebase.resources.file_saved_to
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
@@ -204,14 +208,15 @@ fun ConversationListScreen(
                     file = Path(event.filePath),
                     suggestedName = event.suggestedName,
                     onSuccess = { location ->
-                        scope.launch { snackbarHostState.showSnackbar("Saved to $location") }
+                        val msg = TranslationUtil.getString(MR.string.file_saved_to, location)
+                        scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
                     onError = { error ->
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                "Failed to save: ${error.message ?: "Unknown error"}"
-                            )
-                        }
+                        val msg = TranslationUtil.getString(
+                            MR.string.file_save_failed,
+                            error.message ?: TranslationUtil.getString(MR.string.error_unknown)
+                        )
+                        scope.launch { snackbarHostState.showSnackbar(msg) }
                     },
                 )
             }

@@ -2549,6 +2549,23 @@ class ConversationListViewModel(
                                 }
                             })
 
+                            // Insert "New Messages" separator before the first unread message
+                            val convoModel = _uiState.value.activeConversations
+                                .find { it.conversation.id == conversationId }
+                                ?.conversation
+                            val lastRead = convoModel?.lastRead
+                            val currentOdinId = _uiState.value.ownerSession?.odinId
+                            if (lastRead != null && convoModel.unreadCount > 0) {
+                                val firstUnreadIdx = messagesModels.indexOfFirst {
+                                    it is MessageListContentModel.Message &&
+                                        it.message.sender != currentOdinId &&
+                                        it.message.userDate > lastRead
+                                }
+                                if (firstUnreadIdx > 0) {
+                                    messagesModels.add(firstUnreadIdx, MessageListContentModel.UnreadSeparator)
+                                }
+                            }
+
                             // Scroll handling: navigate to a specific message (search results,
                             // cross-conversation jumps, etc.). The user's own just-sent messages
                             // are handled by the LazyColumn auto-follow effect in ConversationContent.kt,

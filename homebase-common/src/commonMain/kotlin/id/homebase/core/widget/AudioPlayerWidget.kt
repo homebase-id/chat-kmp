@@ -50,6 +50,8 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
+import id.homebase.resources.audio_pause
+import id.homebase.resources.audio_play
 import id.homebase.resources.audio_waveform
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -152,7 +154,7 @@ fun AudioPlayerWidget(
                 } else {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        contentDescription = if (isPlaying) stringResource(MR.string.audio_pause) else stringResource(MR.string.audio_play),
                         modifier = Modifier.size(32.dp),
                         tint = MaterialTheme.colorScheme.onSurface,
                     )

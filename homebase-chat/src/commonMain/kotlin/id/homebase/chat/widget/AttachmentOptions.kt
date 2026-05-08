@@ -70,6 +70,8 @@ import id.homebase.resources.chat_location_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
 import id.homebase.resources.chat_no_gallery_items
+import id.homebase.resources.cd_gallery_thumbnail
+import id.homebase.resources.cd_play_video
 import id.homebase.resources.chat_select_more_photos
 import id.homebase.resources.go_to_settings
 import id.homebase.resources.manage
@@ -153,7 +155,7 @@ fun AttachmentGallery(
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = galleryImage.file.toString(),
-                                    contentDescription = null,
+                                    contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
                                         .size(160.dp)
                                         .clip(RoundedCornerShape(8.dp))
@@ -163,7 +165,7 @@ fun AttachmentGallery(
                                 if (galleryImage.isVideo()) {
                                     Icon(
                                         Icons.Default.PlayCircle,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(MR.string.cd_play_video),
                                         tint = Color.White.copy(alpha = 0.85f)
                                     )
                                     val duration = galleryImage.durationMs

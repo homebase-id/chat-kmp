@@ -91,6 +91,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.resources.MR
+import id.homebase.resources.nav_chats
+import id.homebase.resources.nav_feed
+import id.homebase.resources.nav_home
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 @Composable
@@ -234,8 +240,8 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                            label = { Text(topLevelRoute.label) },
+                            icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
+                            label = { Text(stringResource(topLevelRoute.labelRes)) },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,
@@ -260,8 +266,8 @@ fun AppNavHost(
                     NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
-                                icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                                // label = { Text(topLevelRoute.label) },
+                                icon = { Icon(topLevelRoute.icon, contentDescription = stringResource(topLevelRoute.labelRes)) },
+                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
                                     navController.navigate(topLevelRoute.route) {
@@ -750,9 +756,9 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelR
 }
 
 sealed class TopLevelRoute(
-    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val route: Route, val labelRes: StringResource, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
-    data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
-    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
+    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
+    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
+    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
 }

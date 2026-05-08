@@ -41,6 +41,7 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.cd_link_preview_image
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -148,7 +149,7 @@ fun LinkPreviewCard(
                 Box(modifier = Modifier.height(80.dp).aspectRatio(1f)) {
                     Image(
                         bitmap = imageBitmap,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_link_preview_image),
                         modifier = Modifier.matchParentSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -184,7 +185,7 @@ fun LinkPreviewCard(
                     if (imageBitmap != null) {
                         Image(
                             bitmap = imageBitmap,
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_link_preview_image),
                             modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(
                                 RoundedCornerShape(
                                     topStart = Dimens.Message.cornerRadius,

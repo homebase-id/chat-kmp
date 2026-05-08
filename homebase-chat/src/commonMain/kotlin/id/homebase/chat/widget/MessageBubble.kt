@@ -67,16 +67,20 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
+import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -94,7 +98,11 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.cd_reply_thumbnail
+import id.homebase.resources.message_delivered
+import id.homebase.resources.message_read
 import id.homebase.resources.message_sending
+import id.homebase.resources.message_sent
 import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -106,6 +114,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+
+private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -375,6 +385,7 @@ fun ReceivedMessageBubble(
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     renderAuthorName: Boolean = false,
+    isGroupConversation: Boolean = false,
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -417,9 +428,31 @@ fun ReceivedMessageBubble(
     val scope = rememberCoroutineScope()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        modifier = Modifier.fillMaxWidth()
+            .padding(start = if (isGroupConversation) 8.dp else 16.dp, end = 16.dp)
             .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
+        if (isGroupConversation) {
+            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
+                clusterPosition == MessageClusterPosition.END
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Bottom)
+                    .padding(start = 4.dp, end = 8.dp)
+                    .size(Dimens.Conversation.itemAvatarSize),
+            ) {
+                if (showAvatar && message.originalAuthor != null) {
+                    val initials = remember(message.displayName) {
+                        message.displayName.initials()
+                    }
+                    PublicAvatar(
+                        odinId = message.originalAuthor,
+                        initials = initials,
+                        options = GroupMessageAvatarOptions,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalArrangement = Arrangement.Start,
@@ -427,7 +460,7 @@ fun ReceivedMessageBubble(
         ) {
             Box(
                 modifier = if (isMobile()) {
-                    Modifier.fillMaxWidth().combinedClickable(
+                    Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
@@ -700,7 +733,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Read.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_read),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -709,7 +742,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Delivered.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndDelivered,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_delivered),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,)
             }
@@ -717,7 +750,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Sent.value -> {
                 Icon(
                     HomebaseIcons.MessageSent,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_sent),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -887,13 +920,13 @@ fun InlineReplyPreview(
                     .size(40.dp)
                     .clip(RoundedCornerShape(4.dp)),
                 contentScale = ContentScale.Crop,
-                contentDescription = null,
+                contentDescription = stringResource(MR.string.cd_reply_thumbnail),
             )
         } else {
             thumbnailBitmap?.let { bitmap ->
                 Image(
                     bitmap = bitmap,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.cd_reply_thumbnail),
                     modifier = Modifier
                         .padding(end = 4.dp)
                         .size(40.dp)

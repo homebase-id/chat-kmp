@@ -39,6 +39,7 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
 import id.homebase.resources.about_homebase
+import id.homebase.resources.dev_menu_title
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
@@ -244,7 +245,7 @@ fun HelpUi(
                     if (uiState.showDeveloperMenu) {
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         HelpClickableRow(
-                            label = "Developer menu",
+                            label = stringResource(MR.string.dev_menu_title),
                             onClick = { onAction(HelpUiAction.DeveloperMenu) }
                         )
                     }

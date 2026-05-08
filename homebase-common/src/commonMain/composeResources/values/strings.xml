@@ -458,6 +458,7 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_new_messages">New messages</string>
     <string name="chat_connection_invited">Invited</string>
     <string name="chat_connection_wants_to_connect">Wants to connect</string>
     <string name="chat_connection_invitation_sent">Invitation sent — waiting for them to accept</string>
@@ -616,9 +617,73 @@
 
     <!-- Delivery status -->
     <string name="message_sending">Sending</string>
+    <string name="message_read">Read</string>
+    <string name="message_delivered">Delivered</string>
+    <string name="message_sent">Sent</string>
+
+    <!-- Accessibility: content descriptions -->
+    <string name="cd_play_video">Play video</string>
+    <string name="cd_pause_video">Pause video</string>
+    <string name="cd_file_attachment">File attachment</string>
+    <string name="cd_image_attachment">Image attachment</string>
+    <string name="cd_video_thumbnail">Video thumbnail</string>
+    <string name="cd_video_frame">Video frame</string>
+    <string name="cd_gallery_thumbnail">Gallery thumbnail</string>
+    <string name="cd_send_to">Send to %1$s</string>
+    <string name="cd_upload_complete">Upload complete</string>
+    <string name="cd_location_pin">Location</string>
+    <string name="cd_link_preview_image">Link preview image</string>
+    <string name="cd_reply_thumbnail">Reply thumbnail</string>
+    <string name="cd_selected">Selected</string>
+    <string name="cd_not_selected">Not selected</string>
+    <string name="cd_open_externally">Open externally</string>
+    <string name="cd_navigate_forward">Navigate forward</string>
+    <string name="cd_group_avatar">Group</string>
+    <string name="cd_connection_succeeded">Connection succeeded</string>
+    <string name="cd_video_scrubber_frame">Video scrubber frame</string>
 
     <!-- Settings section headers -->
     <string name="settings_section_general">General</string>
     <string name="settings_section_danger_zone">Danger Zone</string>
+
+    <!-- Audio player -->
+    <string name="audio_pause">Pause</string>
+    <string name="audio_play">Play</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_feed">Feed</string>
+    <string name="nav_home">Home</string>
+
+    <!-- Developer menu -->
+    <string name="dev_menu_title">Developer menu</string>
+    <string name="dev_menu_section_misc">Misc info</string>
+    <string name="dev_menu_section_sync">Sync &amp; Connection</string>
+    <string name="dev_menu_section_database">Database &amp; Storage</string>
+    <string name="dev_menu_section_testing">Testing Tools</string>
+    <string name="dev_menu_force_sync">Force Sync All</string>
+    <string name="dev_menu_clear_data">Clear All Data</string>
+    <string name="dev_menu_test_notification">Test Rich Notification</string>
+
+    <!-- Defragmenter issue labels -->
+    <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>
+    <string name="defragmenter_issue_soft_delete_drift">Soft-delete drift</string>
+    <string name="defragmenter_issue_bad_header">Bad header blocks</string>
+    <string name="defragmenter_issue_unmappable_convo">Unmappable conversation</string>
+    <string name="defragmenter_issue_orphan_messages">Orphan messages</string>
+    <string name="defragmenter_issue_bad_message">Bad message blocks</string>
+
+    <!-- Storage warnings -->
+    <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
+    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil\'s default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+
+    <!-- Error states -->
+    <string name="error_no_group_loaded">No group could be loaded</string>
+    <string name="error_no_contact_loaded">No contact could be loaded</string>
+
+    <!-- File save snackbar -->
+    <string name="file_saved_to">Saved to %1$s</string>
+    <string name="file_save_failed">Failed to save: %1$s</string>
+    <string name="error_unknown">Unknown error</string>
 
 </resources>
