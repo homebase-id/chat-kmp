@@ -16,6 +16,7 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
@@ -99,6 +100,11 @@ class MainApplication : Application(), KoinComponent {
 
         // Set up uncaught exception handler for crash logging
         setupCrashHandler()
+
+        // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
+        // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
+        // ~1s before the OS would kill us at 5s.
+        MainThreadWatchdog().start()
 
         // Provide application context for rich notifications
         RichNotificationDisplayer.initialize(this, smallIconResId = R.mipmap.ic_launcher_monochrome)
