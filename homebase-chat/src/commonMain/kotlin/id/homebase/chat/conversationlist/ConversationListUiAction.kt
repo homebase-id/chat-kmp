@@ -116,6 +116,7 @@ sealed interface ConversationListUiAction {
     ) : ConversationListUiAction
 
     data object ClearScrollTrigger : ConversationListUiAction
+    data object ClearHighlightedMessage : ConversationListUiAction
 
     data class ShowConversationSettings(val conversation: ConversationUiModel) :
         ConversationListUiAction

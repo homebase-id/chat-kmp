@@ -500,7 +500,7 @@ class ChatMessageSenderService(
             replyPreview = null,
             message = JsonPrimitive(fullText),
             deliveryStatus = ChatDeliveryStatus.Sent.value,
-            isEdited = false
+            isEdited = false,
         )
 
         val mediaBundle = buildMediaPayloadBundle(sourceFile)
