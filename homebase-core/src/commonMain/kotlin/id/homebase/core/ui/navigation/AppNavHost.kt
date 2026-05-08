@@ -79,6 +79,7 @@ import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
+import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
@@ -153,7 +154,6 @@ fun AppNavHost(
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute =
         currentDestination.isTopLevelRoute() ||
-                currentDestination?.hasRoute(Route.VaultOnboarding::class) == true ||
                 topLevelRoutes.any { topLevelRoute ->
                     currentDestination?.hasRoute(topLevelRoute.route::class) == true
                 }
@@ -211,17 +211,12 @@ fun AppNavHost(
         }
     }
 
-    // Route Vault activation/dismiss events to navigation
+    // Route Vault events to navigation. Activation is handled declaratively
+    // by the composable<Route.Vault> block (recomposes when isActivated flips).
     LaunchedEffect(Unit) {
         vaultViewModel.events.collect { event ->
             when (event) {
-                VaultUiEvent.Activated -> {
-                    navController.popBackStack(Route.VaultOnboarding, inclusive = true)
-                    navController.navigate(Route.Vault) {
-                        popUpTo(Route.ChatList) { saveState = true }
-                        launchSingleTop = true
-                    }
-                }
+                VaultUiEvent.Activated -> { /* recomposition handles the switch */ }
 
                 VaultUiEvent.CloseOnboarding -> {
                     navController.popBackStack()
@@ -235,22 +230,11 @@ fun AppNavHost(
 
     val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
 
-    // Open-Vault helper — if activated (or still checking), go to the Vault screen
-    // (which shows loading/biometric gate); only show onboarding when we're certain
-    // the vault has never been set up (isActivated == false, not null).
     val openVault: () -> Unit = {
-        if (isVaultActivated == false) {
-            navController.navigate(Route.VaultOnboarding) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        } else {
-            navController.navigate(Route.Vault) {
-                popUpTo(Route.ChatList) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
+        navController.navigate(Route.Vault) {
+            popUpTo(Route.ChatList) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
         }
     }
 
@@ -775,27 +759,36 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.VaultOnboarding> {
-                            if (isAuthenticated) {
-                                VaultOnboardingScreen(
-                                    viewModel = vaultViewModel,
-                                )
-                            }
-                        }
-
                         composable<Route.Vault> {
                             if (isAuthenticated) {
-                                VaultScreen(
-                                    vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
-                                    viewModel = vaultViewModel,
-                                    onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
-                                    onNavigateToChats = {
-                                        navController.popBackStack(
-                                            Route.ChatList,
-                                            inclusive = false
+                                when (isVaultActivated) {
+                                    null -> {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                    false -> {
+                                        VaultOnboardingScreen(
+                                            viewModel = vaultViewModel,
                                         )
-                                    },
-                                )
+                                    }
+                                    true -> {
+                                        VaultScreen(
+                                            vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
+                                            viewModel = vaultViewModel,
+                                            onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
+                                            onNavigateToChats = {
+                                                navController.popBackStack(
+                                                    Route.ChatList,
+                                                    inclusive = false
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
 

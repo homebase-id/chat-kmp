@@ -199,6 +199,19 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
     }
     // setIconVisible / setBiometricsEnabled follow the same shape
 
+    /**
+     * Clear all in-memory state for a clean login. Called from
+     * `onPostAuthenticated` in `AppModule.kt`. Re-reads boolean flags
+     * from the DB (which returns defaults after a logout wipe) and
+     * zeroes biometric session timestamps.
+     */
+    fun reset() {
+        _activated.value = readBoolean(ACTIVATED_KEY, default = false)
+        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
+        // Clear any in-memory session state (biometric timestamps, flags, etc.)
+    }
+
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
         val bytes: ByteArray = runCatching {
             keyValue.selectByKey(key) { _, data -> data }
@@ -448,8 +461,28 @@ class FooStream(
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
 
     init {
-        scope.launch { loadAll() }
         scope.launch { observeEvents() }
+    }
+
+    /**
+     * Load data from the local DB. Called from `onPostAuthenticated` in
+     * `AppModule.kt` — never from `init`, because the singleton survives
+     * logout and `init` only runs once per app process.
+     */
+    fun start() {
+        scope.launch { loadAll() }
+    }
+
+    /**
+     * Clear all in-memory state so a subsequent [start] loads cleanly
+     * for a different identity. Called from `onPostAuthenticated` before
+     * [start]. Must clear: StateFlows, resurrection-prevention sets,
+     * pending-operation tracking, and any other session-scoped state.
+     */
+    fun reset() {
+        _items.value = emptyList()
+        _isLoaded.value = false
+        // Clear deletion-tracking sets, pending-delete maps, etc.
     }
 
     suspend fun loadAll() { /* QueryBatch from local DB → emit to StateFlows */ }
@@ -888,6 +921,28 @@ viewModelOf(::FooViewModel)       // constructor: FooPreferences, AuthConnection
 viewModelOf(::FooSettingsViewModel)
 ```
 
+### Logout/login cleanup — `onPostAuthenticated`
+
+Koin singletons (`FooPreferences`, `FooStream`, `FooService`) live for the
+entire app process. On logout the DB is wiped (`DROP TABLE`), but the
+singleton's in-memory `StateFlow`s still hold the previous user's data. Without
+an explicit reset, a second login shows stale data from the wrong identity.
+
+Add cleanup to the existing `onPostAuthenticated` block in `AppModule.kt`:
+
+```kotlin
+onPostAuthenticated = {
+    // ... existing ConversationStream / ContactService wiring ...
+
+    get<FooPreferences>().reset()
+    get<FooStream>().apply { reset(); start() }
+}
+```
+
+`reset()` zeroes every `StateFlow` and clears session-scoped tracking sets
+(deletion IDs, pending-operation maps). `start()` then reloads from the
+now-fresh DB for the new identity. Order matters: **reset before start**.
+
 ---
 
 ## Step 11 — Platform dependencies (only if biometric-gated)
@@ -940,6 +995,8 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] `AppModule`: `singleOf(::FooStream)`, `singleOf(::FooService)`,
       `singleOf(::FooUploaderService)`, `viewModel { FooViewModel(...) }`,
       `viewModelOf(::FooSettingsViewModel)`
+- [ ] `onPostAuthenticated`: `FooPreferences.reset()` + `FooStream.reset(); start()`
+      (clears stale in-memory state across logout/login)
 - [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
       checked before creating defaults (prevents AES key mismatch on re-login)
 
@@ -1011,6 +1068,15 @@ Copy this into your PR description and tick off each wiring point:
   `payloadKey`) to store the local file path at send time, and render the local file
   via `AsyncImage` in your card/list composable. This matches the chat pattern in
   `MediaItem.kt`.
+- **Koin singletons survive logout — you MUST add `reset()`.** The DB is wiped on
+  logout (`DROP TABLE`), but `FooStream`, `FooPreferences`, and `FooService` are Koin
+  singletons whose `StateFlow`s and tracking sets persist for the lifetime of the app
+  process. Without an explicit `reset()` call in `onPostAuthenticated`, logging in as a
+  different user shows the previous user's data — a **user data isolation bug**. Every
+  singleton that holds user-scoped in-memory state needs a `reset()` method wired into
+  `onPostAuthenticated`. This includes resurrection-prevention sets (`deletedIds`),
+  pending-operation maps, biometric session timestamps, and any `started` flags that
+  gate idempotent `start()` calls.
 - **Biometric cancel should show a locked screen, not navigate away.** Calling
   `onNavigateBack()` on `BiometricResult.Failure` silently ejects the user with no
   retry option. Instead, show a locked state UI (lock icon + "Unlock" button) and

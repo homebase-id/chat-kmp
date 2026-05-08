@@ -384,7 +384,8 @@ val appModule = module {
             get(),
             get(),
             get(),
-            getVaultPermissionExtensionConfig()
+            getVaultPermissionExtensionConfig(),
+            autoCheck = false,
         )
     }
     viewModel(FeedPermissionQualifier) {
