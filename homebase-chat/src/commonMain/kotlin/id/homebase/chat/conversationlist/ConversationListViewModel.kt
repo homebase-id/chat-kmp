@@ -2512,49 +2512,51 @@ class ConversationListViewModel(
                             val exitedAt = _uiState.value.activeConversations
                                 .find { it.conversation.id == conversationId }
                                 ?.conversation?.exitedAt
-                            val filteredByExit = if (exitedAt != null)
-                                messageState.messages.filter { it.userDate <= exitedAt }
-                            else
-                                messageState.messages
-                            // Hide soft-deleted messages in "Note to Self" conversation
-                            val messages =
-                                if (conversationId == ChatProtocol.ConversationWithYourselfId)
-                                    filteredByExit.filter { !it.isDeleted }
-                                else
-                                    filteredByExit
-                            // Group messages within day sections
-                            val timezone = TimeZone.currentSystemDefault()
-                            val groupedMessages =
-                                messages.sortedBy { it.userDate }.groupBy { message ->
-                                    val date = message.userDate.toLocalDateTime(timezone).date
-                                    date
-                                }
-                            val messagesModels: MutableList<MessageListContentModel> =
-                                mutableListOf(MessageListContentModel.Header)
 
-                            var systemIndex = 0
-                            messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
-                                val sectionHeader = listOf(MessageListContentModel.Section(date))
-                                val items = messages.map { msg ->
-                                    if (msg.isStatusMessage)
-                                        MessageListContentModel.System(
-                                            msg.content,
-                                            msg.userDate,
-                                            systemIndex++
-                                        )
+                            val messagesModels = withContext(Dispatchers.Default) {
+                                val filteredByExit = if (exitedAt != null)
+                                    messageState.messages.filter { it.userDate <= exitedAt }
+                                else
+                                    messageState.messages
+                                val messages =
+                                    if (conversationId == ChatProtocol.ConversationWithYourselfId)
+                                        filteredByExit.filter { !it.isDeleted }
                                     else
-                                        MessageListContentModel.Message(msg)
-                                }
-                                val messageItems = items.filterIsInstance<MessageListContentModel.Message>()
-                                val clustered = computeClusterPositions(messageItems)
-                                val clusteredMap = clustered.associateBy { it.message.id }
-                                sectionHeader + items.map { item ->
-                                    if (item is MessageListContentModel.Message)
-                                        clusteredMap[item.message.id] ?: item
-                                    else
-                                        item
-                                }
-                            })
+                                        filteredByExit
+                                val timezone = TimeZone.currentSystemDefault()
+                                val groupedMessages =
+                                    messages.sortedBy { it.userDate }.groupBy { message ->
+                                        val date = message.userDate.toLocalDateTime(timezone).date
+                                        date
+                                    }
+                                val models: MutableList<MessageListContentModel> =
+                                    mutableListOf(MessageListContentModel.Header)
+
+                                var systemIndex = 0
+                                models.addAll(groupedMessages.flatMap { (date, messages) ->
+                                    val sectionHeader = listOf(MessageListContentModel.Section(date))
+                                    val items = messages.map { msg ->
+                                        if (msg.isStatusMessage)
+                                            MessageListContentModel.System(
+                                                msg.content,
+                                                msg.userDate,
+                                                systemIndex++
+                                            )
+                                        else
+                                            MessageListContentModel.Message(msg)
+                                    }
+                                    val messageItems = items.filterIsInstance<MessageListContentModel.Message>()
+                                    val clustered = computeClusterPositions(messageItems)
+                                    val clusteredMap = clustered.associateBy { it.message.id }
+                                    sectionHeader + items.map { item ->
+                                        if (item is MessageListContentModel.Message)
+                                            clusteredMap[item.message.id] ?: item
+                                        else
+                                            item
+                                    }
+                                })
+                                models
+                            }
 
                             // Insert "New Messages" separator before the first unread message
                             val convoModel = _uiState.value.activeConversations
@@ -2633,7 +2635,7 @@ class ConversationListViewModel(
                                 // it's long, navigation already completed (tap →
                                 // detailPane render) without waiting for it.
                                 Logger.i(tag = "ConversationListViewModel") {
-                                    "messages first emission id=$conversationId messageCount=${messages.size} sinceSelected=${loadStart.elapsedNow()}"
+                                    "messages first emission id=$conversationId messageCount=${messagesModels.size} sinceSelected=${loadStart.elapsedNow()}"
                                 }
                             }
 
@@ -2650,7 +2652,7 @@ class ConversationListViewModel(
                                 val totalElapsed = loadStart.elapsedNow()
                                 Logger.d(tag = "ConversationLoad") {
                                     "conversationId=$conversationId " +
-                                            "messageCount=${messages.size} " +
+                                            "messageCount=${messagesModels.size} " +
                                             "cached=$hasCachedMessages " +
                                             "total=$totalElapsed"
                                 }
