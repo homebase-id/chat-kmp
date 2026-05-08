@@ -8,6 +8,8 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.withRetry
@@ -138,10 +140,11 @@ class ChatMessageStream(
 // ---------- EVENT HANDLING ----------
 
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
-        val messages =
+        val messages = withContext(Dispatchers.Default) {
             files
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                 .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
+        }
 
         val grouped = messages.groupBy { it.conversationId }
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
@@ -198,8 +201,10 @@ class ChatMessageStream(
         val queryElapsed = queryStart.elapsedNow()
 
         val mapStart = TimeSource.Monotonic.markNow()
-        val records = result.records.mapNotNull { header ->
-            mapToMessageData(header, credentialsManager, ::resolveDisplayName)
+        val records = withContext(Dispatchers.Default) {
+            result.records.mapNotNull { header ->
+                mapToMessageData(header, credentialsManager, ::resolveDisplayName)
+            }
         }
         val mapElapsed = mapStart.elapsedNow()
 
@@ -244,7 +249,7 @@ class ChatMessageStream(
 
         // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
-            records =
+            records = withContext(Dispatchers.Default) {
                 result.records
                     .filter {
                         it.fileMetadata.appData.content?.contains(
@@ -252,7 +257,8 @@ class ChatMessageStream(
                             ignoreCase = true
                         ) == true
                     }
-                    .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) },
+                    .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
+            },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -280,12 +286,14 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = result.records.mapNotNull {
-                mapToMessageData(
-                    it,
-                    credentialsManager,
-                    ::resolveDisplayName
-                )
+            records = withContext(Dispatchers.Default) {
+                result.records.mapNotNull {
+                    mapToMessageData(
+                        it,
+                        credentialsManager,
+                        ::resolveDisplayName
+                    )
+                }
             },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
