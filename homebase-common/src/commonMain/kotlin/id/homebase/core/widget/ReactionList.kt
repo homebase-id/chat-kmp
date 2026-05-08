@@ -1,6 +1,5 @@
 package id.homebase.core.widget
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -36,7 +35,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -103,42 +101,19 @@ fun ReactionList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                displayEmojis.forEachIndexed { index, (emoji, _) ->
-                    val emojiScale = remember(emoji) { Animatable(0f) }
-                    LaunchedEffect(emoji) {
-                        delay(index * 50L)
-                        emojiScale.animateTo(
-                            targetValue = 1f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMediumLow,
-                            )
-                        )
-                    }
+                displayEmojis.forEach { (emoji, _) ->
                     Text(
                         text = emoji,
                         fontSize = 16.sp,
-                        modifier = Modifier.scale(emojiScale.value),
                     )
                 }
                 if (totalCount > 1) {
-                    val countScale = remember { Animatable(1f) }
-                    LaunchedEffect(totalCount) {
-                        countScale.snapTo(0.6f)
-                        countScale.animateTo(
-                            targetValue = 1f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMedium,
-                            )
-                        )
-                    }
                     Text(
                         text = totalCount.toString(),
                         fontSize = 13.sp,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp).scale(countScale.value),
+                        modifier = Modifier.padding(start = 2.dp),
                     )
                 }
             }

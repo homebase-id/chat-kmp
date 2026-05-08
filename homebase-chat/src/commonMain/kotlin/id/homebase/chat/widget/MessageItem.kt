@@ -161,6 +161,7 @@ fun MessageItem(
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 renderAuthorName = renderAuthorName,
+                isGroupConversation = isGroupConversation,
                 clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,

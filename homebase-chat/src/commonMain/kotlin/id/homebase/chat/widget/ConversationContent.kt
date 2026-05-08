@@ -986,31 +986,17 @@ fun ConversationContent(
                             }
                         }
 
-                        Column(
+                        ScrollToBottomButton(
+                            visible = showScrollToBottom,
+                            unreadCount = conversation.conversation.unreadCount,
                             modifier = Modifier.align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp),
-                        ) {
-                            AnimatedVisibility(
-                                visible = showScrollToBottom,
-                                enter = fadeIn() + scaleIn(),
-                                exit = fadeOut() + scaleOut(),
-                            ) {
-                                SmallFloatingActionButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                        }
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
-                                    )
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
                                 }
-                            }
-                        }
+                            },
+                        )
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -1746,6 +1732,54 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
                 day()
             }
             messageDate.format(format)
+        }
+    }
+}
+
+@Composable
+private fun ScrollToBottomButton(
+    visible: Boolean,
+    unreadCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = unreadCount > 0,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Text(
+                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+            SmallFloatingActionButton(
+                onClick = onClick,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
+                )
+            }
         }
     }
 }

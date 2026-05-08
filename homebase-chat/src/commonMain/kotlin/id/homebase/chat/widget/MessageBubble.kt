@@ -67,16 +67,20 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
+import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -106,6 +110,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+
+private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -375,6 +381,7 @@ fun ReceivedMessageBubble(
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     renderAuthorName: Boolean = false,
+    isGroupConversation: Boolean = false,
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -417,9 +424,31 @@ fun ReceivedMessageBubble(
     val scope = rememberCoroutineScope()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        modifier = Modifier.fillMaxWidth()
+            .padding(start = if (isGroupConversation) 8.dp else 16.dp, end = 16.dp)
             .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
+        if (isGroupConversation) {
+            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
+                clusterPosition == MessageClusterPosition.END
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Bottom)
+                    .padding(start = 4.dp, end = 8.dp)
+                    .size(Dimens.Conversation.itemAvatarSize),
+            ) {
+                if (showAvatar && message.originalAuthor != null) {
+                    val initials = remember(message.displayName) {
+                        message.displayName.initials()
+                    }
+                    PublicAvatar(
+                        odinId = message.originalAuthor,
+                        initials = initials,
+                        options = GroupMessageAvatarOptions,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalArrangement = Arrangement.Start,
