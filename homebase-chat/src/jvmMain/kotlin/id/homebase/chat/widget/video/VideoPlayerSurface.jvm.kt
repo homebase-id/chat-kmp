@@ -48,6 +48,7 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.cd_video_frame
 import id.homebase.resources.vlc_required
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -406,7 +407,7 @@ internal fun VlcjPlayer(
         if (frame != null) {
             Image(
                 bitmap = frame,
-                contentDescription = null,
+                contentDescription = stringResource(MR.string.cd_video_frame),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )

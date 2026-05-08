@@ -66,6 +66,8 @@ import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_search_result_empty
+import id.homebase.resources.cd_not_selected
+import id.homebase.resources.cd_selected
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
@@ -342,9 +344,9 @@ fun ContactItem(
         if (selectionMode) {
             val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
             if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
+                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = tint)
             } else {
-                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
+                Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = tint)
             }
         }
     }
@@ -408,9 +410,9 @@ fun GroupOrConversationItem(
         if (selectionMode) {
             val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
             if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
+                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = tint)
             } else {
-                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
+                Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = tint)
             }
         }
     }

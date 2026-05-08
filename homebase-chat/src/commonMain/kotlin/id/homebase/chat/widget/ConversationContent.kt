@@ -182,6 +182,7 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
+import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
@@ -884,6 +885,12 @@ fun ConversationContent(
                                     is MessageListContentModel.System -> {
                                         Box(modifier = Modifier.animateItem()) {
                                             MessagesSystemMessage(text = item.text)
+                                        }
+                                    }
+
+                                    is MessageListContentModel.UnreadSeparator -> {
+                                        Box(modifier = Modifier.animateItem()) {
+                                            UnreadMessagesSeparator()
                                         }
                                     }
 
@@ -1598,7 +1605,7 @@ private fun ConnectIdentityRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
                         tint = SuccessGreen,
                     )
                     Spacer(modifier = Modifier.width(6.dp))

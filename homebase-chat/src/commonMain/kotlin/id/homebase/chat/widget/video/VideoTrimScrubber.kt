@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import id.homebase.api.video.IndexedFrame
 import id.homebase.resources.MR
+import id.homebase.resources.cd_video_scrubber_frame
 import id.homebase.resources.trim_end_handle
 import id.homebase.resources.trim_position
 import id.homebase.resources.trim_start_handle
@@ -175,7 +176,7 @@ fun VideoTrimScrubber(
                     if (frame != null) {
                         AsyncImage(
                             model = frame.jpegBytes,
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_video_scrubber_frame),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )

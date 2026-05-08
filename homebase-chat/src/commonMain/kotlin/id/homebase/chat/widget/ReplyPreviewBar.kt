@@ -34,6 +34,7 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
+import id.homebase.resources.cd_reply_thumbnail
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -155,7 +156,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.cd_reply_thumbnail),
                 )
             }
 

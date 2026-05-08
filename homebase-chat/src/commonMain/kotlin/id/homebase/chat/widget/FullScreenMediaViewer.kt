@@ -66,6 +66,7 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
+import id.homebase.resources.share
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
@@ -341,7 +342,7 @@ fun FullScreenMediaViewer(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     IconButton(onClick = { onShare(data.messageId, data.selectedPayloadKey) }) {
-                        Icon(Icons.Default.Share, contentDescription = null)
+                        Icon(Icons.Default.Share, contentDescription = stringResource(MR.string.share))
                     }
                 }
             }

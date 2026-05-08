@@ -83,6 +83,7 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
+import id.homebase.resources.cd_open_externally
 import id.homebase.resources.settings_section_danger_zone
 import id.homebase.resources.settings_section_general
 import id.homebase.resources.settings_storage
@@ -281,7 +282,7 @@ fun SettingsUi(
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_open_externally),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
@@ -329,7 +330,7 @@ fun SettingsUi(
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_open_externally),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )

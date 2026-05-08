@@ -26,6 +26,7 @@ import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.resources.MR
+import id.homebase.resources.error_no_contact_loaded
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 
@@ -80,7 +81,7 @@ fun ContactInfoUi(
                 if (uiState.isLoading) {
                     LoadingListItem()
                 } else {
-                    ErrorInfoItem("No contact could be loaded")
+                    ErrorInfoItem(stringResource(MR.string.error_no_contact_loaded))
                 }
             }
 
