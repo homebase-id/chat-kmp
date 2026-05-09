@@ -27,6 +27,11 @@ data class GroupHealInfo(
     val canonicalParticipants: List<OdinId>,
     val canonicalAdminFileUniqueId: Uuid,
     val canonicalAdminVersionTag: Uuid?,
+    // Nullable for backwards-compat: pre-hardening senders never set this. When
+    // present, the receive-side handler can rebuild a fully-formed local admin
+    // placeholder (matching content) instead of just deleting the broken row
+    // and relying on getAdmins()' originalAuthor fallback.
+    val canonicalAdmins: List<OdinId>? = null,
 )
 
 @Serializable
