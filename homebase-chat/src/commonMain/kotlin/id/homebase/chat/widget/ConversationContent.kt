@@ -139,6 +139,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
@@ -813,14 +814,25 @@ fun ConversationContent(
                 // mutation of `firstVisibleItemIndex` during scroll-to-bottom restore.
                 val floatingDateLabel by produceState<LocalDate?>(null, listState) {
                     snapshotFlow {
-                        val firstVisibleIndex = listState.firstVisibleItemIndex
                         val items = currentMergedItems
+                        // boundedFirstVisibleItemIndex guards against the
+                        // `Int.MAX_VALUE` "land at bottom" sentinel that
+                        // `ConversationMessagesPane.kt` puts into LazyListState
+                        // before LazyColumn's first measure clamps it. Without the
+                        // clamp this for-loop walked 2.1B iterations and froze
+                        // Main for 6+ seconds (build 1419 watchdog stack landed
+                        // here with `idx=2147483647 items=0`). See
+                        // `boundedFirstVisibleItemIndex` docs and the CLAUDE.md
+                        // "Compose & Flow gotchas" rule.
+                        val startIdx = listState.boundedFirstVisibleItemIndex(items.size)
                         var date: LocalDate? = null
-                        for (i in firstVisibleIndex downTo 0) {
-                            val item = items.getOrNull(i)
-                            if (item is MessageListContentModel.Section) {
-                                date = item.date
-                                break
+                        if (startIdx != null) {
+                            for (i in startIdx downTo 0) {
+                                val item = items.getOrNull(i)
+                                if (item is MessageListContentModel.Section) {
+                                    date = item.date
+                                    break
+                                }
                             }
                         }
                         date

@@ -241,6 +241,20 @@ writing or modifying any screen/composable, verify:
   comparing only one field of a heavy value), shape the snapshotFlow block to *return*
   that key — don't bolt distinctUntilChanged on top.
 
+- **Don't use `LazyListState.firstVisibleItemIndex` as an array index without
+  clamping.** Compose's idiom for "land at the bottom on first frame, no flash" is
+  `LazyListState(firstVisibleItemIndex = Int.MAX_VALUE)` — LazyColumn clamps the
+  sentinel during its first measure pass, but anything reading the field *before*
+  that measure runs (a `snapshotFlow {}` body, a `derivedStateOf`, a save-scroll
+  effect on the same frame the state was created) gets `Int.MAX_VALUE` back. Using
+  that as `for (i in firstVisibleIndex downTo 0)` walks ~2.1B iterations and
+  freezes the UI dispatcher for seconds (build 1419 watchdog landed exactly here
+  in `ConversationContent.kt`'s floatingDateLabel snapshotFlow with
+  `idx=2147483647 items=0`). Use the
+  `LazyListState.boundedFirstVisibleItemIndex(itemsSize: Int)` extension in
+  `id.homebase.core.util.ScrollPosition.kt` — it returns `null` for an empty list
+  and a clamped index otherwise.
+
 ## Strings & Unicode
 
 User-entered text (messages, descriptions, names, link previews) can contain emoji and other
