@@ -12,16 +12,26 @@ import kotlin.uuid.Uuid
  * in-memory conversation list.
  *
  * Returns `null` when the message doesn't require a UI change (the
- * targeted conversation isn't in the list, or the message is older
- * than the current `latestMessageTimestamp`). Returns the new list
- * otherwise.
+ * targeted conversation isn't in the list, or the message's
+ * `userDate` is not strictly newer than the conversation's current
+ * `latestMessageTimestamp`). Returns the new list otherwise.
  *
- * Why this is its own function: the equivalent logic used to delegate
- * to [ConversationStream.updateConversation], which silently drops
- * `unreadCount` because it's designed for whole-file refreshes (those
- * always carry `incoming.unreadCount = 0` from the mapper). Going
- * through that helper masked the unread bump and the bug only
- * surfaced once the dirty-bit gating tightened the
+ * The strict `>` (rather than `>=`) check is the guard against
+ * reaction-driven re-emits. When someone reacts to a message, the
+ * server pushes the modified message file (with the new
+ * `reactionPreview` baked into the header) over the WS. That
+ * re-emit has the SAME `userDate` as the original message
+ * (`userDate` is the message's authored time — reactions don't
+ * change it), so a `>=` check would incorrectly bump unread every
+ * time anyone reacts. Strict `>` rejects re-emits and only accepts
+ * messages with a newer `userDate` than the conversation has seen.
+ *
+ * Why this is its own function: the equivalent logic used to
+ * delegate to [ConversationStream.updateConversation], which
+ * silently drops `unreadCount` because it's designed for whole-file
+ * refreshes (those always carry `incoming.unreadCount = 0` from the
+ * mapper). Going through that helper masked the unread bump and
+ * the bug only surfaced once the dirty-bit gating tightened the
  * `enrichAllConversationsWithUnreadCounts` cadence so the in-memory
  * `++` stopped being constantly overwritten by a fresh DB recount.
  *
@@ -62,7 +72,9 @@ internal fun applyIncomingMessageBump(
     var didChange = false
     val updated = items.map { existing ->
         if (existing.id != targetConversationId) return@map existing
-        if (sqlUserDate < existing.latestMessageTimestamp) return@map existing
+        // Strict > so reaction-driven re-emits (which carry the same
+        // userDate as the original message) don't bump unread.
+        if (sqlUserDate <= existing.latestMessageTimestamp) return@map existing
         didChange = true
         existing.copy(
             unreadCount = existing.unreadCount + increment,

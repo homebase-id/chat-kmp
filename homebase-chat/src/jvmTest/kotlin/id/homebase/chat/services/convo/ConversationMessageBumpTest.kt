@@ -217,6 +217,80 @@ class ConversationMessageBumpTest {
         assertNull(updated)
     }
 
+    /**
+     * Regression guard for the reaction-echo bug observed in homebase.log
+     * around 18:15:21 (commit b7aa8809 build): when someone reacts to a
+     * message, the server pushes the modified message file (with updated
+     * `reactionPreview`) over the WS. That re-emit has the SAME
+     * `userDate` as the original message (userDate is the authored
+     * time — reactions don't change it). Pre-fix: the `<` guard let
+     * the re-emit through and bumped unread on every reaction. Post-fix:
+     * the `<=` guard rejects re-emits.
+     */
+    @Test
+    fun reactionEcho_sameUserDate_returnsNull_noUnreadBump() {
+        // Convo's latestMessageTimestamp was set to T by the original
+        // peer message arrival. The reaction echo carries the same T.
+        val originalUserDateMs = 1_777_000_000_000L
+        val items = listOf(convo(latestMs = originalUserDateMs, unread = 1))
+        val msg = message(author = alice, userDateMs = originalUserDateMs)
+
+        val updated = applyIncomingMessageBump(
+            items = items,
+            targetConversationId = convoId,
+            m = msg,
+            sqlUserDate = Instant.fromEpochMilliseconds(originalUserDateMs),
+            activeDomain = me,
+        )
+
+        assertNull(
+            updated,
+            "reaction-driven re-emit (same userDate as conversation's latestMessageTimestamp) " +
+                "must not bump unread",
+        )
+    }
+
+    /**
+     * Full reaction-echo lifecycle: a peer message arrives (bump 0→1),
+     * then several reaction echoes arrive carrying the same userDate
+     * (because reactions don't advance userDate). Unread count must
+     * stay at 1, not climb to 2/3/4.
+     */
+    @Test
+    fun peerMessageThenReactionEchoes_doesNotMultiplyUnread() {
+        var items: List<ConversationUiModel> = listOf(convo(unread = 0))
+        val originalUserDateMs = 1_777_000_000_000L
+
+        // Initial peer message arrival.
+        val originalMsg = message(author = alice, userDateMs = originalUserDateMs)
+        val afterArrival = applyIncomingMessageBump(
+            items = items,
+            targetConversationId = convoId,
+            m = originalMsg,
+            sqlUserDate = Instant.fromEpochMilliseconds(originalUserDateMs),
+            activeDomain = me,
+        )
+        assertNotNull(afterArrival)
+        items = afterArrival
+        assertEquals(1, items.first().unreadCount)
+
+        // Three reaction-driven re-emits (server fan-out for one reaction).
+        // Each carries the same userDate. None should bump.
+        for (i in 1..3) {
+            val echo = message(author = alice, userDateMs = originalUserDateMs)
+            val result = applyIncomingMessageBump(
+                items = items,
+                targetConversationId = convoId,
+                m = echo,
+                sqlUserDate = Instant.fromEpochMilliseconds(originalUserDateMs),
+                activeDomain = me,
+            )
+            assertNull(result, "echo #$i must not produce a list change")
+        }
+
+        assertEquals(1, items.first().unreadCount, "unread must stay at 1 after reaction echoes")
+    }
+
     @Test
     fun messageForUnknownConversation_returnsNull() {
         val items = listOf(convo())
