@@ -312,7 +312,44 @@ class ConversationStream(
         if (messageFiles.size != incoming.size)
             Logger.w("ConversationStream: ${messageFiles.size - incoming.size} of ${messageFiles.size} messages failed to convert")
 
-        for ((file, m) in incoming) {
+        // ╔══════════════════════════════════════════════════════════════╗
+        // ║  HACK ── REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-WRITE      ║
+        // ║                                                              ║
+        // ║  TODO(server): the chat-drive WS currently emits N           ║
+        // ║  notifications (typically 3) per logical file write — same   ║
+        // ║  uniqueId, same versionTag, same content, just delivered     ║
+        // ║  multiple times. Suspected cause: multi-stage server-side    ║
+        // ║  processing or duplicated subscription registration.         ║
+        // ║                                                              ║
+        // ║  Downstream caches dedupe naturally:                         ║
+        // ║    • [DriveMainIndex] upsert is idempotent on uniqueId.      ║
+        // ║    • [ActiveConversationState.upsertMessages] collapses by   ║
+        // ║      `m.id`.                                                 ║
+        // ║                                                              ║
+        // ║  But the per-message side effects in this loop (unread bump  ║
+        // ║  via [applyIncomingMessageBump], orphan placeholder, deleted-║
+        // ║  conversation revive, auto-unarchive) would otherwise fire   ║
+        // ║  N times per logical message — N-x over-counting unread      ║
+        // ║  observable in homebase.log as repeated `unread++` lines all ║
+        // ║  carrying the same convo id within a millisecond.            ║
+        // ║                                                              ║
+        // ║  Until the server is fixed, we collapse the batch by         ║
+        // ║  message id here. `associateBy` keeps the LAST occurrence on ║
+        // ║  key collision, which gives us the latest wire state.        ║
+        // ║                                                              ║
+        // ║  When the server-side fix lands: delete this block and the   ║
+        // ║  loop should iterate `incoming` directly.                    ║
+        // ╚══════════════════════════════════════════════════════════════╝
+        val deduped = incoming.associateBy { (_, m) -> m.id }.values.toList()
+        if (deduped.size != incoming.size) {
+            Logger.w(
+                "ConversationStream: HACK dedupe — dropped ${incoming.size - deduped.size} " +
+                    "duplicate message file(s) from batch (server fan-out workaround; " +
+                    "kept ${deduped.size} unique by id)"
+            )
+        }
+
+        for ((file, m) in deduped) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
 
             // Drop messages for conversations the user has left or been removed from
@@ -456,6 +493,21 @@ class ConversationStream(
      *   conversation's `latestMessageTimestamp` so it stays in lock-step with
      *   `selectAllUnreadCount`. The clamped `m.userDate` is correct for
      *   display but can underrun the SQL value.
+     *
+     * Writes the message-preview fields and the bumped [unreadCount]
+     * directly to [_conversations]. Does NOT route through
+     * [updateConversation] — that helper is designed for whole-file
+     * refreshes and explicitly preserves `existing.unreadCount` (because
+     * incoming-from-file always maps with `unreadCount=0`). Routing this
+     * path through it silently drops the bump; the bug was masked while
+     * `Stopped` always re-ran [enrichAllConversationsWithUnreadCounts]
+     * but is no longer masked now that the dirty-bit gates the post-sync
+     * recount.
+     *
+     * The map callback reads `existing` (live state) instead of the
+     * captured `c` parameter so consecutive bumps for the same
+     * conversation in one batch are additive — each iteration of the
+     * caller's loop sees the previous iteration's write.
      */
     private suspend fun updateConversationFromNewMessage(
         c: ConversationUiModel,
@@ -463,27 +515,27 @@ class ConversationStream(
         sqlUserDateMs: Long,
     ) {
         val sqlUserDate = Instant.fromEpochMilliseconds(sqlUserDateMs)
-        if (sqlUserDate >= c.latestMessageTimestamp) {
-            val domain = credentialsManager.getActiveDomain()
+        val domain = credentialsManager.getActiveDomain()
 
-            val increment =
-                if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0
-            if (increment > 0) {
-                Logger.d("ConversationStream: unread++ convo=${c.id} count=${c.unreadCount + increment}")
-            }
+        val current = _conversations.value
+        val updated = applyIncomingMessageBump(
+            items = current.items,
+            targetConversationId = c.id,
+            m = m,
+            sqlUserDate = sqlUserDate,
+            activeDomain = domain,
+        ) ?: return
 
-            val updatedConversation = c.copy(
-                unreadCount = c.unreadCount + increment,
-                latestMessageTimestamp = sqlUserDate,
-                lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
-                lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
-                lastMessageIsDeleted = m.isDeleted,
-                lastMessageFirstPayload = m.payloads?.firstOrNull(),
-                lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
-                lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain()),
-            )
-            updateConversation(c, updatedConversation)
+        // Log the unread bump for the touched conversation, if any. We
+        // diff before-vs-after rather than recomputing the increment
+        // here so the log never disagrees with the persisted state.
+        val before = current.items.firstOrNull { it.id == c.id }
+        val after = updated.firstOrNull { it.id == c.id }
+        if (before != null && after != null && after.unreadCount > before.unreadCount) {
+            Logger.d("ConversationStream: unread++ convo=${c.id} count=${after.unreadCount}")
         }
+
+        _conversations.value = current.copy(items = updated)
     }
 
     override suspend fun loadConversation(conversationId: Uuid) {
