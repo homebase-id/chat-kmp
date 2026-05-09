@@ -29,6 +29,11 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
 
+/** Server-enforced cap on reactions per user per message. The client mirrors
+ *  the rule so we don't enqueue a request the server will reject with
+ *  UnhandledScenario / "Too many Reactions". */
+const val MAX_REACTIONS_PER_USER_PER_MESSAGE = 5
+
 class ChatMessageActionService(
     private val conversationService: ConversationService,
     private val participantLookup: ConversationParticipantLookup,

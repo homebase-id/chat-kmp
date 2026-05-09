@@ -51,6 +51,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
@@ -106,6 +107,7 @@ import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
+import id.homebase.resources.chat_reactions_limit_reached
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
@@ -1249,6 +1251,32 @@ class ConversationListViewModel(
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     if (action.reaction.isEmpty()) return@launch
+
+                    // Mirror the server-side cap of MAX_REACTIONS_PER_USER_PER_MESSAGE
+                    // distinct reactions per user per message. Adding past the cap is
+                    // a 400 (UnhandledScenario / "Too many Reactions") at upload, so
+                    // block it before we optimistically write or hit the outbox.
+                    // Removes (toggling an emoji the user already has) are always
+                    // allowed.
+                    val targetMessage = _messagesUiState.value.messages
+                        .asSequence()
+                        .filterIsInstance<MessageListContentModel.Message>()
+                        .firstOrNull { it.message.id == action.messageId }
+                        ?.message
+                    if (targetMessage != null) {
+                        // ownReactions holds bare emoji (decoded by
+                        // ChatMessageStream from the wire's
+                        // `{"emoji":"X"}`); compare directly so removes
+                        // at the cap aren't misread as adds.
+                        val alreadyHasIt = action.reaction in targetMessage.ownReactions
+                        if (!alreadyHasIt &&
+                            targetMessage.ownReactions.size >= MAX_REACTIONS_PER_USER_PER_MESSAGE
+                        ) {
+                            sendEvent(ShowInfoMessage(MR.string.chat_reactions_limit_reached))
+                            return@launch
+                        }
+                    }
+
                     val previousReactions = _messagesUiState.value.messageReactions
                     try {
                         _messagesUiState.update { state ->
