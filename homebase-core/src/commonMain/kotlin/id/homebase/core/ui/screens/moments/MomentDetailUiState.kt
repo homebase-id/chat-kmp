@@ -35,6 +35,14 @@ data class MomentDetailUiState(
     val editingCommentId: Uuid? = null,
     val editingCommentDraft: String = "",
     val isSavingCommentEdit: Boolean = false,
+
+    /**
+     * Quick-react emoji set surfaced in the moment's reactions row and the
+     * per-comment react affordance. Sourced from `UserPreferences.preferredUserReactions`
+     * (same store the chat composer reads). Empty when the user hasn't
+     * customised — UI falls back to a sensible built-in set.
+     */
+    val userDefaultReactions: List<String> = emptyList(),
 )
 
 sealed interface MomentDetailUiAction {
@@ -56,9 +64,16 @@ sealed interface MomentDetailUiAction {
     data class EditCommentDraftChanged(val text: String) : MomentDetailUiAction
     data object SaveCommentEdit : MomentDetailUiAction
     data object CancelCommentEdit : MomentDetailUiAction
+
+    /** Toggle a reaction on the moment itself. */
+    data class ToggleReactionOnMoment(val emoji: String) : MomentDetailUiAction
+
+    /** Toggle a reaction on one of the comments under this moment. */
+    data class ToggleReactionOnComment(val commentId: Uuid, val emoji: String) : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
     data class CommentPostFailed(val message: String?) : MomentDetailUiEvent
     data class CommentEditFailed(val message: String?) : MomentDetailUiEvent
+    data class ReactionFailed(val message: String?) : MomentDetailUiEvent
 }

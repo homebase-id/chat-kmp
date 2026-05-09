@@ -59,6 +59,7 @@ import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
 import id.homebase.core.moments.services.MomentGroupService
@@ -134,6 +135,7 @@ val appModule = module {
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
     singleOf(::MomentCommentsService)
+    singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
     single { MomentCreateFlowState() }
 

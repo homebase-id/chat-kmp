@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.moments
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsPostSenderService
@@ -103,6 +104,11 @@ class MomentAudienceViewModel(
                     description = draft.description,
                     recipients = odinIds,
                     source = source,
+                    // Earliest EXIF capture date among the photos, or whatever
+                    // the user picked via the date chip. Null falls through to
+                    // `now()` in the sender — same behavior as before this field
+                    // existed.
+                    userDate = draft.momentInstant?.let { UnixTimeUtc.fromInstant(it) },
                     // Aligned-by-index list of optional EXIF info per attachment.
                     // Null when the attachment isn't an image or the user didn't
                     // opt in to anything; the sender drops nulls before keying

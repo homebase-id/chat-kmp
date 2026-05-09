@@ -354,6 +354,9 @@
     <string name="moments_chip_location_included">Location</string>
     <string name="cd_moment_photo_info_chip">Photo info</string>
     <string name="cd_moment_toggle_include_location">Toggle including this photo&#8217;s location</string>
+    <string name="moments_chip_pick_date">Pick a date</string>
+    <string name="moments_chip_use_photo_date">Use photo date</string>
+    <string name="cd_moment_date_chip">Moment date</string>
     <string name="moments_audience_title">Send to</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>

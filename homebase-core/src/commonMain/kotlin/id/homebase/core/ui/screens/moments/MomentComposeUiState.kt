@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.moments
 
 import id.homebase.api.image.ImageMetadata
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 data class MomentComposeUiState(
@@ -13,6 +14,22 @@ data class MomentComposeUiState(
     val attachments: List<AttachmentPendingFile> = emptyList(),
     val description: String = "",
     val currentPage: Int = 0,
+    /**
+     * The moment's capture timestamp. Auto-derived from the earliest EXIF
+     * `DateTimeOriginal` among the photos, then frozen to whatever the user
+     * picks if they tap the date chip and override. Null means "no photo had
+     * EXIF and the user hasn't picked one" — the sender will fall back to
+     * `now()` at post time.
+     */
+    val momentInstant: Instant? = null,
+    /**
+     * True when the user explicitly picked a date via the date chip. While
+     * this is true, adding/removing photos no longer recomputes [momentInstant]
+     * — we don't want a late-arriving photo to silently overwrite the user's
+     * pick. Cleared if the user picks the auto-derived value back via the
+     * date picker (we treat that as "go back to following the photos").
+     */
+    val isMomentDateUserOverride: Boolean = false,
 ) {
     val canContinue: Boolean get() = attachments.isNotEmpty()
 }
@@ -61,6 +78,12 @@ sealed interface MomentComposeUiAction {
 
     /** Flip the per-image GPS opt-in. No-op if the image has no GPS metadata. */
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
+
+    /**
+     * User picked a date via the date chip. `epochMillis = null` clears the
+     * override and resumes auto-derivation from EXIF.
+     */
+    data class OverrideMomentDate(val epochMillis: Long?) : MomentComposeUiAction
 }
 
 sealed interface MomentComposeUiEvent {

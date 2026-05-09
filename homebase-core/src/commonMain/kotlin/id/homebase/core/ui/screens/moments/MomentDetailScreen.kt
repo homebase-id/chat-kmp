@@ -27,11 +27,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.filled.AddReaction
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -287,7 +288,11 @@ private fun MomentDetailContent(
 
         item {
             ReactionsRow(
-                isLiked = false,
+                summary = moment.reactionPreview,
+                quickReactions = uiState.userDefaultReactions,
+                onToggle = { emoji ->
+                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(emoji))
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -341,10 +346,14 @@ private fun MomentDetailContent(
                     isEditing = uiState.editingCommentId == comment.id,
                     editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
                     isSaving = uiState.isSavingCommentEdit,
+                    quickReactions = uiState.userDefaultReactions,
                     onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
                     onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
                     onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
                     onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                    onToggleReaction = { emoji ->
+                        onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -391,33 +400,94 @@ private fun PagerDots(
 
 @Composable
 private fun ReactionsRow(
-    isLiked: Boolean,
+    summary: id.homebase.api.client.drives.files.ReactionSummary?,
+    quickReactions: List<String>,
+    onToggle: (emoji: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val entries = summary?.reactions?.values
+        ?.mapNotNull { entry ->
+            val emoji = decodeReactionEmoji(entry.reactionContent) ?: return@mapNotNull null
+            emoji to entry.count
+        }
+        ?.filter { it.second > 0 }
+        ?: emptyList()
+
+    var showPicker by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AssistChip(
-            onClick = { /* TODO: toggle like */ },
-            label = {
-                Icon(
-                    imageVector = if (isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = stringResource(MR.string.moments_reaction_like),
-                    modifier = Modifier.size(18.dp),
-                )
-            },
-            colors = AssistChipDefaults.assistChipColors(),
-        )
-        listOf("😂", "😮", "😢", "🔥").forEach { emoji ->
+        // Existing reactions: one chip per emoji with its count. Tapping
+        // re-toggles the same emoji (adds the user's reaction if they don't
+        // already have one, removes it otherwise — server reconciles).
+        entries.forEach { (emoji, count) ->
             AssistChip(
-                onClick = { /* TODO: emoji react */ },
-                label = { Text(emoji) },
+                onClick = { onToggle(emoji) },
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(emoji)
+                        if (count > 1) {
+                            Text(
+                                text = count.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                },
             )
+        }
+
+        // "+" affordance opens a small popup of quick-react emojis sourced
+        // from the user's preferred set (same store the chat composer uses).
+        Box {
+            AssistChip(
+                onClick = { showPicker = true },
+                label = {
+                    Icon(
+                        imageVector = Icons.Default.AddReaction,
+                        contentDescription = stringResource(MR.string.moments_reaction_like),
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(),
+            )
+            DropdownMenu(
+                expanded = showPicker,
+                onDismissRequest = { showPicker = false },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    quickReactions.forEach { emoji ->
+                        TextButton(
+                            onClick = {
+                                showPicker = false
+                                onToggle(emoji)
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(emoji, style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                }
+            }
         }
     }
 }
+
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
+    id.homebase.api.serialization.OdinSystemSerializer
+        .deserialize<id.homebase.api.client.drives.files.reactions.ReactionContent>(reactionContent)
+        .emoji
+}.getOrNull()
 
 @Composable
 private fun DescriptionSection(
@@ -537,10 +607,12 @@ private fun CommentRow(
     isEditing: Boolean,
     editDraft: String,
     isSaving: Boolean,
+    quickReactions: List<String>,
     onEditClick: () -> Unit,
     onEditDraftChanged: (String) -> Unit,
     onSaveEdit: () -> Unit,
     onCancelEdit: () -> Unit,
+    onToggleReaction: (emoji: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -578,13 +650,13 @@ private fun CommentRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = onCancelEdit,
                     enabled = !isSaving,
                 ) {
                     Text(stringResource(MR.string.moments_detail_comment_cancel))
                 }
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = onSaveEdit,
                     enabled = !isSaving && editDraft.isNotBlank(),
                 ) {
@@ -604,15 +676,102 @@ private fun CommentRow(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // Edit affordance only on own comments and only once the comment
-            // has a server-confirmed versionTag. While the comment is still
-            // optimistic the version is null and the service rejects the edit.
+
+            // Reaction pills + react affordance. Same toggle-on-tap shape as
+            // the moment-level row, just denser (smaller chips, smaller
+            // picker target).
+            CommentReactionsRow(
+                summary = comment.reactionPreview,
+                quickReactions = quickReactions,
+                onToggle = onToggleReaction,
+            )
+
+            // Action row: edit (own comments only, only once versionTag is
+            // confirmed). Sits next to the reactions so the controls cluster.
             if (isMine && comment.versionTag != null) {
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = onEditClick,
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
                 ) {
                     Text(stringResource(MR.string.moments_detail_comment_edit))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentReactionsRow(
+    summary: id.homebase.api.client.drives.files.ReactionSummary?,
+    quickReactions: List<String>,
+    onToggle: (emoji: String) -> Unit,
+) {
+    val entries = summary?.reactions?.values
+        ?.mapNotNull { entry ->
+            val emoji = decodeReactionEmoji(entry.reactionContent) ?: return@mapNotNull null
+            emoji to entry.count
+        }
+        ?.filter { it.second > 0 }
+        ?: emptyList()
+
+    var showPicker by remember { mutableStateOf(false) }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        entries.forEach { (emoji, count) ->
+            AssistChip(
+                onClick = { onToggle(emoji) },
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(emoji, style = MaterialTheme.typography.labelMedium)
+                        if (count > 1) {
+                            Text(
+                                text = count.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                },
+            )
+        }
+
+        Box {
+            // Compact text-button "+ react" rather than a full chip, to keep
+            // the comment row dense.
+            TextButton(
+                onClick = { showPicker = true },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddReaction,
+                    contentDescription = stringResource(MR.string.moments_reaction_like),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = showPicker,
+                onDismissRequest = { showPicker = false },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    quickReactions.forEach { emoji ->
+                        TextButton(
+                            onClick = {
+                                showPicker = false
+                                onToggle(emoji)
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(emoji, style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
                 }
             }
         }

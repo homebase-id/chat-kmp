@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -172,6 +173,11 @@ data class MomentCommentItem(
      * affordance while null.
      */
     val versionTag: Uuid?,
+    /**
+     * Embedded reaction summary on the comment file. Drives the per-emoji
+     * count pill under the comment body.
+     */
+    val reactionPreview: ReactionSummary?,
 )
 
 private fun HomebaseFile.toCommentItem(): MomentCommentItem? {
@@ -195,5 +201,6 @@ private fun HomebaseFile.toCommentItem(): MomentCommentItem? {
         payloads = fileMetadata.payloads.orEmpty(),
         previewThumbnail = appData.previewThumbnail,
         versionTag = fileMetadata.versionTag,
+        reactionPreview = fileMetadata.reactionPreview,
     )
 }

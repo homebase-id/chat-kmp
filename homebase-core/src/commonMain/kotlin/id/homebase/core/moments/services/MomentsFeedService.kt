@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -155,6 +156,13 @@ data class MomentFeedItem(
     val description: String,
     val userDateMs: Long,
     val previewThumbnail: EmbeddedThumb?,
+    /**
+     * Embedded reaction summary on the moment file. Drives the per-emoji
+     * count chips on the detail screen. Updated in place by the optimistic
+     * writer's reaction toggle and by sync replays — both come through the
+     * BatchReceived stream this service already subscribes to.
+     */
+    val reactionPreview: ReactionSummary?,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -174,5 +182,6 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         description = content?.description.orEmpty(),
         userDateMs = sqlUserDateMs(),
         previewThumbnail = appData.previewThumbnail,
+        reactionPreview = fileMetadata.reactionPreview,
     )
 }

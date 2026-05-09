@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
 import id.homebase.core.ui.screens.moments.widget.MomentFullScreenEditor
 import id.homebase.core.util.rememberCameraManager
@@ -181,31 +182,48 @@ fun MomentComposeScreen(
                     onCameraClick = { cameraLauncher.launch() },
                 )
             } else {
-                MomentFullScreenEditor(
-                    attachments = uiState.attachments,
-                    textFieldState = textFieldState,
-                    currentPage = uiState.currentPage,
-                    onPageChanged = { viewModel.onAction(MomentComposeUiAction.PageChanged(it)) },
-                    onSaveFile = { viewModel.onAction(MomentComposeUiAction.SaveFile(it)) },
-                    onAddFile = { fileLauncher.launch() },
-                    onAddImage = { galleryLauncher.launch() },
-                    onCameraClick = { cameraLauncher.launch() },
-                    onRemoveFile = { id ->
-                        viewModel.onAction(MomentComposeUiAction.AttachmentRemoved(id))
-                    },
-                    onCropImage = { id ->
-                        viewModel.onAction(MomentComposeUiAction.RequestCrop(id))
-                    },
-                    onDrawImage = { id ->
-                        viewModel.onAction(MomentComposeUiAction.RequestDraw(id))
-                    },
-                    onTrimChange = { id, startMs, endMs ->
-                        viewModel.onAction(MomentComposeUiAction.ApplyTrim(id, startMs, endMs))
-                    },
-                    onToggleIncludeLocation = { id ->
-                        viewModel.onAction(MomentComposeUiAction.ToggleIncludeLocation(id))
-                    },
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    MomentDateChip(
+                        momentInstant = uiState.momentInstant,
+                        canResetToAuto = uiState.isMomentDateUserOverride,
+                        onPickDate = { epochMs ->
+                            viewModel.onAction(
+                                MomentComposeUiAction.OverrideMomentDate(epochMs)
+                            )
+                        },
+                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        MomentFullScreenEditor(
+                            attachments = uiState.attachments,
+                            textFieldState = textFieldState,
+                            currentPage = uiState.currentPage,
+                            onPageChanged = {
+                                viewModel.onAction(MomentComposeUiAction.PageChanged(it))
+                            },
+                            onSaveFile = {
+                                viewModel.onAction(MomentComposeUiAction.SaveFile(it))
+                            },
+                            onAddFile = { fileLauncher.launch() },
+                            onAddImage = { galleryLauncher.launch() },
+                            onCameraClick = { cameraLauncher.launch() },
+                            onRemoveFile = { id ->
+                                viewModel.onAction(MomentComposeUiAction.AttachmentRemoved(id))
+                            },
+                            onCropImage = { id ->
+                                viewModel.onAction(MomentComposeUiAction.RequestCrop(id))
+                            },
+                            onDrawImage = { id ->
+                                viewModel.onAction(MomentComposeUiAction.RequestDraw(id))
+                            },
+                            onTrimChange = { id, startMs, endMs ->
+                                viewModel.onAction(MomentComposeUiAction.ApplyTrim(id, startMs, endMs))
+                            },
+                            onToggleIncludeLocation = { id ->
+                                viewModel.onAction(MomentComposeUiAction.ToggleIncludeLocation(id))
+                            },
+                        )
+                    }
+                }
             }
         }
     }

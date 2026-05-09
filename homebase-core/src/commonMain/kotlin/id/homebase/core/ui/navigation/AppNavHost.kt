@@ -706,6 +706,7 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 MomentsScreen(
                                     viewModel = koinViewModel(),
+                                    extendPermissionViewModel = momentsViewModel.momentsExtendPermissionViewModel,
                                     onCreateMoment = {
                                         navController.navigate(Route.MomentCompose)
                                     },

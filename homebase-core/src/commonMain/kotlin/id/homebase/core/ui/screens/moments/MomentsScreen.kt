@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,10 +39,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.resources.MR
+import kotlin.time.Instant
 import id.homebase.resources.moments_create_action
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
@@ -60,6 +68,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun MomentsScreen(
     viewModel: MomentsFeedViewModel,
+    extendPermissionViewModel: ExtendPermissionViewModel,
     onCreateMoment: () -> Unit = {},
     /**
      * Open the detail view for a moment. `payloadKey` is the specific media
@@ -71,6 +80,28 @@ fun MomentsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openLabel = stringResource(MR.string.moments_post_open)
+
+    // Permission-drift detection: re-check on every screen entry. The
+    // moments-qualified ExtendPermissionViewModel runs an initial check on
+    // construction, but its result is cached for the lifetime of the VM.
+    // When a new permission is added to the requested set (e.g.
+    // DrivePermission.React) for an already-activated user, the cached
+    // verdict misses it and the new operation 403s silently. Hooking ON_RESUME
+    // forces a fresh check each time the user enters the moments tab so the
+    // dialog surfaces the missing grant.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                extendPermissionViewModel.recheckPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
+    ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
     Scaffold(
         topBar = {
@@ -168,6 +199,16 @@ private fun MomentPostCard(
                 onMediaClick = { payload -> onMediaClick(payload.key) },
             )
         }
+
+        // Top-right: localized capture date pill. Sourced from the moment's
+        // userDate (which is set from EXIF if any photo had it, else the
+        // post-time clock — see MomentComposeViewModel.deriveMomentInstant).
+        MomentDatePill(
+            timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+        )
 
         // Overlay indicators in the bottom-right of the thumbnail. Reaction
         // counts / comments toggle aren't wired through the post yet, so the

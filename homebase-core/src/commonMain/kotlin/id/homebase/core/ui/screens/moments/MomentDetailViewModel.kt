@@ -9,9 +9,11 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCommentsService
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +52,9 @@ class MomentDetailViewModel(
     feedService: MomentsFeedService,
     private val commentsService: MomentCommentsService,
     private val postSender: MomentsPostSenderService,
+    private val actionService: MomentActionService,
     private val credentialsManager: CredentialsManager,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.MomentDetail>()
@@ -73,6 +77,15 @@ class MomentDetailViewModel(
 
     private val _events = MutableSharedFlow<MomentDetailUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<MomentDetailUiEvent> = _events.asSharedFlow()
+
+    /**
+     * Snapshot at construction time — `UserPreferences.preferredUserReactions`
+     * is a plain `var`, not a flow. Chat reads it the same way. If/when the
+     * preference becomes reactive we can promote this into the combine.
+     */
+    private val userDefaultReactions: List<String> =
+        userPreferences.preferredUserReactions.takeIf { it.isNotEmpty() }
+            ?: listOf("❤️", "😂", "😮", "😢", "🔥", "👏")
 
     init {
         // Self-identity for "is this comment mine" checks. Owner-side files
@@ -103,6 +116,7 @@ class MomentDetailViewModel(
             editingCommentId = local.editingId,
             editingCommentDraft = local.editingDraft,
             isSavingCommentEdit = local.isSavingEdit,
+            userDefaultReactions = userDefaultReactions,
         )
     }.stateIn(
         viewModelScope,
@@ -190,6 +204,37 @@ class MomentDetailViewModel(
 
             MomentDetailUiAction.CancelCommentEdit ->
                 _commentLocal.update { it.copy(editingId = null, editingDraft = "") }
+
+            is MomentDetailUiAction.ToggleReactionOnMoment -> toggleMomentReaction(action.emoji)
+
+            is MomentDetailUiAction.ToggleReactionOnComment ->
+                toggleCommentReaction(action.commentId, action.emoji)
+        }
+    }
+
+    private fun toggleMomentReaction(emoji: String) {
+        viewModelScope.launch {
+            try {
+                actionService.toggleReactionOnMoment(momentId, emoji)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "toggleReactionOnMoment failed: ${t.message}"
+                }
+                _events.tryEmit(MomentDetailUiEvent.ReactionFailed(t.message))
+            }
+        }
+    }
+
+    private fun toggleCommentReaction(commentId: Uuid, emoji: String) {
+        viewModelScope.launch {
+            try {
+                actionService.toggleReactionOnComment(commentId, emoji)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "toggleReactionOnComment failed: ${t.message}"
+                }
+                _events.tryEmit(MomentDetailUiEvent.ReactionFailed(t.message))
+            }
         }
     }
 

@@ -26,6 +26,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "MomentComposeViewModel"
@@ -49,17 +53,25 @@ class MomentComposeViewModel(
      * user on the same media + description they were editing.
      */
     private fun restoreFromDraft(): MomentComposeUiState {
-        val draft = flowState.draft.value ?: return MomentComposeUiState()
+        val draft = flowState.draft.value
+            ?: return MomentComposeUiState(momentInstant = Clock.System.now())
         return MomentComposeUiState(
             attachments = draft.attachments,
             description = draft.description,
+            // Drafts created before this field existed will deserialize as
+            // null; treat that the same as a fresh compose and default to now.
+            momentInstant = draft.momentInstant ?: Clock.System.now(),
+            isMomentDateUserOverride = draft.isMomentDateUserOverride,
         )
     }
 
     fun onAction(action: MomentComposeUiAction) {
         when (action) {
             is MomentComposeUiAction.AttachmentsAdded -> {
-                _uiState.update { it.copy(attachments = it.attachments + action.attachments) }
+                _uiState.update {
+                    it.copy(attachments = it.attachments + action.attachments)
+                        .withRecomputedDate()
+                }
                 // Kick off duration + poster-frame extraction for any newly-added videos
                 // so the trim scrubber can render real frames once metadata lands.
                 // Also kick off EXIF extraction for images so the photo-info chip
@@ -80,6 +92,7 @@ class MomentComposeViewModel(
                     val filtered = state.attachments.filterNot { it.attachmentId == action.attachmentId }
                     val newPage = state.currentPage.coerceAtMost(maxOf(0, filtered.size - 1))
                     state.copy(attachments = filtered, currentPage = newPage)
+                        .withRecomputedDate()
                 }
 
             is MomentComposeUiAction.DescriptionChanged ->
@@ -99,6 +112,8 @@ class MomentComposeViewModel(
                     MomentCreateFlowState.Draft(
                         attachments = s.attachments,
                         description = s.description,
+                        momentInstant = s.momentInstant,
+                        isMomentDateUserOverride = s.isMomentDateUserOverride,
                     )
                 )
                 _events.tryEmit(MomentComposeUiEvent.NavigateToAudience)
@@ -160,7 +175,25 @@ class MomentComposeViewModel(
                             a.copy(metadata = action.metadata)
                         } else a
                     }
-                    state.copy(attachments = updated)
+                    // Late-arriving EXIF can earlier-bound the date; recompute
+                    // unless the user has already locked in an override.
+                    state.copy(attachments = updated).withRecomputedDate()
+                }
+            }
+
+            is MomentComposeUiAction.OverrideMomentDate -> {
+                val newInstant = action.epochMillis?.let { Instant.fromEpochMilliseconds(it) }
+                _uiState.update { state ->
+                    if (newInstant == null) {
+                        // Clear override → resume auto-derivation. Photos may have
+                        // arrived since the user opened the picker, so recompute.
+                        state.copy(isMomentDateUserOverride = false).withRecomputedDate()
+                    } else {
+                        state.copy(
+                            momentInstant = newInstant,
+                            isMomentDateUserOverride = true,
+                        )
+                    }
                 }
             }
 
@@ -280,6 +313,18 @@ class MomentComposeViewModel(
         }
     }
 
+    /**
+     * Recompute [MomentComposeUiState.momentInstant] from the current
+     * attachments, unless the user has already locked in an override. The
+     * default is "today" — only an EXIF-tagged photo can pull the date back
+     * in time. So a moment with three screenshots stays at today; adding one
+     * vacation photo with EXIF flips it to that capture date.
+     */
+    private fun MomentComposeUiState.withRecomputedDate(): MomentComposeUiState {
+        if (isMomentDateUserOverride) return this
+        return copy(momentInstant = deriveMomentInstant(attachments) ?: Clock.System.now())
+    }
+
     private fun extractVideoMetadata(attachmentId: Uuid, videoPath: String) {
         val deferredBytes = viewModelScope.async {
             runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
@@ -302,6 +347,32 @@ class MomentComposeViewModel(
             )
         }
     }
+}
+
+/**
+ * Earliest capture time across the photos that have EXIF. Photos without
+ * a `capturedAt` are skipped entirely — a screenshot mixed in with three
+ * vacation photos shouldn't yank the date forward to "now". Returns null
+ * when no photo has a usable date, in which case the sender falls back to
+ * `now()` at post time.
+ *
+ * If a photo has `captureUtcOffset` (newer iPhones / DSLRs write
+ * `OffsetTimeOriginal`), we honor it. Otherwise we treat the wall-clock
+ * value as device-local — wrong-by-a-few-hours for photos taken abroad,
+ * but the user can override via the date chip.
+ */
+internal fun deriveMomentInstant(attachments: List<AttachmentPendingFile>): Instant? {
+    val deviceTz = TimeZone.currentSystemDefault()
+    return attachments
+        .filterIsInstance<AttachmentPendingFile.FileImage>()
+        .mapNotNull { att ->
+            val md = att.metadata ?: return@mapNotNull null
+            val captured = md.capturedAt ?: return@mapNotNull null
+            val offset = md.captureUtcOffset
+            if (offset != null) captured.toInstant(offset)
+            else captured.toInstant(deviceTz)
+        }
+        .minOrNull()
 }
 
 /**

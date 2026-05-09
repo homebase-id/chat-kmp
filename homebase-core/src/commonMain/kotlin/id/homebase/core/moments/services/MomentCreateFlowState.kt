@@ -1,6 +1,7 @@
 package id.homebase.core.moments.services
 
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,8 @@ class MomentCreateFlowState {
     data class Draft(
         val attachments: List<AttachmentPendingFile>,
         val description: String,
+        val momentInstant: Instant? = null,
+        val isMomentDateUserOverride: Boolean = false,
     )
 
     private val _draft = MutableStateFlow<Draft?>(null)

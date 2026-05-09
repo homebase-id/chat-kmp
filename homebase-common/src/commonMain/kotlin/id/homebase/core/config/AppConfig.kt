@@ -176,14 +176,20 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
     )
 }
 
-// Moments-specific permission config — drive-only, no extra app permissions
+// Moments-specific permission config — drive-only, no extra app permissions.
+// React is required for the moment + comment reaction toggle endpoint
+// (`/group-reactions/toggle`), which the server gates on DrivePermission.React.
 val momentsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
         alias = momentsLabeledDrive.drive.alias.toString(),
         type = momentsLabeledDrive.drive.type.toString(),
         name = "Moments Drive",
         description = "Drive which contains your saved moments",
-        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        permissions = listOf(
+            DrivePermission.Read,
+            DrivePermission.Write,
+            DrivePermission.React,
+        ),
     ),
 )
 
