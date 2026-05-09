@@ -354,6 +354,7 @@ private fun FourPlusImageLayout(
                 )
 
                 if (remainingCount > 0) {
+                    val overflowLabel = "+$remainingCount"
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -361,7 +362,7 @@ private fun FourPlusImageLayout(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "+$remainingCount",
+                            text = overflowLabel,
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                         )

@@ -56,6 +56,7 @@ import id.homebase.resources.moments_audience_title
 import id.homebase.resources.moments_compose_comments_enabled
 import id.homebase.resources.moments_create_search_hint
 import id.homebase.resources.moments_create_selected_count
+import id.homebase.resources.number_of_members
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -255,7 +256,10 @@ private fun RecipientRow(
             )
             if (recipient is MomentsRecipient.Group) {
                 Text(
-                    text = "${recipient.memberCount} members",
+                    text = stringResource(
+                        MR.string.number_of_members,
+                        recipient.memberCount.toString(),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
