@@ -34,6 +34,7 @@ import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.rememberCameraManager
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -111,13 +112,21 @@ fun ConversationMessagesPane(
     // Save scroll position when it changes
     LaunchedEffect(listState) {
         val conversationId = conversation.conversation.id
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
-            300
-        ) // Only save after 300ms of no scrolling
+        // boundedFirstVisibleItemIndex against `layoutInfo.totalItemsCount` (what
+        // LazyColumn actually rendered) drops Int.MAX_VALUE sentinel emissions
+        // that snapshotFlow can see before LazyColumn's first measure clamps the
+        // LazyListState. Without this guard, a Main-busy window > 300 ms could
+        // persist MAX_VALUE to user prefs; the next session would then
+        // reconstruct LazyListState from prefs with MAX_VALUE again, re-arming
+        // the same race we just closed in ConversationContent.kt.
+        snapshotFlow {
+            listState.boundedFirstVisibleItemIndex(listState.layoutInfo.totalItemsCount) to
+                listState.firstVisibleItemScrollOffset
+        }.debounce(300) // Only save after 300ms of no scrolling
             .collect { (index, offset) ->
                 // Only save if we're still viewing the same conversation, messages are loaded,
                 // and not restoring
-                if (!uiState.isLoadingMessages) {
+                if (index != null && !uiState.isLoadingMessages) {
                     Logger.i("Scroll changed: id=${conversationId} -> $index:$offset")
                     onUiAction(
                         SaveScrollPosition(
