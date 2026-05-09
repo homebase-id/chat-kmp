@@ -16,6 +16,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.momentsLabeledDrive
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,9 +56,8 @@ class MomentCommentsService(
         val flow = MutableStateFlow<List<MomentCommentItem>>(emptyList())
     }
 
+    private val lock = SynchronizedObject()
     private val perMoment = mutableMapOf<Uuid, PerMomentState>()
-
-    @Volatile
     private var subscriptionStarted = false
 
     fun commentsFor(momentId: Uuid): StateFlow<List<MomentCommentItem>> {
@@ -68,19 +69,19 @@ class MomentCommentsService(
         return state.flow.asStateFlow()
     }
 
-    @Synchronized
-    private fun stateFor(momentId: Uuid): Pair<PerMomentState, Boolean> {
+    private fun stateFor(momentId: Uuid): Pair<PerMomentState, Boolean> = synchronized(lock) {
         val existing = perMoment[momentId]
-        if (existing != null) return existing to false
+        if (existing != null) return@synchronized existing to false
         val fresh = PerMomentState()
         perMoment[momentId] = fresh
-        return fresh to true
+        fresh to true
     }
 
-    @Synchronized
     private fun ensureSubscription() {
-        if (subscriptionStarted) return
-        subscriptionStarted = true
+        synchronized(lock) {
+            if (subscriptionStarted) return
+            subscriptionStarted = true
+        }
         scope.launch {
             eventBus.events.collect { event ->
                 if (event !is BackendEvent.DriveEvent || event.driveId != drive) return@collect

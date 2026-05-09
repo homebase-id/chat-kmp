@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -126,7 +127,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithTag("logoutButton").performClick()
+        onNodeWithTag("logoutButton").performScrollTo().performClick()
         assertTrue(loggedOut)
     }
 

@@ -32,6 +32,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -39,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +52,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_audience_create_group
 import id.homebase.resources.moments_audience_post
+import id.homebase.resources.moments_audience_post_failed
 import id.homebase.resources.moments_audience_section_contacts
 import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
@@ -68,12 +72,15 @@ fun MomentAudienceScreen(
     onCreateGroup: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val postFailedMessage = stringResource(MR.string.moments_audience_post_failed)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 MomentAudienceUiEvent.Posted -> onPosted()
-                is MomentAudienceUiEvent.PostFailed -> { /* TODO: snackbar */ }
+                is MomentAudienceUiEvent.PostFailed ->
+                    snackbarHostState.showSnackbar(postFailedMessage)
             }
         }
     }
@@ -85,6 +92,7 @@ fun MomentAudienceScreen(
     val createGroupLabel = stringResource(MR.string.moments_audience_create_group)
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.moments_audience_title)) },
