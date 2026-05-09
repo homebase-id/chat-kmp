@@ -22,6 +22,10 @@ import kotlin.uuid.Uuid
  * push channel and writes them straight to [DriveMainIndex] without
  * going through HTTP `Drive.sync()`.
  *
+ * One worker instance per drive. [OdinWebSocketClient] keeps a map
+ * of these and lazily creates entries on the first file event for
+ * each drive.
+ *
  * Mirrors [DriveSync]'s job-serialization pattern (kept deliberately
  * close so the two paths are easy to reason about side by side):
  *  - [Mutex.tryLock] gives single-flight semantics — only one drain
@@ -32,22 +36,18 @@ import kotlin.uuid.Uuid
  *  - Pending files accumulate in a small queue while a drain runs;
  *    the next drain picks them up as one batch.
  *
- * Why batch: a peer sending several messages back-to-back produces
+ * Why batch: a peer sending several files back-to-back produces
  * several WS notifications in tight succession. Funnelling them into
  * one [MainIndexMetaHelpers.HomebaseFileProcessor.baseUpsertEntryZapZap]
  * call collapses N transactions into one — much faster, and matches
  * the shape that DriveSync produces for its own batches.
  *
- * Scoped to one drive — currently only the chat drive uses this path.
- * Other drives stay on [DriveSyncManager.syncDrive] for now; see
- * `OdinWebSocketClient.handleFileEvent`.
- *
  * The WS path does NOT advance a sync cursor — that's [DriveSync]'s
- * job. The per-reconnect `syncDrive(chatDrive)` in
- * `OdinWebSocketClient.onHandshakeSuccess` is the catch-up backstop
- * for anything missed during a transient disconnect.
+ * job. The per-reconnect catch-up via
+ * `AuthConnectionCoordinator.onConnected → driveSyncManager.syncAll()`
+ * is the backstop for anything missed during a transient disconnect.
  */
-class ChatDriveWebSocketUpsertWorker(
+class DriveWebSocketUpsertWorker(
     private val identityId: Uuid,
     private val driveId: Uuid,
     databaseManager: DatabaseManager,
@@ -93,7 +93,7 @@ class ChatDriveWebSocketUpsertWorker(
                 mutex.unlock()
             }
             if (killroy.value) {
-                Logger.i { "ChatDriveWS: killroy triggered recursive drain for drive $driveId" }
+                Logger.i { "WSPush: killroy triggered recursive drain for drive $driveId" }
                 run()
             }
         }
@@ -109,6 +109,30 @@ class ChatDriveWebSocketUpsertWorker(
             snapshot
         }
 
+        // ╔════════════════════════════════════════════════════════════════╗
+        // ║  HACK detection — REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-   ║
+        // ║  WRITE                                                         ║
+        // ║                                                                ║
+        // ║  TODO(server): the chat-drive WS currently emits N             ║
+        // ║  notifications (typically 3) per logical file write — same     ║
+        // ║  fileId, same versionTag, same content, just delivered         ║
+        // ║  multiple times. The DB upsert is idempotent so correctness    ║
+        // ║  isn't affected, but we redundantly decrypt + upsert. This     ║
+        // ║  warning is the canary so we don't forget to fix it on the    ║
+        // ║  backend.                                                      ║
+        // ║                                                                ║
+        // ║  When the server-side fix lands: delete this block.            ║
+        // ╚════════════════════════════════════════════════════════════════╝
+        val uniqueFileIds = batch.mapTo(HashSet()) { it.fileId }
+        if (uniqueFileIds.size != batch.size) {
+            Logger.w {
+                "WSPush: HACK detected ${batch.size - uniqueFileIds.size} duplicate file(s) " +
+                    "in batch drive=$driveId rows=${batch.size} unique=${uniqueFileIds.size} " +
+                    "(server fan-out workaround — same fileId delivered multiple times). " +
+                    "TODO(server): stop fan-out-per-write."
+            }
+        }
+
         try {
             val (_, upsertElapsed) = measureTimedValue {
                 fileHeaderProcessor.baseUpsertEntryZapZap(
@@ -119,7 +143,7 @@ class ChatDriveWebSocketUpsertWorker(
                 )
             }
             Logger.i {
-                "ChatDriveWS: batch upsert drive=$driveId rows=${batch.size} took=$upsertElapsed"
+                "WSPush: batch upsert drive=$driveId rows=${batch.size} took=$upsertElapsed"
             }
 
             eventBus.emit(
@@ -134,10 +158,10 @@ class ChatDriveWebSocketUpsertWorker(
             )
         } catch (e: Exception) {
             // The batch is dropped from the queue, but the next drive-sync
-            // round (cold-boot or the per-reconnect catch-up) will pick
-            // these files back up from the server cursor.
+            // round (cold-boot or the per-reconnect syncAll catch-up) will
+            // pick these files back up from the server cursor.
             Logger.e(e) {
-                "ChatDriveWS: batch upsert FAILED for drive=$driveId rows=${batch.size}: ${e.message}"
+                "WSPush: batch upsert FAILED for drive=$driveId rows=${batch.size}: ${e.message}"
             }
         }
     }

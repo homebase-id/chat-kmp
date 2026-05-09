@@ -3,7 +3,6 @@ package id.homebase.api.client.websockets
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -11,8 +10,8 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.ChatDriveWebSocketUpsertWorker
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.DriveWebSocketUpsertWorker
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
@@ -66,11 +65,18 @@ class OdinWebSocketClient(
 
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
 
-    // Lazily initialised on the first [connectOnce] call once we have
-    // credentials. Receives WS-pushed file headers for the chat drive
-    // and writes them straight to DriveMainIndex without a Drive.sync()
-    // round-trip. Other drives stay on [driveSyncManager.syncDrive].
-    private var chatWsUpsertWorker: ChatDriveWebSocketUpsertWorker? = null
+    // Per-drive WS upsert workers. Lazily created on the first file
+    // event for a drive (see [getOrCreateWorker]). Each worker
+    // batches incoming files into one DB transaction and emits a
+    // single [BackendEvent.DriveEvent.BatchReceived] per drain;
+    // shape mirrors [DriveSync].
+    //
+    // Cleared in [disconnect]. Mount/unmount of drives is handled
+    // automatically because [AuthConnectionCoordinator.reconnectWebSocket]
+    // destroys the old [OdinWebSocketClient] and creates a fresh one
+    // with an empty map.
+    private val wsUpsertWorkers = mutableMapOf<Uuid, DriveWebSocketUpsertWorker>()
+    private val wsUpsertWorkersMutex = Mutex()
 
     private lateinit var sharedSecret: ByteArray
 
@@ -202,18 +208,9 @@ class OdinWebSocketClient(
         val identity = creds.domain
         sharedSecret = creds.sharedSecret.unsafeBytes
 
-        // Lazily build the chat-drive WS upsert worker once we know the
-        // identity. Idempotent across reconnects — the same worker drains
-        // future bursts. Cancelled in [disconnect].
-        if (chatWsUpsertWorker == null) {
-            chatWsUpsertWorker = ChatDriveWebSocketUpsertWorker(
-                identityId = creds.getIdentityId(),
-                driveId = SystemDriveConstants.chatDrive.alias,
-                databaseManager = databaseManager,
-                eventBus = eventBus,
-                scope = scope,
-            )
-        }
+        // Per-drive WS upsert workers materialise lazily in
+        // [getOrCreateWorker] when a file event for that drive
+        // arrives — no need to predeclare which drives we expect.
 
         _connectionState.value = WebSocketState.Connecting
 
@@ -477,74 +474,75 @@ class OdinWebSocketClient(
     }
 
     /**
-     * Reaction add/remove notification.
+     * Reaction add/remove notification — no-op for every drive.
      *
-     * For the chat drive: no work is needed here. A `statisticsChanged`
-     * notification fires alongside this one carrying the updated file
-     * header (with the new `reactionPreview`), and that notification
-     * lands in [handleFileEvent] → the chat-drive pure-push path,
-     * which writes the new header to DriveMainIndex via the worker.
-     * Calling `syncDrive` here would refetch the same data via HTTP
-     * — pure redundant work. The per-user reaction details (who reacted
-     * with which emoji, used by the reaction-detail view) are fetched
-     * on-demand via `getReactions()` and don't ride on the WS at all.
-     *
-     * Other drives (e.g. feed) still need the syncDrive fallback —
-     * they don't have a per-event WS upsert worker yet.
+     * The server fires a parallel `statisticsChanged` notification
+     * carrying the updated file header (with the new
+     * `reactionPreview`); that notification lands in
+     * [handleFileEvent] → the per-drive pure-push worker, which
+     * writes the new header to DriveMainIndex. Calling syncDrive
+     * here would refetch the same data via HTTP. The per-user
+     * reaction details (who reacted with which emoji, used by the
+     * reaction-detail view) are fetched on-demand via
+     * `getReactions()` and don't ride on this WS event at all.
      */
-    private suspend fun handleReactionEvent(
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleReactionEvent(
         notification: ClientNotificationPayload,
-        isDeleted: Boolean
+        isDeleted: Boolean,
     ) {
-        val eventData = OdinSystemSerializer
-            .deserialize<ClientReactionNotification>(notification.data)
-        val driveId = eventData.fileId.driveId
-
-        if (driveId == SystemDriveConstants.chatDrive.alias) {
-            return
-        }
-
-        Logger.i {
-            "WSFileEvent: syncDrive($driveId) for reaction event " +
-                "(isDeleted=$isDeleted, fileId=${eventData.fileId.fileId})"
-        }
-        driveSyncManager.syncDrive(driveId)
+        // intentional no-op — see KDoc
     }
 
-    /** All-reactions-cleared notification. Same chat-drive shortcut as
-     *  [handleReactionEvent] — `statisticsChanged` for the file already
-     *  rewrites `reactionPreview` to empty via the pure-push worker. */
-    private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
-        val file =
-            OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
+    /**
+     * All-reactions-cleared notification — no-op for every drive,
+     * same rationale as [handleReactionEvent]: the parallel
+     * `statisticsChanged` for the file rewrites `reactionPreview` to
+     * empty via the pure-push worker.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
+        // intentional no-op — see KDoc
+    }
 
-        if (file.driveId == SystemDriveConstants.chatDrive.alias) {
-            return
-        }
-
-        try {
-            Logger.i { "WSFileEvent: syncDrive(${file.driveId}) for allReactionsByFileDeleted (fileId=${file.fileId})" }
-            driveSyncManager.syncDrive(file.driveId)
-        } catch (e: Exception) {
-            Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
+    /**
+     * Get-or-create the WS upsert worker for [driveId]. Returns null
+     * when the client is closed or has no active credentials —
+     * caller falls through to [DriveSyncManager.syncDrive].
+     */
+    private suspend fun getOrCreateWorker(driveId: Uuid): DriveWebSocketUpsertWorker? {
+        if (closed) return null
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        return wsUpsertWorkersMutex.withLock {
+            wsUpsertWorkers[driveId] ?: DriveWebSocketUpsertWorker(
+                identityId = identityId,
+                driveId = driveId,
+                databaseManager = databaseManager,
+                eventBus = eventBus,
+                scope = scope,
+            ).also { wsUpsertWorkers[driveId] = it }
         }
     }
 
     /**
      * Dispatcher for `fileAdded` / `fileDeleted` / `fileModified` /
-     * `statisticsChanged` notifications.
+     * `statisticsChanged` notifications, for any drive.
      *
-     * Chat drive: if the WS payload carries a header, decrypt it and
-     * submit to the [chatWsUpsertWorker] — no HTTP round-trip. The
-     * worker batches bursts of incoming files into one DB transaction
-     * and emits a single `BatchReceived(source = WebSocket)` event.
+     * If the WS payload carries a header, decrypt it and submit to
+     * the per-drive [DriveWebSocketUpsertWorker] — no HTTP
+     * round-trip. The worker batches bursts of incoming files into
+     * one DB transaction and emits a single
+     * `BatchReceived(source = WebSocket)` event.
      *
-     * Everything else (other drives, or chat-drive notifications with
-     * a null header, or any failure in the pure-push path) falls back
-     * to [DriveSyncManager.syncDrive]. The fallback is logged at INFO
-     * so we can monitor the rate in production — a steady stream for
-     * chat-drive notifications would mean the WS payload is missing
-     * headers somewhere we didn't expect.
+     * Falls back to [DriveSyncManager.syncDrive] when:
+     *  - the notification has no header (e.g. some
+     *    `statisticsChanged` variants),
+     *  - decrypt or upsert throws,
+     *  - we can't get/create a worker (closed, no credentials).
+     *
+     * Every fallback is logged at INFO so the rate is observable in
+     * production — a steady stream for any drive means the WS
+     * payload is missing headers somewhere we didn't expect.
      */
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
         val fileNotification =
@@ -552,8 +550,8 @@ class OdinWebSocketClient(
         val driveId = fileNotification.targetDrive!!.alias
         val header = fileNotification.header
 
-        if (driveId == SystemDriveConstants.chatDrive.alias && header != null) {
-            val worker = chatWsUpsertWorker
+        if (header != null) {
+            val worker = getOrCreateWorker(driveId)
             if (worker != null) {
                 try {
                     val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
@@ -561,7 +559,7 @@ class OdinWebSocketClient(
                     return
                 } catch (e: Exception) {
                     Logger.w(e) {
-                        "WSFileEvent: pure-push path failed for chat drive " +
+                        "WSPush: pure-push path failed for drive=$driveId " +
                             "(notificationType=${notification.notificationType}); " +
                             "falling back to syncDrive: ${e.message}"
                     }
@@ -573,8 +571,7 @@ class OdinWebSocketClient(
         Logger.i {
             "WSFileEvent: syncDrive($driveId) — " +
                 "notificationType=${notification.notificationType} " +
-                "headerPresent=${header != null} " +
-                "isChatDrive=${driveId == SystemDriveConstants.chatDrive.alias}"
+                "headerPresent=${header != null}"
         }
         try {
             driveSyncManager.syncDrive(driveId)
@@ -622,19 +619,12 @@ class OdinWebSocketClient(
         onConnected()
         eventBus.emit(BackendEvent.ConnectionOnline)
 
-        // Catch-up backstop for the chat drive. Now that per-event
-        // file notifications take the pure-push path (no syncDrive),
-        // we still need to recover anything the server queued while
-        // the WS was disconnected. One targeted sync per (re)connect
-        // is enough — the dirty-bit gate downstream keeps it cheap
-        // when the round brings nothing relevant.
-        try {
-            driveSyncManager.syncDrive(SystemDriveConstants.chatDrive.alias)
-        } catch (e: Exception) {
-            Logger.w(e) {
-                "onHandshakeSuccess: chat-drive catch-up syncDrive failed: ${e.message}"
-            }
-        }
+        // Catch-up after a (re)connect is handled by
+        // [AuthConnectionCoordinator]'s `onConnected` callback, which
+        // fires `driveSyncManager.syncAll()` on every handshake — see
+        // `AuthConnectionCoordinator.kt:179-202`. That covers all
+        // mounted drives, which is what we need now that per-event
+        // file notifications take the pure-push path for every drive.
     }
 
     /**
@@ -647,8 +637,15 @@ class OdinWebSocketClient(
         session = null
         connectionJob?.cancel()
         connectionJob = null
-        chatWsUpsertWorker?.cancel()
-        chatWsUpsertWorker = null
+        // Snapshot-then-clear is safe without acquiring [wsUpsertWorkersMutex]:
+        // [getOrCreateWorker] checks `closed` before allocating, so any
+        // concurrent call after `closed = true` returns null and never
+        // re-populates the map. Worst case is a worker created right
+        // before `closed = true` flipped — that one ends up in the
+        // snapshot and gets cancelled.
+        val workersSnapshot = wsUpsertWorkers.values.toList()
+        wsUpsertWorkers.clear()
+        workersSnapshot.forEach { it.cancel() }
         _connectionState.value = WebSocketState.Disconnected
         Logger.i { "WebSocket disconnected" }
     }
