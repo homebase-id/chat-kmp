@@ -229,6 +229,18 @@ writing or modifying any screen/composable, verify:
 - UiState should be a flat `data class` with `_uiState.update { }` pattern
 - One-time events (navigation, snackbar) should use separate `SharedFlow`, not stored in UiState
 
+## Compose & Flow gotchas
+
+- **Don't write `snapshotFlow { ... }.distinctUntilChanged()`** — `snapshotFlow` already
+  dedups internally with structural equality (`!=`) before emitting, so the trailing
+  `.distinctUntilChanged()` runs the *same* comparison a second time. For scalar samples
+  it's just waste; for samples like `Pair<Int, List<...>>` the doubled O(n) `List.equals`
+  on every snapshot commit can stall the Compose UI dispatcher (Main) for seconds during
+  bursty mutations like `LazyListState.scrollToItem` (build 1394 watchdog stack landed
+  here at `ConversationContent.kt:817`). If you genuinely need a different equality (e.g.
+  comparing only one field of a heavy value), shape the snapshotFlow block to *return*
+  that key — don't bolt distinctUntilChanged on top.
+
 ## Strings & Unicode
 
 User-entered text (messages, descriptions, names, link previews) can contain emoji and other
