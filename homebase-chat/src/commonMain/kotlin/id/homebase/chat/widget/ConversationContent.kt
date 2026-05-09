@@ -82,6 +82,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -804,17 +805,39 @@ fun ConversationContent(
                 }
 
                 val currentMergedItems by rememberUpdatedState(mergedItems)
-                val floatingDateLabel by remember {
-                    derivedStateOf {
-                        val firstVisibleIndex = listState.firstVisibleItemIndex
-                        for (i in firstVisibleIndex downTo 0) {
-                            val item = currentMergedItems.getOrNull(i)
-                            if (item is MessageListContentModel.Section) {
-                                return@derivedStateOf item.date
+                // Hoisted out of composition: a `derivedStateOf` reading `firstVisibleItemIndex`
+                // here was being invalidated by `animateItem()`'s lookahead measurement during
+                // conversation re-mount (back-from-message-details), causing the LazyColumn's
+                // measure pass to never settle (PR #468 watchdog stack, build 1393, 19:45 UTC).
+                // Running the observation in a coroutine means the overlay below only re-renders
+                // when the resolved date *result* changes — not on every mid-measure scroll tick.
+                val floatingDateLabel by produceState<LocalDate?>(null, listState) {
+                    snapshotFlow { listState.firstVisibleItemIndex to currentMergedItems }
+                        .distinctUntilChanged()
+                        .collect { (firstVisibleIndex, items) ->
+                            value = run {
+                                for (i in firstVisibleIndex downTo 0) {
+                                    val item = items.getOrNull(i)
+                                    if (item is MessageListContentModel.Section) return@run item.date
+                                }
+                                null
                             }
                         }
-                        null
-                    }
+                }
+
+                // Gate `animateItem()` until the initial composition burst has settled.
+                // animateItem activates `EnterExitTransitionModifierNode` + lookahead
+                // measurement, which interleaves badly with `Pre-initializing scroll
+                // position at bottom` mutating LazyListState during re-mount. One frame
+                // is enough for the initial layout to settle; afterwards animations run
+                // normally for live add/remove/move. Keyed on conversation id so switching
+                // chats also gets a clean first frame.
+                var animationsEnabled by remember(conversation.conversation.id) {
+                    mutableStateOf(false)
+                }
+                LaunchedEffect(conversation.conversation.id) {
+                    withFrameNanos { }
+                    animationsEnabled = true
                 }
 
                 Box(
@@ -841,7 +864,9 @@ fun ConversationContent(
                             ) { item ->
                                 when (item) {
                                     is MessageListContentModel.Header -> {
-                                        Column(modifier = Modifier.animateItem()) {
+                                        Column(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
                                             AvatarNameDisplay(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
@@ -881,23 +906,31 @@ fun ConversationContent(
                                     }
 
                                     is MessageListContentModel.Section -> {
-                                        Box(modifier = Modifier.animateItem()) {
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
                                             MessagesSection(text = getDateSectionLabel(item.date))
                                         }
                                     }
 
                                     is MessageListContentModel.System -> {
-                                        Box(modifier = Modifier.animateItem()) {
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
                                             MessagesSystemMessage(text = item.text)
                                         }
                                     }
 
                                     is MessageListContentModel.UnreadSeparator -> {
                                         Box(
-                                            modifier = Modifier.animateItem(
-                                                fadeInSpec = tween(300),
-                                                fadeOutSpec = tween(400),
-                                            ),
+                                            modifier = if (animationsEnabled) {
+                                                Modifier.animateItem(
+                                                    fadeInSpec = tween(300),
+                                                    fadeOutSpec = tween(400),
+                                                )
+                                            } else {
+                                                Modifier
+                                            },
                                         ) {
                                             UnreadMessagesSeparator()
                                         }
@@ -922,7 +955,7 @@ fun ConversationContent(
                                             onUiAction(ConversationListUiAction.ClearHighlightedMessage)
                                         }
                                         Box(
-                                            modifier = Modifier.animateItem()
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
                                         ) {
                                             MessageItem(
@@ -947,7 +980,9 @@ fun ConversationContent(
                                     }
 
                                     is PendingOutgoingMessage -> {
-                                        Box(modifier = Modifier.animateItem()) {
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
                                             PendingMessageBubble(
                                                 message = item,
                                                 uploadStatus = uiState.uploadProgress[item.id],

@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -92,33 +91,18 @@ fun ReactionList(
         prevCount.intValue = totalCount
     }
 
-    BoxWithConstraints(modifier = modifier) {
-        // Show up to 7 emojis in the merged pill, scaling down to fit the available
-        // width when the bubble is narrow. Per-emoji slot is ~24dp (16sp emoji +
-        // 4dp horiz padding + 2dp arrangement spacing). Outer Surface eats ~12dp
-        // of horizontal padding; the count digit uses ~28dp when shown. The "+"
-        // chip from `onAddEmoji` (24dp + 4dp arrangement) is reserved separately
-        // when present so the merged pill never visually crowds it out.
-        val perEmojiDp = 24f
-        val pillPadDp = 12f
-        val countDp = if (totalCount > 1) 32f else 0f
-        // 36dp absorbs both the AddReactionChip's actual rendered width (~28dp
-        // surface + 4dp arrangement spacing) and a bit of extra slack so narrow
-        // bubbles don't render one-too-many emojis. This conservative reservation
-        // shrinks the budget from the start instead of subtracting from the
-        // final count, which would have capped wide bubbles at 6.
-        val addChipDp = if (onAddEmoji != null) 36f else 0f
-        val maxAvailDp = if (maxWidth.value.isFinite()) maxWidth.value else Float.POSITIVE_INFINITY
-        val budgetDp = (maxAvailDp - pillPadDp - countDp - addChipDp).coerceAtLeast(perEmojiDp)
-        val fitCount = (budgetDp / perEmojiDp).toInt()
-            .coerceIn(1, 7)
-            .coerceAtMost(allReactions.size)
-        val displayEmojis = remember(allReactions, fitCount) { allReactions.take(fitCount) }
+    // Cap at 7 emojis with a fixed `take`. Earlier revisions read `BoxWithConstraints.maxWidth`
+    // during composition to compute a dynamic `fitCount` keyed into a `remember(...)` slice — that
+    // pattern produced an ANR on 1.3.1388 when measure-time width feedback caused a layout
+    // invalidation loop. A static cap removes the parent-width feedback edge entirely; on
+    // bubbles too narrow for the full pill, the Surface clips visually, which is acceptable.
+    val displayEmojis = remember(allReactions) { allReactions.take(7) }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Surface(
             modifier = Modifier
                 .scale(scaleValue)
@@ -162,9 +146,8 @@ fun ReactionList(
                 }
             }
         }
-            if (onAddEmoji != null) {
-                AddReactionChip(onClick = onAddEmoji)
-            }
+        if (onAddEmoji != null) {
+            AddReactionChip(onClick = onAddEmoji)
         }
     }
 }
