@@ -33,6 +33,8 @@ import id.homebase.resources.chat_dice_battle_leader_self
 import id.homebase.resources.chat_dice_battle_tie_other
 import id.homebase.resources.chat_dice_battle_tie_self
 import id.homebase.resources.chat_dice_summary
+import id.homebase.resources.chat_dice_summary_other
+import id.homebase.resources.chat_dice_summary_other_single
 import id.homebase.resources.chat_dice_summary_single
 import id.homebase.resources.chat_dice_unparseable
 import org.jetbrains.compose.resources.stringResource
@@ -135,16 +137,35 @@ fun DiceRollBubble(
                 Spacer(Modifier.width(6.dp))
             }
 
+            val isSelf = currentOdinId.isNotBlank() &&
+                latest.odinId.domainName == currentOdinId
             val summaryText = if (descriptor.isBattle) {
                 battleLeaderText(descriptor, currentOdinId)
             } else if (latest.results.size == 1) {
-                stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
+                if (isSelf) {
+                    stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
+                } else {
+                    stringResource(
+                        MR.string.chat_dice_summary_other_single,
+                        hostPortion(latest.odinId.domainName),
+                        descriptor.sum,
+                    )
+                }
             } else {
-                stringResource(
-                    MR.string.chat_dice_summary,
-                    descriptor.sum,
-                    latest.results.joinToString("+"),
-                )
+                if (isSelf) {
+                    stringResource(
+                        MR.string.chat_dice_summary,
+                        descriptor.sum,
+                        latest.results.joinToString("+"),
+                    )
+                } else {
+                    stringResource(
+                        MR.string.chat_dice_summary_other,
+                        hostPortion(latest.odinId.domainName),
+                        descriptor.sum,
+                        latest.results.joinToString("+"),
+                    )
+                }
             }
             Text(
                 text = summaryText,

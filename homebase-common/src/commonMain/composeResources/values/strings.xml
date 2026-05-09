@@ -554,6 +554,8 @@
     <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
     <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
     <string name="chat_dice_summary_single">You rolled %1$d</string>
+    <string name="chat_dice_summary_other">%1$s rolled %2$d (%3$s)</string>
+    <string name="chat_dice_summary_other_single">%1$s rolled %2$d</string>
     <string name="chat_dice_unparseable">Ancient roll</string>
     <string name="chat_dice_battle_action">Battle</string>
     <string name="chat_dice_battle_title">Battle</string>
