@@ -275,7 +275,10 @@ class ChatMessageActionService(
     ) {
         val msg = messageLookup.getMessage(messageId) ?: return
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
-        val fileId = requireFileId(messageId)
+        // msg.fileId is already populated by messageLookup.getMessage above —
+        // an extra requireFileId(messageId) here would issue a second
+        // selectHomebaseFileByUnique for the exact same row.
+        val fileId = msg.fileId
 
         // Soft-delete only for now — propagates to other clients via sync.
         // Hard-delete will be added as a second phase (user invokes delete again on soft-deleted msg).
@@ -327,6 +330,13 @@ class ChatMessageActionService(
     }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
+        // In-memory tier first: if the message's conversation is currently
+        // open and loaded, the MessageUiModel already carries fileId — no
+        // DB round-trip needed. Hit rate is effectively 100% for the
+        // remaining caller (getReactions on a visible message).
+        messageLookup.findCachedFileId(messageId)?.let { return it }
+
+        // Cache miss → indexed primary-key lookup.
         val credentials = credentialsManager.requireActiveCredentials()
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), chatDrive, messageId

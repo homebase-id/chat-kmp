@@ -136,6 +136,34 @@ class ConversationStream(
     var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
     // endregion
 
+    // region Unread-count dirty bits
+    // Conversation IDs whose unread count is suspected stale relative to the
+    // DB. Set when a conversation file arrives and its lastRead advanced
+    // (peer-device mark-as-read) or when a brand-new conversation appears
+    // in memory without an unread baseline. The Stopped handler (drive-sync)
+    // and the WebSocket-batch handler each check this set at their respective
+    // checkpoints; if non-empty, run [enrichAllConversationsWithUnreadCounts],
+    // which clears the set at the top.
+    //
+    // Only mutated from inside the sequential `eventBus.events.collect { ... }`
+    // loop in init and from inside enrichAllConversationsWithUnreadCounts,
+    // so no synchronization is needed.
+    //
+    // All access goes through [markUnreadDirty] / [hasDirtyUnread] /
+    // [clearDirtyUnread] so callers don't reach into the set directly.
+    private val dirtyUnreadIds = mutableSetOf<Uuid>()
+
+    private fun markUnreadDirty(conversationId: Uuid) {
+        dirtyUnreadIds += conversationId
+    }
+
+    private fun hasDirtyUnread(): Boolean = dirtyUnreadIds.isNotEmpty()
+
+    private fun clearDirtyUnread() {
+        dirtyUnreadIds.clear()
+    }
+    // endregion
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
@@ -144,10 +172,10 @@ class ConversationStream(
     // file notification — arrive as BatchReceived events and are applied incrementally.
     // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
     // incremental BatchReceived path is sufficient and avoids an expensive full reload
-    // on every incoming message. We DO, however, re-enrich unread counts on Stopped —
-    // that's a small ChatReadCount scan and catches reads written by batches that
-    // landed during the sync round (and message-only batches, which the per-batch
-    // enrich path further down doesn't cover).
+    // on every incoming message. Unread counts are re-enriched at end-of-sync only
+    // when [hasDirtyUnread] is true (see the dirty-bit region) — i.e. when a
+    // conversation file's lastRead actually advanced during the round, which is
+    // the only case `enrichAllConversationsWithUnreadCounts` materially changes.
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -178,17 +206,19 @@ class ConversationStream(
                                     }
                                 }
                             }
-                            // Re-enrich unread counts after the chat-drive sync
-                            // completes — but only if the sync actually received
-                            // records. totalCount=0 means no batches, no writes to
-                            // ChatReadCount, so nothing to re-enrich. Replaces the
-                            // old BackendEvent.ConnectionOnline trigger so the second
-                            // cold-boot enrich (when there is one) now lands AFTER
-                            // sync writes (deterministic order), not concurrent with them.
-                            if (event.totalCount > 0) {
+                            // Re-enrich unread counts at end of round, but only
+                            // if a conversation file's lastRead actually advanced
+                            // during the round (peer-device mark-as-read echo).
+                            // [markUnreadDirty] is called from
+                            // [processConversationBatchIncrementally] when that
+                            // happens. Anything else the round brought —
+                            // metadata-only conversation updates, message-only
+                            // batches, admin files — leaves the dirty set empty
+                            // and skips the ~500ms full-DB recount.
+                            if (hasDirtyUnread()) {
                                 scope.launch {
                                     try {
-                                        enrichAllConversationsWithUnreadCounts()
+                                        enrichAllConversationsWithUnreadCounts(trigger = "Stopped")
                                     } catch (e: Exception) {
                                         Logger.e(e) {
                                             "ConversationStream: post-Stopped enrich failed: ${e.message}"
@@ -223,7 +253,7 @@ class ConversationStream(
                         )
 
                         if (conversationFiles.isNotEmpty())
-                            processConversationBatchIncrementally(conversationFiles)
+                            processConversationBatchIncrementally(conversationFiles, event.source)
 
                         if (messageFiles.isNotEmpty())
                             processMessageBatchIncrementally(messageFiles)
@@ -489,7 +519,8 @@ class ConversationStream(
     }
 
     private suspend fun processConversationBatchIncrementally(
-        conversationFiles: List<HomebaseFile>
+        conversationFiles: List<HomebaseFile>,
+        source: BackendEvent.SyncSource,
     ) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
@@ -500,8 +531,19 @@ class ConversationStream(
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.items.find { it.id == c.id }
             if (matchingConversation == null) {
+                // Brand-new in-memory conversation — we have no unread baseline
+                // yet, so mark dirty so the next checkpoint recounts.
                 insertNewConversation(c)
+                markUnreadDirty(c.id)
             } else {
+                // lastRead advanced ⇒ peer-device mark-as-read echo. Anything
+                // else the file carries (name, participants, lastMessage)
+                // does not affect unread count. Compare BEFORE updateConversation
+                // runs — that helper merges lastRead with `max(existing, incoming)`
+                // and would erase the delta we're testing for.
+                if (c.lastRead > matchingConversation.lastRead) {
+                    markUnreadDirty(c.id)
+                }
                 updateConversation(matchingConversation, c)
             }
             // A real file has now arrived for this id; it no longer needs
@@ -513,27 +555,30 @@ class ConversationStream(
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = _conversations.value.copy(items = sortedList)
 
-        // Drive-sync of a conversation file (peer-device echo) writes only
-        // DriveMainIndex; ChatReadCount lags. The merged enrich pass mirrors
-        // file-of-record lastReadTime into ChatReadCount and patches unread
-        // counts in one round-trip — fire-and-forget so the in-memory list
-        // update above stays on the hot path.
-        //
         // Skip while the cold-load pipeline hasn't run its own enrich yet.
         // During initial sync, every conversation file streams in via this
-        // path and would trigger N redundant enrich passes (each 2-10s on a
-        // power user's box, visibly reshuffling the list every emit). The
-        // end-of-start() enrich (`enrichAllConversationsWithUnreadCounts`
-        // after `enrichWithLastMessages` / `enrichWithAdmins`) flips
-        // `hasUnreadCounts` once cold-load is done; only after that should
-        // per-batch arrivals trigger their own mirror.
+        // path; the end-of-start() enrich
+        // (`enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")`)
+        // flips `hasUnreadCounts` once cold-load is done. Only after that
+        // should per-batch arrivals drive enrichment.
         if (!_conversations.value.enrichment.hasUnreadCounts) return
-        scope.launch {
-            try {
-                enrichAllConversationsWithUnreadCounts()
-            } catch (e: Exception) {
-                Logger.e(e) {
-                    "ConversationStream: background enrich after conversation batch failed: ${e.message}"
+
+        // Source-aware checkpoint:
+        //
+        // - DriveSync: nothing to do here. The matching DriveEvent.Stopped
+        //   handler will inspect [hasDirtyUnread] at end of the sync round
+        //   and run a single enrichAll for the whole round.
+        // - WebSocket: there is no Started/Stopped envelope — this batch IS
+        //   the whole event. If anything in it dirtied an unread count, run
+        //   enrichAll right here.
+        if (source == BackendEvent.SyncSource.WebSocket && hasDirtyUnread()) {
+            scope.launch {
+                try {
+                    enrichAllConversationsWithUnreadCounts(trigger = "WebSocketBatch")
+                } catch (e: Exception) {
+                    Logger.e(e) {
+                        "ConversationStream: WebSocket-batch enrich failed: ${e.message}"
+                    }
                 }
             }
         }
@@ -881,15 +926,27 @@ class ConversationStream(
      * so the unread counts reflect the just-mirrored values before they're
      * patched onto the model.
      *
-     * Also invoked from message-read actions (see [ChatMessageActionService])
-     * and after every chat-drive `BackendEvent.DriveEvent.Stopped` that
-     * received at least one record. Flips `enrichment.hasUnreadCounts`
-     * (first call only; subsequent calls just patch counts).
+     * Invoked from cold-load ([start]), the [BackendEvent.DriveEvent.Stopped]
+     * handler when [hasDirtyUnread] is true, and the WebSocket-batch
+     * handler when [hasDirtyUnread] is true at end of batch. Flips
+     * `enrichment.hasUnreadCounts` (first call only; subsequent calls just
+     * patch counts).
+     *
+     * Clears the dirty set at the top — anything dirtied while this call
+     * is in flight remains for the next checkpoint.
+     *
+     * @param trigger short label naming the call site (e.g. "ColdLoad",
+     *   "Stopped", "WebSocketBatch"). Surfaces in the `ConvListPerf` log so
+     *   we can attribute frequency without a stack walk.
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichAllConversationsWithUnreadCounts() {
+    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) {
         val startedAt = Clock.System.now().toEpochMilliseconds()
+        // Take ownership of the current dirty set as we begin work. New
+        // bits set during this call's lifetime persist for the next
+        // checkpoint — preferred over a lost-wakeup race.
+        clearDirtyUnread()
         val c = credentialsManager.requireActiveCredentials()
         var unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
 
@@ -938,7 +995,7 @@ class ConversationStream(
 
         Logger.i(tag = "ConvListPerf") {
             "enrichAllConversationsWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
-                    "mirrored=$mirroredCount changedRows=$changed totalRows=${current.items.size}"
+                    "trigger=$trigger mirrored=$mirroredCount changedRows=$changed totalRows=${current.items.size}"
         }
     }
 
@@ -1002,7 +1059,7 @@ class ConversationStream(
             // then admins (group-settings only), then unread counts.
             enrichWithLastMessages()
             enrichWithAdmins()
-            enrichAllConversationsWithUnreadCounts()
+            enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")
         }
 
         // Reactively update share cache when conversations or contacts change,

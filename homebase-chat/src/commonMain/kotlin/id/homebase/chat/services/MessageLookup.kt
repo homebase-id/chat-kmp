@@ -20,4 +20,11 @@ interface MessageLookup {
     /** For messages whose content was offloaded to a payload (over the
      *  in-header size budget), read the full text back. */
     suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String?
+
+    /** Cache-only lookup. Returns the drive `fileId` for [messageId] if the
+     *  message is currently in the in-memory state (i.e. its conversation is
+     *  open and loaded), otherwise `null`. Cheap, synchronous-equivalent —
+     *  callers fall through to a DB lookup on `null` rather than treating it
+     *  as "not found". */
+    fun findCachedFileId(messageId: Uuid): Uuid?
 }
