@@ -42,8 +42,11 @@ data class MessageUiModel(
     /** The timestamp when this file was marked as read for current user's identity */
     val localReadTimestamp: UnixTimeUtc? = null,
 
-    /** Raw JSON-encoded reactions the current identity has applied to this
-     *  message (mirrors server `localAppData.localReactions`). */
+    /** Bare emoji strings the current identity has applied to this
+     *  message. The wire format under `localAppData.localReactions` is
+     *  JSON `{"emoji":"X"}` per entry; `ChatMessageStream` decodes those
+     *  to plain emoji so the UI can compare against `reactionPreview`
+     *  entries by simple string match. */
     val ownReactions: ImmutableList<String> = persistentListOf(),
 
     val isEdited: Boolean = false,
