@@ -29,6 +29,11 @@ data class GroupSettingsUiState(
     /** True while leaveGroup is awaiting server completion. Drives the full-screen
      *  overlay. Cleared on error; on success the screen pops via the [Back] event. */
     val isLeaving: Boolean = false,
+    /** Local-only DB-vs-own-server diagnostic for this group's two files (main + admin).
+     *  Populated by [GroupSettingsViewModel.loadTransferHistory]; null while loading and
+     *  on non-group / legacy-group conversations (legacy groups inline admins, so a
+     *  separate "DB-admin: absent" row would be a false positive). */
+    val filesDiagnostic: GroupFilesDiagnostic? = null,
     val uiEvent: GroupSettingsUiEvent? = null,
     val uiDialog: GroupSettingsUiDialog? = null,
     val uiSheet: GroupSettingsUiSheet? = null,
@@ -40,6 +45,60 @@ data class GroupSettingsUiState(
 sealed interface RecipientFileStatus {
     data object Ok : RecipientFileStatus
     data class Problem(val rawStatus: TransferStatus, val detailRes: StringResource?) : RecipientFileStatus
+}
+
+/**
+ * Local-DB state of one of the two group files (main conversation file or
+ * admin file). Three states; [Placeholder] is the local-only marker written
+ * by `OptimisticWriter.writeLocalOnlyConversationPlaceholder` /
+ * `writeLocalOnlyAdminPlaceholder` (versionTag=null) — server has no copy
+ * yet, peer push from canonical author will replace it.
+ */
+@Immutable
+sealed interface DbFileRow {
+    data class Present(
+        val versionTag: Uuid,
+        val originalAuthor: OdinId,
+        val fileId: Uuid,
+    ) : DbFileRow
+
+    data class Placeholder(val fileId: Uuid) : DbFileRow
+
+    data object Absent : DbFileRow
+}
+
+/**
+ * Server-side state, derived from [DbFileRow]: post-sync, local DB and own
+ * server agree except for placeholders. From the server's point of view a
+ * [DbFileRow.Placeholder] is indistinguishable from absent.
+ */
+@Immutable
+sealed interface ServerFileRow {
+    data class Present(
+        val versionTag: Uuid,
+        val originalAuthor: OdinId,
+        val fileId: Uuid,
+    ) : ServerFileRow
+
+    data object Absent : ServerFileRow
+}
+
+/** The four cells of the group-info diagnostic block. */
+@Immutable
+data class GroupFilesDiagnostic(
+    val conversationId: Uuid,
+    val expectedMainUniqueId: Uuid,
+    val expectedAdminUniqueId: Uuid,
+    val dbGroup: DbFileRow,
+    val dbAdmin: DbFileRow,
+    val serverGroup: ServerFileRow,
+    val serverAdmin: ServerFileRow,
+) {
+    val allHealthy: Boolean
+        get() = dbGroup is DbFileRow.Present &&
+                dbAdmin is DbFileRow.Present &&
+                serverGroup is ServerFileRow.Present &&
+                serverAdmin is ServerFileRow.Present
 }
 
 sealed interface GroupSettingsUiEvent {

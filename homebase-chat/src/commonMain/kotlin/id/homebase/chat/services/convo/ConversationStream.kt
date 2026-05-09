@@ -83,12 +83,18 @@ class ConversationStream(
     /** Hook for explicit (non-sync) conversation recovery.
      *
      *  Wired in AppModule to ConversationService.recoverConversation().
-     *  Currently has no live caller — the previous sync-handler triggers
-     *  were removed because enqueuing a server write from inside a
-     *  drive-sync batch produced spurious conflicts (real file later in
-     *  sync, or transfer-to-self). The plumbing is retained so a future
-     *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
-     *  reconciliation pass) can wire in without touching DI. */
+     *  Live callers:
+     *    - [triggerRecoveryForInvalidRows] (post-load reconciliation for
+     *      rows whose state is [ConversationState.Invalid]).
+     *    - the orphan branch in [processMessageBatchIncrementally] (when an
+     *      incoming message references a conversationId with no main file
+     *      in the local DB — closes the gap where requireConversation
+     *      would otherwise throw on every send/react/markRead).
+     *
+     *  recoverConversation is local-only today (writes a versionTag=null
+     *  placeholder, no outbox enqueue, no peer fan-out), so it is safe to
+     *  call from inside a drive-sync batch handler. The historic concerns
+     *  about server-write conflicts no longer apply. */
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
 
     /**
@@ -456,26 +462,70 @@ class ConversationStream(
 
                 // region Placeholder: conversation file not yet synced
                 // Insert a UI placeholder so the message is visible now.
-                // Intentionally do NOT enqueue a server-side recovery from
-                // here. A drive-sync handler reads server state; enqueuing
-                // a server write from inside that read produced spurious
+                // We intentionally do NOT enqueue a server-side write from
+                // here — that path historically produced spurious
                 // "File already exists with ClientUniqueId" conflicts
                 // (when the real conversation file is simply later in the
                 // sync order) and "Cannot transfer to yourself" rejections
-                // (when originalAuthor == self for groups we started), for
-                // every login. Recovery is now self-healing:
+                // (when originalAuthor == self for groups we started).
+                //
+                // We DO trigger [onRecoverConversation] (local-only — writes a
+                // versionTag=null placeholder via
+                // OptimisticWriter.writeLocalOnlyConversationPlaceholder, no
+                // outbox enqueue, no peer fan-out). This closes the gap that
+                // used to leave a user with messages arriving for a
+                // conversation whose main file was missing from local DB:
+                // requireConversation would throw on every send/react/markRead
+                // because getConversationHomebaseFile returned null. Wiring
+                // the local-only recovery here gives us a DB row immediately,
+                // so requireConversation succeeds and the heal flow can take
+                // over if the canonical author is online.
+                //
+                // Self-healing for the in-memory UI is unchanged:
                 //   1. If the real conversation file exists on the server
                 //      (the common case), it will arrive in a later sync
                 //      batch and replace this placeholder via
                 //      processConversationBatchIncrementally →
                 //      updateConversation.
-                //   2. If the server truly lacks the file, the placeholder
-                //      stays until the user interacts with the
-                //      conversation. A follow-up will add "ensure
-                //      conversation file on send" to close that gap.
+                //   2. If the server truly lacks the file, the local-only
+                //      placeholder written by recoverConversation persists
+                //      until a peer push from a member who has the file
+                //      restores it.
                 Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
                 placeholderIds += m.conversationId
+
+                // Fire-and-forget local-only recovery. recoveryAttemptedIds
+                // dedups within a session — exactly one attempt per missing
+                // conversation, matching triggerRecoveryForInvalidRows
+                // (line 841). The recover lambda may be null (DI not wired
+                // for tests / before AppModule binds it).
+                val recover = onRecoverConversation
+                if (recover != null && recoveryAttemptedIds.add(m.conversationId)) {
+                    val convoId = m.conversationId
+                    val originalAuthor = m.originalAuthor
+                    Logger.i(tag = "OrphanRecovery") {
+                        "ConversationStream: triggering recoverConversation from orphan branch " +
+                            "convoId=$convoId originalAuthor=${originalAuthor?.domainName} sender=${m.sender?.domainName} isOneToOne=$isOneToOne"
+                    }
+                    scope.launch {
+                        try {
+                            recover(convoId, originalAuthor)
+                            Logger.i(tag = "OrphanRecovery") {
+                                "ConversationStream: orphan-branch recoverConversation completed convoId=$convoId"
+                            }
+                        } catch (t: Throwable) {
+                            Logger.e(throwable = t, tag = "OrphanRecovery") {
+                                "ConversationStream: orphan-branch recoverConversation FAILED convoId=$convoId — " +
+                                    "in-memory placeholder will keep the message visible but requireConversation may still throw on send"
+                            }
+                        }
+                    }
+                } else if (recover == null) {
+                    Logger.d(tag = "OrphanRecovery") {
+                        "ConversationStream: orphan branch — onRecoverConversation not wired, skipping local-only recovery for ${m.conversationId}"
+                    }
+                }
                 // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m, file.sqlUserDateMs())
