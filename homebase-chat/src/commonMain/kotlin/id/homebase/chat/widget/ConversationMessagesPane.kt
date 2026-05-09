@@ -40,7 +40,6 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlin.uuid.Uuid
@@ -115,7 +114,7 @@ fun ConversationMessagesPane(
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
             300
         ) // Only save after 300ms of no scrolling
-            .distinctUntilChanged().collect { (index, offset) ->
+            .collect { (index, offset) ->
                 // Only save if we're still viewing the same conversation, messages are loaded,
                 // and not restoring
                 if (!uiState.isLoadingMessages) {

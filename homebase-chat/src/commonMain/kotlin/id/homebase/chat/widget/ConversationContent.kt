@@ -200,7 +200,6 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -336,7 +335,6 @@ fun ConversationContent(
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
-            .distinctUntilChanged()
             .collectLatest { scrolling ->
                 if (scrolling) {
                     showFloatingDate = true
@@ -805,24 +803,28 @@ fun ConversationContent(
                 }
 
                 val currentMergedItems by rememberUpdatedState(mergedItems)
-                // Hoisted out of composition: a `derivedStateOf` reading `firstVisibleItemIndex`
-                // here was being invalidated by `animateItem()`'s lookahead measurement during
-                // conversation re-mount (back-from-message-details), causing the LazyColumn's
-                // measure pass to never settle (PR #468 watchdog stack, build 1393, 19:45 UTC).
-                // Running the observation in a coroutine means the overlay below only re-renders
-                // when the resolved date *result* changes — not on every mid-measure scroll tick.
+                // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
+                // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
+                // `Pair<Int, List<...>>` (O(n) list-equals). Build 1394's watchdog caught a
+                // 5–8s main-thread stall here (homebase.log lines 27628 / 28315, deobfuscated
+                // against android-mapping-1394) — the previous shape paid two O(n) compares
+                // per snapshot commit (snapshotFlow's internal != + an explicit
+                // distinctUntilChanged that was redundant with it) on every mid-measure
+                // mutation of `firstVisibleItemIndex` during scroll-to-bottom restore.
                 val floatingDateLabel by produceState<LocalDate?>(null, listState) {
-                    snapshotFlow { listState.firstVisibleItemIndex to currentMergedItems }
-                        .distinctUntilChanged()
-                        .collect { (firstVisibleIndex, items) ->
-                            value = run {
-                                for (i in firstVisibleIndex downTo 0) {
-                                    val item = items.getOrNull(i)
-                                    if (item is MessageListContentModel.Section) return@run item.date
-                                }
-                                null
+                    snapshotFlow {
+                        val firstVisibleIndex = listState.firstVisibleItemIndex
+                        val items = currentMergedItems
+                        var date: LocalDate? = null
+                        for (i in firstVisibleIndex downTo 0) {
+                            val item = items.getOrNull(i)
+                            if (item is MessageListContentModel.Section) {
+                                date = item.date
+                                break
                             }
                         }
+                        date
+                    }.collect { value = it }
                 }
 
                 // Gate `animateItem()` until the initial composition burst has settled.
