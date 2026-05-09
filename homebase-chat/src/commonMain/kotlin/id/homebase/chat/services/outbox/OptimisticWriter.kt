@@ -32,6 +32,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
@@ -44,6 +46,19 @@ class OptimisticWriter(
 
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+
+    // Per-message lock guarding the read-modify-write inside writeReactionToggle.
+    // Without this, rapid taps on the bottom sheet have all five coroutines
+    // read the same starting state, each compute "remove my one", and last-
+    // writer-wins clobbers most of the removes. Per-(driveId, uniqueId) so
+    // toggles on different messages don't queue against each other.
+    private val reactionToggleLocks = mutableMapOf<Pair<Uuid, Uuid>, Mutex>()
+    private val reactionToggleLocksGuard = Mutex()
+
+    private suspend fun reactionLockFor(driveId: Uuid, uniqueId: Uuid): Mutex =
+        reactionToggleLocksGuard.withLock {
+            reactionToggleLocks.getOrPut(driveId to uniqueId) { Mutex() }
+        }
 
     suspend fun writeNewFile(
         driveId: Uuid,
@@ -429,41 +444,61 @@ class OptimisticWriter(
         }
     }
 
-    /** Optimistically updates the reactionPreview on a message and emits BatchReceived.
-     *  Returns the original file for rollback, and the optimistic result type. */
+    /** Optimistically updates the reactionPreview AND localAppData.localReactions
+     *  on a message and emits BatchReceived. Returns the original file for
+     *  rollback, and the optimistic result type. */
     suspend fun writeReactionToggle(
         driveId: Uuid,
         uniqueId: Uuid,
         reactionJson: String,
-    ): Pair<ToggleReactionResultType, HomebaseFile?> {
+    ): Pair<ToggleReactionResultType, HomebaseFile?> = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return Pair(ToggleReactionResultType.None, null)
+        ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+
+        // isAdding is per-user, not per-aggregate: in groups, another user
+        // having reacted with the same emoji must not flip our toggle into a
+        // remove. localReactions is the per-user mirror; ChatMessageStream
+        // decodes it into MessageUiModel.ownReactions on every BatchReceived,
+        // so updating it here also closes the rapid-tap race against the cap.
+        val currentLocalReactions =
+            existingFile.fileMetadata.localAppData?.localReactions.orEmpty()
+        val isAdding = reactionJson !in currentLocalReactions
+        val updatedLocalReactions = if (isAdding) {
+            currentLocalReactions + reactionJson
+        } else {
+            currentLocalReactions.filterNot { it == reactionJson }
+        }
+
         val currentReactions =
             existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
-
         // The map key is server-assigned and may differ from reactionJson, so find by value.
         val existingKey = currentReactions.entries
             .firstOrNull { it.value.reactionContent == reactionJson }
             ?.key
         val existing = existingKey?.let { currentReactions[it] }
-        val isAdding = existing == null || existing.count == 0
 
         val updatedReactions = if (isAdding) {
-            currentReactions[reactionJson] = ReactionEntry(
-                key = reactionJson,
-                count = 1,
-                reactionContent = reactionJson
-            )
+            if (existing == null) {
+                currentReactions[reactionJson] = ReactionEntry(
+                    key = reactionJson,
+                    count = 1,
+                    reactionContent = reactionJson
+                )
+            } else {
+                currentReactions[existingKey] = existing.copy(count = existing.count + 1)
+            }
             currentReactions
         } else {
-            val newCount = existing.count - 1
-            if (newCount <= 0) currentReactions.remove(existingKey)
-            else currentReactions[existingKey] = existing.copy(count = newCount)
+            if (existing != null) {
+                val newCount = existing.count - 1
+                if (newCount <= 0) currentReactions.remove(existingKey)
+                else currentReactions[existingKey] = existing.copy(count = newCount)
+            }
             currentReactions
         }
 
@@ -473,7 +508,11 @@ class OptimisticWriter(
                 reactionPreview = (existingFile.fileMetadata.reactionPreview
                     ?: ReactionSummary()).copy(
                     reactions = updatedReactions
-                )
+                ),
+                localAppData = (existingFile.fileMetadata.localAppData
+                    ?: LocalAppMetadata()).copy(
+                    localReactions = updatedLocalReactions
+                ),
             )
         )
 
@@ -498,14 +537,14 @@ class OptimisticWriter(
             )
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic reaction toggle failed for uniqueId=$uniqueId" }
-            return Pair(ToggleReactionResultType.None, null)
+            return@withLock Pair(ToggleReactionResultType.None, null)
         }
 
         val resultType = if (isAdding)
             ToggleReactionResultType.Added
         else
             ToggleReactionResultType.Deleted
-        return Pair(resultType, existingFile)
+        Pair(resultType, existingFile)
     }
 
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =

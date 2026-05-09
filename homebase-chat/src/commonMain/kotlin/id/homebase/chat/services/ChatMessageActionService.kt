@@ -3,9 +3,6 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
@@ -18,7 +15,6 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.chat.services.convo.ConversationParticipantLookup
@@ -28,6 +24,11 @@ import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
+
+/** Server-enforced cap on reactions per user per message. The client mirrors
+ *  the rule so we don't enqueue a request the server will reject with
+ *  UnhandledScenario / "Too many Reactions". */
+const val MAX_REACTIONS_PER_USER_PER_MESSAGE = 5
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
@@ -227,33 +228,39 @@ class ChatMessageActionService(
         )
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        val fileId = requireFileId(messageId)
 
+        // Run the optimistic write first so the bubble updates immediately.
+        // Previously a `requireFileId(messageId)` call ran ahead of this and
+        // did a QueryBatch(1000, NewestFirst) over the whole chat drive just
+        // to look up the fileId for the outbox payload — easily ~500 ms on a
+        // busy drive, all of it spent gating the optimistic update behind
+        // outbox bookkeeping. The optimistic writer already does its own
+        // selectHomebaseFileByUnique and hands the original file (which
+        // carries fileId) back to us; reuse that for the outbox row.
         val (resultType, original) = optimisticWriter.writeReactionToggle(
             chatDrive,
             messageId,
             reactionJson
         )
+        if (original == null) return ToggleReactionResult(resultType = resultType)
 
         try {
             val enqueued = outboxSync.tryEnqueue(
                 request = ToggleReactionOutboxRequest(
                     driveId = chatDrive,
-                    fileId = fileId,
+                    fileId = original.fileId,
                     reaction = reactionJson,
                     recipients = getRecipients(conversationId),
                 )
             )
-            if (!enqueued && original != null) {
+            if (!enqueued) {
                 optimisticWriter.rollbackWrite(chatDrive, original)
             }
         } catch (t: Throwable) {
             Logger.e("toggleReaction failed to enqueue", t)
-            if (original != null) {
-                try {
-                    optimisticWriter.rollbackWrite(chatDrive, original)
-                } catch (_: Exception) {
-                }
+            try {
+                optimisticWriter.rollbackWrite(chatDrive, original)
+            } catch (_: Exception) {
             }
         }
 
@@ -320,28 +327,11 @@ class ChatMessageActionService(
     }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
-        val d =
-            fetchFileByUid(listOf(messageId)).firstOrNull() ?: throw Exception("invalid message id")
-        return d.fileId
-    }
-
-    suspend fun fetchFileByUid(uidList: List<Uuid>): List<HomebaseFile> {
-
-        val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
-
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1000,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = uidList
-        )
-
-        return result.records
+        val credentials = credentialsManager.requireActiveCredentials()
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), chatDrive, messageId
+        ) ?: throw Exception("invalid message id $messageId")
+        return file.fileId
     }
 
     private fun isValidEmoji(input: String?): Boolean = !input.isNullOrBlank() && input.length <= 8
