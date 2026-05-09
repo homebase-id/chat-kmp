@@ -18,8 +18,12 @@ import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowAddMembers
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowContactInfo
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.toErrorDetailRes
@@ -364,18 +368,81 @@ class GroupSettingsViewModel(
         val mainTransfer = fetchTransferIfAuthor("main", domain, mainFile)
         val adminTransfer = fetchTransferIfAuthor("admin", domain, adminFile)
 
+        // DB-vs-own-server diagnostic. Local rows come from the file reads
+        // above (already in memory). Server rows are fetched directly from
+        // the user's own drive — `getFileHeaderByUid` hits
+        // `/drives/{driveId}/files/by-uid/{uniqueId}/header` and returns
+        // null on 404, so we get the truth regardless of whether drive-sync
+        // is current. The two GETs run in parallel; they're cheap (header
+        // only, no payloads) and only fire when this screen is open.
+        val dbGroup = toDbRow(mainFile)
+        val dbAdmin = toDbRow(adminFile)
+        val expectedMainUniqueId = conversation.id // main file's uniqueId == conversationId by construction
+        val expectedAdminUniqueId = ChatProtocol.getAdminFileUniqueId(conversation.id)
+
+        val (serverMainFile, serverAdminFile) = try {
+            coroutineScope {
+                val main = async {
+                    runCatching {
+                        driveFileProvider.getFileHeaderByUid(chatTargetDrive.alias, expectedMainUniqueId)
+                    }.onFailure {
+                        Logger.w(throwable = it) { "loadTransferHistory: getFileHeaderByUid(main) failed for ${conversation.id}" }
+                    }.getOrNull()
+                }
+                val admin = async {
+                    runCatching {
+                        driveFileProvider.getFileHeaderByUid(chatTargetDrive.alias, expectedAdminUniqueId)
+                    }.onFailure {
+                        Logger.w(throwable = it) { "loadTransferHistory: getFileHeaderByUid(admin) failed for ${conversation.id}" }
+                    }.getOrNull()
+                }
+                listOf(main, admin).awaitAll().let { it[0] to it[1] }
+            }
+        } catch (e: Exception) {
+            Logger.w(throwable = e) { "loadTransferHistory: parallel server header fetch failed for ${conversation.id}" }
+            null to null
+        }
+
+        val diagnostic = GroupFilesDiagnostic(
+            conversationId = conversation.id,
+            expectedMainUniqueId = expectedMainUniqueId,
+            expectedAdminUniqueId = expectedAdminUniqueId,
+            dbGroup = dbGroup,
+            dbAdmin = dbAdmin,
+            serverGroup = toServerRow(serverMainFile),
+            serverAdmin = toServerRow(serverAdminFile),
+        )
+
         Logger.d {
             "loadTransferHistory: ${conversation.id} mainAuthored=${mainTransfer != null} mainEntries=${mainTransfer?.size} " +
                     "adminAuthored=${adminTransfer != null} adminEntries=${adminTransfer?.size} " +
                     "main=${renderTransferMap(mainTransfer)} admin=${renderTransferMap(adminTransfer)}"
+        }
+        Logger.i {
+            "GroupSettings: filesDiagnostic conversationId=${conversation.id} " +
+                "dbGroup=${describeDb(diagnostic.dbGroup)} dbAdmin=${describeDb(diagnostic.dbAdmin)} " +
+                "serverGroup=${describeServer(diagnostic.serverGroup)} serverAdmin=${describeServer(diagnostic.serverAdmin)} " +
+                "expectedMainUid=${diagnostic.expectedMainUniqueId} expectedAdminUid=${diagnostic.expectedAdminUniqueId}"
         }
 
         _uiState.update {
             it.copy(
                 mainFileTransfer = mainTransfer,
                 adminFileTransfer = adminTransfer,
+                filesDiagnostic = diagnostic,
             )
         }
+    }
+
+    private fun describeDb(row: DbFileRow): String = when (row) {
+        is DbFileRow.Present -> "Present(vt=${row.versionTag}, author=${row.originalAuthor.domainName}, fileId=${row.fileId})"
+        is DbFileRow.Placeholder -> "Placeholder(fileId=${row.fileId})"
+        DbFileRow.Absent -> "Absent"
+    }
+
+    private fun describeServer(row: ServerFileRow): String = when (row) {
+        is ServerFileRow.Present -> "Present(vt=${row.versionTag}, author=${row.originalAuthor.domainName}, fileId=${row.fileId})"
+        ServerFileRow.Absent -> "Absent"
     }
 
     private fun renderTransferMap(map: Map<OdinId, RecipientFileStatus>?): String {
