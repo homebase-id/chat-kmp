@@ -113,7 +113,10 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.dice.BattleRollSheet
 import id.homebase.chat.dice.DiceRollComposerSheet
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
@@ -139,7 +142,6 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
-import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
@@ -201,6 +203,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -336,6 +339,7 @@ fun ConversationContent(
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
             .collectLatest { scrolling ->
                 if (scrolling) {
                     showFloatingDate = true
@@ -426,6 +430,19 @@ fun ConversationContent(
                 .associate { it.message.id to it.message }
                 .toPersistentMap()
         }
+    }
+
+    // All valid dice-roll descriptors in the loaded conversation slice. Used by
+    // dice-roll bubbles to render battle-leader lines and by the long-press menu
+    // to gate the Battle entry on chain cap / no-rebattle. One filter per
+    // message-list change, then read-only downstream.
+    val allDiceDescriptors = remember(uiState.messages) {
+        uiState.messages.asSequence()
+            .filterIsInstance<MessageListContentModel.Message>()
+            .mapNotNull { (it.message.messageContent as? MessageContent.DiceRoll)?.descriptor }
+            .filter { it.isValid() }
+            .toList()
+            .toPersistentList()
     }
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
@@ -804,39 +821,24 @@ fun ConversationContent(
                 }
 
                 val currentMergedItems by rememberUpdatedState(mergedItems)
-                // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
-                // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
-                // `Pair<Int, List<...>>` (O(n) list-equals). Build 1394's watchdog caught a
-                // 5–8s main-thread stall here (homebase.log lines 27628 / 28315, deobfuscated
-                // against android-mapping-1394) — the previous shape paid two O(n) compares
-                // per snapshot commit (snapshotFlow's internal != + an explicit
-                // distinctUntilChanged that was redundant with it) on every mid-measure
-                // mutation of `firstVisibleItemIndex` during scroll-to-bottom restore.
+                // Hoisted out of composition: a `derivedStateOf` reading `firstVisibleItemIndex`
+                // here was being invalidated by `animateItem()`'s lookahead measurement during
+                // conversation re-mount (back-from-message-details), causing the LazyColumn's
+                // measure pass to never settle (PR #468 watchdog stack, build 1393, 19:45 UTC).
+                // Running the observation in a coroutine means the overlay below only re-renders
+                // when the resolved date *result* changes — not on every mid-measure scroll tick.
                 val floatingDateLabel by produceState<LocalDate?>(null, listState) {
-                    snapshotFlow {
-                        val items = currentMergedItems
-                        // boundedFirstVisibleItemIndex guards against the
-                        // `Int.MAX_VALUE` "land at bottom" sentinel that
-                        // `ConversationMessagesPane.kt` puts into LazyListState
-                        // before LazyColumn's first measure clamps it. Without the
-                        // clamp this for-loop walked 2.1B iterations and froze
-                        // Main for 6+ seconds (build 1419 watchdog stack landed
-                        // here with `idx=2147483647 items=0`). See
-                        // `boundedFirstVisibleItemIndex` docs and the CLAUDE.md
-                        // "Compose & Flow gotchas" rule.
-                        val startIdx = listState.boundedFirstVisibleItemIndex(items.size)
-                        var date: LocalDate? = null
-                        if (startIdx != null) {
-                            for (i in startIdx downTo 0) {
-                                val item = items.getOrNull(i)
-                                if (item is MessageListContentModel.Section) {
-                                    date = item.date
-                                    break
+                    snapshotFlow { listState.firstVisibleItemIndex to currentMergedItems }
+                        .distinctUntilChanged()
+                        .collect { (firstVisibleIndex, items) ->
+                            value = run {
+                                for (i in firstVisibleIndex downTo 0) {
+                                    val item = items.getOrNull(i)
+                                    if (item is MessageListContentModel.Section) return@run item.date
                                 }
+                                null
                             }
                         }
-                        date
-                    }.collect { value = it }
                 }
 
                 // Gate `animateItem()` until the initial composition burst has settled.
@@ -987,6 +989,7 @@ fun ConversationContent(
                                                 downloadingFiles = uiState.downloadingFiles,
                                                 uploadStatus = uiState.uploadProgress[item.message.id],
                                                 replyMessages = replyMessages,
+                                                allDiceDescriptors = allDiceDescriptors,
                                                 searchQuery = uiState.searchQuery,
                                                 isCurrentSearchResult = isFocused,
                                             )
@@ -1441,6 +1444,16 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showDiceRollComposer = false },
             onSent = { showDiceRollComposer = false },
+        )
+    }
+
+    val battleTarget = uiState.battleTargetMessage
+    if (battleTarget != null) {
+        BattleRollSheet(
+            parentMessage = battleTarget,
+            chainDescriptors = allDiceDescriptors,
+            onDismiss = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
+            onSent = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
         )
     }
     } // CompositionLocalProvider
