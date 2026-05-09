@@ -3,6 +3,7 @@ package id.homebase.api.client.websockets
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -10,6 +11,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.ChatDriveWebSocketUpsertWorker
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
@@ -63,6 +65,12 @@ class OdinWebSocketClient(
     }
 
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
+
+    // Lazily initialised on the first [connectOnce] call once we have
+    // credentials. Receives WS-pushed file headers for the chat drive
+    // and writes them straight to DriveMainIndex without a Drive.sync()
+    // round-trip. Other drives stay on [driveSyncManager.syncDrive].
+    private var chatWsUpsertWorker: ChatDriveWebSocketUpsertWorker? = null
 
     private lateinit var sharedSecret: ByteArray
 
@@ -194,6 +202,19 @@ class OdinWebSocketClient(
         val identity = creds.domain
         sharedSecret = creds.sharedSecret.unsafeBytes
 
+        // Lazily build the chat-drive WS upsert worker once we know the
+        // identity. Idempotent across reconnects — the same worker drains
+        // future bursts. Cancelled in [disconnect].
+        if (chatWsUpsertWorker == null) {
+            chatWsUpsertWorker = ChatDriveWebSocketUpsertWorker(
+                identityId = creds.getIdentityId(),
+                driveId = SystemDriveConstants.chatDrive.alias,
+                databaseManager = databaseManager,
+                eventBus = eventBus,
+                scope = scope,
+            )
+        }
+
         _connectionState.value = WebSocketState.Connecting
 
         val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
@@ -271,6 +292,15 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
+        // TODO: remove before merge — Step 0 diagnostic for the
+        // websocket-pure-push-chat-drive PR. Captures the notification
+        // type for every WS message so we can confirm which types fire
+        // when (especially: does a reaction toggle also produce a
+        // fileModified, or only reactionContentAdded?).
+        Logger.d(tag = "WSDiag") {
+            "WS notification: type=${notification.notificationType}"
+        }
+
         notificationBufferMutex.withLock {
             notificationBuffer += notification
         }
@@ -462,8 +492,11 @@ class OdinWebSocketClient(
         val eventData = OdinSystemSerializer
             .deserialize<ClientReactionNotification>(notification.data)
         val driveId = eventData.fileId.driveId
+        Logger.i {
+            "WSFileEvent: syncDrive($driveId) for reaction event " +
+                "(isDeleted=$isDeleted, fileId=${eventData.fileId.fileId})"
+        }
         driveSyncManager.syncDrive(driveId)
-
     }
 
     private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
@@ -471,62 +504,63 @@ class OdinWebSocketClient(
             OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
 
         try {
+            Logger.i { "WSFileEvent: syncDrive(${file.driveId}) for allReactionsByFileDeleted (fileId=${file.fileId})" }
             driveSyncManager.syncDrive(file.driveId)
         } catch (e: Exception) {
             Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
         }
     }
 
-
+    /**
+     * Dispatcher for `fileAdded` / `fileDeleted` / `fileModified` /
+     * `statisticsChanged` notifications.
+     *
+     * Chat drive: if the WS payload carries a header, decrypt it and
+     * submit to the [chatWsUpsertWorker] — no HTTP round-trip. The
+     * worker batches bursts of incoming files into one DB transaction
+     * and emits a single `BatchReceived(source = WebSocket)` event.
+     *
+     * Everything else (other drives, or chat-drive notifications with
+     * a null header, or any failure in the pure-push path) falls back
+     * to [DriveSyncManager.syncDrive]. The fallback is logged at INFO
+     * so we can monitor the rate in production — a steady stream for
+     * chat-drive notifications would mean the WS payload is missing
+     * headers somewhere we didn't expect.
+     */
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
         val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
         val driveId = fileNotification.targetDrive!!.alias
+        val header = fileNotification.header
 
+        if (driveId == SystemDriveConstants.chatDrive.alias && header != null) {
+            val worker = chatWsUpsertWorker
+            if (worker != null) {
+                try {
+                    val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
+                    worker.submit(file)
+                    return
+                } catch (e: Exception) {
+                    Logger.w(e) {
+                        "WSFileEvent: pure-push path failed for chat drive " +
+                            "(notificationType=${notification.notificationType}); " +
+                            "falling back to syncDrive: ${e.message}"
+                    }
+                    // fall through
+                }
+            }
+        }
+
+        Logger.i {
+            "WSFileEvent: syncDrive($driveId) — " +
+                "notificationType=${notification.notificationType} " +
+                "headerPresent=${header != null} " +
+                "isChatDrive=${driveId == SystemDriveConstants.chatDrive.alias}"
+        }
         try {
             driveSyncManager.syncDrive(driveId)
         } catch (e: Exception) {
             Logger.e("handleFileEvent() probably used invalid driveId $driveId Exception:$e")
-        }
-    }
-
-
-    private suspend fun handleFileEvent_manual(notification: ClientNotificationPayload) {
-        val fileNotification =
-            OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
-
-        val header = fileNotification.header!!
-        val driveId = fileNotification.targetDrive!!.alias
-        val identityId = credentialsManager.getActiveCredentials()!!.getIdentityId()
-
-        val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
-        val lastModified = file.fileMetadata.updated
-
-        val batch = listOf(file)
-        try {
-            fileHeaderProcessor.baseUpsertEntryZapZap(
-                identityId = identityId,
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
-        } catch (e: Exception) {
-            Logger.e("DB upsert failed for burst: ${e.message}")
-        }
-
-        eventBus.emit(
-            BackendEvent.DriveEvent.BatchReceived(
-                driveId = driveId,
-                totalCount = batch.size,
-                batchCount = batch.size,
-                latestModified = lastModified,
-                batchData = batch,
-                source = BackendEvent.SyncSource.WebSocket
-            )
-        )
-
-        Logger.i {
-            "Flushed ${batch.size} file events for drive $driveId"
         }
     }
 
@@ -568,6 +602,20 @@ class OdinWebSocketClient(
         pingSupervisor.start()
         onConnected()
         eventBus.emit(BackendEvent.ConnectionOnline)
+
+        // Catch-up backstop for the chat drive. Now that per-event
+        // file notifications take the pure-push path (no syncDrive),
+        // we still need to recover anything the server queued while
+        // the WS was disconnected. One targeted sync per (re)connect
+        // is enough — the dirty-bit gate downstream keeps it cheap
+        // when the round brings nothing relevant.
+        try {
+            driveSyncManager.syncDrive(SystemDriveConstants.chatDrive.alias)
+        } catch (e: Exception) {
+            Logger.w(e) {
+                "onHandshakeSuccess: chat-drive catch-up syncDrive failed: ${e.message}"
+            }
+        }
     }
 
     /**
@@ -580,6 +628,8 @@ class OdinWebSocketClient(
         session = null
         connectionJob?.cancel()
         connectionJob = null
+        chatWsUpsertWorker?.cancel()
+        chatWsUpsertWorker = null
         _connectionState.value = WebSocketState.Disconnected
         Logger.i { "WebSocket disconnected" }
     }
