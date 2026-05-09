@@ -428,6 +428,35 @@
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
 
+    <!-- Dice attachment -->
+    <string name="chat_dice_share">Terninger</string>
+    <string name="chat_dice_composer_title">Slå terninger</string>
+    <string name="chat_dice_count_label">Antal terninger</string>
+    <string name="chat_dice_faces_label">Sider pr. terning</string>
+    <string name="chat_dice_face_label">d%1$d</string>
+    <string name="chat_dice_count_value">%1$dd</string>
+    <string name="chat_dice_decrement">Færre terninger</string>
+    <string name="chat_dice_increment">Flere terninger</string>
+    <string name="chat_dice_roll">Slå</string>
+    <string name="chat_dice_rolling">Slår…</string>
+    <string name="chat_dice_max_dice_warning">Op til %1$d terninger pr. slag.</string>
+    <string name="chat_dice_shake_hint">Eller ryst din telefon.</string>
+    <string name="chat_dice_face_content_description">d%1$d viser %2$d</string>
+    <string name="chat_dice_face_placeholder_content_description">d%1$d terning</string>
+    <string name="chat_dice_summary">Du slog %1$d (%2$s)</string>
+    <string name="chat_dice_summary_single">Du slog %1$d</string>
+    <string name="chat_dice_summary_other">%1$s slog %2$d (%3$s)</string>
+    <string name="chat_dice_summary_other_single">%1$s slog %2$d</string>
+    <string name="chat_dice_unparseable">Forhistorisk slag</string>
+    <string name="chat_dice_battle_action">Duel</string>
+    <string name="chat_dice_battle_title">Duel</string>
+    <string name="chat_dice_battle_target">Slå højere end %1$d for at vinde over %2$s</string>
+    <string name="chat_dice_battle_leader_self">Du fører med %1$d</string>
+    <string name="chat_dice_battle_leader_other">%1$s fører med %2$d</string>
+    <string name="chat_dice_battle_tie_self">%1$s er uafgjort med %2$d</string>
+    <string name="chat_dice_battle_tie_other">%1$s er uafgjort med %2$d</string>
+    <string name="chat_dice_battle_and">og</string>
+
     <string name="chat_message_attachment_gallery">Galleri</string>
     <string name="chat_message_attachment_file">Fil</string>
     <string name="chat_message_attachment_contact">Kontakt</string>

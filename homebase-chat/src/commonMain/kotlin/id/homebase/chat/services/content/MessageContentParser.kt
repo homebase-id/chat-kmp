@@ -65,7 +65,7 @@ object MessageContentParser {
         if (descriptor.isValid()) {
             MessageContent.DiceRoll(descriptor)
         } else {
-            Logger.w(tag = TAG) { "DiceRoll descriptor failed validation; faces=${descriptor.faces} count=${descriptor.results.size}" }
+            Logger.w(tag = TAG) { "DiceRoll descriptor failed validation; faces=${descriptor.faces} chainSize=${descriptor.rolls.size}" }
             MessageContent.DiceRoll(descriptor = null)
         }
     } catch (e: Exception) {

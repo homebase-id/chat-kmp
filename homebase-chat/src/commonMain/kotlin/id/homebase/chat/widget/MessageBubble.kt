@@ -143,9 +143,11 @@ fun SentMessageBubble(
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
@@ -254,6 +256,9 @@ fun SentMessageBubble(
                         onReply = onReply?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
+                        onBattle = onBattle?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
+                        },
                         onForward = onForward?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
@@ -320,6 +325,7 @@ fun SentMessageBubble(
                         message = message,
                         decryptedFiles = decryptedFiles,
                         sentByYou = true,
+                        currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
                         onLongClick = {
                             if (onMessageInfo != null) {
@@ -429,11 +435,13 @@ fun ReceivedMessageBubble(
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    currentOdinId: String = "",
     renderAuthorName: Boolean = false,
     isGroupConversation: Boolean = false,
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
@@ -553,6 +561,7 @@ fun ReceivedMessageBubble(
                             message = message,
                             decryptedFiles = decryptedFiles,
                             sentByYou = false,
+                            currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
                             else null,
@@ -658,6 +667,9 @@ fun ReceivedMessageBubble(
                             onMessageInfo?.invoke()
                         },
                         onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
+                        },
+                        onBattle = onBattle?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
                         onForward = onForward?.let { orig ->

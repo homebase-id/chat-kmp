@@ -69,6 +69,7 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
     val searchResultMessageIds: List<Uuid> = emptyList(),

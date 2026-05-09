@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -74,6 +75,7 @@ import id.homebase.resources.chat_message_copy
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_forward
 import id.homebase.resources.chat_message_info
+import id.homebase.resources.chat_dice_battle_action
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
@@ -210,6 +212,7 @@ fun ReceivedMessagePopup(
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: (() -> Unit)?,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
@@ -217,7 +220,7 @@ fun ReceivedMessagePopup(
     onReport: () -> Unit,
 ) {
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy) {
+    val actionMenu = remember(policy, onBattle) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -242,6 +245,14 @@ fun ReceivedMessagePopup(
                             onClick = onReply,
                             text = stringResource(MR.string.chat_message_reply),
                             imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                    }
+                    if (onBattle != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onBattle,
+                            text = stringResource(MR.string.chat_dice_battle_action),
+                            imageVector = Icons.Filled.Casino,
                         )
                     }
                     if (onForward != null) {
@@ -393,6 +404,7 @@ fun SentMessagePopup(
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: (() -> Unit)?,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
     onShare: (() -> Unit)?,
@@ -400,7 +412,7 @@ fun SentMessagePopup(
     onDelete: () -> Unit,
 ) {
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy) {
+    val actionMenu = remember(policy, onBattle) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -425,6 +437,14 @@ fun SentMessagePopup(
                             onClick = onReply,
                             text = stringResource(MR.string.chat_message_reply),
                             imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                    }
+                    if (onBattle != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onBattle,
+                            text = stringResource(MR.string.chat_dice_battle_action),
+                            imageVector = Icons.Filled.Casino,
                         )
                     }
                     if (onForward != null) {
