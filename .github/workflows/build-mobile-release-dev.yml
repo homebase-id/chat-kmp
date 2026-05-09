@@ -135,13 +135,12 @@ jobs:
           restore-keys: |
             pods-${{ runner.os }}-
 
-      - name: Cache Xcode Derived Data
-        uses: actions/cache@v5
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: xcode-derived-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            xcode-derived-${{ runner.os }}-
+      # DerivedData cache intentionally NOT used: restoring pre-signed
+      # `.framework` artifacts (FFmpegKit ships ~7 of them) collides with
+      # the new run's signing identity and `codesign`'s
+      # validate-then-replace path on a previously-signed nested framework
+      # can hang for hours on Apple Silicon runners (Xcode 26.x). Saves a
+      # few minutes on a hit, costs 5h of CI minutes on a miss — not worth it.
 
       - name: Set iOS version
         run: |
@@ -181,6 +180,7 @@ jobs:
           XCEOF
 
       - name: Build iOS
+        timeout-minutes: 70
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
