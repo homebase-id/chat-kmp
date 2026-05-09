@@ -176,6 +176,28 @@ class ChatMessageStream(
         )
     }
 
+    /** Walk the open conversations' in-memory message lists for a model whose
+     *  `id == messageId` and return its `fileId`. The hit rate is effectively
+     *  100% for messageId-keyed actions invoked from a visible message
+     *  (toggleReaction's optimistic path is fileId-keyed and bypasses this
+     *  entirely; the remaining call sites — getReactions, deleteMessage's
+     *  fall-through — operate on a message the user just interacted with).
+     *
+     *  The scan is over distinct *open* conversations only, which is one for
+     *  the active conversation in steady state. Returns `null` (caller must
+     *  fall through to DB) if the message isn't loaded — including the case
+     *  where it exists on disk but its conversation hasn't been opened.
+     */
+    override fun findCachedFileId(messageId: Uuid): Uuid? {
+        val open = conversationState.messages.value
+        for ((_, list) in open) {
+            for (m in list) {
+                if (m.id == messageId) return m.fileId
+            }
+        }
+        return null
+    }
+
     suspend fun fetchMessages(
         conversationId: Uuid,
         limit: Int = 1000,
