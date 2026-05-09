@@ -30,7 +30,11 @@ class MessageProcessingPipelineTest {
     private val alice = OdinId("alice.test")
     private val bob = OdinId("bob.test")
     private val conversationId = Uuid.random()
-    private val baseTime = Instant.fromEpochMilliseconds(1_700_000_000_000L)
+    // 2023-11-14T12:00:00Z — pinned to noon UTC so timezone-shifted offsets in tests
+    // (up to ±12h) stay on the same calendar date. The previous value (22:13:20Z) made
+    // `messagesOnSameDay_shareOneSection` fail in any TZ east of UTC+0:47 because
+    // baseTime+60min crossed local midnight.
+    private val baseTime = Instant.fromEpochMilliseconds(1_699_963_200_000L)
 
     private fun msg(
         sender: OdinId = alice,

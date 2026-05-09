@@ -11,6 +11,35 @@ If I push back and you still think you're right, hold the position and
 explain why. Don't cave just because I disagreed. If I've actually
 changed your mind with a real argument, say what specifically changed it.
 
+## Debugging & root cause
+
+When you hit a freeze, ANR, crash, or unexplained behaviour, do not ship
+a workaround that hides the symptom without identifying the cause first.
+Capture concrete evidence — a stack trace, an ANR dump, a profiler
+sample, a reproducible test — and prove what's broken before fixing it.
+If you can't capture evidence, the fix is to install the instrumentation
+that will (a watchdog, a logger, a tombstone reader, an `adb logcat`
+capture) — not to patch around the symptom and move on.
+
+Symptom patches to avoid:
+
+- Wrapping a state read in `remember { }` because "without it the screen
+  freezes" — the underlying read is doing something expensive or
+  reactive on every recomposition; fix that, don't snapshot it.
+- Adding `try { … } catch (_: Exception) { }` around code that's
+  actually misbehaving, so the exception stops surfacing.
+- Adding a `delay()`, an extra `LaunchedEffect`, or a manual redraw
+  trigger to make a UI glitch "go away" without explaining why it
+  helped.
+- Reverting or hiding the feature that exposed the bug, when the bug
+  itself is still there.
+
+Each of these makes the bug invisible at the cost of leaving the cause
+in place to resurface elsewhere later. If you find yourself reaching for
+one of these patterns, stop and write down what you actually observed,
+what you suspect, and what evidence you'd need to confirm — then go get
+that evidence.
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
