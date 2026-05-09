@@ -32,6 +32,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
@@ -44,6 +46,19 @@ class OptimisticWriter(
 
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+
+    // Per-message lock guarding the read-modify-write inside writeReactionToggle.
+    // Without this, rapid taps on the bottom sheet have all five coroutines
+    // read the same starting state, each compute "remove my one", and last-
+    // writer-wins clobbers most of the removes. Per-(driveId, uniqueId) so
+    // toggles on different messages don't queue against each other.
+    private val reactionToggleLocks = mutableMapOf<Pair<Uuid, Uuid>, Mutex>()
+    private val reactionToggleLocksGuard = Mutex()
+
+    private suspend fun reactionLockFor(driveId: Uuid, uniqueId: Uuid): Mutex =
+        reactionToggleLocksGuard.withLock {
+            reactionToggleLocks.getOrPut(driveId to uniqueId) { Mutex() }
+        }
 
     suspend fun writeNewFile(
         driveId: Uuid,
@@ -436,12 +451,12 @@ class OptimisticWriter(
         driveId: Uuid,
         uniqueId: Uuid,
         reactionJson: String,
-    ): Pair<ToggleReactionResultType, HomebaseFile?> {
+    ): Pair<ToggleReactionResultType, HomebaseFile?> = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return Pair(ToggleReactionResultType.None, null)
+        ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
 
@@ -522,14 +537,14 @@ class OptimisticWriter(
             )
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic reaction toggle failed for uniqueId=$uniqueId" }
-            return Pair(ToggleReactionResultType.None, null)
+            return@withLock Pair(ToggleReactionResultType.None, null)
         }
 
         val resultType = if (isAdding)
             ToggleReactionResultType.Added
         else
             ToggleReactionResultType.Deleted
-        return Pair(resultType, existingFile)
+        Pair(resultType, existingFile)
     }
 
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =

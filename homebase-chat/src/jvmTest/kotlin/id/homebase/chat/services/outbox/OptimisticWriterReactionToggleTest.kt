@@ -22,6 +22,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -358,5 +360,61 @@ class OptimisticWriterReactionToggleTest {
         val previewMap = updated.fileMetadata.reactionPreview?.reactions.orEmpty()
         assertEquals(2, previewMap.size)
         assertTrue(previewMap.values.all { it.count == 1 })
+    }
+
+    /**
+     * Diagnostic probe — does NOT directly correspond to a known bug yet.
+     *
+     * Reproduces the user-reported scenario in isolation: five concurrent
+     * removes of the five own-reactions on a single message, going only
+     * through OptimisticWriter (no outbox / server / sync in the loop).
+     * Reads back the DB state to decide between two hypotheses for why
+     * the chat bubble peels reactions off slowly:
+     *
+     *   - Hypothesis A: read-modify-write race in writeReactionToggle.
+     *     If true, this test fails: the residue list is non-empty because
+     *     last-writer-wins clobbered most of the removes.
+     *
+     *   - Hypothesis B: writer is race-safe under runTest's cooperative
+     *     scheduling; the symptom is upstream (e.g. sync overwriting the
+     *     correct optimistic state with stale server data).
+     *     If true, this test passes; the residue is empty.
+     *
+     * runTest's StandardTestDispatcher yields at every suspension point
+     * inside writeReactionToggle (DB read, DB write, eventBus.emit), so a
+     * read-modify-write race would still surface here.
+     *
+     * The println surfaces the actual residue so we can read off the
+     * hypothesis result either way.
+     */
+    @Test
+    fun parallelRemoves_diagnostic_finalDbStateMustBeEmpty() = runTest {
+        setUp()
+        val emojis = listOf("👍", "🎉", "❤️", "🚀", "😀").map { emojiJson(it) }
+        val messageId = seedMessage(
+            initialLocalReactions = emojis,
+            initialReactionPreview = emojis.associateWith { 1 },
+        )
+
+        coroutineScope {
+            for (e in emojis) {
+                launch { writer.writeReactionToggle(chatDriveId, messageId, e) }
+            }
+        }
+
+        val updated = readBack(messageId)
+        val residue = updated.fileMetadata.localAppData?.localReactions.orEmpty()
+        val previewResidue = updated.fileMetadata.reactionPreview?.reactions.orEmpty()
+        println("DIAG localReactionsResidue=$residue previewResidue=$previewResidue")
+        assertEquals(
+            emptyList(),
+            residue,
+            "If the optimistic writer is race-free, all five removes must land. " +
+                    "Non-empty residue ⇒ Hypothesis A (race in writeReactionToggle).",
+        )
+        assertTrue(
+            previewResidue.isEmpty(),
+            "preview should also be empty after all five removes",
+        )
     }
 }

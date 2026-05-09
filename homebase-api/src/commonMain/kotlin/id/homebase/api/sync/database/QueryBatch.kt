@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
+import co.touchlab.kermit.Logger
 import id.homebase.api.common.IntRange
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
@@ -160,6 +161,21 @@ class QueryBatch(
 
         if (fileSystemType == null) {
             throw IllegalArgumentException("fileSystemType required in Query Batch")
+        }
+
+        // Smoke alarm for "single-uniqueId" misuse: queryBatchAsync sorts and
+        // scans the whole drive index; for a single uniqueId, callers should
+        // use DriveMainIndexWrapper.selectHomebaseFileByUnique instead. We've
+        // had this cost ~500ms latency on the chat reaction/delete/get paths.
+        // Stack trace surfaces the offender directly in shipped logs.
+        if (uniqueIdAnyOf?.size == 1) {
+            Logger.w(tag = "QueryBatch") {
+                val callsite = Throwable().stackTraceToString()
+                    .lineSequence().drop(1).take(6).joinToString("\n")
+                "queryBatchAsync called with a single uniqueId — prefer " +
+                        "DriveMainIndexWrapper.selectHomebaseFileByUnique. " +
+                        "callsite:\n$callsite"
+            }
         }
 
         if (noOfItems < 1) {
