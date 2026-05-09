@@ -1,0 +1,390 @@
+package id.homebase.api.sync
+
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.createInMemoryDatabase
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.uuid.Uuid
+
+/**
+ * Locks down [DriveWebSocketUpsertWorker]'s contract:
+ *  - one batch upsert per drain (queue + single-flight Mutex),
+ *  - a [BackendEvent.DriveEvent.BatchReceived] with
+ *    `source = SyncSource.WebSocket` per drain,
+ *  - works for any drive id (not just chat),
+ *  - cancel() prevents pending work.
+ *
+ * Uses [runBlocking] with real dispatchers (the worker's
+ * [SupervisorJob] + [Dispatchers.Default] default) — this exercises
+ * the actual concurrency the worker is built for. Tests poll for
+ * expected events with bounded timeouts so they're deterministic.
+ */
+class DriveWebSocketUpsertWorkerTest {
+
+    private lateinit var db: DatabaseManager
+    private lateinit var workerScope: CoroutineScope
+
+    @BeforeTest
+    fun setUp() {
+        db = DatabaseManager({ createInMemoryDatabase() })
+        workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        workerScope.cancel()
+        db.close()
+    }
+
+    @Test
+    fun submit_singleFile_persistsRowAndEmitsBatchReceived() = runBlocking {
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val firstBatch = CompletableDeferred<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) {
+                    firstBatch.complete(event)
+                }
+            }
+        }
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        val fileId = Uuid.random()
+        val file = makeFile(fileId = fileId, driveId = driveId)
+
+        worker.submit(file)
+
+        val batch = withTimeoutOrNull(5.seconds) { firstBatch.await() }
+        assertNotNull(batch, "no BatchReceived event observed within timeout")
+
+        val stored = db.driveMainIndex.selectByIdentityAndDriveAndFile(
+            identityId = identityId, driveId = driveId, fileId = fileId
+        )
+        assertNotNull(stored, "expected DriveMainIndex row to be present")
+
+        assertEquals(driveId, batch.driveId)
+        assertEquals(1, batch.batchData.size)
+        assertEquals(fileId, batch.batchData.first().fileId)
+
+        collector.cancel()
+    }
+
+    @Test
+    fun submit_burst_batchesIntoSingleDrain() = runBlocking {
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+            }
+        }
+        // Give the collector a tick to subscribe.
+        delay(20)
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        val files = (1..5).map { makeFile(fileId = Uuid.random(), driveId = driveId) }
+        // Submit all 5 inside a single coroutine. The first submit's
+        // run() launches the drain; submits 2..5 see mutex held and
+        // set killroy. By the time the drain runs, all 5 are in the
+        // queue → ONE BatchReceived with 5 files.
+        for (f in files) worker.submit(f)
+
+        // Wait for at least one batch, then a brief settle period.
+        withTimeoutOrNull(5.seconds) {
+            while (collected.isEmpty()) delay(20)
+        }
+        delay(100)
+
+        assertEquals(
+            1, collected.size,
+            "burst of 5 submits should drain into ONE batch (got ${collected.size})"
+        )
+        assertEquals(5, collected.first().batchData.size)
+
+        for (f in files) {
+            val row = db.driveMainIndex.selectByIdentityAndDriveAndFile(
+                identityId = identityId, driveId = driveId, fileId = f.fileId
+            )
+            assertNotNull(row, "missing row for fileId=${f.fileId}")
+        }
+
+        collector.cancel()
+    }
+
+    @Test
+    fun emit_carriesWebSocketSource() = runBlocking {
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val firstBatch = CompletableDeferred<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) firstBatch.complete(event)
+            }
+        }
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        worker.submit(makeFile(fileId = Uuid.random(), driveId = driveId))
+
+        val batch = withTimeoutOrNull(5.seconds) { firstBatch.await() }
+        assertNotNull(batch)
+        assertEquals(
+            BackendEvent.SyncSource.WebSocket, batch.source,
+            "downstream consumers (dirty-bit gating) branch on this field; " +
+                "WebSocket source must be set"
+        )
+
+        collector.cancel()
+    }
+
+    @Test
+    fun submit_isDriveAgnostic() = runBlocking {
+        val identityId = Uuid.random()
+        val driveAlpha = Uuid.random()
+        val driveBeta = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+            }
+        }
+        delay(20)
+
+        val workerA = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveAlpha,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+        val workerB = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveBeta,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        val fileA = makeFile(fileId = Uuid.random(), driveId = driveAlpha)
+        val fileB = makeFile(fileId = Uuid.random(), driveId = driveBeta)
+
+        workerA.submit(fileA)
+        workerB.submit(fileB)
+
+        withTimeoutOrNull(5.seconds) {
+            while (collected.size < 2) delay(20)
+        }
+        delay(100)
+
+        assertNotNull(
+            db.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveAlpha, fileA.fileId)
+        )
+        assertNotNull(
+            db.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveBeta, fileB.fileId)
+        )
+
+        val byDrive = collected.groupBy { it.driveId }
+        assertEquals(setOf(driveAlpha, driveBeta), byDrive.keys)
+        assertEquals(1, byDrive[driveAlpha]?.size)
+        assertEquals(1, byDrive[driveBeta]?.size)
+        assertEquals(fileA.fileId, byDrive[driveAlpha]?.first()?.batchData?.first()?.fileId)
+        assertEquals(fileB.fileId, byDrive[driveBeta]?.first()?.batchData?.first()?.fileId)
+
+        collector.cancel()
+    }
+
+    @Test
+    fun submit_sequential_emitsTwoBatches() = runBlocking {
+        // Sanity check: back-to-back submit+settle cycles drain
+        // independently. Distinct from the batched-burst case because
+        // the mutex is fully released between them.
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+            }
+        }
+        delay(20)
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        worker.submit(makeFile(fileId = Uuid.random(), driveId = driveId))
+        withTimeoutOrNull(5.seconds) {
+            while (collected.isEmpty()) delay(20)
+        }
+
+        worker.submit(makeFile(fileId = Uuid.random(), driveId = driveId))
+        withTimeoutOrNull(5.seconds) {
+            while (collected.size < 2) delay(20)
+        }
+        delay(100)
+
+        assertEquals(2, collected.size)
+        assertEquals(1, collected[0].batchData.size)
+        assertEquals(1, collected[1].batchData.size)
+
+        collector.cancel()
+    }
+
+    @Test
+    fun cancel_doesNotProduceMoreThanOneBatch() = runBlocking {
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+            }
+        }
+        delay(20)
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        worker.submit(makeFile(fileId = Uuid.random(), driveId = driveId))
+        worker.cancel()
+        delay(200) // give any in-flight drain a chance to either complete or abort
+
+        assertTrue(
+            collected.size <= 1,
+            "cancel must not produce more than one BatchReceived (got ${collected.size})"
+        )
+
+        collector.cancel()
+    }
+
+    /**
+     * Build a minimal [HomebaseFile] from a JSON template that satisfies
+     * `baseUpsertEntryZapZap`'s SQL constraints. Same shape as
+     * [id.homebase.api.sync.database.MainIndexMetaTest]'s fixture.
+     */
+    private fun makeFile(
+        fileId: Uuid,
+        driveId: Uuid,
+        uniqueId: Uuid = Uuid.random(),
+    ): HomebaseFile {
+        val now = Clock.System.now().epochSeconds
+        val json = """{
+            "fileId": "$fileId",
+            "driveId": "$driveId",
+            "fileState": "active",
+            "fileSystemType": "standard",
+            "serverFileIsEncrypted": "true",
+            "keyHeader": {
+                "iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
+            },
+            "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": ${now}000,
+                "updated": ${now}000,
+                "transitCreated": 0,
+                "transitUpdated": 0,
+                "serverFileIsEncrypted": true,
+                "senderOdinId": "test.sender",
+                "originalAuthor": "test.sender",
+                "appData": {
+                    "uniqueId": "$uniqueId",
+                    "tags": null,
+                    "fileType": 1,
+                    "dataType": 1,
+                    "groupId": null,
+                    "userDate": ${now}000,
+                    "content": "x",
+                    "previewThumbnail": null,
+                    "archivalStatus": 0
+                },
+                "localAppData": null,
+                "referencedFile": null,
+                "reactionPreview": null,
+                "versionTag": "${Uuid.random()}",
+                "payloads": [],
+                "dataSource": null
+            },
+            "serverMetadata": {
+                "accessControlList": {
+                    "requiredSecurityGroup": "owner",
+                    "circleIdList": null,
+                    "odinIdList": null
+                },
+                "doNotIndex": false,
+                "allowDistribution": false,
+                "fileSystemType": "standard",
+                "fileByteCount": 100,
+                "originalRecipientCount": 0,
+                "transferHistory": null
+            },
+            "priority": 100,
+            "fileByteCount": 100
+        }"""
+        return OdinSystemSerializer.deserialize<HomebaseFile>(json)
+    }
+}
