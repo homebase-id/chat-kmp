@@ -578,7 +578,7 @@
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
     <string name="chat_reactions_tap_to_remove">Tap to remove</string>
-    <string name="chat_reactions_limit_reached">You can add up to 5 reactions per message — remove one first.</string>
+    <string name="chat_reactions_limit_reached">You cannot add more emojis, remove one first before adding another.</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>

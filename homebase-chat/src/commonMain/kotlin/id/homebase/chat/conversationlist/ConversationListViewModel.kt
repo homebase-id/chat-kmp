@@ -1258,11 +1258,15 @@ class ConversationListViewModel(
                     // block it before we optimistically write or hit the outbox.
                     // Removes (toggling an emoji the user already has) are always
                     // allowed.
-                    val targetMessage = _messagesUiState.value.messages
-                        .asSequence()
-                        .filterIsInstance<MessageListContentModel.Message>()
-                        .firstOrNull { it.message.id == action.messageId }
-                        ?.message
+                    var targetMessage: MessageUiModel? = null
+                    for (item in _messagesUiState.value.messages) {
+                        if (item is MessageListContentModel.Message &&
+                            item.message.id == action.messageId
+                        ) {
+                            targetMessage = item.message
+                            break
+                        }
+                    }
                     if (targetMessage != null) {
                         // ownReactions holds bare emoji (decoded by
                         // ChatMessageStream from the wire's
