@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,24 +27,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
+import id.homebase.resources.chat_dice_battle_and
+import id.homebase.resources.chat_dice_battle_leader_other
+import id.homebase.resources.chat_dice_battle_leader_self
+import id.homebase.resources.chat_dice_battle_tie_other
+import id.homebase.resources.chat_dice_battle_tie_self
 import id.homebase.resources.chat_dice_summary
 import id.homebase.resources.chat_dice_summary_single
 import id.homebase.resources.chat_dice_unparseable
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * In-stream bubble for a [DiceRollDescriptor]. Renders entirely from header data
- * — no payload fetch on scroll. Mirrors [id.homebase.chat.event.EventBubble].
+ * In-stream bubble for a [DiceRollDescriptor]. Renders entirely from header
+ * data — no payload fetch, no in-memory chain walk.
  *
- * Valid rolls render without a tonal surface, like the emoji-only message path
- * (see `MessageBubbleRaw.kt:213` `emojiOnly`) — the dice faces have their own
- * visual weight and look better floating on the conversation background. The
- * unparseable chip keeps its tonal surface for legibility.
+ * Battle bubbles compute the leader line directly from the embedded
+ * [DiceRollDescriptor.rolls] array — historical bubbles never change as new
+ * battles arrive. Standalone rolls (single-entry array) keep the original
+ * "You rolled X" line.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiceRollBubble(
     descriptor: DiceRollDescriptor?,
+    currentOdinId: String = "",
     modifier: Modifier = Modifier,
 ) {
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -75,19 +80,18 @@ fun DiceRollBubble(
         return
     }
 
+    val latest = descriptor.latest
     val critColor = MaterialTheme.colorScheme.tertiary
 
-    // Scale faces with the dice count so a 1-3 die roll renders large (closer to
-    // the 256px source, less downscale = crisper) while a 12-die spray fits the
-    // bubble width. The cell holds the optional crit border; the face image sits
-    // inside with a small inset.
-    val cellSize = if (descriptor.results.size <= 3) 96.dp else 56.dp
+    // Scale faces with the dice count so a 1-3 die roll renders large (closer
+    // to the 256px source, less downscale = crisper) while a 12-die spray fits
+    // the bubble width. The cell holds the optional crit border; the face
+    // image sits inside with a small inset.
+    val cellSize = if (latest.results.size <= 3) 96.dp else 56.dp
     val faceInset = 4.dp
 
     // Don't fillMaxWidth on the Column or FlowRow — the parent wrapper aligns
-    // sent messages to the end and received to the start. If the bubble spans
-    // the full conversation width, that alignment becomes a no-op and the dice
-    // appear stuck to the left for everyone.
+    // sent messages to the end and received to the start.
     Column(
         modifier = modifier.padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -96,10 +100,9 @@ fun DiceRollBubble(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            for (value in descriptor.results) {
+            for (value in latest.results) {
                 // Crit border is a d20 thing — natural 20 / natural 1 are the
-                // only rolls that "matter" outside their numeric value. On
-                // smaller dice, hitting min or max is unremarkable.
+                // only rolls that "matter" outside their numeric value.
                 val isCrit = descriptor.faces == 20 && (value == 20 || value == 1)
                 val cellModifier = Modifier
                     .size(cellSize)
@@ -122,7 +125,7 @@ fun DiceRollBubble(
         Spacer(Modifier.height(2.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (descriptor.source == RollSource.ShakeSeeded) {
+            if (latest.source == RollSource.ShakeSeeded) {
                 Icon(
                     imageVector = Icons.Filled.Vibration,
                     contentDescription = null,
@@ -131,15 +134,16 @@ fun DiceRollBubble(
                 )
                 Spacer(Modifier.width(6.dp))
             }
-            // For a single die the breakdown duplicates the sum (`4 (4)`), so
-            // we use a separate resource without the parenthetical.
-            val summaryText = if (descriptor.results.size == 1) {
+
+            val summaryText = if (descriptor.isBattle) {
+                battleLeaderText(descriptor, currentOdinId)
+            } else if (latest.results.size == 1) {
                 stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
             } else {
                 stringResource(
                     MR.string.chat_dice_summary,
                     descriptor.sum,
-                    descriptor.results.joinToString("+"),
+                    latest.results.joinToString("+"),
                 )
             }
             Text(
@@ -151,3 +155,52 @@ fun DiceRollBubble(
         }
     }
 }
+
+@Composable
+private fun battleLeaderText(
+    descriptor: DiceRollDescriptor,
+    currentOdinId: String,
+): String {
+    val maxSum = descriptor.rolls.maxOf { it.sum }
+    val leaders = descriptor.rolls.filter { it.sum == maxSum }
+        .map { it.odinId.domainName }
+        .distinct()
+    val isSelfAmong = currentOdinId.isNotBlank() && currentOdinId in leaders
+
+    return when {
+        leaders.size == 1 && isSelfAmong ->
+            stringResource(MR.string.chat_dice_battle_leader_self, maxSum)
+        leaders.size == 1 ->
+            stringResource(
+                MR.string.chat_dice_battle_leader_other,
+                hostPortion(leaders.first()),
+                maxSum,
+            )
+        else -> {
+            val and = stringResource(MR.string.chat_dice_battle_and)
+            val displayNames = leaders.map { id ->
+                if (id == currentOdinId) "You" else hostPortion(id)
+            }
+            val joined = joinNames(displayNames, and)
+            if (isSelfAmong) {
+                stringResource(MR.string.chat_dice_battle_tie_self, joined, maxSum)
+            } else {
+                stringResource(MR.string.chat_dice_battle_tie_other, joined, maxSum)
+            }
+        }
+    }
+}
+
+private fun joinNames(names: List<String>, and: String): String = when (names.size) {
+    0 -> ""
+    1 -> names[0]
+    2 -> "${names[0]} $and ${names[1]}"
+    else -> names.dropLast(1).joinToString(", ") + " $and ${names.last()}"
+}
+
+/**
+ * Display name fallback: the host portion of the odinId — `frodo.dotyou.cloud`
+ * → `frodo`. Keeps things readable without a contact-book lookup.
+ */
+private fun hostPortion(odinId: String): String =
+    odinId.substringBefore('.').ifBlank { odinId }

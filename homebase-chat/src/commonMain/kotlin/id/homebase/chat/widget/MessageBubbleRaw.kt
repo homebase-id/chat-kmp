@@ -110,6 +110,7 @@ fun MessageBubbleRaw(
     message: MessageUiModel,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     sentByYou: Boolean,
+    currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     authorName: String? = null,
     authorColor: Color? = null,
@@ -147,6 +148,7 @@ fun MessageBubbleRaw(
         is MessageContent.DiceRoll -> {
             DiceRollBubble(
                 descriptor = content.descriptor,
+                currentOdinId = currentOdinId,
                 modifier = modifier,
             )
             return

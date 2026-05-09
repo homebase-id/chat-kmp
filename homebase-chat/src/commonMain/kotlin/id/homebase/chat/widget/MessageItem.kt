@@ -11,10 +11,14 @@ import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.dice.canBattle
 import id.homebase.chat.services.content.ActionPolicy
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlin.uuid.Uuid
 
@@ -33,6 +37,7 @@ fun MessageItem(
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    allDiceDescriptors: ImmutableList<DiceRollDescriptor> = persistentListOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
 ) {
@@ -55,6 +60,14 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
         if (policy.allowReply) remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
+    // Battle is dice-roll-specific. Show only when the message is a valid dice
+    // roll AND the chain has room AND the current user isn't already in it.
+    val battleDescriptor = (message.messageContent as? MessageContent.DiceRoll)?.descriptor
+    val onBattle = if (battleDescriptor != null && battleDescriptor.isValid() &&
+        canBattle(battleDescriptor, odinId, allDiceDescriptors)
+    ) {
+        remember(message.id) { { onUiAction(ConversationListUiAction.BattleDiceRoll(message)) } }
+    } else null
     val onForward =
         if (policy.allowForward) remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } } else null
     val onShare =
@@ -126,9 +139,11 @@ fun MessageItem(
                 message = message,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
+                currentOdinId = currentOdinId,
                 clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
+                onBattle = onBattle,
                 onForward = onForward,
                 onEdit = onEdit,
                 onShare = onShare,
@@ -160,11 +175,13 @@ fun MessageItem(
                 message = message,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
+                currentOdinId = currentOdinId,
                 renderAuthorName = renderAuthorName,
                 isGroupConversation = isGroupConversation,
                 clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
+                onBattle = onBattle,
                 onForward = onForward,
                 onDelete = onDelete,
                 onMarkAsRead = onMarkAsRead,
