@@ -292,15 +292,6 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
-        // TODO: remove before merge — Step 0 diagnostic for the
-        // websocket-pure-push-chat-drive PR. Captures the notification
-        // type for every WS message so we can confirm which types fire
-        // when (especially: does a reaction toggle also produce a
-        // fileModified, or only reactionContentAdded?).
-        Logger.d(tag = "WSDiag") {
-            "WS notification: type=${notification.notificationType}"
-        }
-
         notificationBufferMutex.withLock {
             notificationBuffer += notification
         }
@@ -485,6 +476,22 @@ class OdinWebSocketClient(
         // )
     }
 
+    /**
+     * Reaction add/remove notification.
+     *
+     * For the chat drive: no work is needed here. A `statisticsChanged`
+     * notification fires alongside this one carrying the updated file
+     * header (with the new `reactionPreview`), and that notification
+     * lands in [handleFileEvent] → the chat-drive pure-push path,
+     * which writes the new header to DriveMainIndex via the worker.
+     * Calling `syncDrive` here would refetch the same data via HTTP
+     * — pure redundant work. The per-user reaction details (who reacted
+     * with which emoji, used by the reaction-detail view) are fetched
+     * on-demand via `getReactions()` and don't ride on the WS at all.
+     *
+     * Other drives (e.g. feed) still need the syncDrive fallback —
+     * they don't have a per-event WS upsert worker yet.
+     */
     private suspend fun handleReactionEvent(
         notification: ClientNotificationPayload,
         isDeleted: Boolean
@@ -492,6 +499,11 @@ class OdinWebSocketClient(
         val eventData = OdinSystemSerializer
             .deserialize<ClientReactionNotification>(notification.data)
         val driveId = eventData.fileId.driveId
+
+        if (driveId == SystemDriveConstants.chatDrive.alias) {
+            return
+        }
+
         Logger.i {
             "WSFileEvent: syncDrive($driveId) for reaction event " +
                 "(isDeleted=$isDeleted, fileId=${eventData.fileId.fileId})"
@@ -499,9 +511,16 @@ class OdinWebSocketClient(
         driveSyncManager.syncDrive(driveId)
     }
 
+    /** All-reactions-cleared notification. Same chat-drive shortcut as
+     *  [handleReactionEvent] — `statisticsChanged` for the file already
+     *  rewrites `reactionPreview` to empty via the pure-push worker. */
     private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
         val file =
             OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
+
+        if (file.driveId == SystemDriveConstants.chatDrive.alias) {
+            return
+        }
 
         try {
             Logger.i { "WSFileEvent: syncDrive(${file.driveId}) for allReactionsByFileDeleted (fileId=${file.fileId})" }
