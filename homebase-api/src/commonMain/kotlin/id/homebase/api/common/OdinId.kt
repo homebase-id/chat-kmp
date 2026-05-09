@@ -1,6 +1,8 @@
 package id.homebase.api.common
 
 import kotlin.uuid.Uuid
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.runBlocking
 import id.homebase.api.crypto.ByteArrayUtil.reduceSha256Hash
 import kotlinx.serialization.KSerializer
@@ -79,17 +81,9 @@ class OdinId public constructor(
      * The string is validated and normalized by `AsciiDomainName`.
      */
     constructor(identifier: String) : this(
-        _domainName = AsciiDomainName(identifier), // throws if invalid/null
-        _hash = runBlocking { calculateHash(AsciiDomainName(identifier)) }
+        _domainName = AsciiDomainName(identifier),
+        _hash = cachedHash(identifier)
     )
-
-    /**
-     * Creates an `OdinId` from an already-validated `AsciiDomainName`.
-     */
-//    constructor(asciiDomain: AsciiDomainName) : this(
-//        _domainName = asciiDomain,
-//        _hash = runBlocking { calculateHash(asciiDomain) }
-//    )
 
     override fun equals(other: Any?): Boolean {
         if (other !is OdinId) return false
@@ -108,8 +102,22 @@ class OdinId public constructor(
 
     companion object {
 
+        // Thread-safe cache: a chat app sees a small set of unique domains
+        // (conversation participants), so this stays tiny. The SHA-256 hash
+        // is deterministic and domain names don't change, so entries never
+        // need invalidation.
+        private val hashLock = SynchronizedObject()
+        private val hashCache = HashMap<String, Uuid>()
+
+        internal fun cachedHash(identifier: String): Uuid {
+            val key = AsciiDomainName(identifier).domainName
+            synchronized(hashLock) { hashCache[key] }?.let { return it }
+            val hash = runBlocking { calculateHash(key) }
+            return synchronized(hashLock) { hashCache.getOrPut(key) { hash } }
+        }
+
         /** Deterministic hash of any `AsciiDomainName`. */
-        suspend fun toHashId(domainName: AsciiDomainName): Uuid = calculateHash(domainName)
+        suspend fun toHashId(domainName: AsciiDomainName): Uuid = calculateHash(domainName.domainName)
 
         /** Creates an `OdinId` from UTF-8 bytes (the bytes are interpreted as the domain string). */
         fun fromByteArray(id: ByteArray): OdinId = OdinId(id.decodeToString())
@@ -124,11 +132,9 @@ class OdinId public constructor(
             AsciiDomainNameValidator.assertValidDomain(odinId)
         }
 
-        private suspend fun calculateHash(asciiDomain: AsciiDomainName): Uuid {
-            // Matches the original C# behavior:
-            // SHA-256 → reduced to 16 bytes → Guid/Uuid
-            val reduced = reduceSha256Hash(asciiDomain.domainName)
-            return reduced // must be exactly 16 bytes
+        // Matches the original C# behavior: SHA-256 → reduced to 16 bytes → Guid/Uuid
+        private suspend fun calculateHash(normalizedDomain: String): Uuid {
+            return reduceSha256Hash(normalizedDomain)
         }
     }
 }

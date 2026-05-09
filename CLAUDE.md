@@ -11,6 +11,35 @@ If I push back and you still think you're right, hold the position and
 explain why. Don't cave just because I disagreed. If I've actually
 changed your mind with a real argument, say what specifically changed it.
 
+## Debugging & root cause
+
+When you hit a freeze, ANR, crash, or unexplained behaviour, do not ship
+a workaround that hides the symptom without identifying the cause first.
+Capture concrete evidence — a stack trace, an ANR dump, a profiler
+sample, a reproducible test — and prove what's broken before fixing it.
+If you can't capture evidence, the fix is to install the instrumentation
+that will (a watchdog, a logger, a tombstone reader, an `adb logcat`
+capture) — not to patch around the symptom and move on.
+
+Symptom patches to avoid:
+
+- Wrapping a state read in `remember { }` because "without it the screen
+  freezes" — the underlying read is doing something expensive or
+  reactive on every recomposition; fix that, don't snapshot it.
+- Adding `try { … } catch (_: Exception) { }` around code that's
+  actually misbehaving, so the exception stops surfacing.
+- Adding a `delay()`, an extra `LaunchedEffect`, or a manual redraw
+  trigger to make a UI glitch "go away" without explaining why it
+  helped.
+- Reverting or hiding the feature that exposed the bug, when the bug
+  itself is still there.
+
+Each of these makes the bug invisible at the cost of leaving the cause
+in place to resurface elsewhere later. If you find yourself reaching for
+one of these patterns, stop and write down what you actually observed,
+what you suspect, and what evidence you'd need to confirm — then go get
+that evidence.
+
 ## Project Overview
 
 Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
@@ -199,6 +228,32 @@ writing or modifying any screen/composable, verify:
 - Provide `contentDescription` on all meaningful icons/images for accessibility
 - UiState should be a flat `data class` with `_uiState.update { }` pattern
 - One-time events (navigation, snackbar) should use separate `SharedFlow`, not stored in UiState
+
+## Compose & Flow gotchas
+
+- **Don't write `snapshotFlow { ... }.distinctUntilChanged()`** — `snapshotFlow` already
+  dedups internally with structural equality (`!=`) before emitting, so the trailing
+  `.distinctUntilChanged()` runs the *same* comparison a second time. For scalar samples
+  it's just waste; for samples like `Pair<Int, List<...>>` the doubled O(n) `List.equals`
+  on every snapshot commit can stall the Compose UI dispatcher (Main) for seconds during
+  bursty mutations like `LazyListState.scrollToItem` (build 1394 watchdog stack landed
+  here at `ConversationContent.kt:817`). If you genuinely need a different equality (e.g.
+  comparing only one field of a heavy value), shape the snapshotFlow block to *return*
+  that key — don't bolt distinctUntilChanged on top.
+
+- **Don't use `LazyListState.firstVisibleItemIndex` as an array index without
+  clamping.** Compose's idiom for "land at the bottom on first frame, no flash" is
+  `LazyListState(firstVisibleItemIndex = Int.MAX_VALUE)` — LazyColumn clamps the
+  sentinel during its first measure pass, but anything reading the field *before*
+  that measure runs (a `snapshotFlow {}` body, a `derivedStateOf`, a save-scroll
+  effect on the same frame the state was created) gets `Int.MAX_VALUE` back. Using
+  that as `for (i in firstVisibleIndex downTo 0)` walks ~2.1B iterations and
+  freezes the UI dispatcher for seconds (build 1419 watchdog landed exactly here
+  in `ConversationContent.kt`'s floatingDateLabel snapshotFlow with
+  `idx=2147483647 items=0`). Use the
+  `LazyListState.boundedFirstVisibleItemIndex(itemsSize: Int)` extension in
+  `id.homebase.core.util.ScrollPosition.kt` — it returns `null` for an empty list
+  and a clamped index otherwise.
 
 ## Strings & Unicode
 

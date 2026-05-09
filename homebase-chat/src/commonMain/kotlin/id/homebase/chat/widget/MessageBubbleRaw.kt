@@ -532,7 +532,7 @@ fun MessageBubbleRaw(
 
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
-                        val potentialFinalWidth: Int
+                        val rawPotentialFinalWidth: Int
 
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
@@ -545,7 +545,7 @@ fun MessageBubbleRaw(
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
-                            potentialFinalWidth = if (fitsOnLastLine) {
+                            rawPotentialFinalWidth = if (fitsOnLastLine) {
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
@@ -561,7 +561,7 @@ fun MessageBubbleRaw(
                                 )
                             }
                         } else {
-                            potentialFinalWidth =
+                            rawPotentialFinalWidth =
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
@@ -569,6 +569,13 @@ fun MessageBubbleRaw(
                                     authorWidth
                                 )
                         }
+
+                        // Clamp to the parent's bound. The reply re-measure below forces an exact
+                        // width, so an unclamped value here would propagate any computation drift
+                        // straight into a child measurement — turning a one-off mismeasure into a
+                        // sustained layout-invalidation loop. The clamp guarantees convergence.
+                        val potentialFinalWidth =
+                            rawPotentialFinalWidth.coerceAtMost(constraints.maxWidth)
 
                         // NOW measure reply with the correct width that accounts for info placement
                         val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
@@ -649,7 +656,15 @@ fun MessageBubbleRaw(
                                 placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height + 4.dp.roundToPx()
                         }
 
-                        layout(finalWidth, finalHeight) {
+                        // Same containment as `potentialFinalWidth`: never report a width
+                        // wider than the parent allows. A bubble that returns finalWidth >
+                        // constraints.maxWidth makes the parent re-measure us, which can race
+                        // with `textLayoutResult` updates and spin. Pull `infoX` back inside
+                        // the clamped width so the timestamp stays visible in the rare case
+                        // the clamp kicked in.
+                        val clampedFinalWidth = finalWidth.coerceAtMost(constraints.maxWidth)
+                        val clampedInfoX = infoX.coerceAtMost(clampedFinalWidth - infoPlaceable.width)
+                        layout(clampedFinalWidth, finalHeight) {
                             var yPos = 0
                             replyPlaceable?.let {
                                 it.placeRelative(0, yPos)
@@ -666,7 +681,7 @@ fun MessageBubbleRaw(
                             showMorePlaceable.placeRelative(0, yPos)
                             yPos += showMorePlaceable.height
 
-                            infoPlaceable.placeRelative(infoX, infoY)
+                            infoPlaceable.placeRelative(clampedInfoX, infoY)
                         }
                     }
                 }
