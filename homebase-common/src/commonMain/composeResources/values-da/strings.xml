@@ -447,10 +447,10 @@
     <string name="chat_dice_summary_single">Du slog %1$d</string>
     <string name="chat_dice_summary_other">%1$s slog %2$d (%3$s)</string>
     <string name="chat_dice_summary_other_single">%1$s slog %2$d</string>
-    <string name="chat_dice_unparseable">Gammelt slag</string>
-    <string name="chat_dice_battle_action">Kamp</string>
-    <string name="chat_dice_battle_title">Kamp</string>
-    <string name="chat_dice_battle_target">Slå højere end %1$d for at slå %2$s</string>
+    <string name="chat_dice_unparseable">Forhistorisk slag</string>
+    <string name="chat_dice_battle_action">Duel</string>
+    <string name="chat_dice_battle_title">Duel</string>
+    <string name="chat_dice_battle_target">Slå højere end %1$d for at vinde over %2$s</string>
     <string name="chat_dice_battle_leader_self">Du fører med %1$d</string>
     <string name="chat_dice_battle_leader_other">%1$s fører med %2$d</string>
     <string name="chat_dice_battle_tie_self">%1$s er uafgjort med %2$d</string>
