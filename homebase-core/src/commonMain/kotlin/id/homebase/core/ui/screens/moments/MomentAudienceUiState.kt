@@ -12,7 +12,7 @@ data class MomentAudienceUiState(
     val draftReady: Boolean = false,
     val commentsEnabled: Boolean = false,
 ) {
-    val canPost: Boolean get() = draftReady && selected.isNotEmpty() && !isPosting
+    val canPost: Boolean get() = draftReady && !isPosting
 
     /** MRU-bumped recipients matching the search query (or all when query is blank). */
     val filteredRecent: List<MomentsRecipient>

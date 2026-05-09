@@ -362,6 +362,7 @@
     <string name="moments_audience_section_groups">Groups</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
+    <string name="moments_audience_save_privately">Save privately</string>
     <string name="moments_audience_create_group">Create new group</string>
     <string name="moments_audience_post_failed">Couldn\'t post moment. Please try again.</string>
     <string name="moments_create_group_title">New group</string>

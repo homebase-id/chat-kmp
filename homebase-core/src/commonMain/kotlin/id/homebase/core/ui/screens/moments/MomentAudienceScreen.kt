@@ -53,6 +53,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.moments_audience_create_group
 import id.homebase.resources.moments_audience_post
 import id.homebase.resources.moments_audience_post_failed
+import id.homebase.resources.moments_audience_save_privately
 import id.homebase.resources.moments_audience_section_contacts
 import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
@@ -370,7 +371,12 @@ private fun AudienceBottomBar(
                     onClick = onPost,
                     enabled = enabled,
                 ) {
-                    Text(stringResource(MR.string.moments_audience_post))
+                    Text(
+                        stringResource(
+                            if (selectedCount == 0) MR.string.moments_audience_save_privately
+                            else MR.string.moments_audience_post,
+                        ),
+                    )
                 }
             }
         }
