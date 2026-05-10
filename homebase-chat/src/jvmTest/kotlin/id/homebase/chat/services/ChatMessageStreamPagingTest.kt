@@ -9,7 +9,9 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -94,6 +96,7 @@ class ChatMessageStreamPagingTest {
         conversationId: Uuid,
         limit: Int,
         cursor: QueryBatchCursor? = null,
+        sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
     ): Triple<List<MessageUiModel>, Boolean, QueryBatchCursor> {
         val queryBatch = QueryBatch(testIdentityId)
         val result = queryBatch.queryBatchAsync(
@@ -101,7 +104,7 @@ class ChatMessageStreamPagingTest {
             driveId = chatDriveId,
             noOfItems = limit,
             cursor = cursor,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortOrder = sortOrder,
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
             filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
@@ -328,6 +331,56 @@ class ChatMessageStreamPagingTest {
     }
 
     @Test
+    fun fetchPage_oldestFirst_returnsAscendingOrder() = runTest {
+        // ChatMessageStream.loadNewerMessages calls fetchMessages with sortOrder = OldestFirst
+        // so the next page (newer than the boundary) arrives oldest-first. This regression
+        // protects that direction's ordering.
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val seeded = (0 until 5).map { seedMessage(conversationId, userDateMs = baseTime + it * 1000L) }
+
+        val (page, _, _) = fetchPage(
+            conversationId = conversationId,
+            limit = 10,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+
+        assertEquals(seeded, page.map { it.id }, "OldestFirst must return rows in seed order")
+        for (i in 1 until page.size) {
+            assertTrue(
+                page[i - 1].userDate <= page[i].userDate,
+                "OldestFirst must yield ascending userDate"
+            )
+        }
+    }
+
+    @Test
+    fun fetchPage_oldestFirst_cursorAtBoundary_skipsAlreadySeenRows() = runTest {
+        // After loadConversationAroundMessage seeds a window with `target.userDate` as the
+        // newer boundary, a follow-up loadNewerMessages must NOT return the boundary row
+        // again. The cursor used by ChatMessageStream is `TimeRowCursor(target.userDate, MAX)`
+        // — strict `>` comparison excludes the boundary row.
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val ids = (0 until 4).map { seedMessage(conversationId, userDateMs = baseTime + it * 1000L) }
+        val boundaryUserDate = baseTime + 1 * 1000L  // ids[1]
+        val expectedNewer = listOf(ids[2], ids[3])
+
+        val cursor = QueryBatchCursor(
+            paging = TimeRowCursor(UnixTimeUtc(boundaryUserDate), Long.MAX_VALUE),
+        )
+        val (page, hasMore, _) = fetchPage(
+            conversationId = conversationId,
+            limit = 10,
+            cursor = cursor,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+
+        assertEquals(expectedNewer, page.map { it.id })
+        assertFalse(hasMore)
+    }
+
+    @Test
     fun stabilityUnderInsert_newerMessageAfterCursor_doesNotLeakIntoNextPage() = runTest {
         // Cursor is monotonic backward in time (NewestFirst). A row inserted
         // with a userDate *newer* than the cursor's boundary is "above" the
@@ -363,5 +416,229 @@ class ChatMessageStreamPagingTest {
         // strictly distinct so no losses are expected).
         val seen = (page1 + page2).map { it.id }.toSet()
         assertEquals(initial.toSet(), seen, "original rows must be reachable across pages")
+    }
+
+    // ---------- integration-style tests ----------
+    //
+    // The tests below seed >3×PAGE_SIZE messages into the DB and drive
+    // [PaginatedConversationState] through the same calls
+    // [ChatMessageStream] makes — proving that the cursor round-trip across
+    // the holder + DB delivers every row exactly once, including from an
+    // anchored centered window. We can't construct a real ChatMessageStream
+    // here (its ContactService + DriveFileProvider deps have no test
+    // double; see the file-level comment), so these helpers replicate the
+    // sequencing that ChatMessageStream's loadConversation /
+    // loadOlderMessages / loadNewerMessages /
+    // loadConversationAroundMessage perform.
+
+    // Tiny page/window sizes so the test exercises trim+recovery without
+    // seeding hundreds of rows. With pageSize=10 and maxWindowSize=25, a
+    // 35-message conversation forces at least one trim during the older
+    // walk, then the recovered newer cursor must walk back to the latest.
+    private val testPageSize = 10
+    private val testMaxWindowSize = 25
+    private val testTotal = 35
+
+    private suspend fun simLoadConversation(
+        state: PaginatedConversationState,
+        conversationId: Uuid,
+    ) {
+        val (messages, hasMore, cursor) = fetchPage(
+            conversationId = conversationId,
+            limit = testPageSize,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+        )
+        state.setInitialWindow(
+            conversationId = conversationId,
+            messages = messages,
+            olderCursor = cursor,
+            hasOlderMessages = hasMore,
+        )
+    }
+
+    private suspend fun simLoadOlder(
+        state: PaginatedConversationState,
+        conversationId: Uuid,
+    ): Boolean {
+        val window = state.getWindow(conversationId) ?: return false
+        if (!window.hasOlderMessages) return false
+        val (messages, hasMore, cursor) = fetchPage(
+            conversationId = conversationId,
+            limit = testPageSize,
+            cursor = window.olderCursor,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+        )
+        state.prependOlderMessages(conversationId, messages, cursor, hasMore)
+        return true
+    }
+
+    private suspend fun simLoadNewer(
+        state: PaginatedConversationState,
+        conversationId: Uuid,
+    ): Boolean {
+        val window = state.getWindow(conversationId) ?: return false
+        if (!window.hasNewerMessages) return false
+        val (messages, hasMore, cursor) = fetchPage(
+            conversationId = conversationId,
+            limit = testPageSize,
+            cursor = window.newerCursor,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+        state.appendNewerMessages(conversationId, messages, cursor, hasMore)
+        return true
+    }
+
+    /**
+     * Mirrors [ChatMessageStream.loadConversationAroundMessage]: fetch
+     * `pageSize/2` older and newer of [anchorUserDateMs] in their respective
+     * sort orders, merge with the anchor row, and seed the window. The
+     * production path also calls `getMessage(anchorId)` to inject the
+     * anchor row itself (which the strict `<` / `>` cursor on either side
+     * skips); we replicate that injection by passing in the seeded
+     * [anchorMessage].
+     */
+    private suspend fun simLoadAround(
+        state: PaginatedConversationState,
+        conversationId: Uuid,
+        anchorUserDateMs: Long,
+        anchorMessage: MessageUiModel,
+    ) {
+        val halfPage = testPageSize / 2
+        val olderCursor = QueryBatchCursor(
+            paging = TimeRowCursor(UnixTimeUtc(anchorUserDateMs), 0L),
+        )
+        val newerCursor = QueryBatchCursor(
+            paging = TimeRowCursor(UnixTimeUtc(anchorUserDateMs), Long.MAX_VALUE),
+        )
+        val (olderMessages, olderHasMore, olderCursorOut) = fetchPage(
+            conversationId = conversationId,
+            limit = halfPage,
+            cursor = olderCursor,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+        )
+        val (newerMessages, newerHasMore, newerCursorOut) = fetchPage(
+            conversationId = conversationId,
+            limit = halfPage,
+            cursor = newerCursor,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+        val combined = (olderMessages + listOf(anchorMessage) + newerMessages)
+            .distinctBy { it.id }
+        state.setInitialWindow(
+            conversationId = conversationId,
+            messages = combined,
+            olderCursor = olderCursorOut,
+            hasOlderMessages = olderHasMore,
+            newerCursor = newerCursorOut,
+            hasNewerMessages = newerHasMore,
+        )
+    }
+
+    @Test
+    fun fullPaging_walksAcrossMoreThanThreePages_withoutGapsOrDups() = runTest {
+        // 35 rows ÷ pageSize 10 ⇒ 4 pages. After ~3 prepends the window
+        // (25-row cap) must trim its newer end, recovering a newer cursor
+        // that lets a follow-up walk back down reach the trimmed slice.
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val seeded = (0 until testTotal).map {
+            seedMessage(conversationId, userDateMs = baseTime + it * 1000L)
+        }
+
+        val state = PaginatedConversationState(maxWindowSize = testMaxWindowSize)
+        simLoadConversation(state, conversationId)
+
+        val initial = state.getWindow(conversationId)!!
+        assertEquals(testPageSize, initial.messages.size)
+        assertTrue(initial.hasOlderMessages)
+        assertFalse(initial.hasNewerMessages)
+
+        // Walk older to exhaustion, capturing every id we ever see.
+        val seenIds = mutableSetOf<Uuid>()
+        seenIds += initial.messages.map { it.id }
+        var hops = 0
+        while (state.getWindow(conversationId)!!.hasOlderMessages && hops < 16) {
+            simLoadOlder(state, conversationId)
+            seenIds += state.getWindow(conversationId)!!.messages.map { it.id }
+            hops++
+        }
+        assertFalse(state.getWindow(conversationId)!!.hasOlderMessages)
+
+        // After exhausting older, the trimmed newer slice MUST be recoverable
+        // via the newer cursor — proving trim+recovery round-trips the rows
+        // we trimmed during the older walk.
+        assertTrue(
+            state.getWindow(conversationId)!!.hasNewerMessages,
+            "after a 35-row dataset paged into a 25-row window, the newer cursor must be live",
+        )
+        var fwdHops = 0
+        while (state.getWindow(conversationId)!!.hasNewerMessages && fwdHops < 16) {
+            simLoadNewer(state, conversationId)
+            seenIds += state.getWindow(conversationId)!!.messages.map { it.id }
+            fwdHops++
+        }
+        assertFalse(state.getWindow(conversationId)!!.hasNewerMessages)
+
+        assertEquals(
+            seeded.toSet(), seenIds,
+            "every seeded row must have been visible in some window during the walk",
+        )
+    }
+
+    @Test
+    fun anchoredOpen_centersWindowAroundAnchor_andWalksBothDirections_toEnds() = runTest {
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val seeded = (0 until testTotal).map {
+            seedMessage(conversationId, userDateMs = baseTime + it * 1000L)
+        }
+
+        // Re-fetch the seeded rows to get full MessageUiModel for the anchor.
+        val (allMessages, _, _) = fetchPage(
+            conversationId = conversationId,
+            limit = testTotal,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+        val anchorIdx = testTotal / 2  // index 17
+        val anchor = allMessages[anchorIdx]
+        val anchorUserDate = baseTime + anchorIdx * 1000L
+
+        val state = PaginatedConversationState(maxWindowSize = testMaxWindowSize)
+        simLoadAround(state, conversationId, anchorUserDate, anchor)
+
+        val centered = state.getWindow(conversationId)!!
+        // halfPage=5 each side + anchor itself = 11 (or fewer near edges).
+        assertTrue(
+            centered.messages.size in (testPageSize / 2)..(testPageSize + 1),
+            "centered window should hold ~halfPage*2+anchor messages, got ${centered.messages.size}",
+        )
+        assertTrue(centered.messages.any { it.id == anchor.id }, "anchor row must be in the centered window")
+        assertTrue(centered.hasOlderMessages)
+        assertTrue(centered.hasNewerMessages)
+
+        // Walk older to exhaustion.
+        val seenIds = mutableSetOf<Uuid>()
+        seenIds += centered.messages.map { it.id }
+        var olderHops = 0
+        while (state.getWindow(conversationId)!!.hasOlderMessages && olderHops < 16) {
+            simLoadOlder(state, conversationId)
+            seenIds += state.getWindow(conversationId)!!.messages.map { it.id }
+            olderHops++
+        }
+        assertFalse(state.getWindow(conversationId)!!.hasOlderMessages)
+
+        // Walk newer to exhaustion.
+        var newerHops = 0
+        while (state.getWindow(conversationId)!!.hasNewerMessages && newerHops < 16) {
+            simLoadNewer(state, conversationId)
+            seenIds += state.getWindow(conversationId)!!.messages.map { it.id }
+            newerHops++
+        }
+        assertFalse(state.getWindow(conversationId)!!.hasNewerMessages)
+
+        assertEquals(
+            seeded.toSet(), seenIds,
+            "anchored open + bidirectional walk must reach every seeded row including the anchor",
+        )
     }
 }

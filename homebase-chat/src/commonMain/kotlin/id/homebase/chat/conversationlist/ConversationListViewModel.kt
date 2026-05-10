@@ -1065,11 +1065,12 @@ class ConversationListViewModel(
                                 .find { it.conversation.id == conversationId }
                                 ?.conversation?.exitedAt
 
+                            val windowMessages = messageState.window.messages
                             val messagesModels = withContext(Dispatchers.Default) {
                                 val filteredByExit = if (exitedAt != null)
-                                    messageState.messages.filter { it.userDate <= exitedAt }
+                                    windowMessages.filter { it.userDate <= exitedAt }
                                 else
-                                    messageState.messages
+                                    windowMessages
                                 val messages =
                                     if (conversationId == ChatProtocol.ConversationWithYourselfId)
                                         filteredByExit.filter { !it.isDeleted }
