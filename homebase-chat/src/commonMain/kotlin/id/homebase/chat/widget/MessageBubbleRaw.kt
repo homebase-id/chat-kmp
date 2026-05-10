@@ -127,6 +127,7 @@ fun MessageBubbleRaw(
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
 
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
@@ -149,6 +150,7 @@ fun MessageBubbleRaw(
             DiceRollBubble(
                 descriptor = content.descriptor,
                 currentOdinId = currentOdinId,
+                chainCap = chainCap,
                 modifier = modifier,
             )
             return
