@@ -314,7 +314,7 @@ class ChatMessageActionServiceTest {
     @Test
     fun deleteMessage_deleteForEveryone_drainsOutboxToHttpRequestWithRecipientsOnTheWire() = runTest {
         ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
-            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val service = fixture.build(scope = this)
             val peer = "frodo.test"
             val convoId = fixture.seedOneOnOneConversation(other = peer)
             val fileId = Uuid.random()
@@ -354,7 +354,7 @@ class ChatMessageActionServiceTest {
     @Test
     fun deleteMessage_deleteForMe_drainsOutboxToHttpRequestWithoutRecipientsOnTheWire() = runTest {
         ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
-            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val service = fixture.build(scope = this)
             val peer = "frodo.test"
             val convoId = fixture.seedOneOnOneConversation(other = peer)
             val fileId = Uuid.random()

@@ -9,6 +9,7 @@ import id.homebase.api.sync.database.createInMemoryDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -16,6 +17,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -100,41 +104,61 @@ class DriveWebSocketUpsertWorkerTest {
         collector.cancel()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun submit_burst_batchesIntoSingleDrain() = runBlocking {
+    fun submit_burst_batchesIntoSingleDrain() = runTest {
+        // Why not the class-level `runBlocking` + `Dispatchers.Default` setup
+        // the other tests use: this test asserts a coalescing invariant that
+        // is timing-sensitive. On a fast box submits 1..5 all add to the queue
+        // before the launched drain coroutine starts, and we get 1 batch. On a
+        // contended Linux CI runner the worker thread can start the drain
+        // (snapshotting [file_1] alone) before the test thread has issued
+        // submits 2..5 — splitting into 2 batches and failing the assertion.
+        //
+        // Switching to a single-threaded `StandardTestDispatcher` removes the
+        // race entirely: `submit()` doesn't suspend in the no-contention case,
+        // so all 5 submits complete synchronously on the test thread before
+        // the dispatcher gets a chance to run drain_1. drain_1's snapshot is
+        // therefore [file_1..file_5], one batch. Killroy may still be set
+        // (submits 2..5 saw the outer mutex held), so a follow-up drain_2 is
+        // launched — it finds an empty queue and returns without emitting.
+        //
+        // We bridge `withWriteTransaction`'s real-dispatcher hop by waiting on
+        // a `CompletableDeferred` the collector completes, not by relying on
+        // `advanceUntilIdle()` alone (the test scheduler appears idle while
+        // the DB write is in flight on its own dispatcher).
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val testWorkerScope = CoroutineScope(SupervisorJob() + dispatcher)
+
         val identityId = Uuid.random()
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
         val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
-        val collector = launch {
+        val firstBatch = CompletableDeferred<Unit>()
+        val collector = launch(dispatcher) {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+                if (event is BackendEvent.DriveEvent.BatchReceived) {
+                    collected.add(event)
+                    if (collected.size == 1) firstBatch.complete(Unit)
+                }
             }
         }
-        // Give the collector a tick to subscribe.
-        delay(20)
+        advanceUntilIdle() // collector subscribed
 
         val worker = DriveWebSocketUpsertWorker(
             identityId = identityId,
             driveId = driveId,
             databaseManager = db,
             eventBus = eventBus,
-            scope = workerScope,
+            scope = testWorkerScope,
         )
 
         val files = (1..5).map { makeFile(fileId = Uuid.random(), driveId = driveId) }
-        // Submit all 5 inside a single coroutine. The first submit's
-        // run() launches the drain; submits 2..5 see mutex held and
-        // set killroy. By the time the drain runs, all 5 are in the
-        // queue → ONE BatchReceived with 5 files.
-        for (f in files) worker.submit(f)
+        for (f in files) worker.submit(f) // synchronous on a confined dispatcher
 
-        // Wait for at least one batch, then a brief settle period.
-        withTimeoutOrNull(5.seconds) {
-            while (collected.isEmpty()) delay(20)
-        }
-        delay(100)
+        firstBatch.await()   // bridges the DB-dispatcher hop
+        advanceUntilIdle()   // let killroy-triggered drain_2 run (and find an empty queue)
 
         assertEquals(
             1, collected.size,
@@ -150,6 +174,7 @@ class DriveWebSocketUpsertWorkerTest {
         }
 
         collector.cancel()
+        testWorkerScope.cancel()
     }
 
     @Test
