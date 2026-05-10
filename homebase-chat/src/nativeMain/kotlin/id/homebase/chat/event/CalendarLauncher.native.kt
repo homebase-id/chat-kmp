@@ -3,6 +3,8 @@ package id.homebase.chat.event
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import co.touchlab.kermit.Logger
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction
@@ -23,9 +25,9 @@ actual fun rememberCalendarLauncher(): CalendarLauncher {
     return remember { IosCalendarLauncher() }
 }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalUuidApi::class)
 private class IosCalendarLauncher : CalendarLauncher {
-    override fun addToCalendar(event: EventDescriptor) {
+    override fun addToCalendar(event: EventDescriptor, messageId: Uuid) {
         val store = EKEventStore()
         // Request access; permission prompt is gated by NSCalendarsUsageDescription
         // in the host app's Info.plist. The completion fires off-main, so log

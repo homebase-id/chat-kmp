@@ -290,3 +290,16 @@ nullable-descriptor parse-failure contract, choosing an `ActionPolicy`, parser/b
 composer/attachment-sheet wiring, the strings the bubble needs, and the `Unknown` chip
 that gives older receivers a visible "please update the app" fallback. Existing kinds:
 Event (`dataType = 210`) and DiceRoll (`dataType = 212`).
+
+**Don't duplicate envelope fields in the descriptor.** The HomebaseFile envelope already
+carries the message identity, sender, and timestamp — your descriptor JSON must NOT
+repeat them:
+
+- No `xxxId` — the HomebaseFile uniqueId already identifies the message.
+- No `createdByOdinId` / authorId — read `HomebaseFile.fileMetadata.originalAuthor`.
+- No `createdAtUtcMs` — read the message's `userDate` (or `fileMetadata.created`).
+
+Duplicating these wastes the 7 KB `MaxHeaderContentBytes` budget, lets the two copies
+drift, and forces every consumer to decide which one to trust. Also keep user-text caps
+tight (e.g. title ≤80 codepoints, description ≤280 codepoints) so the descriptor stays
+comfortably under 7 KB at the maximum slot/option count.
