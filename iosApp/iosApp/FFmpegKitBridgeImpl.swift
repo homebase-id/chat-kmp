@@ -79,13 +79,13 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
 
             // Get width/height
             let width: KotlinInt? = {
-                if let w = stream.getWidth() as? NSNumber {
+                if let w = stream.getWidth() {
                     return KotlinInt(value: w.int32Value)
                 }
                 return nil
             }()
             let height: KotlinInt? = {
-                if let h = stream.getHeight() as? NSNumber {
+                if let h = stream.getHeight() {
                     return KotlinInt(value: h.int32Value)
                 }
                 return nil
