@@ -455,6 +455,10 @@
     <string name="chat_dice_battle_leader_other">%1$s fører med %2$d</string>
     <string name="chat_dice_battle_tie_self">%1$s er uafgjort med %2$d</string>
     <string name="chat_dice_battle_tie_other">%1$s er uafgjort med %2$d</string>
+    <string name="chat_dice_battle_winner_self">Du vandt med %1$d</string>
+    <string name="chat_dice_battle_winner_other">%1$s vandt med %2$d</string>
+    <string name="chat_dice_battle_tie_winner_self">%1$s er uafgjort om sejren med %2$d</string>
+    <string name="chat_dice_battle_tie_winner_other">%1$s er uafgjort om sejren med %2$d</string>
     <string name="chat_dice_battle_and">og</string>
 
     <string name="chat_message_attachment_gallery">Galleri</string>

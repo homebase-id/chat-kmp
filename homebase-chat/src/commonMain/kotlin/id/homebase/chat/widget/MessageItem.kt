@@ -40,6 +40,7 @@ fun MessageItem(
     allDiceDescriptors: ImmutableList<DiceRollDescriptor> = persistentListOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
@@ -161,6 +162,7 @@ fun MessageItem(
                 replyMessages = replyMessages,
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
+                chainCap = chainCap,
             )
         }
     } else { val onMarkAsRead =
@@ -199,6 +201,7 @@ fun MessageItem(
                 onReport = onReport,
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
+                chainCap = chainCap,
             )
         }
     }

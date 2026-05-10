@@ -32,6 +32,10 @@ import id.homebase.resources.chat_dice_battle_leader_other
 import id.homebase.resources.chat_dice_battle_leader_self
 import id.homebase.resources.chat_dice_battle_tie_other
 import id.homebase.resources.chat_dice_battle_tie_self
+import id.homebase.resources.chat_dice_battle_tie_winner_other
+import id.homebase.resources.chat_dice_battle_tie_winner_self
+import id.homebase.resources.chat_dice_battle_winner_other
+import id.homebase.resources.chat_dice_battle_winner_self
 import id.homebase.resources.chat_dice_summary
 import id.homebase.resources.chat_dice_summary_other
 import id.homebase.resources.chat_dice_summary_other_single
@@ -53,6 +57,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DiceRollBubble(
     descriptor: DiceRollDescriptor?,
     currentOdinId: String = "",
+    chainCap: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -126,6 +131,8 @@ fun DiceRollBubble(
 
         Spacer(Modifier.height(2.dp))
 
+        val lines = computeDiceBubbleLines(descriptor, currentOdinId, chainCap)
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (latest.source == RollSource.ShakeSeeded) {
                 Icon(
@@ -136,41 +143,20 @@ fun DiceRollBubble(
                 )
                 Spacer(Modifier.width(6.dp))
             }
-
-            val isSelf = currentOdinId.isNotBlank() &&
-                latest.odinId.domainName == currentOdinId
-            val summaryText = if (descriptor.isBattle) {
-                battleLeaderText(descriptor, currentOdinId)
-            } else if (latest.results.size == 1) {
-                if (isSelf) {
-                    stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
-                } else {
-                    stringResource(
-                        MR.string.chat_dice_summary_other_single,
-                        hostPortion(latest.odinId.domainName),
-                        descriptor.sum,
-                    )
-                }
-            } else {
-                if (isSelf) {
-                    stringResource(
-                        MR.string.chat_dice_summary,
-                        descriptor.sum,
-                        latest.results.joinToString("+"),
-                    )
-                } else {
-                    stringResource(
-                        MR.string.chat_dice_summary_other,
-                        hostPortion(latest.odinId.domainName),
-                        descriptor.sum,
-                        latest.results.joinToString("+"),
-                    )
-                }
-            }
             Text(
-                text = summaryText,
+                text = senderLineText(lines),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = contentColor,
+            )
+        }
+
+        // Battle bubbles also show who's leading / who won across the chain.
+        // For standalone rolls the sender line above is the whole story.
+        lines.battleResult?.let { result ->
+            Text(
+                text = battleResultText(result),
+                style = MaterialTheme.typography.bodyMedium,
                 color = contentColor,
             )
         }
@@ -178,36 +164,61 @@ fun DiceRollBubble(
 }
 
 @Composable
-private fun battleLeaderText(
-    descriptor: DiceRollDescriptor,
-    currentOdinId: String,
-): String {
-    val maxSum = descriptor.rolls.maxOf { it.sum }
-    val leaders = descriptor.rolls.filter { it.sum == maxSum }
-        .map { it.odinId.domainName }
-        .distinct()
-    val isSelfAmong = currentOdinId.isNotBlank() && currentOdinId in leaders
-
+private fun senderLineText(lines: DiceBubbleLines): String {
+    val multiDie = lines.senderResults.size > 1
+    val detail = lines.senderResults.joinToString("+")
     return when {
-        leaders.size == 1 && isSelfAmong ->
-            stringResource(MR.string.chat_dice_battle_leader_self, maxSum)
-        leaders.size == 1 ->
+        lines.senderIsSelf && multiDie ->
+            stringResource(MR.string.chat_dice_summary, lines.senderSum, detail)
+        lines.senderIsSelf ->
+            stringResource(MR.string.chat_dice_summary_single, lines.senderSum)
+        multiDie ->
             stringResource(
-                MR.string.chat_dice_battle_leader_other,
-                hostPortion(leaders.first()),
-                maxSum,
+                MR.string.chat_dice_summary_other,
+                lines.senderName,
+                lines.senderSum,
+                detail,
+            )
+        else ->
+            stringResource(
+                MR.string.chat_dice_summary_other_single,
+                lines.senderName,
+                lines.senderSum,
+            )
+    }
+}
+
+@Composable
+private fun battleResultText(result: BattleResult): String {
+    val outright = result.leaders.singleOrNull()
+    return when {
+        outright != null && outright.isSelf ->
+            stringResource(
+                if (result.isClosed) MR.string.chat_dice_battle_winner_self
+                else MR.string.chat_dice_battle_leader_self,
+                result.maxSum,
+            )
+        outright != null ->
+            stringResource(
+                if (result.isClosed) MR.string.chat_dice_battle_winner_other
+                else MR.string.chat_dice_battle_leader_other,
+                outright.name,
+                result.maxSum,
             )
         else -> {
             val and = stringResource(MR.string.chat_dice_battle_and)
-            val displayNames = leaders.map { id ->
-                if (id == currentOdinId) "You" else hostPortion(id)
-            }
+            // NOTE: literal "You" is locale-incorrect (should be "Du" in
+            // Danish). Pre-existing — the original `battleLeaderText` did the
+            // same. Tracked separately from this fix.
+            val displayNames = result.leaders.map { if (it.isSelf) "You" else it.name }
             val joined = joinNames(displayNames, and)
-            if (isSelfAmong) {
-                stringResource(MR.string.chat_dice_battle_tie_self, joined, maxSum)
-            } else {
-                stringResource(MR.string.chat_dice_battle_tie_other, joined, maxSum)
+            val key = when {
+                result.isClosed && result.isSelfAmong -> MR.string.chat_dice_battle_tie_winner_self
+                result.isClosed -> MR.string.chat_dice_battle_tie_winner_other
+                result.isSelfAmong -> MR.string.chat_dice_battle_tie_self
+                else -> MR.string.chat_dice_battle_tie_other
             }
+            stringResource(key, joined, result.maxSum)
         }
     }
 }
@@ -218,10 +229,3 @@ private fun joinNames(names: List<String>, and: String): String = when (names.si
     2 -> "${names[0]} $and ${names[1]}"
     else -> names.dropLast(1).joinToString(", ") + " $and ${names.last()}"
 }
-
-/**
- * Display name fallback: the host portion of the odinId — `frodo.dotyou.cloud`
- * → `frodo`. Keeps things readable without a contact-book lookup.
- */
-private fun hostPortion(odinId: String): String =
-    odinId.substringBefore('.').ifBlank { odinId }
