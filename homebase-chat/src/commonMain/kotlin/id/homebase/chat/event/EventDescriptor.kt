@@ -8,12 +8,14 @@ import kotlinx.serialization.Serializable
  * ChatEventMessageDataType`), so it loads with the message index — no payload
  * fetch on scroll.
  *
- * All fields except [eventId], [title], [startUtcMs], [timezone],
- * [createdByOdinId], [createdAtUtcMs] are optional.
+ * Identity / sender / creation time are NOT in the descriptor — read them
+ * from the surrounding HomebaseFile envelope (`uniqueId`,
+ * `fileMetadata.originalAuthor`, `userDate`). See the "Don't duplicate
+ * envelope fields in the descriptor" rule under "Adding a New Typed Message
+ * Kind" in `CLAUDE.md`.
  */
 @Serializable
 data class EventDescriptor(
-    val eventId: String,
     val title: String,
     val description: String = "",
     val startUtcMs: Long,
@@ -23,12 +25,12 @@ data class EventDescriptor(
     val lat: Double? = null,
     val lon: Double? = null,
     val meetingUrl: String? = null,
-    val createdByOdinId: String,
-    val createdAtUtcMs: Long,
     /**
-     * Schema version for forward compatibility. Bump when the descriptor shape
-     * changes in a way receivers need to know about. Receivers ignoring this
-     * just see the new optional fields as default values.
+     * Schema version for forward compatibility. Bumped to 2 when the legacy
+     * `eventId` / `createdByOdinId` / `createdAtUtcMs` fields were removed
+     * (read those values from the message envelope instead). Older clients
+     * that still require those fields in their data class will fail to
+     * deserialize and render the "update the app" chip.
      */
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
 )
