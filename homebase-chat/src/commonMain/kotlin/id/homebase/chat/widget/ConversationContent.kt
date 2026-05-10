@@ -444,6 +444,18 @@ fun ConversationContent(
             .toPersistentList()
     }
 
+    // Maximum number of rolls a battle chain can hold in this conversation:
+    // capped by the protocol's MAX_BATTLE_PARTICIPANTS, but for chats with
+    // fewer members the cap is the roster itself. `participants` excludes
+    // self, so add 1. When this number is reached the bubble switches from
+    // "leads" to "won" (the chain can no longer be overtaken).
+    val chainCap = remember(conversation.conversation.participants.size) {
+        minOf(
+            DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS,
+            conversation.conversation.participants.size + 1,
+        )
+    }
+
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         showEmojiSheet = false
         showAttachmentSheet = false
@@ -1004,6 +1016,7 @@ fun ConversationContent(
                                                 allDiceDescriptors = allDiceDescriptors,
                                                 searchQuery = uiState.searchQuery,
                                                 isCurrentSearchResult = isFocused,
+                                                chainCap = chainCap,
                                             )
                                         }
                                     }

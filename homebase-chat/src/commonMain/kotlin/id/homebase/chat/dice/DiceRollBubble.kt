@@ -32,6 +32,10 @@ import id.homebase.resources.chat_dice_battle_leader_other
 import id.homebase.resources.chat_dice_battle_leader_self
 import id.homebase.resources.chat_dice_battle_tie_other
 import id.homebase.resources.chat_dice_battle_tie_self
+import id.homebase.resources.chat_dice_battle_tie_winner_other
+import id.homebase.resources.chat_dice_battle_tie_winner_self
+import id.homebase.resources.chat_dice_battle_winner_other
+import id.homebase.resources.chat_dice_battle_winner_self
 import id.homebase.resources.chat_dice_summary
 import id.homebase.resources.chat_dice_summary_other
 import id.homebase.resources.chat_dice_summary_other_single
@@ -53,6 +57,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DiceRollBubble(
     descriptor: DiceRollDescriptor?,
     currentOdinId: String = "",
+    chainCap: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -140,7 +145,7 @@ fun DiceRollBubble(
             val isSelf = currentOdinId.isNotBlank() &&
                 latest.odinId.domainName == currentOdinId
             val summaryText = if (descriptor.isBattle) {
-                battleLeaderText(descriptor, currentOdinId)
+                battleLeaderText(descriptor, currentOdinId, chainCap)
             } else if (latest.results.size == 1) {
                 if (isSelf) {
                     stringResource(MR.string.chat_dice_summary_single, descriptor.sum)
@@ -181,19 +186,29 @@ fun DiceRollBubble(
 private fun battleLeaderText(
     descriptor: DiceRollDescriptor,
     currentOdinId: String,
+    chainCap: Int?,
 ): String {
     val maxSum = descriptor.rolls.maxOf { it.sum }
     val leaders = descriptor.rolls.filter { it.sum == maxSum }
         .map { it.odinId.domainName }
         .distinct()
     val isSelfAmong = currentOdinId.isNotBlank() && currentOdinId in leaders
+    // Chain is "closed" once no further rollers can join — either the protocol
+    // cap (MAX_BATTLE_PARTICIPANTS) or the chat roster is fully represented.
+    // When closed the leader can no longer be overtaken, so we say "won".
+    val isClosed = chainCap != null && descriptor.rolls.size >= chainCap
 
     return when {
         leaders.size == 1 && isSelfAmong ->
-            stringResource(MR.string.chat_dice_battle_leader_self, maxSum)
+            stringResource(
+                if (isClosed) MR.string.chat_dice_battle_winner_self
+                else MR.string.chat_dice_battle_leader_self,
+                maxSum,
+            )
         leaders.size == 1 ->
             stringResource(
-                MR.string.chat_dice_battle_leader_other,
+                if (isClosed) MR.string.chat_dice_battle_winner_other
+                else MR.string.chat_dice_battle_leader_other,
                 hostPortion(leaders.first()),
                 maxSum,
             )
@@ -203,11 +218,13 @@ private fun battleLeaderText(
                 if (id == currentOdinId) "You" else hostPortion(id)
             }
             val joined = joinNames(displayNames, and)
-            if (isSelfAmong) {
-                stringResource(MR.string.chat_dice_battle_tie_self, joined, maxSum)
-            } else {
-                stringResource(MR.string.chat_dice_battle_tie_other, joined, maxSum)
+            val key = when {
+                isClosed && isSelfAmong -> MR.string.chat_dice_battle_tie_winner_self
+                isClosed -> MR.string.chat_dice_battle_tie_winner_other
+                isSelfAmong -> MR.string.chat_dice_battle_tie_self
+                else -> MR.string.chat_dice_battle_tie_other
             }
+            stringResource(key, joined, maxSum)
         }
     }
 }
