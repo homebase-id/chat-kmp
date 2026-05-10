@@ -13,21 +13,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
-import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.chat.services.renderer.PayloadRenderer
-import id.homebase.chat.services.renderer.toCombinedPayloadBundle
-import id.homebase.chat.services.renderer.toMessageDataType
-import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageHeaderParser
-import id.homebase.api.image.ImageUtils
-import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
-import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
@@ -35,16 +24,11 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.ReplyPreview
-import id.homebase.chat.services.builder.AttachmentInput
-import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -63,18 +47,12 @@ import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
-import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.resolveContentType
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
-import id.homebase.resources.chat_message_forwarded
-import id.homebase.resources.chat_reactions_limit_reached
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -160,7 +138,6 @@ class ConversationListViewModel(
     val messagesSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
-    private var pendingMessageId: Uuid? = null
 
     private val mediaDownloadHandler = MediaDownloadHandler(
         scope = viewModelScope,
@@ -175,7 +152,29 @@ class ConversationListViewModel(
         dispatch = ::onAction,
     )
 
-    private val attachmentHandler = AttachmentHandler(
+    // ensureThumbnail closes over `this`, resolving `attachmentHandler` at call time
+    // — that's fine because attachmentHandler is initialized further down in the same
+    // class body and the lambda is only invoked by user-action paths after both are
+    // constructed.
+    private val messageActionsHandler: MessageActionsHandler = MessageActionsHandler(
+        scope = viewModelScope,
+        uiState = _uiState,
+        messagesUiState = _messagesUiState,
+        messageInputTextState = messageInputTextState,
+        chatMessageStream = chatMessageStream,
+        chatMessageSenderService = chatMessageSenderService,
+        chatMessageActionService = chatMessageActionService,
+        conversationService = conversationService,
+        contactService = contactService,
+        fileOperationsProvider = fileOperationsProvider,
+        localVideoContextStore = localVideoContextStore,
+        shareContentProcessor = shareContentProcessor,
+        userPreferences = userPreferences,
+        sendEvent = ::sendEvent,
+        ensureThumbnail = { f -> attachmentHandler.ensureThumbnail(f) },
+    )
+
+    private val attachmentHandler: AttachmentHandler = AttachmentHandler(
         scope = viewModelScope,
         uiState = _uiState,
         messagesUiState = _messagesUiState,
@@ -186,7 +185,7 @@ class ConversationListViewModel(
         audioWaveFormGenerator = audioWaveFormGenerator,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
-        addMessageWithFiles = ::addMessageWithFiles,
+        addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
     )
 
     private val conversationLifecycleHandler = ConversationLifecycleHandler(
@@ -590,7 +589,7 @@ class ConversationListViewModel(
         }
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
-            processPendingSharedContent(conversationId)
+            messageActionsHandler.processPendingSharedContent(conversationId)
         }
 
         ActiveConversation.selectConversation(conversationId)
@@ -690,36 +689,7 @@ class ConversationListViewModel(
                 updateListContent()
             }
 
-            is ConversationListUiAction.SendMessage -> {
-                val hasMessage = !messageInputTextState.annotatedString.isBlank()
-                // User-initiated attachments (location, contact, etc.) enable send even with no
-                // text. Link previews don't — they're auto-detected from typed URLs and only
-                // ride along when there's a text message to send.
-                val hasUserInitiatedAttachment = action.payloadRenderers.any {
-                    it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
-                }
-                if (hasMessage || hasUserInitiatedAttachment) {
-                    _messagesUiState.update { it.copy(isSendingMessage = true) }
-                    val content = messageInputTextState.toMarkdown().trimEnd()
-                    val replyTo = _messagesUiState.value.replyToMessage
-                    if (replyTo != null) {
-                        replyToMessage(
-                            conversationId = action.conversationId,
-                            replyTo = replyTo,
-                            content = content,
-                            payloadRenderers = action.payloadRenderers,
-                        )
-                    } else {
-                        addMessage(
-                            conversationId = action.conversationId,
-                            content = content,
-                            payloadRenderers = action.payloadRenderers,
-                        )
-                    }
-                    // Input is cleared inside addMessage/replyToMessage after
-                    // the send is successfully queued.
-                }
-            }
+            is ConversationListUiAction.SendMessage -> messageActionsHandler.handleSendMessage(action)
 
             is ConversationListUiAction.SaveScrollPosition -> {
                 // Pane resolves the visible-window index to a message anchor
@@ -756,80 +726,13 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.EditMessage -> {
-                viewModelScope.launch {
-                    try {
-                        if (!action.ignoreDraft && messageInputTextState.annotatedString.isNotBlank()) {
-                            _uiState.update {
-                                it.copy(
-                                    uiDialog = DiscardDraft(action.messageId, action.versionTag)
-                                )
-                            }
-                            return@launch
-                        }
+            is ConversationListUiAction.EditMessage -> messageActionsHandler.handleEditMessage(action)
 
-                        chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _messagesUiState.update {
-                                it.copy(
-                                    isEditingMessageId = action.messageId,
-                                    isEditingVersionTag = action.versionTag,
-                                    replyToMessage = null
-                                )
-                            }
-                            messageInputTextState.setMarkdown(message.content)
-                        }
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to edit message: ${e.message}"
-                        }
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to edit message: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.EditMessageSave -> messageActionsHandler.handleEditMessageSave()
 
-            is ConversationListUiAction.EditMessageSave -> {
-                _messagesUiState.update { it.copy(isSendingMessage = true) }
-                _messagesUiState.value.isEditingMessageId?.let { messageId ->
-                    editMessage(
-                        messageId = messageId,
-                        versionTag = _messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                        content = messageInputTextState.toMarkdown().trimEnd(),
-                    )
-                }
-            }
+            is ConversationListUiAction.CancelEditMessage -> messageActionsHandler.handleCancelEditMessage()
 
-            is ConversationListUiAction.CancelEditMessage -> {
-                messageInputTextState.clear()
-                _messagesUiState.update {
-                    it.copy(
-                        isEditingMessageId = null,
-                        isEditingVersionTag = null
-                    )
-                }
-            }
-
-            is ConversationListUiAction.DeleteMessage -> {
-                val messages = _messagesUiState.value.messages.mapNotNull {
-                    if (it is MessageListContentModel.Message) it.message else null
-                }
-                val message = messages.firstOrNull { it.id == action.messageId } ?: return
-                val isCurrentUserMessage =
-                    message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
-                val isWithSelf =
-                    message.conversationId == ChatProtocol.ConversationWithYourselfId
-                _uiState.update {
-                    it.copy(
-                        uiDialog = DeleteMessage(
-                            messageId = action.messageId,
-                            allowDeleteForEveryone = isCurrentUserMessage && !isWithSelf
-                        )
-                    )
-                }
-            }
+            is ConversationListUiAction.DeleteMessage -> messageActionsHandler.handleDeleteMessage(action)
 
             is ConversationListUiAction.ShareMedia -> mediaDownloadHandler.handleShareMedia(action)
 
@@ -841,200 +744,23 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
 
-            is ConversationListUiAction.ScrollToMessageId -> {
-                viewModelScope.launch {
-                    try {
-                        val indexOfMessageForScroll = messagesUiState.value.messages.indexOfLast {
-                            it is MessageListContentModel.Message && it.message.id == action.messageId
-                        }
+            is ConversationListUiAction.ScrollToMessageId -> messageActionsHandler.handleScrollToMessageId(action)
 
-                        if (indexOfMessageForScroll != -1) {
-                            _messagesUiState.update {
-                                it.copy(
-                                    scrollPosition =
-                                        ScrollPosition(
-                                            firstVisibleItemIndex = indexOfMessageForScroll,
-                                            triggerScroll = true
-                                        ),
-                                    highlightedMessageId = action.messageId,
-                                )
-                            }
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
-                    }
-                }
-            }
-
-            is ConversationListUiAction.ClearHighlightedMessage -> {
-                _messagesUiState.update { it.copy(highlightedMessageId = null) }
-            }
+            is ConversationListUiAction.ClearHighlightedMessage -> messageActionsHandler.handleClearHighlightedMessage()
 
             is ConversationListUiAction.SaveFile -> mediaDownloadHandler.handleSaveFile(action)
 
-            is ConversationListUiAction.DeleteMessageForEveryone -> {
-                viewModelScope.launch {
-                    try {
-                        chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = true
-                        )
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to delete message for everyone: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.DeleteMessageForEveryone -> messageActionsHandler.handleDeleteMessageForEveryone(action)
 
-            is ConversationListUiAction.DeleteMessageForMe -> {
-                viewModelScope.launch {
-                    try {
-                        chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
-                        )
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to delete message for me: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.DeleteMessageForMe -> messageActionsHandler.handleDeleteMessageForMe(action)
 
-            is ConversationListUiAction.MarkAsRead -> {
-                viewModelScope.launch {
-                    try {
-                        if (action.messageIds == null) {
-                            chatMessageActionService.markAllAsRead(action.conversationId)
-                        } else {
-                            chatMessageActionService.markAsReadByFiles(
-                                action.conversationId,
-                                action.messageIds
-                            )
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to mark message as read: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.MarkAsRead -> messageActionsHandler.handleMarkAsRead(action)
 
             is ConversationListUiAction.TogglePinConversation -> conversationLifecycleHandler.handleTogglePinConversation(action)
 
-            is ConversationListUiAction.ToggleReaction -> {
-                viewModelScope.launch {
-                    if (action.reaction.isEmpty()) return@launch
+            is ConversationListUiAction.ToggleReaction -> messageActionsHandler.handleToggleReaction(action)
 
-                    // Mirror the server-side cap of MAX_REACTIONS_PER_USER_PER_MESSAGE
-                    // distinct reactions per user per message. Adding past the cap is
-                    // a 400 (UnhandledScenario / "Too many Reactions") at upload, so
-                    // block it before we optimistically write or hit the outbox.
-                    // Removes (toggling an emoji the user already has) are always
-                    // allowed.
-                    var targetMessage: MessageUiModel? = null
-                    for (item in _messagesUiState.value.messages) {
-                        if (item is MessageListContentModel.Message &&
-                            item.message.id == action.messageId
-                        ) {
-                            targetMessage = item.message
-                            break
-                        }
-                    }
-                    if (targetMessage != null) {
-                        // ownReactions holds bare emoji (decoded by
-                        // ChatMessageStream from the wire's
-                        // `{"emoji":"X"}`); compare directly so removes
-                        // at the cap aren't misread as adds.
-                        val alreadyHasIt = action.reaction in targetMessage.ownReactions
-                        if (!alreadyHasIt &&
-                            targetMessage.ownReactions.size >= MAX_REACTIONS_PER_USER_PER_MESSAGE
-                        ) {
-                            sendEvent(ShowInfoMessage(MR.string.chat_reactions_limit_reached))
-                            return@launch
-                        }
-                    }
-
-                    val previousReactions = _messagesUiState.value.messageReactions
-                    try {
-                        _messagesUiState.update { state ->
-                            if (state.reactionDetailsMessageId != action.messageId) {
-                                return@update state
-                            }
-                            val ownerSession = state.ownerSession
-                                ?: return@update state
-                            val ownerOdinId = ownerSession.odinId.domainName
-                            val current = state.messageReactions ?: emptyList()
-                            val hasReaction = current.any {
-                                it.odinId == ownerOdinId && it.emoji == action.reaction
-                            }
-                            val updated = if (hasReaction) {
-                                current.filterNot {
-                                    it.odinId == ownerOdinId && it.emoji == action.reaction
-                                }
-                            } else {
-                                current + ReactionDisplayItem(
-                                    odinId = ownerOdinId,
-                                    displayName = ownerSession.displayName ?: ownerOdinId,
-                                    emoji = action.reaction,
-                                )
-                            }
-                            if (updated.isEmpty()) {
-                                state.copy(
-                                    messageReactions = null,
-                                    reactionDetailsMessageId = null,
-                                )
-                            } else {
-                                state.copy(messageReactions = updated)
-                            }
-                        }
-
-                        val result = chatMessageActionService.toggleReaction(
-                            action.conversationId,
-                            action.messageId,
-                            action.reaction
-                        )
-
-                        // Only promote to the top of the quick-react popup when this
-                        // toggle ADDED the reaction. A remove must not bump the just-
-                        // removed emoji to the front of the user's preferred list.
-                        if (result.resultType == ToggleReactionResultType.Added) {
-                            val promoted = (listOf(action.reaction) +
-                                _messagesUiState.value.userDefaultReactions)
-                                .distinctByEmoji()
-                                .toPersistentList()
-                            _messagesUiState.update {
-                                it.copy(userDefaultReactions = promoted)
-                            }
-                            userPreferences.preferredUserReactions = promoted.take(6)
-                        }
-                    } catch (e: Exception) {
-                        _messagesUiState.update { it.copy(messageReactions = previousReactions) }
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to toggle reaction: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.SendFile -> {
-                _messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
-
-                addMessageWithFiles(
-                    conversationId = action.conversationId,
-                    content = action.message.trimEnd(),
-                    files = action.attachments,
-                )
-                // Input is cleared inside addMessageWithFiles after
-                // the send is successfully queued.
-            }
+            is ConversationListUiAction.SendFile -> messageActionsHandler.handleSendFile(action)
 
             is ConversationListUiAction.AttachPlatformFile -> attachmentHandler.handleAttachPlatformFile(action)
 
@@ -1048,161 +774,23 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CloseFullScreenOverlay -> mediaDownloadHandler.handleCloseFullScreenOverlay()
 
-            is ConversationListUiAction.ReplyToMessage -> {
-                _messagesUiState.update { it.copy(replyToMessage = action.message) }
-            }
+            is ConversationListUiAction.ReplyToMessage -> messageActionsHandler.handleReplyToMessage(action)
 
-            is ConversationListUiAction.BattleDiceRoll -> {
-                _messagesUiState.update { it.copy(battleTargetMessage = action.message) }
-            }
+            is ConversationListUiAction.BattleDiceRoll -> messageActionsHandler.handleBattleDiceRoll(action)
 
-            ConversationListUiAction.CancelBattleDiceRoll -> {
-                _messagesUiState.update { it.copy(battleTargetMessage = null) }
-            }
+            ConversationListUiAction.CancelBattleDiceRoll -> messageActionsHandler.handleCancelBattleDiceRoll()
 
-            is ConversationListUiAction.ForwardMessage -> {
-                viewModelScope.launch {
-                    try {
-                        val allConversations = _uiState.value.activeConversations
-                        val allContacts = contactService.contacts.value
+            is ConversationListUiAction.ForwardMessage -> messageActionsHandler.handleForwardMessage(action)
 
-                        val selfConversation =
-                            allConversations.firstOrNull { it.conversation.isWithSelf }
-                        val nonSelfConversations =
-                            allConversations.filter { !it.conversation.isWithSelf }
-                        val recentConversations = nonSelfConversations
-                            .filter { !it.conversation.isGroupConversation }
-                            .take(5)
-                        val groupConversations = nonSelfConversations
-                            .filter { it.conversation.isGroupConversation }
-                            .sortedBy { it.getDisplayName().lowercase() }
-                        val sortedContacts = allContacts.sortedBy { it.name.lowercase() }
+            is ConversationListUiAction.ForwardMessageSelectRecipient -> messageActionsHandler.handleForwardMessageSelectRecipient(action)
 
-                        val recipientGroups = buildList {
-                            if (selfConversation != null) {
-                                add(
-                                    RecipientGroupModel(
-                                        recipientType = RecipientType.You,
-                                        recipients = listOf(
-                                            RecipientModel.Conversation(
-                                                selfConversation
-                                            )
-                                        )
-                                    )
-                                )
-                            }
-                            if (recentConversations.isNotEmpty()) {
-                                add(
-                                    RecipientGroupModel(
-                                        recipientType = RecipientType.Recents,
-                                        recipients = recentConversations.map {
-                                            RecipientModel.Conversation(
-                                                it
-                                            )
-                                        }
-                                    ))
-                            }
-                            if (sortedContacts.isNotEmpty()) {
-                                add(
-                                    RecipientGroupModel(
-                                        recipientType = RecipientType.Contacts,
-                                        recipients = sortedContacts.map { RecipientModel.Contact(it) }
-                                    ))
-                            }
-                            if (groupConversations.isNotEmpty()) {
-                                add(
-                                    RecipientGroupModel(
-                                        recipientType = RecipientType.Groups,
-                                        recipients = groupConversations.map {
-                                            RecipientModel.Conversation(
-                                                it
-                                            )
-                                        }
-                                    ))
-                            }
-                        }
+            is ConversationListUiAction.ForwardMessageSend -> messageActionsHandler.handleForwardMessageSend(action)
 
-                        _messagesUiState.update {
-                            it.copy(
-                                uiSheet = MessageListUiSheet.ForwardMessage(
-                                    message = action.message,
-                                    recipients = recipientGroups.toPersistentList(),
-                                    selectedRecipients = persistentListOf(),
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to open forward message sheet", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to open forward message sheet: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.CancelReplyToMessage -> messageActionsHandler.handleCancelReplyToMessage()
 
-            is ConversationListUiAction.ForwardMessageSelectRecipient -> {
-                val updatedSheet =
-                    (_messagesUiState.value.uiSheet as? MessageListUiSheet.ForwardMessage)?.let {
-                        if (it.selectedRecipients.contains(action.recipient)) {
-                            val newSelected = it.selectedRecipients - action.recipient
-                            it.copy(selectedRecipients = newSelected.toPersistentList())
-                        } else {
-                            val newSelected = it.selectedRecipients + action.recipient
-                            it.copy(selectedRecipients = newSelected.toPersistentList())
-                        }
-                    }
-                _messagesUiState.update { it.copy(uiSheet = updatedSheet) }
-            }
+            is ConversationListUiAction.ShowReactionDetails -> messageActionsHandler.handleShowReactionDetails(action)
 
-            is ConversationListUiAction.ForwardMessageSend -> {
-                _messagesUiState.update { it.copy(isSendingMessage = true) }
-                viewModelScope.launch {
-                    try {
-                        val conversationIds = action.recipients.map { recipientModel ->
-                            when (recipientModel) {
-                                is RecipientModel.Contact -> {
-                                    conversationService.createConversation(
-                                        recipients = listOf(recipientModel.contact.odinId),
-                                        title = "",
-                                        payloadBundle = null,
-                                    ).conversationId
-                                }
-
-                                is RecipientModel.Conversation -> recipientModel.conversation.conversation.id
-                            }
-                        }
-                        chatMessageSenderService.forwardMessage(
-                            sourceMessageUniqueId = action.message.id,
-                            targetConversationIds = conversationIds
-                        )
-                        sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
-                    } catch (e: Exception) {
-                        Logger.e("Failed to send forward message", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to send forward message: ${e.message}"
-                            )
-                        )
-                    } finally {
-                        _messagesUiState.update { it.copy(isSendingMessage = false) }
-                    }
-                }
-            }
-
-            is ConversationListUiAction.CancelReplyToMessage -> {
-                _messagesUiState.update { it.copy(replyToMessage = null) }
-            }
-
-            is ConversationListUiAction.ShowReactionDetails -> {
-                _messagesUiState.update { it.copy(reactionDetailsMessageId = action.messageId) }
-                loadReactionDetails(action.messageId)
-            }
-
-            is ConversationListUiAction.HideReactionDetails -> {
-                _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false, reactionDetailsMessageId = null) }
-            }
+            is ConversationListUiAction.HideReactionDetails -> messageActionsHandler.handleHideReactionDetails()
 
             is ConversationListUiAction.ShowContactInfo -> conversationLifecycleHandler.handleShowContactInfo(action)
 
@@ -1400,30 +988,6 @@ class ConversationListViewModel(
             }
         }
     }
-
-    private fun loadReactionDetails(messageId: Uuid) {
-        _messagesUiState.update { it.copy(isReactionsLoading = true, messageReactions = emptyList()) }
-        viewModelScope.launch {
-            try {
-                val rawReactions = chatMessageActionService.getReactions(messageId)
-                val reactions = rawReactions.map { reaction ->
-                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
-                        ?: reaction.odinId.domainName
-                    ReactionDisplayItem(
-                        odinId = reaction.odinId.domainName,
-                        displayName = displayName,
-                        emoji = reaction.emoji,
-                    )
-                }
-                _messagesUiState.update {
-                    it.copy(messageReactions = reactions, isReactionsLoading = false)
-                }
-            } catch (_: Exception) {
-                _messagesUiState.update { it.copy(isReactionsLoading = false, messageReactions = null) }
-            }
-        }
-    }
-
     private fun loadMessagesForConversation(
         conversationId: Uuid,
         messageIdForScroll: Uuid?,
@@ -1568,7 +1132,7 @@ class ConversationListViewModel(
                             // are handled by the LazyColumn auto-follow effect in ConversationContent.kt,
                             // which only scrolls when the user was already at the bottom. Forcing
                             // a scroll-to-new-message here would yank the user out of history.
-                            pendingMessageId = null
+                            messageActionsHandler.pendingMessageId = null
                             // If the target message hasn't synced yet, keep
                             // messageIdForScrollNullable set so the next
                             // ChatMessagesData.Messages emission retries the
@@ -1691,441 +1255,6 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
-    }
-
-    /**
-     * Combined delete (and optional leave-first) flow. Drives the in-flight overlay
-     * via [ConversationListUiState.inFlightOperationLabel], runs the service ops,
-     * then reconciles UI state (drops the row from the in-memory list, pops the
-     * detail pane if the deleted conversation was open, fires the snackbar).
-     *
-     * @param leaveFirst when true, calls [ConversationService.leaveGroup] before
-     *                   the delete. Required when the user is still an active
-     *                   member of a group conversation; the service-side delete
-     *                   guard otherwise rejects with IllegalStateException.
-     */
-    private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {
-        viewModelScope.launch {
-            try {
-                chatMessageSenderService.updateMessage(
-                    messageId = messageId,
-                    versionTag = versionTag,
-                    content = content
-                )
-                _messagesUiState.update {
-                    it.copy(
-                        isEditingMessageId = null,
-                        isEditingVersionTag = null
-                    )
-                }
-                messageInputTextState.clear()
-            } catch (e: Exception) {
-                sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
-            } finally {
-                _messagesUiState.update { it.copy(isSendingMessage = false) }
-            }
-        }
-    }
-
-    private fun addMessage(
-        conversationId: Uuid,
-        content: String,
-        payloadRenderers: List<PayloadRenderer> = emptyList(),
-    ) {
-        viewModelScope.launch {
-            try {
-                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
-
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
-
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle,
-                    dataType = payloadRenderers.toMessageDataType(),
-                )
-                messageInputTextState.clear()
-                Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
-            } catch (e: Exception) {
-                Logger.e(
-                    throwable = e,
-                    tag = TAG
-                ) { "addMessage failed for conversation=$conversationId" }
-                sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
-            } finally {
-                _messagesUiState.update { it.copy(isSendingMessage = false) }
-            }
-        }
-    }
-
-    private fun replyToMessage(
-        conversationId: Uuid,
-        replyTo: MessageUiModel,
-        content: String,
-        payloadRenderers: List<PayloadRenderer> = emptyList(),
-    ) {
-        viewModelScope.launch {
-            try {
-                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
-
-                val replyPreview = ReplyPreview(
-                    replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
-                    message = replyTo.content.truncateToCodePoints(80),
-                    previewThumbnail = replyTo.previewThumbnail
-                )
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
-
-                chatMessageSenderService.replyToMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    replyTo = replyPreview,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle,
-                    dataType = payloadRenderers.toMessageDataType(),
-                )
-                messageInputTextState.clear()
-                _messagesUiState.update { it.copy(replyToMessage = null) }
-                Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
-            } catch (e: Exception) {
-                Logger.e(
-                    throwable = e,
-                    tag = TAG
-                ) { "replyToMessage failed for conversation=$conversationId" }
-                sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
-            } finally {
-                _messagesUiState.update { it.copy(isSendingMessage = false) }
-            }
-        }
-    }
-
-
-    private fun addMessageWithFiles(
-        conversationId: Uuid,
-        content: String,
-        files: List<AttachmentPendingFile>
-    ) {
-        val sentAt = UnixTimeUtc.now()
-        viewModelScope.launch {
-            // If any FileVideo entries still have a thumbnail extraction in flight (the
-            // user hit Send before the background poster task finished), wait on it once
-            // so the message envelope ships with a poster frame.
-            val resolvedFiles = files.map { f ->
-                if (f is AttachmentPendingFile.FileVideo) attachmentHandler.ensureThumbnail(f) else f
-            }
-            val attachments = mutableListOf<AttachmentInput>()
-            resolvedFiles.forEach { attachment ->
-                when (attachment) {
-                    is AttachmentPendingFile.File -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.file.toString(),
-                                contentType = resolveContentType(
-                                    fileName = attachment.file.name,
-                                    platformMimeType = attachment.file.mimeType()?.toString(),
-                                ),
-                                displayName = attachment.file.name,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.FileImage -> {
-                        var filePath = attachment.file.toString()
-                        var contentType = resolveContentType(
-                            fileName = attachment.file.name,
-                            platformMimeType = attachment.file.mimeType()?.toString(),
-                        )
-                        if (contentType == "image/heic" || contentType == "image/heif") {
-                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                            val jpegBytes = convertHeicToJpeg(heicBytes)
-                            if (jpegBytes != null) {
-                                filePath = fileOperationsProvider.writeBytesToTempFile(
-                                    jpegBytes,
-                                    "heic_converted_",
-                                    ".jpg"
-                                )
-                                contentType = "image/jpeg"
-                            }
-                        }
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.file.name,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.FileVideo -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.file.toString(),
-                                contentType = resolveContentType(
-                                    fileName = attachment.file.name,
-                                    platformMimeType = attachment.file.mimeType()?.toString(),
-                                ),
-                                displayName = attachment.file.name,
-                                trimStartMs = attachment.trimStartMs,
-                                trimEndMs = attachment.trimEndMs,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.Gallery -> {
-                        var filePath = attachment.image.file.toString()
-                        var contentType = resolveContentType(
-                            fileName = attachment.image.fileName,
-                        )
-                        if (contentType == "image/heic" || contentType == "image/heif") {
-                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                            val jpegBytes = convertHeicToJpeg(heicBytes)
-                            if (jpegBytes != null) {
-                                filePath = fileOperationsProvider.writeBytesToTempFile(
-                                    jpegBytes,
-                                    "heic_converted_",
-                                    ".jpg"
-                                )
-                                contentType = "image/jpeg"
-                            }
-                        }
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.image.fileName,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.Audio -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.audioFile.toString(),
-                                contentType = resolveContentType(
-                                    fileName = attachment.audioFile.name,
-                                    platformMimeType = attachment.audioFile.mimeType()?.toString(),
-                                ),
-                                displayName = attachment.audioFile.name,
-                                waveformFile = attachment.waveformFile?.toString(),
-                                audioLengthSeconds = attachment.lengthSeconds,
-                            )
-                        )
-                    }
-                }
-            }
-
-            val newMessageId = Uuid.random()
-            Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
-
-            // Store a local preview context per attachment (keyed by the payload key the
-            // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
-            // real bubble can render the local preview without fetching from the server.
-            // Populate local contexts synchronously with what we have on hand, so the
-            // placeholder shows immediately. For videos the thumbnail bytes give us the
-            // aspect for free; for images we compute aspect asynchronously below and
-            // re-put once we have it — avoids blocking the placeholder on image I/O.
-            val imagePathsToRefine = mutableListOf<Pair<String, String>>()
-            resolvedFiles.forEachIndexed { index, file ->
-                val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                val ctx: LocalAttachmentContext? = when (file) {
-                    is AttachmentPendingFile.FileVideo -> {
-                        val bytes = file.thumbnailBytes
-                        if (bytes != null) {
-                            val aspect = runCatching {
-                                val size = ImageUtils.getNaturalSize(bytes)
-                                if (size.pixelWidth > 0 && size.pixelHeight > 0)
-                                    size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
-                                else null
-                            }.getOrNull()
-                            LocalAttachmentContext.Video(
-                                thumbnailBytes = bytes,
-                                localFilePath = file.file.toString(),
-                                aspectRatio = aspect,
-                                trimStartMs = file.trimStartMs,
-                                trimEndMs = file.trimEndMs,
-                                durationMs = file.durationMs,
-                            )
-                        } else null
-                    }
-                    is AttachmentPendingFile.FileImage -> {
-                        val path = file.file.toString()
-                        imagePathsToRefine += payloadKey to path
-                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
-                    }
-                    is AttachmentPendingFile.Gallery -> {
-                        val path = file.image.file.toString()
-                        imagePathsToRefine += payloadKey to path
-                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
-                    }
-                    is AttachmentPendingFile.File -> null
-                    is AttachmentPendingFile.Audio -> null
-                }
-                if (ctx != null) {
-                    localVideoContextStore.put(newMessageId, payloadKey, ctx)
-                }
-            }
-
-            // Refine image aspect ratios off the main path. Try a header-only parser
-            // first so we don't allocate the full image bytes just to read width/height;
-            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
-            if (imagePathsToRefine.isNotEmpty()) {
-                viewModelScope.launch {
-                    imagePathsToRefine.forEach { (payloadKey, path) ->
-                        val aspect = runCatching {
-                            val header = fileOperationsProvider.readFileHeaderBytes(path)
-                            val size = ImageHeaderParser.parse(header)
-                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
-                            if (size.pixelWidth > 0 && size.pixelHeight > 0)
-                                size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
-                            else null
-                        }.getOrNull()
-                        if (aspect != null) {
-                            localVideoContextStore.put(
-                                newMessageId,
-                                payloadKey,
-                                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = aspect),
-                            )
-                        }
-                    }
-                }
-            }
-
-            pendingMessageId = newMessageId
-
-            val placeholder = PendingOutgoingMessage(
-                id = newMessageId,
-                conversationId = conversationId,
-                text = content,
-                attachmentCount = files.size,
-                sentAt = kotlin.time.Instant.fromEpochMilliseconds(sentAt.milliseconds),
-            )
-
-            // Register the placeholder, register upload progress, clear the
-            // composer, and close the overlay BEFORE the heavy work so the
-            // user sees a "Preparing…" bubble in the chat immediately.
-            _messagesUiState.update { state ->
-                state.copy(
-                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap(),
-                    pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
-                    fullScreenOverlay = null,
-                    isSendingMessage = false,
-                )
-            }
-            messageInputTextState.clear()
-
-            viewModelScope.launch {
-                try {
-                    val bundle = MessageAttachmentBuilder.build(
-                        attachments = attachments,
-                        fileOperationsProvider = fileOperationsProvider,
-                        payloadKeyFactory = { index, _ ->
-                            "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                        })
-
-                    chatMessageSenderService.sendNewMessage(
-                        messageUniqueId = newMessageId,
-                        conversationId = conversationId,
-                        messageText = content,
-                        previousMessageUniqueId = null,
-                        payloadBundle = bundle,
-                        userDate = sentAt,
-                    )
-                    // Real optimistic bubble has landed — drop the placeholder.
-                    _messagesUiState.update { state ->
-                        state.copy(
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
-                        )
-                    }
-                } catch (e: Exception) {
-                    Logger.e(
-                        throwable = e,
-                        tag = TAG
-                    ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
-                    _messagesUiState.update { state ->
-                        state.copy(
-                            uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
-                        )
-                    }
-                    sendEvent(
-                        ShowErrorMessage(
-                            "Failed to send file(s): ${e.message}"
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * Checks for pending shared content (from iOS share extension handoff)
-     * and sends it to the given conversation automatically.
-     */
-    private suspend fun processPendingSharedContent(conversationId: Uuid) {
-        val descriptor = shareContentProcessor.readPendingContent() ?: return
-        // Only process if the target conversation matches
-        if (descriptor.targetConversationId != conversationId.toString()) return
-
-        Logger.i(tag = "ConversationListViewModel") {
-            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
-        }
-
-        try {
-            val text = descriptor.text ?: descriptor.url ?: ""
-
-            if (descriptor.fileNames.isEmpty()) {
-                // Text/URL only
-                addMessage(conversationId, text)
-            } else {
-                // Build AttachmentInput list from shared files
-                val attachments =
-                    descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
-                        val filePath = shareContentProcessor.resolveFilePath(name)
-                        AttachmentInput(
-                            filePath = filePath,
-                            contentType = mime,
-                            displayName = name,
-                        )
-                    }
-
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-
-                val bundle = MessageAttachmentBuilder.build(
-                    attachments = attachments,
-                    fileOperationsProvider = fileOperationsProvider,
-                    payloadKeyFactory = { index, _ ->
-                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                    }
-                )
-
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = text,
-                    previousMessageUniqueId = null,
-                    payloadBundle = bundle,
-                )
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
-            sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
-        } finally {
-            shareContentProcessor.cleanup()
-        }
     }
 }
 
