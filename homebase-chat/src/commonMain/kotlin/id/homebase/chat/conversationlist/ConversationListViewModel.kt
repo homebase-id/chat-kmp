@@ -30,11 +30,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.api.video.FFmpegUtils
-import id.homebase.api.video.VideoMetadata
-import id.homebase.api.video.VideoThumbnailExtractor
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -43,9 +39,6 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToConve
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToGroupSettings
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToMessageInfo
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
-import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
-import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
-import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
@@ -68,12 +61,10 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
-import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
-import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.navigation.ActiveConversation
@@ -85,8 +76,6 @@ import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.resolveContentType
 import id.homebase.resources.MR
 import id.homebase.resources.auto_connect_blocked
@@ -105,32 +94,21 @@ import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_introduce_preflight_in_progress
-import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_reactions_limit_reached
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
-import io.github.vinceglb.filekit.FileKit
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.cacheDir
-import io.github.vinceglb.filekit.delete
-import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
-import id.homebase.core.localization.TranslationUtil
-import id.homebase.resources.chat_attach_file_failed
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -147,8 +125,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import kotlinx.serialization.json.JsonPrimitive
-import kotlin.io.encoding.Base64
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -212,59 +188,32 @@ class ConversationListViewModel(
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
 
-    // Tracks in-flight video thumbnail extraction per pending attachment so the editor can
-    // open instantly (Signal-style) while the FFmpeg/MediaMetadataRetriever poster work
-    // happens in the background. The send path awaits these so the message envelope still
-    // ships a poster frame.
-    private val pendingThumbnails = mutableMapOf<Uuid, Deferred<ByteArray?>>()
+    private val mediaDownloadHandler = MediaDownloadHandler(
+        scope = viewModelScope,
+        uiState = _uiState,
+        messagesUiState = _messagesUiState,
+        driveFileProvider = driveFileProvider,
+        fileOperationsProvider = fileOperationsProvider,
+        chatMessageActionService = chatMessageActionService,
+        chatMessageStream = chatMessageStream,
+        localVideoContextStore = localVideoContextStore,
+        sendEvent = ::sendEvent,
+        dispatch = ::onAction,
+    )
 
-    private fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
-        val deferred = viewModelScope.async {
-            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
-        }
-        pendingThumbnails[attachmentId] = deferred
-        // Duration is needed by the trim screen and is cheap to read; kick it off in
-        // parallel with the poster extraction.
-        val durationDeferred = viewModelScope.async {
-            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
-                .getOrNull()
-        }
-        viewModelScope.launch {
-            val bytes = try {
-                deferred.await()
-            } catch (_: CancellationException) {
-                null
-            }
-            val durationMs = try {
-                durationDeferred.await()
-            } catch (_: CancellationException) {
-                null
-            }
-            pendingThumbnails.remove(attachmentId)
-            if (bytes == null && durationMs == null) return@launch
-            _messagesUiState.update { state ->
-                val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
-                    ?: return@update state
-                if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
-                val updated = overlay.attachments.map { a ->
-                    if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
-                        a.copy(
-                            thumbnailBytes = bytes ?: a.thumbnailBytes,
-                            durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
-                        )
-                    } else a
-                }
-                state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
-            }
-        }
-    }
-
-    private suspend fun ensureThumbnail(file: AttachmentPendingFile.FileVideo): AttachmentPendingFile.FileVideo {
-        if (file.thumbnailBytes != null) return file
-        val pending = pendingThumbnails.remove(file.attachmentId) ?: return file
-        val bytes = runCatching { pending.await() }.getOrNull()
-        return if (bytes != null) file.copy(thumbnailBytes = bytes) else file
-    }
+    private val attachmentHandler = AttachmentHandler(
+        scope = viewModelScope,
+        uiState = _uiState,
+        messagesUiState = _messagesUiState,
+        fileOperationsProvider = fileOperationsProvider,
+        cropResultBus = cropResultBus,
+        drawResultBus = drawResultBus,
+        audioRecorder = audioRecorder,
+        audioWaveFormGenerator = audioWaveFormGenerator,
+        sendEvent = ::sendEvent,
+        dispatch = ::onAction,
+        addMessageWithFiles = ::addMessageWithFiles,
+    )
 
     init {
         viewModelScope.launch {
@@ -896,249 +845,15 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.ShareMedia -> {
-                viewModelScope.launch {
-                    try {
-                        val messageModel =
-                            _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                                .find { it.message.id == action.messageId } ?: return@launch
-                        val message = messageModel.message
-                        val payload =
-                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                        val payloadIv = Base64.decode(
-                            payload.iv ?: throw IllegalStateException(
-                                "encrypted payload requires key header"
-                            )
-                        )
-                        val bytes = chatMessageActionService.getPayloadBytes(
-                            message.fileId,
-                            action.payloadKey,
-                            KeyHeader(payloadIv, message.keyHeader.aesKey)
-                        )
-                        if (bytes != null) {
-                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                            extension = when (extension) {
-                                "jpeg" -> "jpg"
-                                else -> extension
-                            }
-                            val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                                bytes, "share_", ".$extension"
-                            )
-                            sendEvent(ShareFile(tempPath))
-                        } else {
-                            sendEvent(
-                                ShowErrorMessage(
-                                    "Failed to download file for sharing"
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to share media: ${e.message}"
-                        }
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to share: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.ShareMedia -> mediaDownloadHandler.handleShareMedia(action)
 
-            is ConversationListUiAction.ShareMessage -> {
-                val message = action.message
-                val filteredPayloads = message.payloads?.filter {
-                    !listOf(
-                        ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                        ChatProtocol.DefaultPayloadKey,
-                        ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-                    ).contains(it.key)
-                }
-                val hasMedia = !filteredPayloads.isNullOrEmpty()
-                if (hasMedia) {
-                    // Share the first media payload as a file
-                    val payload = filteredPayloads.first()
-                    onAction(ConversationListUiAction.ShareMedia(message.id, payload.key))
-                } else {
-                    // Text-only message
-                    val text = message.content
-                    if (text.isNotBlank()) {
-                        sendEvent(ShareText(text))
-                    }
-                }
-            }
+            is ConversationListUiAction.ShareMessage -> mediaDownloadHandler.handleShareMessage(action)
 
-            is ConversationListUiAction.DownloadMedia -> {
-                val message =
-                    _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                        .map { it.message }.find { it.id == action.messageId } ?: return
+            is ConversationListUiAction.DownloadMedia -> mediaDownloadHandler.handleDownloadMedia(action)
 
-                val fileKey = "${message.id}_${action.payloadKey}"
+            is ConversationListUiAction.DownloadVideoMedia -> mediaDownloadHandler.handleDownloadVideoMedia(action)
 
-                // 1. Add to downloadingFiles set
-                _messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
-
-                viewModelScope.launch {
-                    try {
-                        val payload =
-                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                        val payloadIv = Base64.decode(
-                            payload.iv ?: throw IllegalStateException(
-                                "encrypted payload requires key header"
-                            )
-                        )
-
-                        val fullName = resolveDownloadFileName(
-                            payload.filename(), payload.key, payload.contentType
-                        )
-                        val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
-
-                        val success = withContext(Dispatchers.IO) {
-                            driveFileProvider.streamPayloadDecryptedToPath(
-                                driveId = chatTargetDrive.alias,
-                                fileId = message.fileId,
-                                key = action.payloadKey,
-                                keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
-                                outputPath = filePath,
-                                fileOps = fileOperationsProvider,
-                            )
-                        }
-
-                        if (success) {
-                            sendEvent(SaveFileToDevice(filePath, fullName))
-                        } else {
-                            sendEvent(ShowErrorMessage("Could not download file"))
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Error downloading file: ${e.message}"
-                            )
-                        )
-                    } finally {
-                        _messagesUiState.update {
-                            it.copy(downloadingFiles = it.downloadingFiles - fileKey)
-                        }
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DownloadVideoMedia -> {
-                val fileKey = "${action.fileId}_${action.payloadKey}"
-                _messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
-
-                viewModelScope.launch {
-                    try {
-                        val hlsMetadata = resolveHlsVideoMetadata(
-                            descriptorContent = action.payload.descriptorContent,
-                            fileId = action.fileId,
-                            keyHeader = action.keyHeader,
-                        )
-
-                        if (hlsMetadata != null) {
-                            val (mp4Path, mp4Name) = withContext(Dispatchers.IO) {
-                                downloadAndRemuxHlsToMp4(
-                                    fileId = action.fileId,
-                                    payloadKey = action.payloadKey,
-                                    keyHeader = action.keyHeader,
-                                    metadata = hlsMetadata,
-                                    suggestedBaseName = action.payload.filename(),
-                                )
-                            } ?: run {
-                                sendEvent(ShowErrorMessage("Could not convert video"))
-                                return@launch
-                            }
-                            sendEvent(SaveFileToDevice(mp4Path, mp4Name))
-                        } else {
-                            val fullName = resolveDownloadFileName(
-                                action.payload.filename(), action.payloadKey, action.payload.contentType
-                            )
-                            val filePath =
-                                "${fileOperationsProvider.getCacheDirectory()}/$fullName"
-
-                            val success = withContext(Dispatchers.IO) {
-                                driveFileProvider.streamPayloadDecryptedToPath(
-                                    driveId = chatTargetDrive.alias,
-                                    fileId = action.fileId,
-                                    key = action.payloadKey,
-                                    keyHeader = action.keyHeader,
-                                    outputPath = filePath,
-                                    fileOps = fileOperationsProvider,
-                                )
-                            }
-
-                            if (success) {
-                                sendEvent(SaveFileToDevice(filePath, fullName))
-                            } else {
-                                sendEvent(ShowErrorMessage("Could not download file"))
-                            }
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(ShowErrorMessage("Error downloading file: ${e.message}"))
-                    } finally {
-                        _messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles - fileKey) }
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DecryptFile -> {
-                val message =
-                    _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                        .map { it.message }.find { it.id == action.messageId } ?: return
-
-                val fileKey = "${message.id}_${action.payloadKey}"
-
-                viewModelScope.launch {
-                    try {
-
-                        val payload =
-                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                        val payloadIv = Base64.decode(
-                            payload.iv ?: throw IllegalStateException(
-                                "encrypted payload requires key header"
-                            )
-                        )
-
-                        val fileName = payload.filename() ?: payload.key
-                        var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                        extension = when (extension) {
-                            "jpeg" -> "jpg"
-                            else -> extension
-                        }
-                        val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
-
-                        val success = driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = chatTargetDrive.alias,
-                            fileId = message.fileId,
-                            key = action.payloadKey,
-                            keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
-                            outputPath = filePath,
-                            fileOps = fileOperationsProvider,
-                        )
-
-                        if (success) {
-                            val decryptedFiles =
-                                _messagesUiState.value.decryptedFiles.toMutableMap()
-                            decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] =
-                                filePath
-                            _messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
-                        } else {
-                            sendEvent(ShowErrorMessage("Error downloading file"))
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage("Error downloading file: ${e.message}")
-                        )
-                    } finally {
-                        // 4. Remove from downloadingFiles set
-                        _uiState.update {
-                            it.copy(downloadingFiles = it.downloadingFiles - fileKey)
-                        }
-                    }
-                }
-            }
+            is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
 
             is ConversationListUiAction.ScrollToMessageId -> {
                 viewModelScope.launch {
@@ -1169,16 +884,7 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(highlightedMessageId = null) }
             }
 
-            is ConversationListUiAction.SaveFile -> {
-                val (filePath, fileName) = when (val f = action.file) {
-                    is AttachmentPendingFile.FileImage -> f.file.toString() to f.file.name
-                    is AttachmentPendingFile.FileVideo -> f.file.toString() to f.file.name
-                    is AttachmentPendingFile.File -> f.file.toString() to f.file.name
-                    is AttachmentPendingFile.Gallery -> f.image.file.toString() to f.image.fileName
-                    is AttachmentPendingFile.Audio -> f.audioFile.toString() to f.audioFile.name
-                }
-                sendEvent(SaveFileToDevice(filePath, fileName))
-            }
+            is ConversationListUiAction.SaveFile -> mediaDownloadHandler.handleSaveFile(action)
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {
                 viewModelScope.launch {
@@ -1363,279 +1069,17 @@ class ConversationListViewModel(
                 // the send is successfully queued.
             }
 
-            is ConversationListUiAction.AttachPlatformFile -> {
-                viewModelScope.launch {
-                    try {
-                        val newFiles = action.files.map {
-                            val ct = it.mimeType()?.toString()
-                                ?: detectContentTypeFromExtensionOrHint(it.name)
-                            when {
-                                ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
-                                    Uuid.generateV7(),
-                                    it,
-                                    thumbnailBytes = null,
-                                )
+            is ConversationListUiAction.AttachPlatformFile -> attachmentHandler.handleAttachPlatformFile(action)
 
-                                action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(
-                                    Uuid.generateV7(),
-                                    it
-                                )
+            is ConversationListUiAction.AttachGalleryItem -> attachmentHandler.handleAttachGalleryItem(action)
 
-                                else -> AttachmentPendingFile.File(Uuid.generateV7(), it)
-                            }
-                        }
-                        val conversation = _uiState.value.activeConversations.find {
-                            it.conversation.id == action.conversationId
-                        }
-                        if (newFiles.isEmpty() || conversation == null) return@launch
+            is ConversationListUiAction.UnAttachFile -> attachmentHandler.handleUnAttachFile(action)
 
-                        val overlay = _messagesUiState.value.fullScreenOverlay
-                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
-                            overlay.copy(
-                                attachments = overlay.attachments + newFiles,
-                            )
-                        } else {
-                            FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.getDisplayName(),
-                                conversationId = action.conversationId,
-                                selected = newFiles.last().attachmentId,
-                                attachments = newFiles,
-                            )
-                        }
+            is ConversationListUiAction.MediaClicked -> mediaDownloadHandler.handleMediaClicked(action)
 
-                        _messagesUiState.update {
-                            it.copy(
-                                fullScreenOverlay = newOverlay,
-                            )
-                        }
+            is ConversationListUiAction.ShowMoreClicked -> mediaDownloadHandler.handleShowMoreClicked(action)
 
-                        // Editor is now visible — extract thumbnails in the background and
-                        // patch the pending FileVideo entries when they complete.
-                        newFiles.forEach { f ->
-                            if (f is AttachmentPendingFile.FileVideo) {
-                                extractThumbnailAsync(f.attachmentId, f.file.toString())
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to attach file(s)", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                TranslationUtil.getString(
-                                    MR.string.chat_attach_file_failed,
-                                    e.message ?: ""
-                                )
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.AttachGalleryItem -> {
-                viewModelScope.launch {
-                    try {
-                        val newFiles = action.files.map {
-                            if (it.mimeType.startsWith("video/")) {
-                                AttachmentPendingFile.FileVideo(
-                                    Uuid.generateV7(),
-                                    it.file,
-                                    thumbnailBytes = null,
-                                )
-                            } else {
-                                AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
-                            }
-                        }
-                        val conversation = _uiState.value.activeConversations.find {
-                            it.conversation.id == action.conversationId
-                        }
-                        if (newFiles.isEmpty() || conversation == null) return@launch
-
-                        val overlay = _messagesUiState.value.fullScreenOverlay
-                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
-                            overlay.copy(
-                                attachments = overlay.attachments + newFiles,
-                            )
-                        } else {
-                            FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.getDisplayName(),
-                                conversationId = action.conversationId,
-                                selected = newFiles.last().attachmentId,
-                                attachments = newFiles,
-                            )
-                        }
-
-                        _messagesUiState.update {
-                            it.copy(
-                                fullScreenOverlay = newOverlay,
-                            )
-                        }
-
-                        // Editor visible — kick off thumbnail extraction in parallel, using
-                        // the gallery URI directly (no resolveToFilePath copy).
-                        newFiles.zip(action.files).forEach { (pending, gallery) ->
-                            if (pending is AttachmentPendingFile.FileVideo) {
-                                extractThumbnailAsync(pending.attachmentId, gallery.file.toString())
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to attach file(s)", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                TranslationUtil.getString(
-                                    MR.string.chat_attach_file_failed,
-                                    e.message ?: ""
-                                )
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.UnAttachFile -> {
-                viewModelScope.launch {
-                    try {
-                        val fullScreenOverlay = _messagesUiState.value.fullScreenOverlay
-                        if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
-
-                        val newFiles = fullScreenOverlay.attachments.filter {
-                            it.attachmentId != action.id
-                        }
-                        _messagesUiState.update {
-                            it.copy(
-                                fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to unattach file", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to unattach file: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.MediaClicked -> {
-                viewModelScope.launch {
-                    try {
-                        val selectedPayload =
-                            action.message.payloads?.firstOrNull { it.key == action.payloadKey }
-                                ?: return@launch
-                        val contentType = selectedPayload.contentType ?: ""
-                        when {
-                            contentType.startsWith("image/") -> {
-                                Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
-
-                                _messagesUiState.update {
-                                    it.copy(
-                                        fullScreenOverlay = FullScreenOverlay.ViewMessageData(
-                                            messageId = action.message.id,
-                                            title = action.message.originalAuthor?.domainName
-                                                ?: "null",
-                                            userDate = action.message.userDate,
-                                            content = action.message.content,
-                                            fileId = action.message.fileId,
-                                            driveId = chatTargetDrive.alias,
-                                            payloads = action.message.payloads,
-                                            selectedPayloadKey = action.payloadKey,
-                                            keyHeader = action.message.keyHeader,
-                                        )
-                                    )
-                                }
-                            }
-
-                            contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-                                val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
-                                val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
-
-                                if (ivBytes != null || localContext != null) {
-                                    _messagesUiState.update {
-                                        it.copy(
-                                            fullScreenOverlay = FullScreenOverlay.VideoPlayerData(
-                                                fileId = action.message.fileId,
-                                                driveId = chatTargetDrive.alias,
-                                                payloadKey = action.payloadKey,
-                                                keyHeader = KeyHeader(
-                                                    iv = ivBytes ?: ByteArray(16),
-                                                    aesKey = action.message.keyHeader.aesKey
-                                                ),
-                                                payload = selectedPayload,
-                                                localFilePath = localContext?.localFilePath,
-                                                uploadMessageId = if (localContext != null) action.message.id else null,
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            contentType.startsWith("audio/") -> {}
-                            contentType.startsWith("application/") || contentType.startsWith("text/") || contentType.startsWith(
-                                "message/"
-                            ) -> {
-                                onAction(
-                                    ConversationListUiAction.DownloadMedia(
-                                        action.message.id, action.payloadKey
-                                    )
-                                )
-                            }
-
-                            else -> {
-                                onAction(
-                                    ConversationListUiAction.DownloadMedia(
-                                        action.message.id, action.payloadKey
-                                    )
-                                )
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to handle media click", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to handle media click: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.ShowMoreClicked -> {
-                viewModelScope.launch {
-
-                    val full = chatMessageStream.loadFullMessage(
-                        action.conversationId,
-                        action.messageId
-                    ) ?: return@launch
-
-                    _messagesUiState.update { state ->
-                        state.copy(
-                            messages = state.messages.map { item ->
-
-                                if (item is MessageListContentModel.Message &&
-                                    item.message.id == action.messageId
-                                ) {
-
-                                    val updatedMessage =
-                                        item.message.copy(
-                                            content = full,
-                                            hasMore = false,
-                                            messageAppData = item.message.messageAppData.copy(
-                                                message = JsonPrimitive(full)
-                                            )
-                                        )
-
-                                    item.copy(message = updatedMessage)
-
-                                } else item
-
-                            }.toPersistentList()
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.CloseFullScreenOverlay -> {
-                _messagesUiState.update { it.copy(fullScreenOverlay = null) }
-            }
+            is ConversationListUiAction.CloseFullScreenOverlay -> mediaDownloadHandler.handleCloseFullScreenOverlay()
 
             is ConversationListUiAction.ReplyToMessage -> {
                 _messagesUiState.update { it.copy(replyToMessage = action.message) }
@@ -2024,293 +1468,25 @@ class ConversationListViewModel(
             }
 
             /* Clipboard image paste */
-            is ConversationListUiAction.AttachClipboardImage -> {
-                viewModelScope.launch {
-                    try {
-                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                            action.imageBytes,
-                            "clipboard_image",
-                            ".png"
-                        )
-                        val platformFile = platformFileFromPath(tempPath)
-                        val newFile = AttachmentPendingFile.FileImage(
-                            Uuid.generateV7(),
-                            platformFile
-                        )
-                        val conversation = _uiState.value.activeConversations.find {
-                            it.conversation.id == action.conversationId
-                        }
-                        if (conversation == null) return@launch
+            is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
 
-                        val overlay = _messagesUiState.value.fullScreenOverlay
-                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
-                            overlay.copy(
-                                attachments = overlay.attachments + newFile,
-                            )
-                        } else {
-                            FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.getDisplayName(),
-                                conversationId = action.conversationId,
-                                selected = newFile.attachmentId,
-                                attachments = listOf(newFile),
-                            )
-                        }
+            is ConversationListUiAction.RequestCropAttachment -> attachmentHandler.handleRequestCropAttachment(action)
 
-                        _messagesUiState.update {
-                            it.copy(fullScreenOverlay = newOverlay)
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to attach clipboard image", e)
-                        sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.ApplyCropResult -> attachmentHandler.handleApplyCropResult(action)
 
-            /* Crop attachment */
-            is ConversationListUiAction.RequestCropAttachment -> {
-                viewModelScope.launch {
-                    try {
-                        val overlay = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
-                        val attachment = overlay?.attachments?.firstOrNull {
-                            it.attachmentId == action.attachmentId
-                        }
-                        val sourcePath = when (attachment) {
-                            is AttachmentPendingFile.FileImage -> attachment.file.toString()
-                            is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
-                            else -> null
-                        }
-                        if (sourcePath == null) {
-                            sendEvent(ShowErrorMessage("Cannot crop this attachment"))
-                            return@launch
-                        }
-                        val bytes = fileOperationsProvider.readFileBytes(sourcePath)
-                        val requestId = Uuid.random()
-                        cropResultBus.postSource(requestId, bytes)
+            is ConversationListUiAction.RequestDrawAttachment -> attachmentHandler.handleRequestDrawAttachment(action)
 
-                        viewModelScope.launch {
-                            cropResultBus.resultsFor(requestId).collect { result ->
-                                onAction(
-                                    ConversationListUiAction.ApplyCropResult(
-                                        action.conversationId,
-                                        action.attachmentId,
-                                        result.bytes,
-                                    )
-                                )
-                            }
-                        }
+            is ConversationListUiAction.ApplyDrawResult -> attachmentHandler.handleApplyDrawResult(action)
 
-                        sendEvent(ConversationListUiEvent.NavigateToCropper(requestId))
-                    } catch (e: Exception) {
-                        Logger.e("RequestCropAttachment failed", e)
-                        sendEvent(ShowErrorMessage("Failed to open cropper: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
-            is ConversationListUiAction.ApplyCropResult -> {
-                viewModelScope.launch {
-                    try {
-                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                            action.croppedBytes,
-                            "cropped_image",
-                            ".jpg",
-                        )
-                        val newFile = AttachmentPendingFile.FileImage(
-                            id = action.attachmentId,
-                            file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
-                        )
-                        val overlay = _messagesUiState.value.fullScreenOverlay
-                        if (overlay !is FullScreenOverlay.AttachmentData) return@launch
-                        val newAttachments = overlay.attachments.map { existing ->
-                            if (existing.attachmentId == action.attachmentId) newFile else existing
-                        }
-                        _messagesUiState.update {
-                            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("ApplyCropResult failed", e)
-                        sendEvent(ShowErrorMessage("Failed to apply crop: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()
 
-            /* Draw on attachment — same shape as crop, different result bus. */
-            is ConversationListUiAction.RequestDrawAttachment -> {
-                viewModelScope.launch {
-                    try {
-                        val overlay = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
-                        val attachment = overlay?.attachments?.firstOrNull {
-                            it.attachmentId == action.attachmentId
-                        }
-                        val sourcePath = when (attachment) {
-                            is AttachmentPendingFile.FileImage -> attachment.file.toString()
-                            is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
-                            else -> null
-                        }
-                        if (sourcePath == null) {
-                            sendEvent(ShowErrorMessage("Cannot draw on this attachment"))
-                            return@launch
-                        }
-                        val bytes = fileOperationsProvider.readFileBytes(sourcePath)
-                        val requestId = Uuid.random()
-                        drawResultBus.postSource(requestId, bytes)
+            is ConversationListUiAction.StartRecording -> attachmentHandler.handleStartRecording(action)
 
-                        viewModelScope.launch {
-                            drawResultBus.resultsFor(requestId).collect { result ->
-                                onAction(
-                                    ConversationListUiAction.ApplyDrawResult(
-                                        action.conversationId,
-                                        action.attachmentId,
-                                        result.bytes,
-                                    )
-                                )
-                            }
-                        }
+            is ConversationListUiAction.StopRecording -> attachmentHandler.handleStopRecording(action)
 
-                        sendEvent(ConversationListUiEvent.NavigateToDrawer(requestId))
-                    } catch (e: Exception) {
-                        Logger.e("RequestDrawAttachment failed", e)
-                        sendEvent(ShowErrorMessage("Failed to open draw editor: ${e.message}"))
-                    }
-                }
-            }
-
-            is ConversationListUiAction.ApplyDrawResult -> {
-                viewModelScope.launch {
-                    try {
-                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                            action.paintedBytes,
-                            "painted_image",
-                            ".jpg",
-                        )
-                        val newFile = AttachmentPendingFile.FileImage(
-                            id = action.attachmentId,
-                            file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
-                        )
-                        val overlay = _messagesUiState.value.fullScreenOverlay
-                        if (overlay !is FullScreenOverlay.AttachmentData) return@launch
-                        val newAttachments = overlay.attachments.map { existing ->
-                            if (existing.attachmentId == action.attachmentId) newFile else existing
-                        }
-                        _messagesUiState.update {
-                            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("ApplyDrawResult failed", e)
-                        sendEvent(ShowErrorMessage("Failed to apply drawing: ${e.message}"))
-                    }
-                }
-            }
-
-            /* Inline trim scrubber result. */
-            is ConversationListUiAction.ApplyTrimResult -> {
-                val overlay = _messagesUiState.value.fullScreenOverlay
-                if (overlay !is FullScreenOverlay.AttachmentData) return
-                val newAttachments = overlay.attachments.map { existing ->
-                    if (existing.attachmentId == action.attachmentId &&
-                        existing is AttachmentPendingFile.FileVideo
-                    ) {
-                        existing.copy(
-                            trimStartMs = action.trimStartMs,
-                            trimEndMs = action.trimEndMs,
-                        )
-                    } else existing
-                }
-                _messagesUiState.update {
-                    it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
-                }
-            }
-
-            /* Audio recording */
-            is ConversationListUiAction.ShowRecordingHelp -> {
-                sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
-            }
-
-            is ConversationListUiAction.StartRecording -> {
-                viewModelScope.launch {
-                    try {
-                        val file = PlatformFile(
-                            base = FileKit.filesDir,
-                            child = "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
-                        )
-                        audioRecorder.startRecording(file.toString())
-                        _messagesUiState.update {
-                            it.copy(
-                                recordingData = RecordingData(
-                                    file = file,
-                                    conversationId = action.conversationId
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to start recording", e)
-                        sendEvent(ShowErrorMessage("Failed to start recording: $e"))
-                    }
-                }
-            }
-
-            is ConversationListUiAction.StopRecording -> {
-                viewModelScope.launch {
-                    try {
-                        val recordingData = _messagesUiState.value.recordingData
-                        _messagesUiState.update {
-                            it.copy(recordingData = recordingData?.copy(isProcessing = true))
-                        }
-
-                        audioRecorder.stopRecording()
-                        recordingData?.let { recordingData ->
-                            var waveFormImageFile: PlatformFile? = null
-                            var audioInfo: AudioFileInfo? = null
-                            try {
-                                audioInfo =
-                                    audioWaveFormGenerator.generateWaveForm(recordingData.file)
-                                val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(
-                                    audioInfo.waveForm,
-                                    1000,
-                                    200
-                                )
-                                waveFormImageFile = PlatformFile(
-                                    FileKit.cacheDir,
-                                    "waveform-${Uuid.generateV4()}.png"
-                                )
-                                waveFormImageFile.write(waveFormImageBytes)
-                            } catch (e: Exception) {
-                                Logger.e("Failed to generate waveform", e)
-                            }
-
-                            addMessageWithFiles(
-                                conversationId = recordingData.conversationId,
-                                content = "",
-                                files = listOf(
-                                    AttachmentPendingFile.Audio(
-                                        id = Uuid.random(),
-                                        audioFile = recordingData.file,
-                                        waveformFile = waveFormImageFile,
-                                        lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt()
-                                            ?: 0
-                                    )
-                                ),
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to send recording", e)
-                        sendEvent(ShowErrorMessage("Failed to send recording: ${e.message}"))
-                    }
-                    _messagesUiState.update { it.copy(recordingData = null) }
-                }
-            }
-
-            is ConversationListUiAction.CancelRecording -> {
-                viewModelScope.launch {
-                    try {
-                        audioRecorder.stopRecording()
-                        _messagesUiState.value.recordingData?.file?.delete(mustExist = false)
-                    } catch (_: Exception) {
-                        // ignore
-                    }
-                    _messagesUiState.update { it.copy(recordingData = null) }
-                }
-            }
+            is ConversationListUiAction.CancelRecording -> attachmentHandler.handleCancelRecording()
 
             is ConversationListUiAction.BlockUser -> {
                 uiState.value.ownerSession?.odinId?.let { currentUser ->
@@ -3072,121 +2248,6 @@ class ConversationListViewModel(
         }
     }
 
-    private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
-        fileId: Uuid,
-        keyHeader: KeyHeader,
-    ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = chatTargetDrive.alias,
-                fileId = fileId,
-                key = stub.key,
-                keyHeader = keyHeader,
-            )?.bytes?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
-        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
-    }
-
-    /**
-     * Decrypts the HLS segment payload + synthesizes a local playlist, then remuxes into an MP4
-     * using stream copy (no re-encoding). Returns (mp4Path, suggestedName) or null on failure.
-     */
-    private suspend fun downloadAndRemuxHlsToMp4(
-        fileId: Uuid,
-        payloadKey: String,
-        keyHeader: KeyHeader,
-        metadata: VideoMetadata,
-        suggestedBaseName: String?,
-    ): Pair<String, String>? {
-        val cacheDir = fileOperationsProvider.getCacheDirectory()
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = chatTargetDrive.alias,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) return null
-
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite segment
-        // references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
-        // same directory as tsPath — the playlist's relative segment reference resolves correctly.
-        val playlistPath = FFmpegUtils.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = FFmpegUtils.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
-
-        // Clean up intermediates regardless of success
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
-
-        if (!ok) return null
-
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Returns a safe filename for saving a downloaded file.
-     * If the original filename (from descriptorContent) has an extension, uses it as-is.
-     * Only derives an extension from contentType when there's no original filename or no extension.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace('\u0000', '_')
-
-        // If the original filename has an extension, trust it completely
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        // No extension in name — derive one from contentType
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
-    }
 
     private fun addMessageWithFiles(
         conversationId: Uuid,
@@ -3199,7 +2260,7 @@ class ConversationListViewModel(
             // user hit Send before the background poster task finished), wait on it once
             // so the message envelope ships with a poster frame.
             val resolvedFiles = files.map { f ->
-                if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
+                if (f is AttachmentPendingFile.FileVideo) attachmentHandler.ensureThumbnail(f) else f
             }
             val attachments = mutableListOf<AttachmentInput>()
             resolvedFiles.forEach { attachment ->
