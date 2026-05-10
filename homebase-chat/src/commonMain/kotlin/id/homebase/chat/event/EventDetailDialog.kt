@@ -233,7 +233,7 @@ private fun EventDetailContent(
                 icon = Icons.Default.CalendarMonth,
                 label = stringResource(MR.string.chat_event_download_ics),
                 actionLabel = null,
-                onClick = { calendarLauncher.addToCalendar(descriptor) },
+                onClick = { calendarLauncher.addToCalendar(descriptor, messageId) },
             )
 
             Spacer(Modifier.height(24.dp))

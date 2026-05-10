@@ -787,23 +787,29 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveScrollPosition -> {
-                _messagesUiState.update {
-                    it.copy(
-                        scrollPosition = ScrollPosition(
-                            firstVisibleItemIndex = action.firstVisibleItemIndex,
-                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+                // Pane resolves the visible-window index to a message anchor
+                // before dispatch. A null anchor means the visible window had
+                // nothing resolvable (empty list, all-non-message rows) — skip
+                // the write rather than overwrite the previous good anchor.
+                //
+                // No in-memory _messagesUiState update either: scrollPosition
+                // in MessageListUiState is only consumed when (a) priming the
+                // LazyListState on conversation switch (re-read from prefs
+                // there) or (b) honouring a programmatic triggerScroll.
+                // Neither benefits from the user-scroll debounce — and
+                // writing it here would cause a needless recomposition every
+                // 300 ms while the user is reading.
+                val anchor = action.anchorMessageId
+                if (anchor != null) {
+                    viewModelScope.launch {
+                        userPreferences.setConversationScrollAnchor(
+                            action.conversationId.toString(), anchor
                         )
-                    )
-                }
-
-                // Persist to user settings
-                viewModelScope.launch {
-                    userPreferences.setConversationScrollIndex(
-                        action.conversationId.toString(), action.firstVisibleItemIndex
-                    )
-                    userPreferences.setConversationScrollOffset(
-                        action.conversationId.toString(), action.firstVisibleItemScrollOffset
-                    )
+                        userPreferences.setConversationScrollOffset(
+                            action.conversationId.toString(),
+                            action.firstVisibleItemScrollOffset
+                        )
+                    }
                 }
             }
 
@@ -2510,10 +2516,32 @@ class ConversationListViewModel(
             "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
         }
 
+        // Always mark loading here, even when hasCachedMessages == true.
+        //
+        // Previously this short-circuited to `isLoadingMessages = !hasCachedMessages`
+        // so cached conversations skipped the loading state for instant-feel
+        // switching — but that caused a race when rapidly switching between
+        // a few cached conversations:
+        //   1. This update fires (isLoadingMessages = false, scrollPosition = null).
+        //   2. Pane's `remember(conversationId, isLoadingMessages)` re-evaluates
+        //      with the new (id, false) keys, sees scrollPosition = null, and
+        //      pre-inits LazyListState at Int.MAX_VALUE → land at bottom.
+        //   3. The collect block below THEN runs, calls getScrollPosition, and
+        //      writes the resolved scrollPosition to state — but the Pane's
+        //      `remember` block doesn't re-fire because its keys are unchanged,
+        //      so the LazyListState stays at the bottom.
+        //   4. snapshotFlow then persists "bottom" as the new anchor, sticking
+        //      the bug for that conversation.
+        //
+        // Holding loading=true until the collect block atomically lands
+        // (messages, scrollPosition, isLoadingMessages=false) closes the race:
+        // the Pane's remember only re-evaluates ONCE, with the resolved scroll.
+        // The brief blank-screen window is the same one uncached switches
+        // already have (a few ms of groupBy + clustering on Dispatchers.Default).
         _messagesUiState.update {
             it.copy(
                 scrollPosition = null,
-                isLoadingMessages = !hasCachedMessages,
+                isLoadingMessages = true,
                 replyToMessage = null,
             )
         }
@@ -2626,9 +2654,12 @@ class ConversationListViewModel(
                             // ChatMessagesData.Messages emission retries the
                             // lookup (messages stream re-emits on each sync
                             // batch). Clear only once the message is found.
-                            val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
+                            // Capture the requested scroll-to-message id BEFORE we null it
+                            // so we can persist it as the new anchor below.
+                            val targetMessageId = messageIdForScrollNullable
+                            val indexOfMessageForScroll = if (targetMessageId != null) {
                                 val messageIndex = messagesModels.indexOfLast {
-                                    it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
+                                    it is MessageListContentModel.Message && it.message.id == targetMessageId
                                 }
                                 if (messageIndex >= 0) {
                                     messageIdForScrollNullable = null
@@ -2643,7 +2674,7 @@ class ConversationListViewModel(
                             val newScroll = if (indexOfMessageForScroll == null) {
                                 if (setInitialScroll && !scrollToBottom) {
                                     Logger.i("Getting saved scroll position")
-                                    getScrollPosition(conversationId)
+                                    getScrollPosition(conversationId, messagesModels)
                                 } else {
                                     Logger.i("No saved scroll position")
                                     null
@@ -2656,14 +2687,18 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            if (newScroll != null) {
-                                userPreferences.setConversationScrollIndex(
+                            // Persist the anchor only when we just landed on a freshly
+                            // requested message (the messageIdForScroll path). The
+                            // saved-anchor path doesn't need to re-persist itself, and
+                            // the user-scroll path persists via SaveScrollPosition.
+                            if (indexOfMessageForScroll != null && targetMessageId != null) {
+                                userPreferences.setConversationScrollAnchor(
                                     conversationId.toString(),
-                                    newScroll.firstVisibleItemIndex
+                                    targetMessageId,
                                 )
                                 userPreferences.setConversationScrollOffset(
                                     conversationId.toString(),
-                                    newScroll.firstVisibleItemScrollOffset
+                                    newScroll!!.firstVisibleItemScrollOffset,
                                 )
                             }
 
@@ -2710,19 +2745,28 @@ class ConversationListViewModel(
         }
     }
 
-    private fun getScrollPosition(conversationId: Uuid): ScrollPosition? {
-        val firstVisibleItemIndex =
-            userPreferences.getConversationScrollIndex(conversationId.toString())
+    /**
+     * Resolve the persisted scroll anchor for [conversationId] against the
+     * freshly-loaded [messages] list. The anchor is a message uniqueId — we
+     * scan the list for the matching [MessageListContentModel.Message] and
+     * return its index. Returns `null` when no anchor was saved, when the
+     * anchor isn't in the current window (deleted, not-yet-synced, or one of
+     * the rare race cases), or when the offset wasn't saved alongside it.
+     * The caller falls through to the "land at bottom" path in those cases.
+     */
+    private fun getScrollPosition(
+        conversationId: Uuid,
+        messages: List<MessageListContentModel>,
+    ): ScrollPosition? {
+        val anchor =
+            userPreferences.getConversationScrollAnchor(conversationId.toString()) ?: return null
         val firstVisibleItemScrollOffset =
-            userPreferences.getConversationScrollOffset(conversationId.toString())
-
-        if (firstVisibleItemIndex != null && firstVisibleItemScrollOffset != null) {
-            return ScrollPosition(
-                firstVisibleItemIndex = firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = firstVisibleItemScrollOffset
-            )
-        }
-        return null
+            userPreferences.getConversationScrollOffset(conversationId.toString()) ?: return null
+        val resolvedIndex = resolveAnchorIndex(messages, anchor) ?: return null
+        return ScrollPosition(
+            firstVisibleItemIndex = resolvedIndex,
+            firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
+        )
     }
 
     private fun sendEvent(event: ConversationListUiEvent) {

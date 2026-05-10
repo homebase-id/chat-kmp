@@ -14,7 +14,7 @@ import kotlin.uuid.Uuid
 /**
  * Locks down the SQL-userDate override path on `updateWithLatestMessage`.
  *
- * The bug this guards: `ChatMessageStream.mapToMessageData` clamps the
+ * The bug this guards: `mapToMessageData` (in `MessageMapper.kt`) clamps the
  * in-memory `MessageUiModel.userDate` to `min(appData.userDate, transitCreated)`.
  * When a peer's `appData.userDate` runs ahead of `transitCreated`, the
  * conversation's `latestMessageTimestamp` would freeze at the smaller

@@ -51,7 +51,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.location.LocationResult
@@ -126,7 +125,6 @@ private fun EventComposerContent(
     onSent: () -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
-    val ownerSession: OwnerSessionRepository = koinInject()
     val scope = rememberCoroutineScope()
 
     var title by remember { mutableStateOf("") }
@@ -201,9 +199,7 @@ private fun EventComposerContent(
                 val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
                 val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
                 val endUtcMs = if (hasEndTime) endDateTime.toInstant(tz).toEpochMilliseconds() else null
-                val authorOdinId = ownerSession.user.value?.odinId?.domainName ?: ""
                 val descriptor = EventDescriptor(
-                    eventId = Uuid.random().toString(),
                     title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
                     description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
                     startUtcMs = startUtcMs,
@@ -213,8 +209,6 @@ private fun EventComposerContent(
                     lat = locationLat,
                     lon = locationLon,
                     meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
-                    createdByOdinId = authorOdinId,
-                    createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
                 )
                 runCatching {
                     sender.sendNewTypedMessage(

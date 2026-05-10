@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import associateNotNull
@@ -32,6 +33,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.resolveAnchorMessageId
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
@@ -109,6 +111,13 @@ fun ConversationMessagesPane(
         }
     }
 
+    // The LaunchedEffect below is keyed only on `listState`, so its captured
+    // `uiState.messages` would freeze at composition time. `rememberUpdatedState`
+    // gives the lambda a State handle whose `.value` reads the latest messages
+    // list at each emission — so the index → anchor resolution always uses the
+    // currently-rendered window, not a stale one.
+    val latestMessages = rememberUpdatedState(uiState.messages)
+
     // Save scroll position when it changes
     LaunchedEffect(listState) {
         val conversationId = conversation.conversation.id
@@ -127,14 +136,17 @@ fun ConversationMessagesPane(
                 // Only save if we're still viewing the same conversation, messages are loaded,
                 // and not restoring
                 if (index != null && !uiState.isLoadingMessages) {
-                    Logger.i("Scroll changed: id=${conversationId} -> $index:$offset")
-                    onUiAction(
-                        SaveScrollPosition(
-                            conversationId = conversationId,
-                            firstVisibleItemIndex = index,
-                            firstVisibleItemScrollOffset = offset
+                    val anchorId = resolveAnchorMessageId(latestMessages.value, index)
+                    if (anchorId != null) {
+                        Logger.i("Scroll changed: id=${conversationId} -> anchor=$anchorId offset=$offset (idx=$index)")
+                        onUiAction(
+                            SaveScrollPosition(
+                                conversationId = conversationId,
+                                anchorMessageId = anchorId,
+                                firstVisibleItemScrollOffset = offset,
+                            )
                         )
-                    )
+                    }
                 }
             }
     }
