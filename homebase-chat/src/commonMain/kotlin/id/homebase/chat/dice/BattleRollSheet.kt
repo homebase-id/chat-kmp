@@ -18,15 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,17 +49,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
-import id.homebase.resources.chat_dice_composer_title
-import id.homebase.resources.chat_dice_count_label
-import id.homebase.resources.chat_dice_count_value
-import id.homebase.resources.chat_dice_decrement
-import id.homebase.resources.chat_dice_face_label
-import id.homebase.resources.chat_dice_faces_label
-import id.homebase.resources.chat_dice_increment
-import id.homebase.resources.chat_dice_max_dice_warning
+import id.homebase.resources.chat_dice_battle_target
+import id.homebase.resources.chat_dice_battle_title
 import id.homebase.resources.chat_dice_roll
 import id.homebase.resources.chat_dice_rolling
 import id.homebase.resources.chat_dice_shake_hint
@@ -72,21 +62,23 @@ import id.homebase.resources.menu_back
 import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
 /**
- * Fullscreen composer for a dice roll. Mirrors `EventComposerSheet`'s shape:
- * `Dialog` → `Scaffold` → form → primary action. State is local — the composer
- * is short-lived. Last-used `count`/`faces` are seeded from
- * [DiceRollPreferences] and written back on send.
+ * Fullscreen "roll to beat them" sheet. Locks dice config to the chain's newest
+ * member (so a long-press on an older bubble still battles the latest roll).
+ * Bakes the leaders snapshot into the new descriptor at send so receiving
+ * bubbles render self-contained.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiceRollComposerSheet(
-    conversationId: Uuid,
+fun BattleRollSheet(
+    parentMessage: MessageUiModel,
+    chainDescriptors: ImmutableList<DiceRollDescriptor>,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
@@ -94,8 +86,9 @@ fun DiceRollComposerSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        DiceRollComposerContent(
-            conversationId = conversationId,
+        BattleRollSheetContent(
+            parentMessage = parentMessage,
+            chainDescriptors = chainDescriptors,
             onDismiss = onDismiss,
             onSent = onSent,
         )
@@ -104,53 +97,55 @@ fun DiceRollComposerSheet(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun DiceRollComposerContent(
-    conversationId: Uuid,
+private fun BattleRollSheetContent(
+    parentMessage: MessageUiModel,
+    chainDescriptors: ImmutableList<DiceRollDescriptor>,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
-    val preferences: DiceRollPreferences = koinInject()
     val shakeDetector: ShakeDetector = koinInject()
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
 
-    val initialFaces by preferences.lastFaces.collectAsStateWithLifecycle()
-    val initialCount by preferences.lastCount.collectAsStateWithLifecycle()
-
-    var faces by remember { mutableIntStateOf(coerceFaces(initialFaces)) }
-    var count by remember { mutableIntStateOf(coerceCount(initialCount)) }
-
-    // Faces visible in the preview row. While rolling, this updates rapidly.
-    val displayValues: SnapshotStateList<Int?> = remember {
-        List<Int?>(count) { null }.toMutableStateList()
+    val parentDescriptor = (parentMessage.messageContent as? MessageContent.DiceRoll)?.descriptor
+    if (parentDescriptor == null || !parentDescriptor.isValid()) {
+        // Defensive — caller should have gated this. Auto-dismiss if we ever land
+        // here so the sheet doesn't show empty UI on a malformed parent.
+        LaunchedEffect(Unit) { onDismiss() }
+        return
     }
-    LaunchedEffect(count, faces) {
-        // Resize the preview list to match `count` and clear any settled values
-        // so the user sees the right number of placeholder dice.
-        while (displayValues.size < count) displayValues.add(null)
-        while (displayValues.size > count) displayValues.removeAt(displayValues.lastIndex)
+
+    // Lock to the chain's newest member, not necessarily what was long-pressed.
+    val newest = remember(parentDescriptor.chainRootMessageId(), chainDescriptors) {
+        findChainNewest(parentDescriptor, chainDescriptors)
+    }
+    val faces = newest.faces
+    val count = newest.latest.results.size
+
+    val ownerOdinId = ownerSession.user.collectAsStateWithLifecycle().value?.odinId
+
+    val displayValues: SnapshotStateList<Int?> = remember(count) {
+        List<Int?>(count) { null }.toMutableStateList()
     }
 
     var rolling by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     val isBusy by remember { derivedStateOf { rolling || sending } }
 
-    // Hold latest shake samples so the next roll can mix them into the seed.
     var shakeSamples by remember { mutableStateOf<List<Long>?>(null) }
     var shakeTriggered by remember { mutableStateOf(false) }
 
     val doRoll: () -> Unit = roll@{
         if (isBusy) return@roll
+        if (ownerOdinId == null) return@roll
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         rolling = true
         val seed = if (shakeTriggered) shakeSamples else null
         val finalResults = roll(count = count, faces = faces, shakeSamples = seed)
         scope.launch {
-            // Tumble animation: cycle through random faces, then settle.
-            val frames = TUMBLE_FRAMES
-            for (frame in 0 until frames) {
+            for (frame in 0 until TUMBLE_FRAMES) {
                 for (i in 0 until count) {
                     displayValues[i] = Random.nextInt(1, faces + 1)
                 }
@@ -161,32 +156,26 @@ private fun DiceRollComposerContent(
             rolling = false
             sending = true
 
-            preferences.setLast(count, faces)
-            val authorOdinId = ownerSession.user.value?.odinId
-            if (authorOdinId == null) {
-                sending = false
-                shakeTriggered = false
-                shakeSamples = null
-                onSent()
-                return@launch
-            }
             val messageId = Uuid.random()
+            val nowMs = Clock.System.now().toEpochMilliseconds()
+            // Guarantee strict-monotonic timestamps so isValid()'s chronology
+            // check passes even on devices with coarse clocks.
+            val rolledAtUtcMs = maxOf(nowMs, newest.latest.rolledAtUtcMs + 1)
+            val newEntry = ChainRoll(
+                messageId = messageId,
+                odinId = ownerOdinId,
+                results = finalResults,
+                rolledAtUtcMs = rolledAtUtcMs,
+                source = if (seed != null) RollSource.ShakeSeeded else RollSource.LocalRandom,
+            )
             val descriptor = DiceRollDescriptor(
                 faces = faces,
-                rolls = listOf(
-                    ChainRoll(
-                        messageId = messageId,
-                        odinId = authorOdinId,
-                        results = finalResults,
-                        rolledAtUtcMs = Clock.System.now().toEpochMilliseconds(),
-                        source = if (seed != null) RollSource.ShakeSeeded else RollSource.LocalRandom,
-                    ),
-                ),
+                rolls = newest.rolls + newEntry,
             )
             runCatching {
                 sender.sendNewTypedMessage(
                     messageUniqueId = messageId,
-                    conversationId = conversationId,
+                    conversationId = parentMessage.conversationId,
                     content = MessageContent.DiceRoll(descriptor),
                     previousMessageUniqueId = null,
                 )
@@ -198,7 +187,6 @@ private fun DiceRollComposerContent(
         }
     }
 
-    // Subscribe to shake events while the composer is open (when available).
     LaunchedEffect(shakeDetector.isAvailable) {
         if (!shakeDetector.isAvailable) return@LaunchedEffect
         shakeDetector.events().collect { event ->
@@ -211,7 +199,7 @@ private fun DiceRollComposerContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.chat_dice_composer_title)) },
+                title = { Text(stringResource(MR.string.chat_dice_battle_title)) },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
                         Icon(
@@ -232,18 +220,45 @@ private fun DiceRollComposerContent(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            FacesSelector(
-                selectedFaces = faces,
-                onFacesChange = { if (!isBusy) faces = it },
-                enabled = !isBusy,
+            // Header — beat the chain's current leader. Read directly from
+            // newest's embedded history.
+            val leaderSum = newest.rolls.maxOf { it.sum }
+            val leaderName = newest.rolls
+                .firstOrNull { it.sum == leaderSum }
+                ?.odinId?.domainName
+                ?.substringBefore('.')
+                ?.ifBlank { null }
+                ?: newest.latest.odinId.domainName
+            Text(
+                text = stringResource(
+                    MR.string.chat_dice_battle_target,
+                    leaderSum,
+                    leaderName,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
 
-            CountStepper(
-                count = count,
-                onCountChange = { if (!isBusy) count = it },
-                enabled = !isBusy,
-            )
+            // Show opponent's faces so it's visually clear what dice we're battling.
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for (v in newest.latest.results) {
+                        DiceFaceImage(
+                            faces = newest.faces,
+                            value = v,
+                            modifier = Modifier.size(40.dp),
+                        )
+                    }
+                }
+            }
 
+            // Our roll preview row (placeholders until rolled).
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
@@ -307,117 +322,5 @@ private fun DiceRollComposerContent(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FacesSelector(
-    selectedFaces: Int,
-    onFacesChange: (Int) -> Unit,
-    enabled: Boolean,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(MR.string.chat_dice_faces_label),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (option in DiceRollDescriptor.ALLOWED_FACES) {
-                FilterChip(
-                    selected = option == selectedFaces,
-                    enabled = enabled,
-                    onClick = { onFacesChange(option) },
-                    label = {
-                        Text(
-                            text = stringResource(MR.string.chat_dice_face_label, option),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    },
-                    colors = FilterChipDefaults.filterChipColors(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CountStepper(
-    count: Int,
-    onCountChange: (Int) -> Unit,
-    enabled: Boolean,
-) {
-    val atMax = count >= DiceRollDescriptor.MAX_DICE
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(MR.string.chat_dice_count_label),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = { onCountChange((count - 1).coerceAtLeast(1)) },
-                enabled = enabled && count > 1,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Remove,
-                    contentDescription = stringResource(MR.string.chat_dice_decrement),
-                )
-            }
-            Text(
-                text = stringResource(MR.string.chat_dice_count_value, count),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-            IconButton(
-                onClick = {
-                    onCountChange((count + 1).coerceAtMost(DiceRollDescriptor.MAX_DICE))
-                },
-                enabled = enabled && !atMax,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = stringResource(MR.string.chat_dice_increment),
-                )
-            }
-        }
-        if (atMax) {
-            Text(
-                text = stringResource(
-                    MR.string.chat_dice_max_dice_warning,
-                    DiceRollDescriptor.MAX_DICE,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 private const val TUMBLE_FRAMES = 6
 private const val TUMBLE_FRAME_MS = 80L
-
-private fun coerceFaces(value: Int): Int =
-    if (value in DiceRollDescriptor.ALLOWED_FACES) value else DiceRollPreferences.DEFAULT_FACES
-
-private fun coerceCount(value: Int): Int =
-    value.coerceIn(1, DiceRollDescriptor.MAX_DICE)
-
-/**
- * Pure roll function — extracted so it's unit-testable. When [shakeSamples] is
- * non-empty we XOR the samples into the seed for an extra dose of fun-grade
- * entropy; otherwise we fall back to [Random.Default].
- */
-internal fun roll(count: Int, faces: Int, shakeSamples: List<Long>?): List<Int> {
-    require(count >= 1) { "count must be >= 1" }
-    require(faces in DiceRollDescriptor.ALLOWED_FACES) { "faces $faces not allowed" }
-    val rng = if (!shakeSamples.isNullOrEmpty()) {
-        var seed = Clock.System.now().toEpochMilliseconds()
-        for (sample in shakeSamples) seed = seed xor sample
-        Random(seed)
-    } else {
-        Random.Default
-    }
-    return List(count) { rng.nextInt(1, faces + 1) }
-}

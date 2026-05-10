@@ -438,6 +438,16 @@ fun GroupSettingsUi(
                             }
                         )
                     }
+                    if (uiState.filesDiagnostic != null) {
+                        item {
+                            HorizontalDivider()
+                            GroupFilesDiagnosticBlock(
+                                diagnostic = uiState.filesDiagnostic,
+                                selfDomain = uiState.currentOdinId?.domainName,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                            )
+                        }
+                    }
                 }
             }
         }

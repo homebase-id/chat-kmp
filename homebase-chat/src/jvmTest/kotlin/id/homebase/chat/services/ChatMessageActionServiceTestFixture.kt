@@ -566,6 +566,15 @@ class FakeMessageLookup : MessageLookup {
 
     override suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? =
         error("FakeMessageLookup.loadFullMessage not exercised by tests using this fixture")
+
+    /** Mirrors the real implementation's contract: returns the cached fileId
+     *  if the message has been seeded into [records], otherwise null so the
+     *  caller falls through to its DB lookup. Existing requireFileId tests
+     *  seed only the DriveMainIndex row (not [records]), so they exercise
+     *  the DB fall-through; tests that want to assert the cache-hit path
+     *  add the message to [records] explicitly. */
+    override fun findCachedFileId(messageId: Uuid): Uuid? =
+        records.firstOrNull { it.id == messageId }?.fileId
 }
 
 class FakeLocalLastReadUpdater : LocalLastReadUpdater {

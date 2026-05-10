@@ -1635,6 +1635,14 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(replyToMessage = action.message) }
             }
 
+            is ConversationListUiAction.BattleDiceRoll -> {
+                _messagesUiState.update { it.copy(battleTargetMessage = action.message) }
+            }
+
+            ConversationListUiAction.CancelBattleDiceRoll -> {
+                _messagesUiState.update { it.copy(battleTargetMessage = null) }
+            }
+
             is ConversationListUiAction.ForwardMessage -> {
                 viewModelScope.launch {
                     try {

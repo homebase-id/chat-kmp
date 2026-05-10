@@ -134,6 +134,8 @@ sealed interface ConversationListUiAction {
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class BattleDiceRoll(val message: MessageUiModel) : ConversationListUiAction
+    data object CancelBattleDiceRoll : ConversationListUiAction
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
     data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
     data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction

@@ -247,6 +247,100 @@ class OptimisticWriter(
         }
     }
 
+    /**
+     * Persist a local-only admin-file placeholder for a group whose admin file
+     * is missing or broken. Counterpart to [writeLocalOnlyConversationPlaceholder]
+     * for the group's admin file.
+     *
+     * Used by the receive-side heal handler when the incoming heal message
+     * carries `canonicalAdmins`. Strictly local: no outbox enqueue, no
+     * `isPendingSendTag`. The row exists so [getAdmins] can read the canonical
+     * admin set immediately, instead of falling back to `originalAuthor`.
+     *
+     * The placeholder uses the canonical [adminUniqueId] derived from the
+     * conversation id (`ChatProtocol.getAdminFileUniqueId`) so a future peer
+     * push of the real admin file replaces the placeholder by uniqueId.
+     *
+     * `versionTag = null` and `updated = ZeroTime` for the same reason as
+     * [writeLocalOnlyConversationPlaceholder]: any non-zero `modified` here
+     * would block the real file's upsert via DriveMainIndex.sq:68.
+     */
+    suspend fun writeLocalOnlyAdminPlaceholder(
+        driveId: Uuid,
+        conversationId: Uuid,
+        admins: List<OdinId>,
+    ) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val domain = credentials.domain
+        val created = UnixTimeUtc.now()
+        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+        val content = OdinSystemSerializer.serialize(
+            id.homebase.chat.services.convo.ConversationAdminInfo(admins = admins)
+        )
+
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = driveId,
+            serverFileIsEncrypted = true,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = KeyHeader.newRandom16(),
+            fileMetadata = FileMetadata(
+                appData = AppFileMetaData(
+                    uniqueId = adminUniqueId,
+                    tags = null,
+                    fileType = ChatProtocol.ConversationAdminFileType,
+                    dataType = 0,
+                    groupId = conversationId,
+                    userDate = null,
+                    content = content,
+                    previewThumbnail = null,
+                    archivalStatus = null,
+                ),
+                localAppData = LocalAppMetadata(
+                    tags = emptyList(),
+                ),
+                created = created,
+                updated = UnixTimeUtc.ZeroTime,
+                isEncrypted = true,
+                senderOdinId = domain,
+                originalAuthor = domain,
+                versionTag = null,
+                payloads = null,
+            ),
+            serverMetadata = ServerMetadata(
+                accessControlList = AccessControlList(
+                    requiredSecurityGroup = "Owner"
+                ),
+                allowDistribution = true,
+                fileSystemType = FileSystemType.Standard,
+                fileByteCount = 100,
+                originalRecipientCount = admins.size,
+                transferHistory = null,
+            ),
+            priority = 100,
+            fileByteCount = 100,
+        )
+
+        try {
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = listOf(file),
+                cursor = null,
+            )
+            Logger.i(tag = TAG) {
+                "writeLocalOnlyAdminPlaceholder: persisted adminUniqueId=$adminUniqueId " +
+                        "conversationId=$conversationId driveId=$driveId admins(${admins.size})=${admins.map { it.domainName }} fileId=${file.fileId}"
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "writeLocalOnlyAdminPlaceholder FAILED for adminUniqueId=$adminUniqueId conversationId=$conversationId"
+            }
+            throw e
+        }
+    }
+
     suspend fun writeUpdate(
         driveId: Uuid,
         keyHeader: KeyHeader,

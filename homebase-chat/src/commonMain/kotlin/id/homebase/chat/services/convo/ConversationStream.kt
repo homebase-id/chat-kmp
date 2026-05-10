@@ -83,12 +83,18 @@ class ConversationStream(
     /** Hook for explicit (non-sync) conversation recovery.
      *
      *  Wired in AppModule to ConversationService.recoverConversation().
-     *  Currently has no live caller — the previous sync-handler triggers
-     *  were removed because enqueuing a server write from inside a
-     *  drive-sync batch produced spurious conflicts (real file later in
-     *  sync, or transfer-to-self). The plumbing is retained so a future
-     *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
-     *  reconciliation pass) can wire in without touching DI. */
+     *  Live callers:
+     *    - [triggerRecoveryForInvalidRows] (post-load reconciliation for
+     *      rows whose state is [ConversationState.Invalid]).
+     *    - the orphan branch in [processMessageBatchIncrementally] (when an
+     *      incoming message references a conversationId with no main file
+     *      in the local DB — closes the gap where requireConversation
+     *      would otherwise throw on every send/react/markRead).
+     *
+     *  recoverConversation is local-only today (writes a versionTag=null
+     *  placeholder, no outbox enqueue, no peer fan-out), so it is safe to
+     *  call from inside a drive-sync batch handler. The historic concerns
+     *  about server-write conflicts no longer apply. */
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
 
     /**
@@ -136,6 +142,34 @@ class ConversationStream(
     var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
     // endregion
 
+    // region Unread-count dirty bits
+    // Conversation IDs whose unread count is suspected stale relative to the
+    // DB. Set when a conversation file arrives and its lastRead advanced
+    // (peer-device mark-as-read) or when a brand-new conversation appears
+    // in memory without an unread baseline. The Stopped handler (drive-sync)
+    // and the WebSocket-batch handler each check this set at their respective
+    // checkpoints; if non-empty, run [enrichAllConversationsWithUnreadCounts],
+    // which clears the set at the top.
+    //
+    // Only mutated from inside the sequential `eventBus.events.collect { ... }`
+    // loop in init and from inside enrichAllConversationsWithUnreadCounts,
+    // so no synchronization is needed.
+    //
+    // All access goes through [markUnreadDirty] / [hasDirtyUnread] /
+    // [clearDirtyUnread] so callers don't reach into the set directly.
+    private val dirtyUnreadIds = mutableSetOf<Uuid>()
+
+    private fun markUnreadDirty(conversationId: Uuid) {
+        dirtyUnreadIds += conversationId
+    }
+
+    private fun hasDirtyUnread(): Boolean = dirtyUnreadIds.isNotEmpty()
+
+    private fun clearDirtyUnread() {
+        dirtyUnreadIds.clear()
+    }
+    // endregion
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
@@ -144,10 +178,10 @@ class ConversationStream(
     // file notification — arrive as BatchReceived events and are applied incrementally.
     // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
     // incremental BatchReceived path is sufficient and avoids an expensive full reload
-    // on every incoming message. We DO, however, re-enrich unread counts on Stopped —
-    // that's a small ChatReadCount scan and catches reads written by batches that
-    // landed during the sync round (and message-only batches, which the per-batch
-    // enrich path further down doesn't cover).
+    // on every incoming message. Unread counts are re-enriched at end-of-sync only
+    // when [hasDirtyUnread] is true (see the dirty-bit region) — i.e. when a
+    // conversation file's lastRead actually advanced during the round, which is
+    // the only case `enrichAllConversationsWithUnreadCounts` materially changes.
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -178,17 +212,19 @@ class ConversationStream(
                                     }
                                 }
                             }
-                            // Re-enrich unread counts after the chat-drive sync
-                            // completes — but only if the sync actually received
-                            // records. totalCount=0 means no batches, no writes to
-                            // ChatReadCount, so nothing to re-enrich. Replaces the
-                            // old BackendEvent.ConnectionOnline trigger so the second
-                            // cold-boot enrich (when there is one) now lands AFTER
-                            // sync writes (deterministic order), not concurrent with them.
-                            if (event.totalCount > 0) {
+                            // Re-enrich unread counts at end of round, but only
+                            // if a conversation file's lastRead actually advanced
+                            // during the round (peer-device mark-as-read echo).
+                            // [markUnreadDirty] is called from
+                            // [processConversationBatchIncrementally] when that
+                            // happens. Anything else the round brought —
+                            // metadata-only conversation updates, message-only
+                            // batches, admin files — leaves the dirty set empty
+                            // and skips the ~500ms full-DB recount.
+                            if (hasDirtyUnread()) {
                                 scope.launch {
                                     try {
-                                        enrichAllConversationsWithUnreadCounts()
+                                        enrichAllConversationsWithUnreadCounts(trigger = "Stopped")
                                     } catch (e: Exception) {
                                         Logger.e(e) {
                                             "ConversationStream: post-Stopped enrich failed: ${e.message}"
@@ -223,7 +259,7 @@ class ConversationStream(
                         )
 
                         if (conversationFiles.isNotEmpty())
-                            processConversationBatchIncrementally(conversationFiles)
+                            processConversationBatchIncrementally(conversationFiles, event.source)
 
                         if (messageFiles.isNotEmpty())
                             processMessageBatchIncrementally(messageFiles)
@@ -282,7 +318,44 @@ class ConversationStream(
         if (messageFiles.size != incoming.size)
             Logger.w("ConversationStream: ${messageFiles.size - incoming.size} of ${messageFiles.size} messages failed to convert")
 
-        for ((file, m) in incoming) {
+        // ╔══════════════════════════════════════════════════════════════╗
+        // ║  HACK ── REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-WRITE      ║
+        // ║                                                              ║
+        // ║  TODO(server): the chat-drive WS currently emits N           ║
+        // ║  notifications (typically 3) per logical file write — same   ║
+        // ║  uniqueId, same versionTag, same content, just delivered     ║
+        // ║  multiple times. Suspected cause: multi-stage server-side    ║
+        // ║  processing or duplicated subscription registration.         ║
+        // ║                                                              ║
+        // ║  Downstream caches dedupe naturally:                         ║
+        // ║    • [DriveMainIndex] upsert is idempotent on uniqueId.      ║
+        // ║    • [ActiveConversationState.upsertMessages] collapses by   ║
+        // ║      `m.id`.                                                 ║
+        // ║                                                              ║
+        // ║  But the per-message side effects in this loop (unread bump  ║
+        // ║  via [applyIncomingMessageBump], orphan placeholder, deleted-║
+        // ║  conversation revive, auto-unarchive) would otherwise fire   ║
+        // ║  N times per logical message — N-x over-counting unread      ║
+        // ║  observable in homebase.log as repeated `unread++` lines all ║
+        // ║  carrying the same convo id within a millisecond.            ║
+        // ║                                                              ║
+        // ║  Until the server is fixed, we collapse the batch by         ║
+        // ║  message id here. `associateBy` keeps the LAST occurrence on ║
+        // ║  key collision, which gives us the latest wire state.        ║
+        // ║                                                              ║
+        // ║  When the server-side fix lands: delete this block and the   ║
+        // ║  loop should iterate `incoming` directly.                    ║
+        // ╚══════════════════════════════════════════════════════════════╝
+        val deduped = incoming.associateBy { (_, m) -> m.id }.values.toList()
+        if (deduped.size != incoming.size) {
+            Logger.w(
+                "ConversationStream: HACK dedupe — dropped ${incoming.size - deduped.size} " +
+                    "duplicate message file(s) from batch (server fan-out workaround; " +
+                    "kept ${deduped.size} unique by id)"
+            )
+        }
+
+        for ((file, m) in deduped) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
 
             // Drop messages for conversations the user has left or been removed from
@@ -389,26 +462,70 @@ class ConversationStream(
 
                 // region Placeholder: conversation file not yet synced
                 // Insert a UI placeholder so the message is visible now.
-                // Intentionally do NOT enqueue a server-side recovery from
-                // here. A drive-sync handler reads server state; enqueuing
-                // a server write from inside that read produced spurious
+                // We intentionally do NOT enqueue a server-side write from
+                // here — that path historically produced spurious
                 // "File already exists with ClientUniqueId" conflicts
                 // (when the real conversation file is simply later in the
                 // sync order) and "Cannot transfer to yourself" rejections
-                // (when originalAuthor == self for groups we started), for
-                // every login. Recovery is now self-healing:
+                // (when originalAuthor == self for groups we started).
+                //
+                // We DO trigger [onRecoverConversation] (local-only — writes a
+                // versionTag=null placeholder via
+                // OptimisticWriter.writeLocalOnlyConversationPlaceholder, no
+                // outbox enqueue, no peer fan-out). This closes the gap that
+                // used to leave a user with messages arriving for a
+                // conversation whose main file was missing from local DB:
+                // requireConversation would throw on every send/react/markRead
+                // because getConversationHomebaseFile returned null. Wiring
+                // the local-only recovery here gives us a DB row immediately,
+                // so requireConversation succeeds and the heal flow can take
+                // over if the canonical author is online.
+                //
+                // Self-healing for the in-memory UI is unchanged:
                 //   1. If the real conversation file exists on the server
                 //      (the common case), it will arrive in a later sync
                 //      batch and replace this placeholder via
                 //      processConversationBatchIncrementally →
                 //      updateConversation.
-                //   2. If the server truly lacks the file, the placeholder
-                //      stays until the user interacts with the
-                //      conversation. A follow-up will add "ensure
-                //      conversation file on send" to close that gap.
+                //   2. If the server truly lacks the file, the local-only
+                //      placeholder written by recoverConversation persists
+                //      until a peer push from a member who has the file
+                //      restores it.
                 Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
                 placeholderIds += m.conversationId
+
+                // Fire-and-forget local-only recovery. recoveryAttemptedIds
+                // dedups within a session — exactly one attempt per missing
+                // conversation, matching triggerRecoveryForInvalidRows
+                // (line 841). The recover lambda may be null (DI not wired
+                // for tests / before AppModule binds it).
+                val recover = onRecoverConversation
+                if (recover != null && recoveryAttemptedIds.add(m.conversationId)) {
+                    val convoId = m.conversationId
+                    val originalAuthor = m.originalAuthor
+                    Logger.i(tag = "OrphanRecovery") {
+                        "ConversationStream: triggering recoverConversation from orphan branch " +
+                            "convoId=$convoId originalAuthor=${originalAuthor?.domainName} sender=${m.sender?.domainName} isOneToOne=$isOneToOne"
+                    }
+                    scope.launch {
+                        try {
+                            recover(convoId, originalAuthor)
+                            Logger.i(tag = "OrphanRecovery") {
+                                "ConversationStream: orphan-branch recoverConversation completed convoId=$convoId"
+                            }
+                        } catch (t: Throwable) {
+                            Logger.e(throwable = t, tag = "OrphanRecovery") {
+                                "ConversationStream: orphan-branch recoverConversation FAILED convoId=$convoId — " +
+                                    "in-memory placeholder will keep the message visible but requireConversation may still throw on send"
+                            }
+                        }
+                    }
+                } else if (recover == null) {
+                    Logger.d(tag = "OrphanRecovery") {
+                        "ConversationStream: orphan branch — onRecoverConversation not wired, skipping local-only recovery for ${m.conversationId}"
+                    }
+                }
                 // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m, file.sqlUserDateMs())
@@ -426,6 +543,21 @@ class ConversationStream(
      *   conversation's `latestMessageTimestamp` so it stays in lock-step with
      *   `selectAllUnreadCount`. The clamped `m.userDate` is correct for
      *   display but can underrun the SQL value.
+     *
+     * Writes the message-preview fields and the bumped [unreadCount]
+     * directly to [_conversations]. Does NOT route through
+     * [updateConversation] — that helper is designed for whole-file
+     * refreshes and explicitly preserves `existing.unreadCount` (because
+     * incoming-from-file always maps with `unreadCount=0`). Routing this
+     * path through it silently drops the bump; the bug was masked while
+     * `Stopped` always re-ran [enrichAllConversationsWithUnreadCounts]
+     * but is no longer masked now that the dirty-bit gates the post-sync
+     * recount.
+     *
+     * The map callback reads `existing` (live state) instead of the
+     * captured `c` parameter so consecutive bumps for the same
+     * conversation in one batch are additive — each iteration of the
+     * caller's loop sees the previous iteration's write.
      */
     private suspend fun updateConversationFromNewMessage(
         c: ConversationUiModel,
@@ -433,27 +565,27 @@ class ConversationStream(
         sqlUserDateMs: Long,
     ) {
         val sqlUserDate = Instant.fromEpochMilliseconds(sqlUserDateMs)
-        if (sqlUserDate >= c.latestMessageTimestamp) {
-            val domain = credentialsManager.getActiveDomain()
+        val domain = credentialsManager.getActiveDomain()
 
-            val increment =
-                if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0
-            if (increment > 0) {
-                Logger.d("ConversationStream: unread++ convo=${c.id} count=${c.unreadCount + increment}")
-            }
+        val current = _conversations.value
+        val updated = applyIncomingMessageBump(
+            items = current.items,
+            targetConversationId = c.id,
+            m = m,
+            sqlUserDate = sqlUserDate,
+            activeDomain = domain,
+        ) ?: return
 
-            val updatedConversation = c.copy(
-                unreadCount = c.unreadCount + increment,
-                latestMessageTimestamp = sqlUserDate,
-                lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
-                lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
-                lastMessageIsDeleted = m.isDeleted,
-                lastMessageFirstPayload = m.payloads?.firstOrNull(),
-                lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
-                lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain()),
-            )
-            updateConversation(c, updatedConversation)
+        // Log the unread bump for the touched conversation, if any. We
+        // diff before-vs-after rather than recomputing the increment
+        // here so the log never disagrees with the persisted state.
+        val before = current.items.firstOrNull { it.id == c.id }
+        val after = updated.firstOrNull { it.id == c.id }
+        if (before != null && after != null && after.unreadCount > before.unreadCount) {
+            Logger.d("ConversationStream: unread++ convo=${c.id} count=${after.unreadCount}")
         }
+
+        _conversations.value = current.copy(items = updated)
     }
 
     override suspend fun loadConversation(conversationId: Uuid) {
@@ -489,7 +621,8 @@ class ConversationStream(
     }
 
     private suspend fun processConversationBatchIncrementally(
-        conversationFiles: List<HomebaseFile>
+        conversationFiles: List<HomebaseFile>,
+        source: BackendEvent.SyncSource,
     ) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
@@ -500,8 +633,19 @@ class ConversationStream(
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.items.find { it.id == c.id }
             if (matchingConversation == null) {
+                // Brand-new in-memory conversation — we have no unread baseline
+                // yet, so mark dirty so the next checkpoint recounts.
                 insertNewConversation(c)
+                markUnreadDirty(c.id)
             } else {
+                // lastRead advanced ⇒ peer-device mark-as-read echo. Anything
+                // else the file carries (name, participants, lastMessage)
+                // does not affect unread count. Compare BEFORE updateConversation
+                // runs — that helper merges lastRead with `max(existing, incoming)`
+                // and would erase the delta we're testing for.
+                if (c.lastRead > matchingConversation.lastRead) {
+                    markUnreadDirty(c.id)
+                }
                 updateConversation(matchingConversation, c)
             }
             // A real file has now arrived for this id; it no longer needs
@@ -513,27 +657,30 @@ class ConversationStream(
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = _conversations.value.copy(items = sortedList)
 
-        // Drive-sync of a conversation file (peer-device echo) writes only
-        // DriveMainIndex; ChatReadCount lags. The merged enrich pass mirrors
-        // file-of-record lastReadTime into ChatReadCount and patches unread
-        // counts in one round-trip — fire-and-forget so the in-memory list
-        // update above stays on the hot path.
-        //
         // Skip while the cold-load pipeline hasn't run its own enrich yet.
         // During initial sync, every conversation file streams in via this
-        // path and would trigger N redundant enrich passes (each 2-10s on a
-        // power user's box, visibly reshuffling the list every emit). The
-        // end-of-start() enrich (`enrichAllConversationsWithUnreadCounts`
-        // after `enrichWithLastMessages` / `enrichWithAdmins`) flips
-        // `hasUnreadCounts` once cold-load is done; only after that should
-        // per-batch arrivals trigger their own mirror.
+        // path; the end-of-start() enrich
+        // (`enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")`)
+        // flips `hasUnreadCounts` once cold-load is done. Only after that
+        // should per-batch arrivals drive enrichment.
         if (!_conversations.value.enrichment.hasUnreadCounts) return
-        scope.launch {
-            try {
-                enrichAllConversationsWithUnreadCounts()
-            } catch (e: Exception) {
-                Logger.e(e) {
-                    "ConversationStream: background enrich after conversation batch failed: ${e.message}"
+
+        // Source-aware checkpoint:
+        //
+        // - DriveSync: nothing to do here. The matching DriveEvent.Stopped
+        //   handler will inspect [hasDirtyUnread] at end of the sync round
+        //   and run a single enrichAll for the whole round.
+        // - WebSocket: there is no Started/Stopped envelope — this batch IS
+        //   the whole event. If anything in it dirtied an unread count, run
+        //   enrichAll right here.
+        if (source == BackendEvent.SyncSource.WebSocket && hasDirtyUnread()) {
+            scope.launch {
+                try {
+                    enrichAllConversationsWithUnreadCounts(trigger = "WebSocketBatch")
+                } catch (e: Exception) {
+                    Logger.e(e) {
+                        "ConversationStream: WebSocket-batch enrich failed: ${e.message}"
+                    }
                 }
             }
         }
@@ -881,15 +1028,27 @@ class ConversationStream(
      * so the unread counts reflect the just-mirrored values before they're
      * patched onto the model.
      *
-     * Also invoked from message-read actions (see [ChatMessageActionService])
-     * and after every chat-drive `BackendEvent.DriveEvent.Stopped` that
-     * received at least one record. Flips `enrichment.hasUnreadCounts`
-     * (first call only; subsequent calls just patch counts).
+     * Invoked from cold-load ([start]), the [BackendEvent.DriveEvent.Stopped]
+     * handler when [hasDirtyUnread] is true, and the WebSocket-batch
+     * handler when [hasDirtyUnread] is true at end of batch. Flips
+     * `enrichment.hasUnreadCounts` (first call only; subsequent calls just
+     * patch counts).
+     *
+     * Clears the dirty set at the top — anything dirtied while this call
+     * is in flight remains for the next checkpoint.
+     *
+     * @param trigger short label naming the call site (e.g. "ColdLoad",
+     *   "Stopped", "WebSocketBatch"). Surfaces in the `ConvListPerf` log so
+     *   we can attribute frequency without a stack walk.
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichAllConversationsWithUnreadCounts() {
+    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) {
         val startedAt = Clock.System.now().toEpochMilliseconds()
+        // Take ownership of the current dirty set as we begin work. New
+        // bits set during this call's lifetime persist for the next
+        // checkpoint — preferred over a lost-wakeup race.
+        clearDirtyUnread()
         val c = credentialsManager.requireActiveCredentials()
         var unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
 
@@ -938,7 +1097,7 @@ class ConversationStream(
 
         Logger.i(tag = "ConvListPerf") {
             "enrichAllConversationsWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
-                    "mirrored=$mirroredCount changedRows=$changed totalRows=${current.items.size}"
+                    "trigger=$trigger mirrored=$mirroredCount changedRows=$changed totalRows=${current.items.size}"
         }
     }
 
@@ -1014,7 +1173,7 @@ class ConversationStream(
             // then admins (group-settings only), then unread counts.
             enrichWithLastMessages()
             enrichWithAdmins()
-            enrichAllConversationsWithUnreadCounts()
+            enrichAllConversationsWithUnreadCounts(trigger = "ColdLoad")
         }
 
         // Reactively update share cache when conversations or contacts change,

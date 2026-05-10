@@ -113,7 +113,10 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.dice.BattleRollSheet
 import id.homebase.chat.dice.DiceRollComposerSheet
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
@@ -426,6 +429,19 @@ fun ConversationContent(
                 .associate { it.message.id to it.message }
                 .toPersistentMap()
         }
+    }
+
+    // All valid dice-roll descriptors in the loaded conversation slice. Used by
+    // dice-roll bubbles to render battle-leader lines and by the long-press menu
+    // to gate the Battle entry on chain cap / no-rebattle. One filter per
+    // message-list change, then read-only downstream.
+    val allDiceDescriptors = remember(uiState.messages) {
+        uiState.messages.asSequence()
+            .filterIsInstance<MessageListContentModel.Message>()
+            .mapNotNull { (it.message.messageContent as? MessageContent.DiceRoll)?.descriptor }
+            .filter { it.isValid() }
+            .toList()
+            .toPersistentList()
     }
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
@@ -806,22 +822,20 @@ fun ConversationContent(
                 val currentMergedItems by rememberUpdatedState(mergedItems)
                 // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
                 // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
-                // `Pair<Int, List<...>>` (O(n) list-equals). Build 1394's watchdog caught a
-                // 5–8s main-thread stall here (homebase.log lines 27628 / 28315, deobfuscated
-                // against android-mapping-1394) — the previous shape paid two O(n) compares
-                // per snapshot commit (snapshotFlow's internal != + an explicit
-                // distinctUntilChanged that was redundant with it) on every mid-measure
-                // mutation of `firstVisibleItemIndex` during scroll-to-bottom restore.
+                // `Pair<Int, List<...>>` (O(n) list-equals). See CLAUDE.md "Compose & Flow
+                // gotchas" — pairing index+list and adding `.distinctUntilChanged()` here
+                // stalled Main for 5–8 s (build 1394 watchdog, restored by PR #472, regressed
+                // by `6adcc6b1` dice-battle merge).
                 val floatingDateLabel by produceState<LocalDate?>(null, listState) {
                     snapshotFlow {
                         val items = currentMergedItems
                         // boundedFirstVisibleItemIndex guards against the
                         // `Int.MAX_VALUE` "land at bottom" sentinel that
-                        // `ConversationMessagesPane.kt` puts into LazyListState
-                        // before LazyColumn's first measure clamps it. Without the
-                        // clamp this for-loop walked 2.1B iterations and froze
-                        // Main for 6+ seconds (build 1419 watchdog stack landed
-                        // here with `idx=2147483647 items=0`). See
+                        // ConversationMessagesPane puts into LazyListState before
+                        // LazyColumn's first measure clamps it. Without the clamp
+                        // this for-loop walked 2.1B iterations and froze Main for
+                        // 6+ s (build 1419 watchdog, restored by PR #473, regressed
+                        // by `6adcc6b1` dice-battle merge). See
                         // `boundedFirstVisibleItemIndex` docs and the CLAUDE.md
                         // "Compose & Flow gotchas" rule.
                         val startIdx = listState.boundedFirstVisibleItemIndex(items.size)
@@ -987,6 +1001,7 @@ fun ConversationContent(
                                                 downloadingFiles = uiState.downloadingFiles,
                                                 uploadStatus = uiState.uploadProgress[item.message.id],
                                                 replyMessages = replyMessages,
+                                                allDiceDescriptors = allDiceDescriptors,
                                                 searchQuery = uiState.searchQuery,
                                                 isCurrentSearchResult = isFocused,
                                             )
@@ -1441,6 +1456,16 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showDiceRollComposer = false },
             onSent = { showDiceRollComposer = false },
+        )
+    }
+
+    val battleTarget = uiState.battleTargetMessage
+    if (battleTarget != null) {
+        BattleRollSheet(
+            parentMessage = battleTarget,
+            chainDescriptors = allDiceDescriptors,
+            onDismiss = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
+            onSent = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
         )
     }
     } // CompositionLocalProvider
