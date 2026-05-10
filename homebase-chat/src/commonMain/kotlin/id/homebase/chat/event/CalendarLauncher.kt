@@ -1,6 +1,8 @@
 package id.homebase.chat.event
 
 import androidx.compose.runtime.Composable
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -21,7 +23,8 @@ import kotlinx.datetime.toLocalDateTime
  * browser. See [googleCalendarUrl] below.
  */
 interface CalendarLauncher {
-    fun addToCalendar(event: EventDescriptor)
+    @OptIn(ExperimentalUuidApi::class)
+    fun addToCalendar(event: EventDescriptor, messageId: Uuid)
 }
 
 @Composable

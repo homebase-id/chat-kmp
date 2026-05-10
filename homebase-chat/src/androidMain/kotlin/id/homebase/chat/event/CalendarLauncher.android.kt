@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import co.touchlab.kermit.Logger
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 private const val TAG = "CalendarLauncher"
 
@@ -16,8 +18,9 @@ actual fun rememberCalendarLauncher(): CalendarLauncher {
     return remember(context) { AndroidCalendarLauncher(context.applicationContext) }
 }
 
+@OptIn(ExperimentalUuidApi::class)
 private class AndroidCalendarLauncher(private val appContext: Context) : CalendarLauncher {
-    override fun addToCalendar(event: EventDescriptor) {
+    override fun addToCalendar(event: EventDescriptor, messageId: Uuid) {
         val intent = Intent(Intent.ACTION_INSERT).apply {
             data = CalendarContract.Events.CONTENT_URI
             putExtra(CalendarContract.Events.TITLE, event.title)

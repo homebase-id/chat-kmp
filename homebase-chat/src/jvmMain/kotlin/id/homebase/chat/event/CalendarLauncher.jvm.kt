@@ -9,7 +9,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import java.util.UUID
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 private const val TAG = "CalendarLauncher.jvm"
 
@@ -18,10 +19,11 @@ actual fun rememberCalendarLauncher(): CalendarLauncher {
     return remember { JvmCalendarLauncher() }
 }
 
+@OptIn(ExperimentalUuidApi::class)
 private class JvmCalendarLauncher : CalendarLauncher {
-    override fun addToCalendar(event: EventDescriptor) {
+    override fun addToCalendar(event: EventDescriptor, messageId: Uuid) {
         try {
-            val ics = buildIcs(event)
+            val ics = buildIcs(event, messageId)
             val tempFile = File.createTempFile("homebase_event_", ".ics")
             tempFile.writeText(ics, Charsets.UTF_8)
             tempFile.deleteOnExit()
@@ -41,14 +43,14 @@ private class JvmCalendarLauncher : CalendarLauncher {
      * descriptor's IANA zone — the wall-clock time the user picked is
      * preserved by the UTC milliseconds.
      */
-    private fun buildIcs(event: EventDescriptor): String {
+    private fun buildIcs(event: EventDescriptor, messageId: Uuid): String {
         val fmt = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         val now = fmt.format(Date())
         val start = fmt.format(Date(event.startUtcMs))
         val end = fmt.format(Date(event.endUtcMs ?: (event.startUtcMs + 60L * 60L * 1000L)))
-        val uid = "${event.eventId}@homebase"
+        val uid = "$messageId@homebase"
 
         return buildString {
             append("BEGIN:VCALENDAR\r\n")
