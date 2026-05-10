@@ -329,7 +329,7 @@ class ConversationStream(
         // ║                                                              ║
         // ║  Downstream caches dedupe naturally:                         ║
         // ║    • [DriveMainIndex] upsert is idempotent on uniqueId.      ║
-        // ║    • [ActiveConversationState.upsertMessages] collapses by   ║
+        // ║    • [PaginatedConversationState.upsert] collapses by        ║
         // ║      `m.id`.                                                 ║
         // ║                                                              ║
         // ║  But the per-message side effects in this loop (unread bump  ║

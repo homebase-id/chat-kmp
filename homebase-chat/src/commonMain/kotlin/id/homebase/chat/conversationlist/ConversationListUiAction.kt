@@ -172,6 +172,20 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
+
+    /** Fetch the next page of older messages into the visible window. */
+    data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
+
+    /** Fetch the next page of newer messages into the visible window. */
+    data class LoadNewerMessages(val conversationId: Uuid) : ConversationListUiAction
+
+    /**
+     * Reload the latest page from disk, replacing the loaded window. Dispatched
+     * by the scroll-to-bottom FAB when the user is deep in history
+     * (`hasNewerMessages = true`); a plain `animateScrollToItem(last)` would
+     * land at the bottom of the loaded window, not the latest message.
+     */
+    data class ScrollToLatest(val conversationId: Uuid) : ConversationListUiAction
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
     data object StopRecording : ConversationListUiAction
