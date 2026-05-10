@@ -1,0 +1,39 @@
+name: Silent-revert check
+
+# Detects PRs that remove blocks of code recently added by other commits on the
+# target branch — i.e. the silent-revert regression class that escaped review on
+# PR #478 (dice-battle merge undid pieces of PRs #472, #473, #474, c0f0cb23).
+#
+# Output is informational: warnings + a job summary, no hard failure. Some PRs
+# legitimately revert recent commits, so this is review surface, not a gate.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Detect silent reverts of recent main commits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Need full history to walk recent commits on main and to inspect
+          # their per-file diffs.
+          fetch-depth: 0
+
+      - name: Ensure target branch is fetched
+        run: git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Run silent-revert detector
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+          LOOKBACK_DAYS: 30
+          MIN_BLOCK_SIZE: 3
+          MIN_OVERLAP: "0.7"
+        run: python3 .github/scripts/check-silent-reverts.py
