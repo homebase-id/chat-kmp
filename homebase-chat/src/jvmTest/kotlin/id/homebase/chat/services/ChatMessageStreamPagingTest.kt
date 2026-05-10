@@ -38,9 +38,9 @@ import kotlin.uuid.Uuid
  * call (same `noOfItems`/`cursor`/sortOrder/sortField/fileSystemType/
  * filetypesAnyOf/groupIdAnyOf parameters) that `fetchMessages` issues at
  * `ChatMessageStream.kt:211-222`, then run results through the same
- * `ChatMessageStream.mapToMessageData` companion. **If those query parameters
- * ever change in `fetchMessages`, this file must mirror them — otherwise the
- * test stops protecting the production path.**
+ * `mapToMessageData` decoder (now in `MessageMapper.kt`). **If those query
+ * parameters ever change in `fetchMessages`, this file must mirror them —
+ * otherwise the test stops protecting the production path.**
  *
  * Scope:
  *   - forward cursor traversal (no dups, no gaps, hasMoreRows transitions)
@@ -87,8 +87,8 @@ class ChatMessageStreamPagingTest {
 
     /**
      * Mirrors the query that [ChatMessageStream.fetchMessages] issues, including
-     * the post-mapping pass through [ChatMessageStream.mapToMessageData]. Keep
-     * this byte-for-byte aligned with that production call.
+     * the post-mapping pass through [mapToMessageData]. Keep this byte-for-byte
+     * aligned with that production call.
      */
     private suspend fun fetchPage(
         conversationId: Uuid,
@@ -108,7 +108,7 @@ class ChatMessageStreamPagingTest {
             groupIdAnyOf = listOf(conversationId),
         )
         val mapped = result.records.mapNotNull { header ->
-            ChatMessageStream.mapToMessageData(header, credentialsManager)
+            mapToMessageData(header, credentialsManager)
         }
         return Triple(mapped, result.hasMoreRows, result.cursor)
     }
