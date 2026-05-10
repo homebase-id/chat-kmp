@@ -93,18 +93,23 @@ class ChatMessageStream(
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     //
-    // PR-A keeps the current 1000-message cap and always sets hasOlderMessages=false /
-    // hasNewerMessages=false. PR-B will lower the limit to PaginatedConversationState.PAGE_SIZE
-    // and propagate the cursor + hasMoreRows flag so the UI can page older messages on scroll.
+    // Loads the latest [PaginatedConversationState.PAGE_SIZE] messages and stores
+    // them as a window with hasOlderMessages = result.hasMoreRows. Older messages
+    // are paged in via loadOlderMessages when the user scrolls near the top.
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(conversationId)
+        val result = fetchMessages(
+            conversationId = conversationId,
+            limit = PaginatedConversationState.PAGE_SIZE,
+        )
         val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed")
+        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
         paginatedState.setInitialWindow(
             conversationId = conversationId,
             messages = result.records,
+            olderCursor = result.cursor,
+            hasOlderMessages = result.hasMoreRows,
         )
     }
 
@@ -115,10 +120,20 @@ class ChatMessageStream(
      * in flight.
      */
     suspend fun loadOlderMessages(conversationId: Uuid) {
-        val window = paginatedState.getWindow(conversationId) ?: return
-        if (window.isLoadingOlder || !window.hasOlderMessages) return
+        val window = paginatedState.getWindow(conversationId) ?: run {
+            Logger.d(tag = "ChatPaging") { "loadOlder($conversationId) skip: no window" }
+            return
+        }
+        if (window.isLoadingOlder || !window.hasOlderMessages) {
+            Logger.d(tag = "ChatPaging") {
+                "loadOlder($conversationId) skip: isLoadingOlder=${window.isLoadingOlder} hasOlder=${window.hasOlderMessages}"
+            }
+            return
+        }
+        val sizeBefore = window.messages.size
         paginatedState.setLoadingOlder(conversationId, true)
         try {
+            val start = TimeSource.Monotonic.markNow()
             val result = fetchMessages(
                 conversationId = conversationId,
                 limit = PaginatedConversationState.PAGE_SIZE,
@@ -131,6 +146,12 @@ class ChatMessageStream(
                 olderCursor = result.cursor,
                 hasMore = result.hasMoreRows,
             )
+            val after = paginatedState.getWindow(conversationId)
+            Logger.d(tag = "ChatPaging") {
+                "loadOlder($conversationId) +${result.records.size} hasMore=${result.hasMoreRows} " +
+                    "windowSize=$sizeBefore→${after?.messages?.size} " +
+                    "hasNewer=${after?.hasNewerMessages} took=${start.elapsedNow()}"
+            }
         } catch (t: Throwable) {
             paginatedState.setLoadingOlder(conversationId, false)
             throw t
@@ -144,10 +165,20 @@ class ChatMessageStream(
      * in flight.
      */
     suspend fun loadNewerMessages(conversationId: Uuid) {
-        val window = paginatedState.getWindow(conversationId) ?: return
-        if (window.isLoadingNewer || !window.hasNewerMessages) return
+        val window = paginatedState.getWindow(conversationId) ?: run {
+            Logger.d(tag = "ChatPaging") { "loadNewer($conversationId) skip: no window" }
+            return
+        }
+        if (window.isLoadingNewer || !window.hasNewerMessages) {
+            Logger.d(tag = "ChatPaging") {
+                "loadNewer($conversationId) skip: isLoadingNewer=${window.isLoadingNewer} hasNewer=${window.hasNewerMessages}"
+            }
+            return
+        }
+        val sizeBefore = window.messages.size
         paginatedState.setLoadingNewer(conversationId, true)
         try {
+            val start = TimeSource.Monotonic.markNow()
             val result = fetchMessages(
                 conversationId = conversationId,
                 limit = PaginatedConversationState.PAGE_SIZE,
@@ -160,6 +191,12 @@ class ChatMessageStream(
                 newerCursor = result.cursor,
                 hasMore = result.hasMoreRows,
             )
+            val after = paginatedState.getWindow(conversationId)
+            Logger.d(tag = "ChatPaging") {
+                "loadNewer($conversationId) +${result.records.size} hasMore=${result.hasMoreRows} " +
+                    "windowSize=$sizeBefore→${after?.messages?.size} " +
+                    "hasOlder=${after?.hasOlderMessages} took=${start.elapsedNow()}"
+            }
         } catch (t: Throwable) {
             paginatedState.setLoadingNewer(conversationId, false)
             throw t
@@ -174,8 +211,11 @@ class ChatMessageStream(
      * [loadConversation].
      */
     suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid) {
+        val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
-            Logger.d("ChatMessageStream: anchor message $messageUniqueId not in DB; falling back to loadConversation")
+            Logger.d(tag = "ChatPaging") {
+                "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
+            }
             loadConversation(conversationId)
             return
         }
@@ -208,6 +248,10 @@ class ChatMessageStream(
             newerCursor = newerHalf.cursor,
             hasNewerMessages = newerHalf.hasMoreRows,
         )
+        Logger.d(tag = "ChatPaging") {
+            "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
+                "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
+        }
     }
 
 // ---------- EVENT HANDLING ----------

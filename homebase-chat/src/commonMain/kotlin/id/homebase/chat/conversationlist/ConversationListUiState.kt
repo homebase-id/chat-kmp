@@ -85,6 +85,19 @@ data class MessageListUiState(
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
     val highlightedMessageId: Uuid? = null,
+    /** True if more messages exist before the loaded window's first message.
+     *  Drives the top loading-spinner row and the proximity hook's
+     *  loadOlder trigger. */
+    val hasOlderMessages: Boolean = false,
+    /** True if more messages exist after the loaded window's last message.
+     *  Set when the user opens around an anchor (centered window) or after
+     *  trim discards the newer slice; drives the bottom spinner, the FAB's
+     *  ScrollToLatest branch, and gates auto-follow on incoming messages. */
+    val hasNewerMessages: Boolean = false,
+    /** A loadOlder fetch is in flight; suppresses re-entry. */
+    val isLoadingOlder: Boolean = false,
+    /** A loadNewer fetch is in flight; suppresses re-entry. */
+    val isLoadingNewer: Boolean = false,
 )
 
 @Immutable
@@ -163,6 +176,12 @@ sealed class MessageListContentModel(val id: String) {
     ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
 
     data object UnreadSeparator : MessageListContentModel("unread-separator")
+
+    /** Spinner row at the top of the list while older messages are loading. */
+    data object LoadingOlder : MessageListContentModel("loading-older")
+
+    /** Spinner row at the bottom of the list while newer messages are loading. */
+    data object LoadingNewer : MessageListContentModel("loading-newer")
 }
 
 @Immutable
