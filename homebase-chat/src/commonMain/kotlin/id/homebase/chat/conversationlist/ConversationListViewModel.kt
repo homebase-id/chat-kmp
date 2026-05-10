@@ -2516,10 +2516,32 @@ class ConversationListViewModel(
             "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
         }
 
+        // Always mark loading here, even when hasCachedMessages == true.
+        //
+        // Previously this short-circuited to `isLoadingMessages = !hasCachedMessages`
+        // so cached conversations skipped the loading state for instant-feel
+        // switching — but that caused a race when rapidly switching between
+        // a few cached conversations:
+        //   1. This update fires (isLoadingMessages = false, scrollPosition = null).
+        //   2. Pane's `remember(conversationId, isLoadingMessages)` re-evaluates
+        //      with the new (id, false) keys, sees scrollPosition = null, and
+        //      pre-inits LazyListState at Int.MAX_VALUE → land at bottom.
+        //   3. The collect block below THEN runs, calls getScrollPosition, and
+        //      writes the resolved scrollPosition to state — but the Pane's
+        //      `remember` block doesn't re-fire because its keys are unchanged,
+        //      so the LazyListState stays at the bottom.
+        //   4. snapshotFlow then persists "bottom" as the new anchor, sticking
+        //      the bug for that conversation.
+        //
+        // Holding loading=true until the collect block atomically lands
+        // (messages, scrollPosition, isLoadingMessages=false) closes the race:
+        // the Pane's remember only re-evaluates ONCE, with the resolved scroll.
+        // The brief blank-screen window is the same one uncached switches
+        // already have (a few ms of groupBy + clustering on Dispatchers.Default).
         _messagesUiState.update {
             it.copy(
                 scrollPosition = null,
-                isLoadingMessages = !hasCachedMessages,
+                isLoadingMessages = true,
                 replyToMessage = null,
             )
         }
