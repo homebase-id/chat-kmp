@@ -66,7 +66,7 @@ class ShareViewController: UIViewController {
 
     private func handleSelection(conversationIds: [String]) {
         guard let extensionContext = extensionContext,
-              let firstId = conversationIds.first else {
+              !conversationIds.isEmpty else {
             cancelExtension()
             return
         }

@@ -3,6 +3,7 @@ package id.homebase.core.settings
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.uuid.Uuid
 
 class UserPreferences(private val settings: Settings) {
     private val _preferenceState = MutableStateFlow(
@@ -53,12 +54,34 @@ class UserPreferences(private val settings: Settings) {
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
 
    
-    fun getConversationScrollIndex(conversationId: String): Int? {
-        return settings.getIntOrNull("conversationScrollIndex-$conversationId")
+    /**
+     * Per-conversation scroll anchor — the uniqueId of the message the user
+     * was looking at. Resolved to a list index against the freshly-loaded
+     * messages on next open. Stored as a string (UUID) under
+     * `conversationScrollAnchor-<conversationId>`.
+     *
+     * Replaces the older `conversationScrollIndex-*` int key, which was
+     * meaningless across sessions because new messages between sessions
+     * shift indices. The old key is abandoned with no migration: the first
+     * open after upgrade falls through to "land at bottom" once.
+     */
+    fun getConversationScrollAnchor(conversationId: String): Uuid? {
+        val raw = settings.getStringOrNull("conversationScrollAnchor-$conversationId")
+            ?: return null
+        return try {
+            Uuid.parse(raw)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 
-    fun setConversationScrollIndex(conversationId: String, position: Int) {
-        settings.putInt("conversationScrollIndex-$conversationId", position)
+    fun setConversationScrollAnchor(conversationId: String, anchor: Uuid?) {
+        val key = "conversationScrollAnchor-$conversationId"
+        if (anchor == null) {
+            settings.remove(key)
+        } else {
+            settings.putString(key, anchor.toString())
+        }
     }
 
     fun getConversationScrollOffset(conversationId: String): Int? {

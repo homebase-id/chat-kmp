@@ -11,8 +11,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.mapToMessageData
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
@@ -282,7 +282,7 @@ class ConversationMapper(
         domain: OdinId,
         sqlUserDateMs: Long? = null,
     ): ConversationUiModel {
-        val msg = ChatMessageStream.mapToMessageData(lastMsgFile, credentialsManager) {
+        val msg = mapToMessageData(lastMsgFile, credentialsManager) {
             it.fileMetadata.originalAuthor?.domainName ?: ""
         } ?: return ui
         return ui.updateWithLatestMessage(

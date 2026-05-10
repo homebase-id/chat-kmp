@@ -14,8 +14,8 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.mapToMessageData
 import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.convo.contact.ContactService
@@ -311,7 +311,7 @@ class ConversationStream(
         // is clamped to `transitCreated` for display and can underrun the SQL column.
         val incoming = ArrayList<Pair<HomebaseFile, MessageUiModel>>(messageFiles.size)
         for (file in messageFiles) {
-            val mapped = ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
+            val mapped = mapToMessageData(file, credentialsManager, ::resolveDisplayName)
             if (mapped != null) incoming.add(file to mapped)
         }
 
