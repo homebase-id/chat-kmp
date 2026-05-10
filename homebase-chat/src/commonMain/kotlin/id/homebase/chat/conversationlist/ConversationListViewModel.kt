@@ -1067,6 +1067,11 @@ class ConversationListViewModel(
                         userPreferences.getConversationScrollAnchor(conversationId.toString())
                     } else null
                     val anchorTarget = messageIdForScroll ?: savedAnchor
+                    Logger.d(tag = "ChatPaging") {
+                        "open conversationId=$conversationId hasCached=false scrollToBottom=$scrollToBottom " +
+                            "savedAnchor=$savedAnchor messageIdForScroll=$messageIdForScroll → " +
+                            (if (anchorTarget != null) "loadAround($anchorTarget)" else "loadLatest")
+                    }
                     if (anchorTarget != null) {
                         // Around-anchor open: load a centered window so the
                         // user lands exactly where they left off, even if many
@@ -1076,6 +1081,10 @@ class ConversationListViewModel(
                         chatMessageStream.loadConversationAroundMessage(conversationId, anchorTarget)
                     } else {
                         chatMessageStream.loadConversation(conversationId)
+                    }
+                } else {
+                    Logger.d(tag = "ChatPaging") {
+                        "open conversationId=$conversationId hasCached=true → reuse window"
                     }
                 }
 

@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.time.UnixTimeUtc
@@ -216,6 +217,10 @@ class PaginatedConversationState(
         val newerCursor = QueryBatchCursor(
             paging = TimeRowCursor(UnixTimeUtc(boundary.userDate), 0L)
         )
+        Logger.d(tag = "ChatPaging") {
+            "trimTail dropped=${messages.size - trimmed.size} kept=${trimmed.size} " +
+                "boundaryUserDate=${boundary.userDate} → newer cursor recovered (hasNewer=true)"
+        }
         return Triple(trimmed, newerCursor, true)
     }
 
@@ -243,6 +248,10 @@ class PaginatedConversationState(
         val olderCursor = QueryBatchCursor(
             paging = TimeRowCursor(UnixTimeUtc(boundary.userDate), Long.MAX_VALUE)
         )
+        Logger.d(tag = "ChatPaging") {
+            "trimHead dropped=${messages.size - trimmed.size} kept=${trimmed.size} " +
+                "boundaryUserDate=${boundary.userDate} → older cursor recovered (hasOlder=true)"
+        }
         return Triple(trimmed, olderCursor, true)
     }
 }
