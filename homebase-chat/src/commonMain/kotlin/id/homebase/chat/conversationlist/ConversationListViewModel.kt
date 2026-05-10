@@ -746,6 +746,18 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ScrollToMessageId -> messageActionsHandler.handleScrollToMessageId(action)
 
+            is ConversationListUiAction.LoadOlderMessages -> {
+                viewModelScope.launch { chatMessageStream.loadOlderMessages(action.conversationId) }
+            }
+
+            is ConversationListUiAction.LoadNewerMessages -> {
+                viewModelScope.launch { chatMessageStream.loadNewerMessages(action.conversationId) }
+            }
+
+            is ConversationListUiAction.ScrollToLatest -> {
+                viewModelScope.launch { chatMessageStream.loadConversation(action.conversationId) }
+            }
+
             is ConversationListUiAction.ClearHighlightedMessage -> messageActionsHandler.handleClearHighlightedMessage()
 
             is ConversationListUiAction.SaveFile -> mediaDownloadHandler.handleSaveFile(action)
@@ -1051,7 +1063,20 @@ class ConversationListViewModel(
                 var setInitialScroll = true
 
                 if (!hasCachedMessages) {
-                    chatMessageStream.loadConversation(conversationId)
+                    val savedAnchor = if (!scrollToBottom) {
+                        userPreferences.getConversationScrollAnchor(conversationId.toString())
+                    } else null
+                    val anchorTarget = messageIdForScroll ?: savedAnchor
+                    if (anchorTarget != null) {
+                        // Around-anchor open: load a centered window so the
+                        // user lands exactly where they left off, even if many
+                        // newer messages arrived since. The fallback inside
+                        // loadConversationAroundMessage covers the case where
+                        // the anchor's message has been purged from the DB.
+                        chatMessageStream.loadConversationAroundMessage(conversationId, anchorTarget)
+                    } else {
+                        chatMessageStream.loadConversation(conversationId)
+                    }
                 }
 
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
@@ -1065,7 +1090,8 @@ class ConversationListViewModel(
                                 .find { it.conversation.id == conversationId }
                                 ?.conversation?.exitedAt
 
-                            val windowMessages = messageState.window.messages
+                            val window = messageState.window
+                            val windowMessages = window.messages
                             val messagesModels = withContext(Dispatchers.Default) {
                                 val filteredByExit = if (exitedAt != null)
                                     windowMessages.filter { it.userDate <= exitedAt }
@@ -1082,8 +1108,17 @@ class ConversationListViewModel(
                                         val date = message.userDate.toLocalDateTime(timezone).date
                                         date
                                     }
-                                val models: MutableList<MessageListContentModel> =
-                                    mutableListOf(MessageListContentModel.Header)
+                                // Top of the list: spinner while older messages page in,
+                                // Header (avatar + group title) only once we've reached the
+                                // start of the conversation. Otherwise the Header would sit
+                                // ambiguously between loaded pages and read as "you've
+                                // reached the beginning" when you haven't.
+                                val models: MutableList<MessageListContentModel> = mutableListOf()
+                                if (window.hasOlderMessages) {
+                                    models.add(MessageListContentModel.LoadingOlder)
+                                } else {
+                                    models.add(MessageListContentModel.Header)
+                                }
 
                                 var systemIndex = 0
                                 models.addAll(groupedMessages.flatMap { (date, messages) ->
@@ -1108,6 +1143,9 @@ class ConversationListViewModel(
                                             item
                                     }
                                 })
+                                if (window.hasNewerMessages) {
+                                    models.add(MessageListContentModel.LoadingNewer)
+                                }
                                 models
                             }
 
@@ -1205,6 +1243,10 @@ class ConversationListViewModel(
                                     messages = messagesModels.toPersistentList(),
                                     scrollPosition = newScroll
                                         ?: it.scrollPosition?.takeIf { pos -> pos.triggerScroll },
+                                    hasOlderMessages = window.hasOlderMessages,
+                                    hasNewerMessages = window.hasNewerMessages,
+                                    isLoadingOlder = window.isLoadingOlder,
+                                    isLoadingNewer = window.isLoadingNewer,
                                 )
                             }
 

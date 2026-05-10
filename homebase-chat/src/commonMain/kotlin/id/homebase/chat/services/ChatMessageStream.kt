@@ -93,18 +93,23 @@ class ChatMessageStream(
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     //
-    // PR-A keeps the current 1000-message cap and always sets hasOlderMessages=false /
-    // hasNewerMessages=false. PR-B will lower the limit to PaginatedConversationState.PAGE_SIZE
-    // and propagate the cursor + hasMoreRows flag so the UI can page older messages on scroll.
+    // Loads the latest [PaginatedConversationState.PAGE_SIZE] messages and stores
+    // them as a window with hasOlderMessages = result.hasMoreRows. Older messages
+    // are paged in via loadOlderMessages when the user scrolls near the top.
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(conversationId)
+        val result = fetchMessages(
+            conversationId = conversationId,
+            limit = PaginatedConversationState.PAGE_SIZE,
+        )
         val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed")
+        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
         paginatedState.setInitialWindow(
             conversationId = conversationId,
             messages = result.records,
+            olderCursor = result.cursor,
+            hasOlderMessages = result.hasMoreRows,
         )
     }
 
