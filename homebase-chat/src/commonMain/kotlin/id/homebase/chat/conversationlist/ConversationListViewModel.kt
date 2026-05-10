@@ -6,13 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.client.ClientException
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.ApiCredentials
-import id.homebase.api.client.connections.AutoConnectOutcome
-import id.homebase.api.client.connections.ConnectionRequestResult
-import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
@@ -34,10 +29,6 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
-import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToContactInfo
-import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToConversationSettings
-import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToGroupSettings
-import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToMessageInfo
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
@@ -74,25 +65,8 @@ import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.buildBlockUrl
-import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.resolveContentType
 import id.homebase.resources.MR
-import id.homebase.resources.auto_connect_blocked
-import id.homebase.resources.auto_connect_duplicate_introductory_request
-import id.homebase.resources.auto_connect_failed_generic
-import id.homebase.resources.auto_connect_invalid_request
-import id.homebase.resources.auto_connect_invalid_request_with_detail
-import id.homebase.resources.auto_connect_outgoing_request_exists
-import id.homebase.resources.auto_connect_pending_manual_approval
-import id.homebase.resources.auto_connect_recipient_not_configured
-import id.homebase.resources.auto_connect_recipient_rejected
-import id.homebase.resources.auto_connect_recipient_requires_upgrade
-import id.homebase.resources.auto_connect_recipient_unreachable
-import id.homebase.resources.chat_conversation_deleted_confirmation
-import id.homebase.resources.chat_conversation_deleting_in_progress
-import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
-import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_reactions_limit_reached
@@ -213,6 +187,18 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         addMessageWithFiles = ::addMessageWithFiles,
+    )
+
+    private val conversationLifecycleHandler = ConversationLifecycleHandler(
+        scope = viewModelScope,
+        uiState = _uiState,
+        messagesUiState = _messagesUiState,
+        conversationService = conversationService,
+        conversationStream = conversationStream,
+        connectionRequestService = connectionRequestService,
+        credentialsManager = credentialsManager,
+        sendEvent = ::sendEvent,
+        dispatch = ::onAction,
     )
 
     init {
@@ -939,26 +925,7 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.TogglePinConversation -> {
-                viewModelScope.launch {
-                    try {
-                        val conversation =
-                            conversationService.getConversation(action.conversationId)
-                                ?: return@launch
-                        if (conversation.isPinned) {
-                            conversationService.unpinConversation(action.conversationId)
-                        } else {
-                            conversationService.pinConversation(action.conversationId)
-                        }
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to toggle pinned conversation: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.TogglePinConversation -> conversationLifecycleHandler.handleTogglePinConversation(action)
 
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
@@ -1237,235 +1204,53 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false, reactionDetailsMessageId = null) }
             }
 
-            is ConversationListUiAction.ShowContactInfo -> {
-                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) {
-                    // Show self-conversation settings as owner profile
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = NavigateToConversationSettings(
-                                ChatProtocol.ConversationWithYourselfId.toString()
-                            )
-                        )
-                    }
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = NavigateToContactInfo(action.odinId)
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.ShowContactInfo -> conversationLifecycleHandler.handleShowContactInfo(action)
 
-            is ConversationListUiAction.ShowMessageInfo -> {
-                _uiState.update {
-                    it.copy(
-                        uiEvent = NavigateToMessageInfo((action.message))
-                    )
-                }
-            }
+            is ConversationListUiAction.ShowMessageInfo -> conversationLifecycleHandler.handleShowMessageInfo(action)
 
-            is ConversationListUiAction.DismissSheet -> {
-                _messagesUiState.update { it.copy(uiSheet = null) }
-            }
+            is ConversationListUiAction.DismissSheet -> conversationLifecycleHandler.handleDismissSheet()
 
-            /* Group options */
+            is ConversationListUiAction.ConnectIdentities -> conversationLifecycleHandler.handleConnectIdentities(action)
 
-            is ConversationListUiAction.ConnectIdentities -> {
-                _messagesUiState.update {
-                    it.copy(
-                        uiSheet = MessageListUiSheet.ConnectIdentities(
-                            action.identities
-                        )
-                    )
-                }
-            }
+            is ConversationListUiAction.ConnectToIdentity -> conversationLifecycleHandler.handleConnectToIdentity(action)
 
-            is ConversationListUiAction.ConnectToIdentity -> {
-                uiState.value.ownerSession?.odinId?.let { currentUser ->
-                    val url = currentUser.buildConnectToIdentityUrl(action.odinId)
-                    _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
-                }
-            }
+            is ConversationListUiAction.AutoConnect -> conversationLifecycleHandler.handleAutoConnect(action)
 
-            is ConversationListUiAction.AutoConnect -> {
-                autoConnect(action.odinId)
-            }
+            is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> conversationLifecycleHandler.handleOpenConnectionRequestInOwnerConsole(action)
 
-            is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> {
-                uiState.value.ownerSession?.odinId?.let { currentUser ->
-                    val url =
-                        "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
-                    _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
-                }
-            }
+            is ConversationListUiAction.OpenSendConnectionRequestDialog -> conversationLifecycleHandler.handleOpenSendConnectionRequestDialog(action)
 
-            is ConversationListUiAction.OpenSendConnectionRequestDialog -> {
-                _uiState.update {
-                    it.copy(
-                        uiEvent = ConversationListUiEvent.OpenSendConnectionRequestDialog(
-                            action.odinId
-                        )
-                    )
-                }
-            }
+            is ConversationListUiAction.ShowConversationSettings -> conversationLifecycleHandler.handleShowConversationSettings(action)
 
-            /* Conversation options */
-            is ConversationListUiAction.ShowConversationSettings -> {
-                if (action.conversation.isGroupConversation) {
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = NavigateToGroupSettings(
-                                (action.conversation.id.toString())
-                            )
-                        )
-                    }
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = NavigateToConversationSettings(
-                                (action.conversation.id.toString())
-                            )
-                        )
-                    }
-                }
-            }
+            is ConversationListUiAction.IntroduceEveryone -> conversationLifecycleHandler.handleIntroduceEveryone(action)
 
-            is ConversationListUiAction.IntroduceEveryone -> {
-                introduceEveryone(action.conversationId)
-            }
+            is ConversationListUiAction.IntroduceSendAnyway -> conversationLifecycleHandler.handleIntroduceSendAnyway(action)
 
-            is ConversationListUiAction.IntroduceSendAnyway -> {
-                viewModelScope.launch {
-                    _uiState.update { it.copy(uiDialog = null) }
-                    conversationService.introduceEveryone(action.conversationId, action.message)
-                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
-                }
-            }
+            is ConversationListUiAction.IntroduceSendReadyOnly -> conversationLifecycleHandler.handleIntroduceSendReadyOnly(action)
 
-            is ConversationListUiAction.IntroduceSendReadyOnly -> {
-                viewModelScope.launch {
-                    _uiState.update { it.copy(uiDialog = null) }
-                    if (action.readyRecipients.isEmpty()) {
-                        // No-op — the dialog should not have allowed this, but be defensive.
-                        sendEvent(ShowErrorMessage("No ready recipients to send to."))
-                        return@launch
-                    }
-                    conversationService.introduceRecipients(
-                        conversationId = action.conversationId,
-                        recipients = action.readyRecipients,
-                        message = action.message,
-                    )
-                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
-                }
-            }
+            is ConversationListUiAction.IntroduceCancel -> conversationLifecycleHandler.handleIntroduceCancel()
 
-            is ConversationListUiAction.IntroduceCancel -> {
-                _uiState.update { it.copy(uiDialog = null) }
-            }
+            is ConversationListUiAction.ArchiveConversation -> conversationLifecycleHandler.handleArchiveConversation(action)
 
-            is ConversationListUiAction.ArchiveConversation -> {
-                viewModelScope.launch {
-                    try {
-                        conversationService.archiveConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to archive conversation: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to archive conversation: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.UnarchiveConversation -> conversationLifecycleHandler.handleUnarchiveConversation(action)
 
-            is ConversationListUiAction.UnarchiveConversation -> {
-                viewModelScope.launch {
-                    try {
-                        conversationService.unarchiveConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to unarchive conversation: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to unarchive conversation: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.ShowArchivedMessagesClicked -> conversationLifecycleHandler.handleShowArchivedMessagesClicked()
 
-            is ConversationListUiAction.ShowArchivedMessagesClicked -> {
-                _uiState.update { it.copy(showArchived = true) }
-            }
+            is ConversationListUiAction.ArchiveBackClicked -> conversationLifecycleHandler.handleArchiveBackClicked()
 
-            is ConversationListUiAction.ArchiveBackClicked -> {
-                _uiState.update { it.copy(showArchived = false) }
-            }
+            is ConversationListUiAction.ClearConversation -> conversationLifecycleHandler.handleClearConversation(action)
 
-            is ConversationListUiAction.ClearConversation -> {
-                viewModelScope.launch {
-                    try {
-                        conversationService.clearConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to clear conversation: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to clear conversation: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.DeleteConversation -> conversationLifecycleHandler.handleDeleteConversation(action)
 
-            is ConversationListUiAction.DeleteConversation -> {
-                _uiState.update {
-                    it.copy(uiDialog = ConversationListUiDialog.DeleteConversation(action.conversationId))
-                }
-            }
+            is ConversationListUiAction.ConfirmDeleteConversation -> conversationLifecycleHandler.handleConfirmDeleteConversation(action)
 
-            is ConversationListUiAction.ConfirmDeleteConversation -> {
-                viewModelScope.launch {
-                    runDeleteConversationFlow(
-                        conversationId = action.conversationId,
-                        leaveFirst = false,
-                        overlayLabel = MR.string.chat_conversation_deleting_in_progress,
-                    )
-                }
-            }
+            is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> conversationLifecycleHandler.handleConfirmLeaveAndDeleteConversation(action)
 
-            is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> {
-                viewModelScope.launch {
-                    runDeleteConversationFlow(
-                        conversationId = action.conversationId,
-                        leaveFirst = true,
-                        overlayLabel = MR.string.chat_conversation_leaving_and_deleting_in_progress,
-                    )
-                }
-            }
+            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> conversationLifecycleHandler.handleCloseDetailPaneRequestConsumed()
 
-            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> {
-                _uiState.update { it.copy(closeDetailPaneRequest = null) }
-            }
+            is ConversationListUiAction.AcceptRejoin -> conversationLifecycleHandler.handleAcceptRejoin(action)
 
-            is ConversationListUiAction.AcceptRejoin -> {
-                viewModelScope.launch {
-                    try {
-                        conversationService.acceptRejoin(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to accept rejoin: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to accept rejoin: ${e.message}"))
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DeclineRejoin -> {
-                viewModelScope.launch {
-                    try {
-                        conversationService.declineRejoin(action.conversationId)
-                        conversationStream.onConversationLeft(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to decline rejoin: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to decline rejoin: ${e.message}"))
-                    }
-                }
-            }
+            is ConversationListUiAction.DeclineRejoin -> conversationLifecycleHandler.handleDeclineRejoin(action)
 
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> attachmentHandler.handleAttachClipboardImage(action)
@@ -1488,50 +1273,9 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CancelRecording -> attachmentHandler.handleCancelRecording()
 
-            is ConversationListUiAction.BlockUser -> {
-                uiState.value.ownerSession?.odinId?.let { currentUser ->
-                    val url = currentUser.buildBlockUrl(action.authorOdinId)
-                    sendEvent(ConversationListUiEvent.OpenUrl(url))
-                }
-            }
+            is ConversationListUiAction.BlockUser -> conversationLifecycleHandler.handleBlockUser(action)
 
-            is ConversationListUiAction.ReportContent -> {
-                sendEvent(ConversationListUiEvent.OpenUrl(AppConfig.REPORT_CONTENT_URL))
-            }
-        }
-    }
-
-    private fun introduceEveryone(conversationId: Uuid) {
-        viewModelScope.launch {
-            val defaultMessage =
-                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
-            // Show the in-flight overlay during preflight — without this the user
-            // sees nothing for ~hundreds of ms and the app feels stuck.
-            _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
-            // Best-effort preflight: if every recipient is Ready, proceed silently
-            // as before; if any recipient is non-Ready, surface a dialog so the
-            // user can choose Send anyway / Skip and send to the rest / Cancel.
-            // If preflight itself fails (returns null), fall through to the
-            // existing send-everyone path — preflight is advisory, not enforcing.
-            val preflight = conversationService.previewIntroduceEveryone(conversationId)
-            // Always clear the overlay before doing anything follow-up; the dialog
-            // (if shown) draws on top of the conversation view, not the overlay.
-            _uiState.update { it.copy(inFlightOperationLabel = null) }
-            if (preflight == null || preflight.allReady) {
-                conversationService.introduceEveryone(conversationId, defaultMessage)
-                sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
-                return@launch
-            }
-            // Some recipients are not ready; let the user decide.
-            _uiState.update {
-                it.copy(
-                    uiDialog = ConversationListUiDialog.IntroducePreflight(
-                        conversationId = conversationId,
-                        message = defaultMessage,
-                        result = preflight,
-                    )
-                )
-            }
+            is ConversationListUiAction.ReportContent -> conversationLifecycleHandler.handleReportContent()
         }
     }
 
@@ -1960,192 +1704,6 @@ class ConversationListViewModel(
      *                   member of a group conversation; the service-side delete
      *                   guard otherwise rejects with IllegalStateException.
      */
-    private suspend fun runDeleteConversationFlow(
-        conversationId: Uuid,
-        leaveFirst: Boolean,
-        overlayLabel: org.jetbrains.compose.resources.StringResource,
-    ) {
-        _uiState.update { it.copy(inFlightOperationLabel = overlayLabel) }
-        try {
-            if (leaveFirst) {
-                // Mirror GroupSettingsViewModel.LeaveGroupConfirm logic so a sole-admin
-                // with no reachable non-admin still goes through the local-only branch.
-                val enriched = uiState.value.activeConversations
-                    .find { it.conversation.id == conversationId }
-                val conversation = enriched?.conversation
-                val currentUser = credentialsManager.requireActiveCredentials().domain
-                val isSoleAdmin = conversation != null
-                        && conversation.isCurrentUserAdmin(currentUser)
-                        && conversation.admins.size == 1
-                val hasReachableNonAdmin = enriched != null && enriched.participants.any {
-                    it.connectionState ==
-                            id.homebase.chat.services.convo.contact.ContactConnectionState.Connected
-                            && conversation?.isCurrentUserAdmin(it.odinId) == false
-                }
-                val forceLocalOnly = isSoleAdmin && !hasReachableNonAdmin
-                conversationService.leaveGroup(
-                    conversationId = conversationId,
-                    forceLocalOnly = forceLocalOnly,
-                )
-            }
-            conversationService.deleteConversation(conversationId)
-
-            // Drop the row from the in-memory list immediately and tell the stream
-            // to keep it filtered across reloads — see ConversationStream.deletedIds.
-            conversationStream.onConversationDeleted(conversationId)
-
-            val close = uiState.value.selectedConversationId == conversationId
-            _uiState.update {
-                it.copy(
-                    inFlightOperationLabel = null,
-                    selectedConversationId = if (close) null else it.selectedConversationId,
-                    closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
-                )
-            }
-            if (close) {
-                // ClearSelection also resets messages and stops the per-convo job.
-                onAction(ConversationListUiAction.ClearSelection)
-            }
-            sendEvent(ShowInfoMessage(MR.string.chat_conversation_deleted_confirmation))
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                "Failed to delete conversation (leaveFirst=$leaveFirst): ${e.message}"
-            }
-            _uiState.update { it.copy(inFlightOperationLabel = null) }
-            sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
-        }
-    }
-
-
-    private fun autoConnect(recipient: OdinId) {
-        // Only operate while the Connect-identities sheet is open; otherwise there is no
-        // row UI to reflect the state change against.
-        val openSheet = _messagesUiState.value.uiSheet as? MessageListUiSheet.ConnectIdentities
-            ?: return
-        if (openSheet.autoConnectStates[recipient] == AutoConnectRowState.Connecting) return
-
-        updateConnectSheetRow(recipient, AutoConnectRowState.Connecting)
-
-        viewModelScope.launch {
-            val header = ConnectionRequestHeader(
-                id = Uuid.random(),
-                recipient = recipient,
-                message = null,
-                circleIds = null,
-                introducerOdinId = null,
-                connectionRequestOrigin = null,
-            )
-            try {
-                val result = connectionRequestService.autoConnect(header)
-                val succeeded = when (result.outcome) {
-                    AutoConnectOutcome.Connected,
-                    AutoConnectOutcome.AcceptedFromExistingIncoming,
-                    AutoConnectOutcome.AlreadyConnected -> true
-                    else -> false
-                }
-                if (succeeded) {
-                    updateConnectSheetRow(recipient, AutoConnectRowState.Succeeded)
-                } else {
-                    updateConnectSheetRow(recipient, failedOutcomeRowState(result, recipient))
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ClientException) {
-                Logger.w(e) { "autoConnect($recipient) ClientException code=${e.errorCode}" }
-                updateConnectSheetRow(recipient, clientExceptionRowState(e, recipient))
-            } catch (e: Exception) {
-                Logger.e(e) { "autoConnect($recipient) failed: ${e::class.simpleName}: ${e.message}" }
-                updateConnectSheetRow(
-                    recipient,
-                    AutoConnectRowState.Failed(
-                        MR.string.auto_connect_recipient_unreachable,
-                        listOf(recipient.domainName),
-                    ),
-                )
-            }
-        }
-    }
-
-    private fun updateConnectSheetRow(recipient: OdinId, newState: AutoConnectRowState?) {
-        _messagesUiState.update { state ->
-            val sheet = state.uiSheet as? MessageListUiSheet.ConnectIdentities
-                ?: return@update state
-            val next = if (newState == null) {
-                sheet.autoConnectStates - recipient
-            } else {
-                sheet.autoConnectStates + (recipient to newState)
-            }
-            state.copy(uiSheet = sheet.copy(autoConnectStates = next))
-        }
-    }
-
-    /** Translate a server-side 400 ClientException into the same row state we'd show for the
-     *  corresponding in-band AutoConnectOutcome. Keeps the UX consistent whether the server
-     *  returns a typed outcome or bubbles the legacy error-code path. */
-    private fun clientExceptionRowState(
-        e: ClientException,
-        recipient: OdinId,
-    ): AutoConnectRowState.Failed {
-        val who = recipient.domainName
-        return when (e.errorCode) {
-            OdinClientErrorCode.ConnectionRequestAlreadySent ->
-                AutoConnectRowState.Failed(
-                    MR.string.auto_connect_outgoing_request_exists,
-                    listOf(who),
-                )
-            OdinClientErrorCode.BlockedConnection ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_blocked, listOf(who))
-            OdinClientErrorCode.CannotSendConnectionRequestToValidConnection ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_failed_generic)
-            OdinClientErrorCode.ConnectionRequestToYourself ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_invalid_request)
-            else -> AutoConnectRowState.Failed(
-                MR.string.auto_connect_invalid_request_with_detail,
-                listOf(e.message ?: "Failed"),
-            )
-        }
-    }
-
-    private fun failedOutcomeRowState(
-        result: ConnectionRequestResult,
-        recipient: OdinId,
-    ): AutoConnectRowState.Failed {
-        val who = recipient.domainName
-        return when (result.outcome) {
-            AutoConnectOutcome.PendingManualApproval ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_pending_manual_approval, listOf(who))
-            AutoConnectOutcome.Blocked ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_blocked, listOf(who))
-            AutoConnectOutcome.OutgoingRequestAlreadyExists ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_outgoing_request_exists, listOf(who))
-            AutoConnectOutcome.DuplicateIntroductoryRequest ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_duplicate_introductory_request, listOf(who))
-            AutoConnectOutcome.RecipientUnreachable ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_unreachable, listOf(who))
-            AutoConnectOutcome.RecipientRejected ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_rejected, listOf(who))
-            AutoConnectOutcome.RecipientIdentityNotConfigured ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_not_configured, listOf(who))
-            AutoConnectOutcome.RecipientRequiresUpgrade ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_requires_upgrade, listOf(who))
-            AutoConnectOutcome.InvalidRequest ->
-                result.detail?.let {
-                    AutoConnectRowState.Failed(
-                        MR.string.auto_connect_invalid_request_with_detail,
-                        listOf(it),
-                    )
-                } ?: AutoConnectRowState.Failed(MR.string.auto_connect_invalid_request)
-            AutoConnectOutcome.Failed,
-            AutoConnectOutcome.Unknown ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_failed_generic)
-            // Success outcomes never route here, but keep `when` exhaustive.
-            AutoConnectOutcome.Connected,
-            AutoConnectOutcome.AcceptedFromExistingIncoming,
-            AutoConnectOutcome.AlreadyConnected ->
-                AutoConnectRowState.Failed(MR.string.auto_connect_failed_generic)
-        }
-    }
-
     private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {
         viewModelScope.launch {
             try {
