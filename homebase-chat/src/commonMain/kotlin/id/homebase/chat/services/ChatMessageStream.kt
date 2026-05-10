@@ -8,10 +8,12 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -42,7 +44,7 @@ class ChatMessageStream(
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
-    private val conversationState = ActiveConversationState()
+    private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
 
     // Messages for open conversations are loaded on demand via loadConversation().
@@ -52,7 +54,7 @@ class ChatMessageStream(
         scope.launch {
             eventBus.events.collect { event ->
                 if (event is BackendEvent.OutboxEvent.OptimisticRollback && event.driveId == chatDrive) {
-                    conversationState.removeMessage(event.uniqueId)
+                    paginatedState.removeMessage(event.uniqueId)
                     return@collect
                 }
 
@@ -76,24 +78,180 @@ class ChatMessageStream(
     // ---------- PUBLIC API ----------
 
     fun observeMessages(conversationId: Uuid): StateFlow<ChatMessagesData> =
-        conversationState
-            .messages
-            .map { ChatMessagesData.Messages(it[conversationId].orEmpty()) }
+        paginatedState
+            .windows
+            .map { windows ->
+                val window = windows[conversationId] ?: MessageWindow()
+                ChatMessagesData.Messages(window)
+            }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
     fun hasCachedMessages(conversationId: Uuid): Boolean =
-        conversationState.hasCachedMessages(conversationId)
+        paginatedState.hasCachedMessages(conversationId)
 
     // Full message load from local DB for a single conversation.
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
+    //
+    // Loads the latest [PaginatedConversationState.PAGE_SIZE] messages and stores
+    // them as a window with hasOlderMessages = result.hasMoreRows. Older messages
+    // are paged in via loadOlderMessages when the user scrolls near the top.
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(conversationId)
+        val result = fetchMessages(
+            conversationId = conversationId,
+            limit = PaginatedConversationState.PAGE_SIZE,
+        )
         val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed")
-        conversationState.set(conversationId, result.records)
+        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
+        paginatedState.setInitialWindow(
+            conversationId = conversationId,
+            messages = result.records,
+            olderCursor = result.cursor,
+            hasOlderMessages = result.hasMoreRows,
+        )
+    }
+
+    /**
+     * Extend the loaded window with the next page of OLDER messages, using
+     * [MessageWindow.olderCursor] as the boundary. No-op if the window
+     * isn't loaded, no older page is available, or a previous load is still
+     * in flight.
+     */
+    suspend fun loadOlderMessages(conversationId: Uuid) {
+        val window = paginatedState.getWindow(conversationId) ?: run {
+            Logger.d(tag = "ChatPaging") { "loadOlder($conversationId) skip: no window" }
+            return
+        }
+        if (window.isLoadingOlder || !window.hasOlderMessages) {
+            Logger.d(tag = "ChatPaging") {
+                "loadOlder($conversationId) skip: isLoadingOlder=${window.isLoadingOlder} hasOlder=${window.hasOlderMessages}"
+            }
+            return
+        }
+        val sizeBefore = window.messages.size
+        paginatedState.setLoadingOlder(conversationId, true)
+        try {
+            val start = TimeSource.Monotonic.markNow()
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+                cursor = window.olderCursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+            )
+            paginatedState.prependOlderMessages(
+                conversationId = conversationId,
+                olderMessages = result.records,
+                olderCursor = result.cursor,
+                hasMore = result.hasMoreRows,
+            )
+            val after = paginatedState.getWindow(conversationId)
+            Logger.d(tag = "ChatPaging") {
+                "loadOlder($conversationId) +${result.records.size} hasMore=${result.hasMoreRows} " +
+                    "windowSize=$sizeBefore→${after?.messages?.size} " +
+                    "hasNewer=${after?.hasNewerMessages} took=${start.elapsedNow()}"
+            }
+        } catch (t: Throwable) {
+            paginatedState.setLoadingOlder(conversationId, false)
+            throw t
+        }
+    }
+
+    /**
+     * Extend the loaded window with the next page of NEWER messages, using
+     * [MessageWindow.newerCursor] as the boundary. No-op if the window
+     * isn't loaded, no newer page is available, or a previous load is still
+     * in flight.
+     */
+    suspend fun loadNewerMessages(conversationId: Uuid) {
+        val window = paginatedState.getWindow(conversationId) ?: run {
+            Logger.d(tag = "ChatPaging") { "loadNewer($conversationId) skip: no window" }
+            return
+        }
+        if (window.isLoadingNewer || !window.hasNewerMessages) {
+            Logger.d(tag = "ChatPaging") {
+                "loadNewer($conversationId) skip: isLoadingNewer=${window.isLoadingNewer} hasNewer=${window.hasNewerMessages}"
+            }
+            return
+        }
+        val sizeBefore = window.messages.size
+        paginatedState.setLoadingNewer(conversationId, true)
+        try {
+            val start = TimeSource.Monotonic.markNow()
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+                cursor = window.newerCursor,
+                sortOrder = QueryBatchSortOrder.OldestFirst,
+            )
+            paginatedState.appendNewerMessages(
+                conversationId = conversationId,
+                newerMessages = result.records,
+                newerCursor = result.cursor,
+                hasMore = result.hasMoreRows,
+            )
+            val after = paginatedState.getWindow(conversationId)
+            Logger.d(tag = "ChatPaging") {
+                "loadNewer($conversationId) +${result.records.size} hasMore=${result.hasMoreRows} " +
+                    "windowSize=$sizeBefore→${after?.messages?.size} " +
+                    "hasOlder=${after?.hasOlderMessages} took=${start.elapsedNow()}"
+            }
+        } catch (t: Throwable) {
+            paginatedState.setLoadingNewer(conversationId, false)
+            throw t
+        }
+    }
+
+    /**
+     * Load a centered page of messages around [messageUniqueId]. Used to
+     * restore scroll position on conversation open and to jump to a search
+     * result that's outside the current window. If the target message
+     * isn't in the local DB (purged, never synced), falls back to
+     * [loadConversation].
+     */
+    suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid) {
+        val start = TimeSource.Monotonic.markNow()
+        val target = getMessage(messageUniqueId) ?: run {
+            Logger.d(tag = "ChatPaging") {
+                "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
+            }
+            loadConversation(conversationId)
+            return
+        }
+        val halfPage = PaginatedConversationState.PAGE_SIZE / 2
+        val olderHalfCursor = QueryBatchCursor(
+            paging = TimeRowCursor(UnixTimeUtc(target.userDate), 0L)
+        )
+        val olderHalf = fetchMessages(
+            conversationId = conversationId,
+            limit = halfPage,
+            cursor = olderHalfCursor,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+        )
+        val newerHalfCursor = QueryBatchCursor(
+            paging = TimeRowCursor(UnixTimeUtc(target.userDate), Long.MAX_VALUE)
+        )
+        val newerHalf = fetchMessages(
+            conversationId = conversationId,
+            limit = halfPage,
+            cursor = newerHalfCursor,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+        val combined = (olderHalf.records + listOf(target) + newerHalf.records)
+            .distinctBy { it.id }
+        paginatedState.setInitialWindow(
+            conversationId = conversationId,
+            messages = combined,
+            olderCursor = olderHalf.cursor,
+            hasOlderMessages = olderHalf.hasMoreRows,
+            newerCursor = newerHalf.cursor,
+            hasNewerMessages = newerHalf.hasMoreRows,
+        )
+        Logger.d(tag = "ChatPaging") {
+            "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
+                "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
+        }
     }
 
 // ---------- EVENT HANDLING ----------
@@ -109,15 +267,22 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
+            val window = paginatedState.getWindow(conversationId) ?: return@forEach
+            // Gate: when the user has paged backwards (hasNewerMessages == true), the
+            // window doesn't include the latest messages. Stream events that arrive while
+            // the user is deep in history would land out of order; defer them until the
+            // user explicitly returns to the latest page (FAB → ScrollToLatest in PR-B).
+            // In PR-A hasNewerMessages is always false, so this gate is a no-op.
+            if (window.hasNewerMessages) return@forEach
             // Evict stale entries where the server returned a file whose id (uniqueId)
             // changed (e.g. cleared on delete, so id falls back to fileId). Without this,
             // the old entry (keyed by uniqueId) and new entry (keyed by fileId) both exist.
             for (msg in msgs) {
                 if (msg.id == msg.fileId) {
-                    conversationState.removeByFileId(conversationId, msg.fileId)
+                    paginatedState.removeByFileId(conversationId, msg.fileId)
                 }
             }
-            conversationState.upsert(conversationId, msgs)
+            paginatedState.upsert(conversationId, msgs)
         }
     }
 
@@ -148,9 +313,9 @@ class ChatMessageStream(
      *  where it exists on disk but its conversation hasn't been opened.
      */
     override fun findCachedFileId(messageId: Uuid): Uuid? {
-        val open = conversationState.messages.value
-        for ((_, list) in open) {
-            for (m in list) {
+        val open = paginatedState.windows.value
+        for ((_, window) in open) {
+            for (m in window.messages) {
                 if (m.id == messageId) return m.fileId
             }
         }
@@ -160,7 +325,8 @@ class ChatMessageStream(
     suspend fun fetchMessages(
         conversationId: Uuid,
         limit: Int = 1000,
-        cursor: QueryBatchCursor? = null
+        cursor: QueryBatchCursor? = null,
+        sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
     ): BatchResult<MessageUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
@@ -173,7 +339,7 @@ class ChatMessageStream(
                 driveId = chatDrive,
                 noOfItems = limit,
                 cursor = cursor,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortOrder = sortOrder,
                 sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
@@ -352,5 +518,5 @@ class ChatMessageStream(
 
 sealed interface ChatMessagesData {
     data object Initializing : ChatMessagesData
-    data class Messages(val messages: List<MessageUiModel>) : ChatMessagesData
+    data class Messages(val window: MessageWindow) : ChatMessagesData
 }

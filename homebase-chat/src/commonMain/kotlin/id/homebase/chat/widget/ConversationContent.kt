@@ -353,13 +353,21 @@ fun ConversationContent(
     // Auto-follow: when the list grows (new sent or received message) and the
     // user was already at the bottom, scroll to the new last item. If the user
     // is reading history further up, leave them alone.
+    //
+    // When `hasNewerMessages == true` the user is paged backwards into history;
+    // the bottom of the loaded window is NOT the latest message, and ChatMessageStream
+    // gates incoming-stream upserts on the same flag — so the only way the list
+    // grows here is via prepend, which the user wouldn't want auto-followed.
+    val hasNewerForAutoFollow = rememberUpdatedState(uiState.hasNewerMessages)
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
         snapshotFlow {
             listState.layoutInfo.totalItemsCount to listState.canScrollForward
         }.collect { (total, canScrollForward) ->
-            if (total > previousTotal && previousTotal > 0 && wasAtBottom) {
+            if (total > previousTotal && previousTotal > 0 && wasAtBottom &&
+                !hasNewerForAutoFollow.value
+            ) {
                 listState.animateScrollToItem(total - 1)
             }
             // canScrollForward == false means the user is at the absolute end
@@ -1030,6 +1038,21 @@ fun ConversationContent(
                                             )
                                         }
                                     }
+
+                                    is MessageListContentModel.LoadingOlder,
+                                    is MessageListContentModel.LoadingNewer -> {
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(24.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             // If only one message item (the header) show no messages info
@@ -1084,8 +1107,17 @@ fun ConversationContent(
                             modifier = Modifier.align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp),
                             onClick = {
-                                coroutineScope.launch {
-                                    listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                if (uiState.hasNewerMessages) {
+                                    // Deep in history: the bottom of the loaded
+                                    // window isn't the latest message, so a plain
+                                    // animateScrollToItem(last) would land mid-history.
+                                    // Reload the latest page instead — the existing
+                                    // auto-follow then snaps the user to the bottom.
+                                    onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                } else {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                    }
                                 }
                             },
                         )

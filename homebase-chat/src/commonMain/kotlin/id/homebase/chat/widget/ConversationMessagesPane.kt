@@ -34,6 +34,7 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.resolveAnchorMessageId
+import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
@@ -158,6 +159,40 @@ fun ConversationMessagesPane(
                 uiState.scrollPosition.firstVisibleItemScrollOffset
             )
             onUiAction(ConversationListUiAction.ClearScrollTrigger)
+        }
+    }
+
+    // Proximity-trigger: when the visible window approaches either end and the
+    // window has more pages on that side, dispatch a load. The flag reads use
+    // rememberUpdatedState so the collect block always sees the latest values
+    // without restarting the snapshotFlow on every uiState mutation. The
+    // snapshotFlow body intentionally returns a tiny `Pair<Boolean, Boolean>`
+    // — snapshotFlow's structural dedup makes that O(1), unlike a list-shaped
+    // emission which would re-cost a full equals on every scroll tick.
+    val hasOlderState = rememberUpdatedState(uiState.hasOlderMessages)
+    val hasNewerState = rememberUpdatedState(uiState.hasNewerMessages)
+    val isLoadingOlderState = rememberUpdatedState(uiState.isLoadingOlder)
+    val isLoadingNewerState = rememberUpdatedState(uiState.isLoadingNewer)
+    LaunchedEffect(listState, conversation.conversation.id) {
+        val conversationId = conversation.conversation.id
+        val threshold = PaginatedConversationState.LOAD_MORE_THRESHOLD
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            if (total == 0) return@snapshotFlow false to false
+            val firstIdx = listState.boundedFirstVisibleItemIndex(total)
+                ?: return@snapshotFlow false to false
+            val lastIdx = info.visibleItemsInfo.lastOrNull()?.index ?: firstIdx
+            val nearTop = firstIdx < threshold
+            val nearBottom = lastIdx > total - 1 - threshold
+            nearTop to nearBottom
+        }.collect { (nearTop, nearBottom) ->
+            if (nearTop && hasOlderState.value && !isLoadingOlderState.value) {
+                onUiAction(ConversationListUiAction.LoadOlderMessages(conversationId))
+            }
+            if (nearBottom && hasNewerState.value && !isLoadingNewerState.value) {
+                onUiAction(ConversationListUiAction.LoadNewerMessages(conversationId))
+            }
         }
     }
 
