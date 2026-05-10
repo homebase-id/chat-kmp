@@ -165,6 +165,7 @@ fun SentMessageBubble(
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -344,6 +345,7 @@ fun SentMessageBubble(
                         replyMessages = replyMessages,
                         searchQuery = searchQuery,
                         isCurrentSearchResult = isCurrentSearchResult,
+                        chainCap = chainCap,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -459,6 +461,7 @@ fun ReceivedMessageBubble(
     onReport: (() -> Unit)? = null,
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -582,6 +585,7 @@ fun ReceivedMessageBubble(
                             replyMessages = replyMessages,
                             searchQuery = searchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
+                            chainCap = chainCap,
                         )
                         message.reactionPreview?.let { reactionSummary ->
                             ReactionList(

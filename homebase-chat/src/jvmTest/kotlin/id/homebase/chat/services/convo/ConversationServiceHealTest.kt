@@ -478,7 +478,7 @@ class ConversationServiceHealTest {
     private fun readPlaceholderRecipients(file: HomebaseFile): List<String> {
         val raw = file.fileMetadata.appData.content ?: return emptyList()
         val content = OdinSystemSerializer.deserialize<ConversationAppDataJson>(raw)
-        return content.recipients?.filterNotNull()?.map { it.domainName } ?: emptyList()
+        return content.recipients.filterNotNull().map { it.domainName }
     }
 
     private fun readAdminPlaceholderAdmins(file: HomebaseFile): List<String> {
