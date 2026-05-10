@@ -52,7 +52,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           identifier: "MESSAGE_CATEGORY",
           actions: [replyAction, markReadAction],
           intentIdentifiers: [],
-          options: .allowAnnouncement
+          options: []
       )
       UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
   }
