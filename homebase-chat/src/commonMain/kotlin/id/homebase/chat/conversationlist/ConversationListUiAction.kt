@@ -109,10 +109,23 @@ sealed interface ConversationListUiAction {
 
     data object CloseFullScreenOverlay : ConversationListUiAction
 
+    /**
+     * Persist where the user is reading in this conversation. The anchor is
+     * the uniqueId of the topmost visible message (resolved by the pane from
+     * its [androidx.compose.foundation.lazy.LazyListState]); the offset is
+     * pixel offset within that anchor item. On next open we look the anchor
+     * up against the freshly-loaded message list to recover the index — that
+     * keeps the saved position meaningful even when new messages arrived
+     * between sessions or when paging eventually shifts indices on prepend.
+     *
+     * `anchorMessageId == null` means the pane couldn't resolve the visible
+     * window to a real message (empty list, all-non-message rows) and the VM
+     * should ignore the dispatch.
+     */
     data class SaveScrollPosition(
         val conversationId: Uuid,
-        val firstVisibleItemIndex: Int,
-        val firstVisibleItemScrollOffset: Int
+        val anchorMessageId: Uuid?,
+        val firstVisibleItemScrollOffset: Int,
     ) : ConversationListUiAction
 
     data object ClearScrollTrigger : ConversationListUiAction
