@@ -213,6 +213,55 @@ class DiceBubbleLinesTest {
         assertEquals(false, result.isClosed)
     }
 
+    // ---- chainCap formula ----
+
+    @Test
+    fun chainCap_one_on_one_two_rolls_closes() {
+        // 1:1 with Sam — `ConversationUiModel.participants` is `[me, sam]`, so
+        // size=2. After both rolled (rolls.size=2), the chain must be closed
+        // and the bubble must announce a winner. This is the regression that
+        // the desktop test caught: the formula previously added +1 and the
+        // chain never closed in 1:1.
+        val cap = computeBattleChainCap(rosterSize = 2)
+        assertEquals(2, cap)
+
+        val desc = battle(
+            entry(self, listOf(21)),
+            entry(sam, listOf(24)),
+        )
+        val result = assertNotNull(
+            computeDiceBubbleLines(desc, selfOdinId, chainCap = cap).battleResult
+        )
+        assertTrue(result.isClosed, "1:1 chain at 2 rolls must close")
+    }
+
+    @Test
+    fun chainCap_self_chat_one_roll_closes() {
+        // Self chat — participants list is just `[me]`.
+        assertEquals(1, computeBattleChainCap(rosterSize = 1))
+    }
+
+    @Test
+    fun chainCap_small_group_uses_roster() {
+        // 3-person group — full roster fits inside MAX, so the chain closes
+        // when everyone rolled.
+        assertEquals(3, computeBattleChainCap(rosterSize = 3))
+    }
+
+    @Test
+    fun chainCap_large_group_caps_at_max() {
+        // 6+ members — the protocol cap kicks in first.
+        assertEquals(DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS, computeBattleChainCap(rosterSize = 6))
+        assertEquals(DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS, computeBattleChainCap(rosterSize = 50))
+    }
+
+    @Test
+    fun chainCap_empty_roster_falls_back_to_one() {
+        // Defensive: an empty list never produces 0, which would close every
+        // chain immediately.
+        assertEquals(1, computeBattleChainCap(rosterSize = 0))
+    }
+
     // ---- helpers ----
 
     private fun entry(odinId: OdinId, results: List<Int>): ChainRoll = ChainRoll(

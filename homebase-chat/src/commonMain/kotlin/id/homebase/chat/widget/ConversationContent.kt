@@ -116,6 +116,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
 import id.homebase.chat.dice.DiceRollComposerSheet
 import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.location.LocationResult
@@ -446,14 +447,12 @@ fun ConversationContent(
 
     // Maximum number of rolls a battle chain can hold in this conversation:
     // capped by the protocol's MAX_BATTLE_PARTICIPANTS, but for chats with
-    // fewer members the cap is the roster itself. `participants` excludes
-    // self, so add 1. When this number is reached the bubble switches from
-    // "leads" to "won" (the chain can no longer be overtaken).
+    // fewer members the cap is the roster itself. `participants` already
+    // includes self (per ConversationService.kt:222), so it is the roster.
+    // When this number is reached the bubble switches from "leads" to "won"
+    // (the chain can no longer be overtaken).
     val chainCap = remember(conversation.conversation.participants.size) {
-        minOf(
-            DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS,
-            conversation.conversation.participants.size + 1,
-        )
+        computeBattleChainCap(conversation.conversation.participants.size)
     }
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {

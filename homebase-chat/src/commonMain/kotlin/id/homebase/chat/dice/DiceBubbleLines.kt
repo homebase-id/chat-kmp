@@ -102,3 +102,21 @@ internal fun computeDiceBubbleLines(
  */
 private fun hostPortionOf(odinId: String): String =
     odinId.substringBefore('.').ifBlank { odinId }
+
+/**
+ * Battle chain cap for a given conversation: the chain is "closed" once
+ * `rolls.size` reaches this number, at which point the bubble announces "won"
+ * instead of "leads".
+ *
+ * The cap is the smaller of [DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS] and
+ * the conversation roster.
+ *
+ * @param rosterSize size of `ConversationUiModel.participants`, which
+ *  **includes self** (per `ConversationService.kt:222`:
+ *  `(normalizedRecipients + domain).distinct()`). For a 1:1 chat this is 2,
+ *  for a self-chat it is 1, for a group of N it is N. Coerced to ≥1 so a
+ *  defensively-empty list never makes the cap zero (which would prematurely
+ *  close every chain).
+ */
+internal fun computeBattleChainCap(rosterSize: Int): Int =
+    minOf(DiceRollDescriptor.MAX_BATTLE_PARTICIPANTS, rosterSize.coerceAtLeast(1))
