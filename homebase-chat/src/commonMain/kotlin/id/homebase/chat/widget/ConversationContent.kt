@@ -142,6 +142,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
@@ -203,7 +204,6 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -339,7 +339,6 @@ fun ConversationContent(
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
-            .distinctUntilChanged()
             .collectLatest { scrolling ->
                 if (scrolling) {
                     showFloatingDate = true
@@ -821,24 +820,37 @@ fun ConversationContent(
                 }
 
                 val currentMergedItems by rememberUpdatedState(mergedItems)
-                // Hoisted out of composition: a `derivedStateOf` reading `firstVisibleItemIndex`
-                // here was being invalidated by `animateItem()`'s lookahead measurement during
-                // conversation re-mount (back-from-message-details), causing the LazyColumn's
-                // measure pass to never settle (PR #468 watchdog stack, build 1393, 19:45 UTC).
-                // Running the observation in a coroutine means the overlay below only re-renders
-                // when the resolved date *result* changes — not on every mid-measure scroll tick.
+                // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
+                // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
+                // `Pair<Int, List<...>>` (O(n) list-equals). See CLAUDE.md "Compose & Flow
+                // gotchas" — pairing index+list and adding `.distinctUntilChanged()` here
+                // stalled Main for 5–8 s (build 1394 watchdog, restored by PR #472, regressed
+                // by `6adcc6b1` dice-battle merge).
                 val floatingDateLabel by produceState<LocalDate?>(null, listState) {
-                    snapshotFlow { listState.firstVisibleItemIndex to currentMergedItems }
-                        .distinctUntilChanged()
-                        .collect { (firstVisibleIndex, items) ->
-                            value = run {
-                                for (i in firstVisibleIndex downTo 0) {
-                                    val item = items.getOrNull(i)
-                                    if (item is MessageListContentModel.Section) return@run item.date
+                    snapshotFlow {
+                        val items = currentMergedItems
+                        // boundedFirstVisibleItemIndex guards against the
+                        // `Int.MAX_VALUE` "land at bottom" sentinel that
+                        // ConversationMessagesPane puts into LazyListState before
+                        // LazyColumn's first measure clamps it. Without the clamp
+                        // this for-loop walked 2.1B iterations and froze Main for
+                        // 6+ s (build 1419 watchdog, restored by PR #473, regressed
+                        // by `6adcc6b1` dice-battle merge). See
+                        // `boundedFirstVisibleItemIndex` docs and the CLAUDE.md
+                        // "Compose & Flow gotchas" rule.
+                        val startIdx = listState.boundedFirstVisibleItemIndex(items.size)
+                        var date: LocalDate? = null
+                        if (startIdx != null) {
+                            for (i in startIdx downTo 0) {
+                                val item = items.getOrNull(i)
+                                if (item is MessageListContentModel.Section) {
+                                    date = item.date
+                                    break
                                 }
-                                null
                             }
                         }
+                        date
+                    }.collect { value = it }
                 }
 
                 // Gate `animateItem()` until the initial composition burst has settled.
