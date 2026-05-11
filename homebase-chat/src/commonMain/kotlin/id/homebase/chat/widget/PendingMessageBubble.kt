@@ -132,6 +132,15 @@ private fun MediaPlaceholderBubble(
         color = HomebaseTheme.extendedColors.bubbleSentSurface,
     ) {
         Column {
+            message.replyPreview?.let { reply ->
+                InlineReplyPreview(
+                    replyPreview = reply,
+                    sentByYou = true,
+                    onClick = {},
+                    replyMessage = null,
+                    driveId = chatTargetDrive.alias,
+                )
+            }
             MediaMessage(
                 payloads = syntheticPayloads,
                 decryptedFiles = persistentMapOf(),
@@ -166,7 +175,9 @@ private fun MediaPlaceholderBubble(
 }
 
 @Composable
-private fun GenericPendingBubble(message: PendingOutgoingMessage) {
+private fun GenericPendingBubble(
+    message: PendingOutgoingMessage,
+) {
     val shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius,
@@ -181,51 +192,62 @@ private fun GenericPendingBubble(message: PendingOutgoingMessage) {
         shape = shape,
         color = backgroundColor,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (message.attachmentCount > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.AttachFile,
-                        contentDescription = null,
-                        tint = contentColor.copy(alpha = 0.75f),
-                        modifier = Modifier.size(16.dp),
+        Column {
+            message.replyPreview?.let { reply ->
+                InlineReplyPreview(
+                    replyPreview = reply,
+                    sentByYou = true,
+                    onClick = {},
+                    replyMessage = null,
+                    driveId = chatTargetDrive.alias,
+                )
+            }
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (message.attachmentCount > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AttachFile,
+                            contentDescription = null,
+                            tint = contentColor.copy(alpha = 0.75f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (message.attachmentCount == 1)
+                                stringResource(MR.string.pending_attachment_one)
+                            else
+                                stringResource(MR.string.pending_attachment_many, message.attachmentCount),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor.copy(alpha = 0.75f),
+                        )
+                    }
+                }
+                if (message.text.isNotEmpty()) {
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = contentColor,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = contentColor.copy(alpha = 0.7f),
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = if (message.attachmentCount == 1)
-                            stringResource(MR.string.pending_attachment_one)
-                        else
-                            stringResource(MR.string.pending_attachment_many, message.attachmentCount),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.75f),
+                        text = stringResource(MR.string.upload_preparing),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f),
                     )
                 }
-            }
-            if (message.text.isNotEmpty()) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = contentColor,
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
-                    strokeWidth = 1.5.dp,
-                    color = contentColor.copy(alpha = 0.7f),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = stringResource(MR.string.upload_preparing),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.7f),
-                )
             }
         }
     }

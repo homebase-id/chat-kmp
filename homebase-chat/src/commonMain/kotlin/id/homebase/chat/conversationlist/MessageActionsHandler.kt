@@ -752,6 +752,14 @@ internal class MessageActionsHandler(
                 text = content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                replyPreview = replyTo?.let {
+                    ReplyPreview(
+                        replyUniqueId = it.id,
+                        authorOdinId = it.originalAuthor?.domainName ?: "null",
+                        message = it.content.truncateToCodePoints(80),
+                        previewThumbnail = it.previewThumbnail,
+                    )
+                },
             )
 
             // Register the placeholder, register upload progress, clear the
