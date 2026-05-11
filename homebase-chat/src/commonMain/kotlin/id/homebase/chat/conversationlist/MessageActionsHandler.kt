@@ -752,14 +752,7 @@ internal class MessageActionsHandler(
                 text = content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
-                replyPreview = replyTo?.let {
-                    ReplyPreview(
-                        replyUniqueId = it.id,
-                        authorOdinId = it.originalAuthor?.domainName ?: "null",
-                        message = it.content.truncateToCodePoints(80),
-                        previewThumbnail = it.previewThumbnail,
-                    )
-                },
+                replyPreview = replyTo?.toReplyPreview(),
             )
 
             // Register the placeholder, register upload progress, clear the
@@ -786,17 +779,11 @@ internal class MessageActionsHandler(
                         })
 
                     if (replyTo != null) {
-                        val replyPreview = ReplyPreview(
-                            replyUniqueId = replyTo.id,
-                            authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
-                            message = replyTo.content.truncateToCodePoints(80),
-                            previewThumbnail = replyTo.previewThumbnail,
-                        )
                         Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
                         chatMessageSenderService.replyToMessage(
                             messageUniqueId = newMessageId,
                             conversationId = conversationId,
-                            replyTo = replyPreview,
+                            replyTo = replyTo.toReplyPreview(),
                             messageText = content,
                             previousMessageUniqueId = null,
                             payloadBundle = bundle,
@@ -962,6 +949,13 @@ internal class MessageActionsHandler(
         }
     }
 
+    private fun MessageUiModel.toReplyPreview() = ReplyPreview(
+        replyUniqueId = id,
+        authorOdinId = originalAuthor?.domainName ?: "null",
+        message = content.truncateToCodePoints(80),
+        previewThumbnail = previewThumbnail,
+    )
+
     private fun replyToMessage(
         conversationId: Uuid,
         replyTo: MessageUiModel,
@@ -972,12 +966,6 @@ internal class MessageActionsHandler(
             try {
                 val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
-                val replyPreview = ReplyPreview(
-                    replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
-                    message = replyTo.content.truncateToCodePoints(80),
-                    previewThumbnail = replyTo.previewThumbnail
-                )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
@@ -985,7 +973,7 @@ internal class MessageActionsHandler(
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
-                    replyTo = replyPreview,
+                    replyTo = replyTo.toReplyPreview(),
                     messageText = content,
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
