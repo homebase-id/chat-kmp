@@ -19,6 +19,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
+import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
@@ -1005,6 +1006,8 @@ internal class MessageActionsHandler(
         authorOdinId = originalAuthor?.domainName ?: "null",
         message = content.truncateToCodePoints(80),
         previewThumbnail = previewThumbnail,
+        context = (messageContent as? MessageContent.Event)?.descriptor
+            ?.let { ReplyContext.event(it.startUtcMs) },
     )
 
     private fun replyToMessage(
