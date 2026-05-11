@@ -101,6 +101,13 @@
     <string name="number_of_records">%1$s records</string>
     <string name="emoji_all">All・</string>
 
+    <!-- Pending upgrade -->
+    <string name="pending_upgrade_snackbar_message">Your identity has a pending data upgrade</string>
+    <string name="pending_upgrade_snackbar_action">Upgrade</string>
+    <string name="pending_upgrade_title">Data upgrade required</string>
+    <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
+    <string name="pending_upgrade_confirm">Upgrade Now</string>
+
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>
     <string name="avatar_conversation">Conversation avatar</string>

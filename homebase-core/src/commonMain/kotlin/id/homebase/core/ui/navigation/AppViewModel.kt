@@ -21,6 +21,9 @@ import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.upgrade.PendingUpgradeManager
+import id.homebase.core.upgrade.PendingUpgradeState
+import id.homebase.api.youauth.PendingUpgradeChecker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +43,8 @@ class AppViewModel(
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
+    private val pendingUpgradeManager: PendingUpgradeManager,
+    private val pendingUpgradeChecker: PendingUpgradeChecker,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -64,6 +69,11 @@ class AppViewModel(
                 )
             }
         }
+        viewModelScope.launch {
+            pendingUpgradeManager.state.collect { upgradeState ->
+                _uiState.update { it.copy(pendingUpgrade = upgradeState) }
+            }
+        }
     }
 
     override fun onCleared() {
@@ -79,6 +89,7 @@ class AppViewModel(
                 if (credentials != null) {
                     _uiState.update { it.copy(currentOdinId = credentials.domain) }
                     listenForConnectionRequests()
+                    checkPendingUpgrade()
                 } else {
                     listenForConnectionRequestsJob?.cancel()
                 }
@@ -131,6 +142,17 @@ class AppViewModel(
             val result = updateAppManager.checkForUpdate()
             _uiState.update { it.copy(updateAvailable = result.updateAvailable && result.canUpdate, updateAvailableVersion = result.versionName ?: "") }
         }
+    }
+
+    private fun checkPendingUpgrade() {
+        viewModelScope.launch {
+            val required = pendingUpgradeChecker.isUpgradeRequired()
+            pendingUpgradeManager.onUpgradeCheckResult(required)
+        }
+    }
+
+    fun dismissUpgradeDialog() {
+        pendingUpgradeManager.dismissDialog()
     }
 
     /** Routes an in-app banner tap through NotificationService's click handler. */
@@ -186,4 +208,5 @@ data class AppUiState(
     val inAppNotification: RichNotificationData? = null,
     val updateAvailable: Boolean = false,
     val updateAvailableVersion: String = "",
+    val pendingUpgrade: PendingUpgradeState = PendingUpgradeState.None,
 )
