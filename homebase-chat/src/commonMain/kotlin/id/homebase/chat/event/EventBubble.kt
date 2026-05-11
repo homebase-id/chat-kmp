@@ -1,7 +1,8 @@
 package id.homebase.chat.event
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.common.OdinId
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
@@ -78,7 +80,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param containerColor Background color for the card (typically a Material 3
  *   surface variant).
  */
-@OptIn(ExperimentalUuidApi::class)
+@OptIn(ExperimentalUuidApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun EventBubble(
     descriptor: EventDescriptor?,
@@ -87,6 +89,8 @@ fun EventBubble(
     conversationId: Uuid? = null,
     ownReactions: ImmutableList<String> = persistentListOf(),
     reactionSummary: ReactionSummary? = null,
+    organizer: OdinId? = null,
+    onLongClick: (() -> Unit)? = null,
     contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 ) {
@@ -126,7 +130,18 @@ fun EventBubble(
         .widthIn(min = 240.dp, max = 320.dp)
         .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
-        .let { if (canOpenDetail) it.clickable { showDetail = true } else it }
+        .let {
+            // combinedClickable (not clickable) so the parent message bubble's
+            // own combinedClickable.onLongClick still fires on mobile —
+            // Modifier.clickable consumes pointer events and otherwise swallows
+            // the long-press, leaving Events with no action menu on mobile.
+            if (canOpenDetail || onLongClick != null) {
+                it.combinedClickable(
+                    onClick = { if (canOpenDetail) showDetail = true },
+                    onLongClick = onLongClick,
+                )
+            } else it
+        }
         .padding(12.dp)
     val effectiveContent = if (isPast) contentColor.copy(alpha = 0.55f) else contentColor
 
@@ -187,6 +202,7 @@ fun EventBubble(
             ownReactions = ownReactions,
             counts = remember(reactionSummary) { EventRsvp.counts(reactionSummary) },
             onDismiss = { showDetail = false },
+            organizer = organizer,
         )
     }
 }

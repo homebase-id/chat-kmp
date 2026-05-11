@@ -119,6 +119,8 @@ import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
+import id.homebase.chat.event.EventDetailDialog
+import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.resources.chat_location_map_preview_unavailable
@@ -518,6 +520,22 @@ fun ConversationContent(
         uiState = uiState,
         onUiAction = onUiAction,
     )
+
+    // Host-level event detail opened via a reply-preview tap. The per-bubble
+    // EventBubble manages its own dialog for direct taps; this one covers the
+    // case where the original Event is the *target* of a reply (and may be
+    // outside the loaded message window — handler resolves via DB on miss).
+    uiState.replyTargetEventDetail?.let { detail ->
+        EventDetailDialog(
+            descriptor = detail.descriptor,
+            messageId = detail.messageId,
+            conversationId = detail.conversationId,
+            ownReactions = detail.ownReactions,
+            counts = remember(detail.reactionSummary) { EventRsvp.counts(detail.reactionSummary) },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissEventDetailFromReply) },
+            organizer = detail.organizer,
+        )
+    }
 
     uiState.messageReactions?.let { reactions ->
         ReactionsBottomSheet(

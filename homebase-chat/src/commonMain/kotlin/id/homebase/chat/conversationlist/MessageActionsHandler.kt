@@ -20,6 +20,7 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationService
@@ -225,6 +226,56 @@ internal class MessageActionsHandler(
 
     fun handleClearHighlightedMessage() {
         messagesUiState.update { it.copy(highlightedMessageId = null) }
+    }
+
+    /**
+     * Tap on the inline reply-preview that's pinned above a message bubble.
+     * For an Event target we want to open the detail dialog directly (the
+     * user's intent is "show me that event", not "scroll me to it"); for any
+     * other content kind we keep today's scroll-to-message behavior.
+     *
+     * Resolution path: [ChatMessageStream.getMessage] short-circuits to the
+     * paginated in-memory window first and falls through to a single
+     * `selectHomebaseFileByUnique` DB read on miss — so the Event-out-of-window
+     * case still works without scrolling history into view.
+     */
+    fun handleOpenReplyTarget(action: ConversationListUiAction.OpenReplyTarget) {
+        scope.launch {
+            try {
+                val target = chatMessageStream.getMessage(action.messageId)
+                val event = target?.messageContent as? MessageContent.Event
+                val descriptor = event?.descriptor
+                if (target != null && descriptor != null) {
+                    messagesUiState.update {
+                        it.copy(
+                            replyTargetEventDetail = ReplyTargetEventDetail(
+                                descriptor = descriptor,
+                                messageId = target.id,
+                                conversationId = target.conversationId,
+                                ownReactions = target.ownReactions,
+                                reactionSummary = target.reactionPreview,
+                                organizer = target.originalAuthor,
+                            )
+                        )
+                    }
+                } else {
+                    handleScrollToMessageId(
+                        ConversationListUiAction.ScrollToMessageId(action.messageId)
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "Failed to open reply target ${action.messageId}: ${e.message}"
+                }
+                handleScrollToMessageId(
+                    ConversationListUiAction.ScrollToMessageId(action.messageId)
+                )
+            }
+        }
+    }
+
+    fun handleDismissEventDetailFromReply() {
+        messagesUiState.update { it.copy(replyTargetEventDetail = null) }
     }
 
     fun handleDeleteMessageForEveryone(action: ConversationListUiAction.DeleteMessageForEveryone) {
