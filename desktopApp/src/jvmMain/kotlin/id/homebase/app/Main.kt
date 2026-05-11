@@ -24,7 +24,6 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
@@ -117,8 +116,7 @@ fun main() {
     val config = DesktopPreferences()
 
     runBlocking {
-        val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
     }
 
     application {

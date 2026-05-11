@@ -69,6 +69,7 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
+            implementation(libs.jetbrains.compose.ui.backhandler)
             implementation(libs.jetbrains.compose.resources)
             implementation(libs.jetbrains.compose.material3)
             implementation(libs.jetbrains.compose.material.icons.extended)
@@ -97,6 +98,7 @@ kotlin {
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
             implementation(libs.composenativewebview)
+            implementation(libs.filekit.dialogs.compose)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)

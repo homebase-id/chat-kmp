@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -89,6 +90,7 @@ import id.homebase.resources.settings_security_setup
 import id.homebase.resources.cd_open_externally
 import id.homebase.resources.settings_section_danger_zone
 import id.homebase.resources.settings_section_general
+import id.homebase.resources.vault_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -102,6 +104,7 @@ fun SettingsScreen(
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
+    onNavigateToVaultSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -156,6 +159,7 @@ fun SettingsScreen(
             onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
+           onNavigateToVaultSettings = onNavigateToVaultSettings,
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp,
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
@@ -219,12 +223,18 @@ fun SettingsUi(
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
+    onNavigateToVaultSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
+            TopAppBar(title = {
+                Text(
+                    stringResource(MR.string.settings),
+                    modifier = Modifier.testTag("settingsTitle")
+                )
+            }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -308,6 +318,7 @@ fun SettingsUi(
                                 strokeWidth = 2.dp
                             )
                         }
+
                         NotificationVerificationStatus.OK -> {
                             Icon(
                                 imageVector = Icons.Outlined.CheckCircle,
@@ -316,6 +327,7 @@ fun SettingsUi(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+
                         NotificationVerificationStatus.ERROR -> {
                             Icon(
                                 imageVector = Icons.Outlined.Error,
@@ -370,6 +382,12 @@ fun SettingsUi(
                 text = stringResource(MR.string.settings_help),
                 onClick = onNavigateToHelp
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Lock,
+                text = stringResource(MR.string.vault_settings_section),
+                onClick = onNavigateToVaultSettings,
+            )
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
@@ -414,6 +432,7 @@ fun SettingsUiPreview() {
             onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
+            onNavigateToVaultSettings = {},
             onNavigateToStorage = {},
             onNavigateToHelp = {},
             onNavigateToMomentsSettings = {},

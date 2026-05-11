@@ -38,13 +38,35 @@ homebase-common/src/
   jvmMain/.../foo/FooBiometricAuth.jvm.kt   # returns Unavailable
 
 homebase-core/src/commonMain/kotlin/id/homebase/core/ui/screens/foo/
-  FooScreen.kt                   # authenticated content (biometric gate)
-  FooOnboardingScreen.kt         # intro + Setup/Dismiss buttons + permission dialog
-  FooViewModel.kt                # onboarding state + UiEvents
-  FooUiState.kt                  # UiState data class + UiAction + UiEvent
-  FooSettingsScreen.kt           # Settings sub-page
-  FooSettingsViewModel.kt
-  FooSettingsUiState.kt
+  FooScreen.kt                   # coordinator: scaffold, pickers, dialogs
+  FooContent.kt                  # list/grid body (loading, empty, populated states)
+  FooViewModel.kt                # single VM: combines streams, dispatches actions
+  FooUiState.kt                  # UiState + UiAction + UiEvent + FooError
+
+  FooStream.kt                   # EventBus → incremental StateFlow (real-time data)
+  FooService.kt                  # metadata CRUD via OutboxSync + OptimisticWriter
+  FooUploaderService.kt          # upload/download/append orchestration (if file-backed)
+
+  auth/
+    FooBiometricGate.kt          # biometric session + privacy overlay (if gated)
+  gallery/                       # (if media-heavy)
+    FooGalleryScreen.kt          # scaffold + pager + top bar
+    FooGalleryDetailSheet.kt     # editing sheet
+    FooZoomableImage.kt          # pinch-zoom-pan composable
+  components/
+    FooLockedContent.kt          # lock screen (if biometric-gated)
+    FooEmptyState.kt             # empty state prompt
+    ...                          # feature-specific reusable composables
+  model/
+    FooEntry.kt                  # domain model + HomebaseFile mapper
+    FooSection.kt                # grouping model (if applicable)
+    FooFileContent.kt            # @Serializable JSON schemas for appData.content
+  settings/
+    FooSettingsScreen.kt
+    FooSettingsViewModel.kt
+    FooSettingsUiState.kt
+  onboarding/
+    FooOnboardingScreen.kt       # intro + Setup/Dismiss buttons
 ```
 
 Class names are load-bearing: Koin's `viewModelOf(::FooViewModel)` binds by
@@ -176,6 +198,19 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
         _activated.value = value
     }
     // setIconVisible / setBiometricsEnabled follow the same shape
+
+    /**
+     * Clear all in-memory state for a clean login. Called from
+     * `onPostAuthenticated` in `AppModule.kt`. Re-reads boolean flags
+     * from the DB (which returns defaults after a logout wipe) and
+     * zeroes biometric session timestamps.
+     */
+    fun reset() {
+        _activated.value = readBoolean(ACTIVATED_KEY, default = false)
+        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
+        // Clear any in-memory session state (biometric timestamps, flags, etc.)
+    }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
         val bytes: ByteArray = runCatching {
@@ -333,16 +368,30 @@ fun FooScreen(onNavigateBack: () -> Unit) {
     val title = stringResource(MR.string.foo_biometric_prompt_title)
     val subtitle = stringResource(MR.string.foo_biometric_prompt_subtitle)
 
-    var authorized by remember { mutableStateOf(!fooPreferences.biometricsEnabled.value) }
-
-    LaunchedEffect(Unit) {
-        if (authorized) return@LaunchedEffect
-        when (authenticateBiometric(title, subtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> authorized = true
-            BiometricResult.Failure -> onNavigateBack()
-        }
+    var authorized by remember {
+        mutableStateOf(
+            !fooPreferences.biometricsEnabled.value || fooPreferences.isAuthSessionValid()
+        )
     }
-    // … render content only when `authorized`
+    var unlockAttempt by remember { mutableStateOf(0) }
+    var isAuthenticating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authorized, unlockAttempt) {
+        if (authorized || isAuthenticating) return@LaunchedEffect
+        isAuthenticating = true
+        when (authenticateBiometric(title, subtitle)) {
+            BiometricResult.Success, BiometricResult.Unavailable -> {
+                fooPreferences.recordAuthSuccess()
+                authorized = true
+            }
+            BiometricResult.Failure -> { /* stay on locked screen */ }
+        }
+        isAuthenticating = false
+    }
+
+    // When !authorized, show a locked screen with an "Unlock" button
+    // that increments unlockAttempt to re-trigger biometrics.
+    // When authorized, render the feature content.
 }
 ```
 
@@ -370,6 +419,276 @@ Actuals follow the Vault pattern:
 
 If the add-on doesn't need biometrics, skip this step, skip the biometric actuals,
 and drop the biometric Switch in Step 7.
+
+---
+
+## Step 6b — Data layer (three-service pattern)
+
+Reference: `VaultStream.kt`, `VaultService.kt`, `VaultUploaderService.kt`,
+`VaultViewModel.kt`. Chat equivalents: `ConversationStream`, `ConversationService`,
+`ChatMessageSenderService`.
+
+Any add-on backed by an encrypted drive should split its data layer into three
+services. This pattern gives you real-time updates, optimistic UI, and testable
+units with clear boundaries.
+
+### The three services
+
+| Service | Responsibility | Dependencies |
+|---------|---------------|--------------|
+| `FooStream` | Real-time data observation via EventBus; holds in-memory StateFlows; provides optimistic mutation methods | `DatabaseManager`, `CredentialsManager`, `EventBus`, `CoroutineScope` |
+| `FooService` | Metadata CRUD (create/rename/delete/reorder items); enqueues to outbox with optimistic DB writes | `OutboxSync`, `OptimisticWriter` |
+| `FooUploaderService` | File upload/download/append; encryption + thumbnails; depends on `FooService` for metadata updates that accompany payload changes | `OutboxSync`, `OptimisticWriter`, `PayloadBundleEncryptionService`, `FileOperationsProvider`, `DriveFileProvider`, `LocalAttachmentContextStore`, `FooService` |
+
+### FooStream — real-time observation
+
+Cold-loads all data from the local DB on init, then observes `EventBus` for
+incremental updates. Exposes two `StateFlow`s that the ViewModel combines:
+
+```kotlin
+class FooStream(
+    private val databaseManager: DatabaseManager,
+    private val credentialsManager: CredentialsManager,
+    private val eventBus: EventBus,
+    private val scope: CoroutineScope,
+) {
+    private val driveId = fooLabeledDrive.drive.alias
+
+    private val _items = MutableStateFlow<List<FooItem>>(emptyList())
+    val items: StateFlow<List<FooItem>> = _items.asStateFlow()
+
+    private val _isLoaded = MutableStateFlow(false)
+    val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
+
+    init {
+        scope.launch { observeEvents() }
+    }
+
+    /**
+     * Load data from the local DB. Called from `onPostAuthenticated` in
+     * `AppModule.kt` — never from `init`, because the singleton survives
+     * logout and `init` only runs once per app process.
+     */
+    fun start() {
+        scope.launch { loadAll() }
+    }
+
+    /**
+     * Clear all in-memory state so a subsequent [start] loads cleanly
+     * for a different identity. Called from `onPostAuthenticated` before
+     * [start]. Must clear: StateFlows, resurrection-prevention sets,
+     * pending-operation tracking, and any other session-scoped state.
+     */
+    fun reset() {
+        _items.value = emptyList()
+        _isLoaded.value = false
+        // Clear deletion-tracking sets, pending-delete maps, etc.
+    }
+
+    suspend fun loadAll() { /* QueryBatch from local DB → emit to StateFlows */ }
+
+    private suspend fun observeEvents() {
+        eventBus.events.collect { event ->
+            when (event) {
+                // Incremental: merge new/updated files into in-memory state
+                is BackendEvent.DriveEvent.BatchReceived ->
+                    if (event.driveId == driveId) processBatch(event.batchData)
+                // Full reload: outbox confirmed, DB has authoritative state
+                is BackendEvent.OutboxEvent.ItemCompleted ->
+                    if (event.driveId == driveId) loadAll()
+                is BackendEvent.OutboxEvent.ItemFailed ->
+                    if (event.driveId == driveId) loadAll()
+                else -> {}
+            }
+        }
+    }
+
+    // Optimistic mutations — called by ViewModel after service enqueue succeeds
+    fun insertOptimistic(item: FooItem) { _items.update { it + item } }
+    fun updateOptimistic(item: FooItem) { /* replace by uniqueId */ }
+    fun remove(uniqueId: Uuid) { _items.update { it.filter { i -> i.uniqueId != uniqueId } } }
+}
+```
+
+**Key design decisions:**
+
+- **Incremental on BatchReceived, full reload on outbox events.** Batch events
+  carry the actual `HomebaseFile` objects so you can merge them in-memory. Outbox
+  completion/failure events don't carry data — reload from DB to get confirmed state.
+- **Stream owns no business logic.** It only holds data and provides mutation methods.
+  The ViewModel decides *when* to call them.
+- **CoroutineScope comes from Koin.** `ApiModule` registers a
+  `single<CoroutineScope>` with `SupervisorJob() + Dispatchers.Default`. Use
+  `singleOf(::FooStream)` — Koin auto-resolves the scope. Don't create a separate one.
+
+### FooService — metadata CRUD
+
+Handles all non-file mutations. No encryption, no file I/O.
+
+```kotlin
+class FooService(
+    private val outboxSync: OutboxSync,
+    private val optimisticWriter: OptimisticWriter,
+) {
+    suspend fun createItem(id: Uuid, content: FooContent, keyHeader: KeyHeader): Boolean {
+        val metadata = buildMetadata(id, content)
+        val enqueued = outboxSync.tryEnqueue(UploadFileRequest(...))
+        if (enqueued) {
+            optimisticWriter.writeNewFile(driveId, keyHeader, metadata, 0, FileSystemType.Standard)
+        }
+        return enqueued
+    }
+
+    suspend fun deleteItem(uniqueId: Uuid, fileId: Uuid): Boolean { /* DeleteLocalFilesByFileIdRequest */ }
+    suspend fun updateMetadata(...): Boolean { /* UpdateFileByUniqueIdRequest */ }
+}
+```
+
+### FooUploaderService — file operations
+
+Only needed if your add-on handles file uploads (images, documents, etc.). Depends
+on `FooService` for metadata updates that accompany payload changes (e.g., append
+pages updates the file's metadata + adds new payloads in one request).
+
+### ViewModel — combine streams into UI state
+
+The ViewModel combines Stream flows via `combine().stateIn()`. It never holds
+duplicate state — the Stream is the single source of truth for data.
+
+```kotlin
+class FooViewModel(
+    private val fooStream: FooStream,
+    private val fooService: FooService,
+    private val fooUploaderService: FooUploaderService,
+    // ... other deps
+) : ViewModel() {
+
+    private val _overlayState = MutableStateFlow<FooOverlay?>(null)
+
+    val uiState: StateFlow<FooUiState> = combine(
+        fooStream.items,
+        fooStream.isLoaded,
+        _overlayState,
+    ) { items, isLoaded, overlay ->
+        FooUiState(items = items, isLoading = !isLoaded, overlay = overlay)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FooUiState())
+
+    fun onAction(action: FooUiAction) { /* dispatch to service layer */ }
+}
+```
+
+### Two layers of optimistic updates
+
+There are two independent mechanisms for making the UI feel instant:
+
+| Layer | Where | Speed | Survives loadAll()? |
+|-------|-------|-------|---------------------|
+| **OptimisticWriter** (Layer 1) | Writes to local SQLite DB | Visible on next `loadAll()` (outbox completion) | Yes — it IS the DB |
+| **Stream mutations** (Layer 2) | Updates in-memory StateFlow | Instant — UI recomposes immediately | No — `loadAll()` overwrites with DB state |
+
+**Layer 1** happens automatically inside `FooService.enqueueFileContentUpdate()`.
+**Layer 2** must be explicitly triggered by the ViewModel after a successful enqueue.
+
+Use both layers for operations where the user expects instant feedback:
+
+```kotlin
+// In ViewModel — after service enqueue succeeds, update the stream
+private fun handleRename(item: FooItem, newName: String) {
+    viewModelScope.launch {
+        val success = fooService.rename(item, newName)
+        if (success) {
+            fooStream.updateOptimistic(item.copy(name = newName))
+        } else {
+            _events.tryEmit(FooUiEvent.Error(FooError.RenameFailed))
+        }
+    }
+}
+```
+
+For operations with placeholder data (e.g., appending pages where the real
+payload descriptors aren't available yet), insert placeholders into the Stream
+and revert on failure:
+
+```kotlin
+private fun handleAppend(item: FooItem, newFiles: List<PlatformFile>) {
+    viewModelScope.launch {
+        // Optimistic: add placeholders so count updates immediately
+        val placeholders = buildPlaceholders(item, newFiles)
+        val optimistic = item.copy(pages = item.pages + placeholders)
+        fooStream.updateOptimistic(optimistic)
+
+        val success = fooUploaderService.append(item, newFiles)
+        if (!success) {
+            fooStream.updateOptimistic(item) // revert
+            _events.tryEmit(FooUiEvent.Error(FooError.AppendFailed))
+        }
+        // On success: outbox completion fires loadAll(), replacing placeholders
+        // with real data from the DB
+    }
+}
+```
+
+### Model files
+
+Define your domain models in a `model/` sub-package. Each model has:
+- An `@Immutable data class` with UI-relevant fields
+- A `HomebaseFile.toFooItem()` extension mapper
+- A `@Serializable` content class matching your `appData.content` JSON schema
+
+```kotlin
+// model/FooEntry.kt
+@Immutable
+data class FooEntry(
+    val fileId: Uuid,
+    val uniqueId: Uuid,
+    val name: String,
+    // ... fields the UI needs
+)
+
+fun HomebaseFile.toFooEntry(): FooEntry? {
+    val content = /* deserialize appData.content */ ?: return null
+    // Check isPendingSendTag for upload status detection
+    return FooEntry(...)
+}
+
+// model/FooFileContent.kt
+@Serializable
+data class FooFileContent(val name: String, val label: String? = null)
+const val FOO_FILE_TYPE = 5574  // reserve with the team
+```
+
+### DI registration
+
+```kotlin
+// AppModule.kt
+singleOf(::FooStream)           // CoroutineScope auto-resolved from ApiModule
+singleOf(::FooService)
+singleOf(::FooUploaderService)  // only if file-backed
+
+viewModel {
+    FooViewModel(
+        fooStream = get(),
+        fooService = get(),
+        fooUploaderService = get(),
+        // ... other deps
+    )
+}
+```
+
+### File size guidelines
+
+Aim for **under 300 lines per file**. When a file grows past that, look for
+extraction opportunities:
+
+- Screen coordinator > 400 lines → extract `FooContent.kt` (list body),
+  `auth/FooBiometricGate.kt` (biometric logic)
+- Gallery overlay > 300 lines → split into `gallery/FooGalleryScreen.kt` (scaffold),
+  `gallery/FooGalleryDetailSheet.kt` (editing), `gallery/FooZoomableImage.kt` (gestures)
+- Dialogs, bottom sheets, FABs → `components/` sub-package
+
+The ViewModel is the natural exception — it holds all action dispatch logic and
+tends toward 400-500 lines. This is consistent with the chat module
+(`ConversationListViewModel` is 3,478 lines).
 
 ---
 
@@ -404,7 +723,64 @@ Three rows:
 `StateFlow`s into its `UiState`.
 
 The *Show Foo icon* switch is the one the user has to find if they previously
-dismissed onboarding — it's the only way the icon comes back.
+dismissed onboarding — but the Home screen shortcut (Step 7b) always remains
+visible as a secondary entry point.
+
+---
+
+## Step 7b — Home screen shortcut
+
+Reference: `HomeScreen.kt`, `AppNavHost.kt`.
+
+The bottom-bar icon can be hidden by the user (via *Dismiss* / settings toggle),
+so add a permanent shortcut on the **Home** tab. This ensures the feature is
+always discoverable regardless of the icon-visibility preference.
+
+### In `HomeScreen.kt`
+
+Add an `onNavigateToFoo: () -> Unit` parameter and render a tappable tile above
+the log buttons:
+
+```kotlin
+Surface(
+    onClick = onNavigateToFoo,
+    shape = RoundedCornerShape(16.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+    tonalElevation = 1.dp,
+    modifier = Modifier.size(96.dp),
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.<FooIcon>,
+            contentDescription = stringResource(MR.string.foo_label),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(40.dp),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(MR.string.foo_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+```
+
+### In `AppNavHost.kt`
+
+Wire the callback in the `composable<Route.Home>` block:
+
+```kotlin
+HomeScreen(
+    viewModel = koinViewModel(),
+    onNavigateToFoo = openFoo,
+    onNavigateToExamples = { navController.navigate(Route.Examples) },
+)
+```
 
 ---
 
@@ -602,6 +978,28 @@ viewModelOf(::FooViewModel)       // constructor: FooPreferences, AuthConnection
 viewModelOf(::FooSettingsViewModel)
 ```
 
+### Logout/login cleanup — `onPostAuthenticated`
+
+Koin singletons (`FooPreferences`, `FooStream`, `FooService`) live for the
+entire app process. On logout the DB is wiped (`DROP TABLE`), but the
+singleton's in-memory `StateFlow`s still hold the previous user's data. Without
+an explicit reset, a second login shows stale data from the wrong identity.
+
+Add cleanup to the existing `onPostAuthenticated` block in `AppModule.kt`:
+
+```kotlin
+onPostAuthenticated = {
+    // ... existing ConversationStream / ContactService wiring ...
+
+    get<FooPreferences>().reset()
+    get<FooStream>().apply { reset(); start() }
+}
+```
+
+`reset()` zeroes every `StateFlow` and clears session-scoped tracking sets
+(deletion IDs, pending-operation maps). `start()` then reloads from the
+now-fresh DB for the new identity. Order matters: **reset before start**.
+
 ---
 
 ## Step 11 — Platform dependencies (only if biometric-gated)
@@ -621,9 +1019,11 @@ and omit the biometrics switch from Settings.
 
 Copy this into your PR description and tick off each wiring point:
 
+**Shell (navigation, preferences, UI chrome):**
+
 - [ ] `FooPreferences` with fresh stable UUIDs (new `0a0Nxx` namespace)
 - [ ] Strings under `foo_*` prefix in `strings.xml`
-- [ ] Three `Route.Foo* ` entries in `Routes.kt`
+- [ ] Three `Route.Foo*` entries in `Routes.kt`
 - [ ] `FooOnboardingScreen`, `FooScreen`, `FooSettingsScreen`
 - [ ] `FooViewModel` + `FooUiState` + `FooSettingsViewModel` + `FooSettingsUiState`
 - [ ] `TopLevelRoute.Foo`, reactive `topLevelRoutes`, `openFoo()` helper in
@@ -631,15 +1031,43 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
 - [ ] Settings row + `onNavigateToFooSettings` wired
+- [ ] Home screen shortcut tile wired via `onNavigateToFoo` (always visible)
+- [ ] (Optional) `FooBiometricAuth` expect + three actuals
+- [ ] (Optional) `auth/FooBiometricGate.kt` extracted from screen
+
+**Data layer (three-service pattern):**
+
+- [ ] `FooStream` — EventBus observation, incremental StateFlows, optimistic mutations
+- [ ] `FooService` — metadata CRUD via `OutboxSync` + `OptimisticWriter`
+- [ ] `FooUploaderService` — file operations (only if file-backed)
+- [ ] `model/FooEntry.kt` — domain model + `HomebaseFile.toFooEntry()` mapper
+- [ ] `model/FooFileContent.kt` — `@Serializable` content schemas + file type constants
+- [ ] ViewModel uses `combine(stream.items, stream.isLoaded, ...).stateIn()`
+- [ ] Optimistic Stream updates for user-visible mutations (create, rename, append)
+- [ ] Optimistic revert on failure for placeholder-based operations (append pages)
+
+**Drive + DI:**
+
 - [ ] `fooLabeledDrive` constant in `AppConfig.kt` (do NOT add to
       `mandatorySyncDrives` — optional drives live in `DriveRegistry`)
-- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf` — no
-      changes to `DriveSyncManager`, `DriveRegistry`, or `AuthConnectionCoordinator`
-      bindings (they are generic and already wired)
-- [ ] (Optional) `FooBiometricAuth` expect + three actuals
+- [ ] `AppModule`: `singleOf(::FooStream)`, `singleOf(::FooService)`,
+      `singleOf(::FooUploaderService)`, `viewModel { FooViewModel(...) }`,
+      `viewModelOf(::FooSettingsViewModel)`
+- [ ] `onPostAuthenticated`: `FooPreferences.reset()` + `FooStream.reset(); start()`
+      (clears stale in-memory state across logout/login)
+- [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
+      checked before creating defaults (prevents AES key mismatch on re-login)
+
+**Quality:**
+
 - [ ] `CLAUDE.md` UI checklist: Material 3 only, `stringResource`,
       `Icons.AutoMirrored.*` for directional icons, `collectAsStateWithLifecycle`,
       `start`/`end` padding, `contentDescription` on icons
+- [ ] Pending files: `isPendingSendTag` checked in file-to-UI mapper; local file
+      paths stored in `LocalAttachmentContextStore` for instant preview during upload
+- [ ] Typed error events: sealed `FooError` class, resolved to `stringResource()`
+      in the screen composable (never hardcoded strings)
+- [ ] No file exceeds 300 lines (ViewModel is the natural exception at 400-500)
 
 ---
 
@@ -696,3 +1124,40 @@ Copy this into your PR description and tick off each wiring point:
   you rename the VM without updating `AppModule.kt`.
 - **Fresh UUID namespace per add-on.** Reusing Vault's `0a01xx` range will corrupt
   user preferences across both features.
+- **Drive data won't sync without `mountDrive()`.** The add-on drive is NOT in
+  `mandatorySyncDrives`. If `authConnectionCoordinator.mountDrive(fooLabeledDrive)`
+  is never called, uploads work (outbox pushes directly to the server) but the drive
+  is never pulled down. On reinstall or logout+login the data disappears from the UI
+  because `DriveSyncManager` doesn't know about the drive. The fix: always call
+  `mountDrive()` during activation — `DriveRegistry.addDrive()` is idempotent so
+  calling it twice is safe.
+- **`Preferences.activated` is device-local — use `DriveRegistry` as source of truth.**
+  After logout+login, `activated` resets to `false`. If you blindly re-create default
+  content (sections, folders, etc.) with new AES keys, the server rejects with
+  "AES key must match." Before creating defaults, check
+  `driveRegistry.hasDrive(fooDriveId)` — if the drive is already registered, the
+  feature was set up before. Just restore the local `activated` flag and let sync
+  pull existing data. Only create defaults when the drive is genuinely new.
+- **Optimistic writes make files visible before payloads upload.**
+  `OptimisticWriter.writeNewFile()` inserts file metadata into the local DB and emits
+  `BatchReceived`. The UI sees the file immediately, but the payload bytes are still
+  in the outbox queue. If the UI tries to load the image from the server, it fails.
+  Fix: check `isPendingSendTag` in your file-to-UI mapper — files with that tag are
+  still uploading. Use `LocalAttachmentContextStore` (keyed by `uniqueId` +
+  `payloadKey`) to store the local file path at send time, and render the local file
+  via `AsyncImage` in your card/list composable. This matches the chat pattern in
+  `MediaItem.kt`.
+- **Koin singletons survive logout — you MUST add `reset()`.** The DB is wiped on
+  logout (`DROP TABLE`), but `FooStream`, `FooPreferences`, and `FooService` are Koin
+  singletons whose `StateFlow`s and tracking sets persist for the lifetime of the app
+  process. Without an explicit `reset()` call in `onPostAuthenticated`, logging in as a
+  different user shows the previous user's data — a **user data isolation bug**. Every
+  singleton that holds user-scoped in-memory state needs a `reset()` method wired into
+  `onPostAuthenticated`. This includes resurrection-prevention sets (`deletedIds`),
+  pending-operation maps, biometric session timestamps, and any `started` flags that
+  gate idempotent `start()` calls.
+- **Biometric cancel should show a locked screen, not navigate away.** Calling
+  `onNavigateBack()` on `BiometricResult.Failure` silently ejects the user with no
+  retry option. Instead, show a locked state UI (lock icon + "Unlock" button) and
+  let the user re-trigger biometrics. Guard against rapid taps with an
+  `isAuthenticating` flag.

@@ -100,6 +100,10 @@ class AuthConnectionCoordinator(
                 // list before opening the WebSocket, so the first WS connect already
                 // subscribes to the full set — no late observer-driven reconnect.
                 val initialDrives = driveRegistry.bootstrap()
+                // Pre-mount optional drives so they're in driveSyncs when
+                // onConnected fires start() + syncAll(). mountDrive() defers
+                // the network kick while isRunning is false; syncAll() picks
+                // them up alongside the mandatory drives.
                 for (drive in initialDrives) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
@@ -185,8 +189,14 @@ class AuthConnectionCoordinator(
                             // would silently skip if isRunning is still false.
                             driveSyncManager.start()
 
-                            // processInbox no longer needed — server auto-processes on QueryBatch.
-                            // wsClient?.processAllInboxes()
+                            // Reverts block #2 of commit 18483c4e. The WS push path is
+                            // engineered to bypass QueryBatch in steady state, so the
+                            // server's "auto-process inbox on QueryBatch" doesn't fire
+                            // for backlog accumulated while we were offline. Poke each
+                            // subscribed drive explicitly so syncAll() below sees the
+                            // freshly-processed items. Remove once the server-side
+                            // auto-process behaviour is fixed.
+                            wsClient?.processAllInboxes()
 
                             driveSyncManager.syncAll()
                         } catch (e: Exception) {

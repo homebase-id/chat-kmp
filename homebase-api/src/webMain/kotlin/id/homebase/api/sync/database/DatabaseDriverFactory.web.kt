@@ -7,4 +7,8 @@ actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
         TODO("Not yet implemented")
     }
+
+    actual fun dbFilePath(): String {
+        TODO("Not yet implemented")
+    }
 }

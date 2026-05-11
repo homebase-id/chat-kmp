@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -143,6 +144,8 @@ fun MessageBubbleRaw(
                 conversationId = message.conversationId,
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
             )
             return
         }
@@ -215,7 +218,8 @@ fun MessageBubbleRaw(
     val timestamp = formatMessageTimestamp(message.userDate)
     val messageInfoText =
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
-    val mediaOnly = remember { !message.content.hasContent() && hasMedia }
+    val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
+    val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
     val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
@@ -325,41 +329,65 @@ fun MessageBubbleRaw(
                         downloadingFiles = downloadingFiles,
                         uploadStatus = uploadStatus,
                     )
-                    Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(40.dp)
-                                .align(Alignment.BottomStart).background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(
-                                                alpha = 0.6f
-                                            ),
-                                        )
-                                    )
-                                ),
-                        ) {
-                            Row(
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(
-                                        alpha = 0.7f
-                                    )
-                                )
-                                if (sentByYou) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                    )
-                                }
-                            }
+                    MediaTimestampOverlay(
+                        messageInfoText = messageInfoText,
+                        sentByYou = sentByYou,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        contentColor = contentColor,
+                    )
+                }
+            } else if (replyMediaOnly && !message.isDeleted) {
+                val reply = message.messageAppData.replyPreview!!
+                Layout(
+                    content = {
+                        InlineReplyPreview(
+                            replyPreview = reply,
+                            sentByYou = sentByYou,
+                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            replyMessage = replyMessages[reply.replyUniqueId],
+                            driveId = chatTargetDrive.alias,
+                        )
+                        Box {
+                            MediaMessage(
+                                payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                                fileId = message.fileId,
+                                decryptedFiles = decryptedFiles,
+                                keyHeader = message.keyHeader,
+                                driveId = chatTargetDrive.alias,
+                                previewThumbnail = message.previewThumbnail,
+                                onMediaClick = onMediaClick,
+                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onRequestDecryptedFile = onRequestDecryptedFile,
+                                shape = RoundedCornerShape(0.dp),
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                messageId = message.id,
+                                downloadingFiles = downloadingFiles,
+                                uploadStatus = uploadStatus,
+                            )
+                            MediaTimestampOverlay(
+                                messageInfoText = messageInfoText,
+                                sentByYou = sentByYou,
+                                isPendingSend = isPendingSend,
+                                deliveryStatus = message.messageAppData.deliveryStatus,
+                                contentColor = contentColor,
+                            )
                         }
+                    },
+                ) { measurables, constraints ->
+                    val minContentWidth = Dimens.MediaBubble.minWidthWithContent.roundToPx()
+                        .coerceAtMost(constraints.maxWidth)
+                    val mediaPlaceable = measurables[1].measure(
+                        constraints.copy(minWidth = minContentWidth)
+                    )
+                    val width = mediaPlaceable.width
+                    val replyPlaceable = measurables[0].measure(
+                        constraints.copy(minWidth = width, maxWidth = width)
+                    )
+                    layout(width, replyPlaceable.height + mediaPlaceable.height) {
+                        replyPlaceable.placeRelative(0, 0)
+                        mediaPlaceable.placeRelative(0, replyPlaceable.height)
                     }
                 }
             } else {
@@ -400,7 +428,7 @@ fun MessageBubbleRaw(
                                     previewThumbnail = message.previewThumbnail,
                                     onMediaClick = onMediaClick,
                                     keyHeader = message.keyHeader,
-                                    shape = if (authorName == null) RoundedCornerShape(
+                                    shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
                                         topStart = Dimens.Message.cornerRadius,
                                         topEnd = Dimens.Message.cornerRadius
                                     ) else RoundedCornerShape(0.dp),
@@ -688,6 +716,48 @@ fun MessageBubbleRaw(
                             infoPlaceable.placeRelative(clampedInfoX, infoY)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.MediaTimestampOverlay(
+    messageInfoText: String,
+    sentByYou: Boolean,
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    contentColor: Color,
+) {
+    Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(40.dp)
+                .align(Alignment.BottomStart).background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.6f),
+                        )
+                    )
+                ),
+        ) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    text = messageInfoText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f),
+                )
+                if (sentByYou) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    DeliveryStatus(
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = deliveryStatus,
+                        contentColor = contentColor.copy(alpha = 0.7f),
+                    )
                 }
             }
         }

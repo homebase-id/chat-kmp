@@ -54,8 +54,8 @@ class SettingsUiTest {
         onNodeWithTag("securitySetupButton").assertExists()
         onNodeWithTag("appearanceButton").assertExists()
         onNodeWithTag("helpButton").assertExists()
-        onNodeWithTag("deleteAccountButton").assertExists()
-        onNodeWithTag("logoutButton").assertExists()
+        onNodeWithTag("deleteAccountButton").performScrollTo().assertExists()
+        onNodeWithTag("logoutButton").performScrollTo().assertExists()
     }
 
     @Test
@@ -153,7 +153,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithTag("deleteAccountButton").performClick()
+        onNodeWithTag("deleteAccountButton").performScrollTo().performClick()
         assertTrue(deleteClicked)
     }
 }
