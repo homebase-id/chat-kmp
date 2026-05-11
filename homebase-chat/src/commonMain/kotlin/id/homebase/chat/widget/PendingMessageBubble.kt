@@ -147,11 +147,8 @@ private fun MediaPlaceholderBubble(
                 fileId = message.id,
                 driveId = chatTargetDrive.alias,
                 keyHeader = fakeKeyHeader,
-                shape = if (hasText) {
-                    RoundedCornerShape(
-                        topStart = Dimens.Message.cornerRadius,
-                        topEnd = Dimens.Message.cornerRadius,
-                    )
+                shape = if (hasText || message.replyPreview != null) {
+                    RoundedCornerShape(0.dp)
                 } else {
                     bubbleShape
                 },
