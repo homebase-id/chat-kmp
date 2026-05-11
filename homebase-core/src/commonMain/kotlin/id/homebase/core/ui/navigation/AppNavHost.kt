@@ -115,16 +115,10 @@ import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
-import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.resources.MR
-import id.homebase.resources.nav_chats
-import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
 import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
@@ -155,11 +149,15 @@ fun AppNavHost(
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
     val momentsViewModel: MomentsViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible) {
+    val vaultPreferences = koinInject<VaultPreferences>()
+    val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
+    val vaultViewModel: VaultViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
+            if (vaultIconVisible) add(TopLevelRoute.Vault)
             add(TopLevelRoute.Home)
         }
     }
@@ -172,17 +170,6 @@ fun AppNavHost(
             }
         } else {
             navController.navigate(Route.MomentsOnboarding)
-        }
-    }
-    val vaultPreferences = koinInject<VaultPreferences>()
-    val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
-    val vaultViewModel: VaultViewModel = koinViewModel()
-    val topLevelRoutes = remember(vaultIconVisible) {
-        buildList {
-            add(TopLevelRoute.Chat)
-            add(TopLevelRoute.Feed)
-            if (vaultIconVisible) add(TopLevelRoute.Vault)
-            add(TopLevelRoute.Home)
         }
     }
     val uriHandler = getUriHandler()
@@ -376,15 +363,10 @@ fun AppNavHost(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
-                                if (topLevelRoute is TopLevelRoute.Moments) openMoments()
-                                else navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                if (topLevelRoute is TopLevelRoute.Vault) {
-                                    openVault()
-                                } else {
-                                    navController.navigate(topLevelRoute.route) {
+                                when {
+                                    topLevelRoute is TopLevelRoute.Moments -> openMoments()
+                                    topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
                                         restoreState = true
@@ -414,15 +396,10 @@ fun AppNavHost(
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
-                                    if (topLevelRoute is TopLevelRoute.Moments) openMoments()
-                                    else navController.navigate(topLevelRoute.route) {
-                                        popUpTo(Route.ChatList) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    if (topLevelRoute is TopLevelRoute.Vault) {
-                                        openVault()
-                                    } else {
-                                        navController.navigate(topLevelRoute.route) {
+                                    when {
+                                        topLevelRoute is TopLevelRoute.Moments -> openMoments()
+                                        topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                        else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
                                             restoreState = true
@@ -1076,6 +1053,7 @@ fun AppNavHost(
         }
     }
 }
+
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false
