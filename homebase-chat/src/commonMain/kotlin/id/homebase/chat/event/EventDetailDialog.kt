@@ -65,14 +65,12 @@ import id.homebase.resources.chat_event_rsvp_maybe
 import id.homebase.resources.chat_event_rsvp_no
 import id.homebase.resources.chat_event_rsvp_summary
 import id.homebase.resources.chat_event_rsvp_yes
+import id.homebase.resources.chat_event_scheduled_in_zone
 import id.homebase.resources.menu_back
-import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -145,15 +143,7 @@ private fun EventDetailContent(
         value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
     }
 
-    val tz = remember(descriptor.timezone) {
-        runCatching { TimeZone.of(descriptor.timezone) }.getOrElse { TimeZone.currentSystemDefault() }
-    }
-    val startLocal = remember(descriptor.startUtcMs, tz) {
-        Instant.fromEpochMilliseconds(descriptor.startUtcMs).toLocalDateTime(tz)
-    }
-    val endLocal = remember(descriptor.endUtcMs, tz) {
-        descriptor.endUtcMs?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(tz) }
-    }
+    val times = rememberEventTimes(descriptor)
     val currentRsvp = remember(ownReactions) { EventRsvp.currentRsvp(ownReactions) }
 
     Scaffold(
@@ -179,7 +169,7 @@ private fun EventDetailContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
-            HeroHeader(descriptor = descriptor, startLocal = startLocal, endLocal = endLocal)
+            HeroHeader(descriptor = descriptor, times = times)
 
             organizer?.let { host ->
                 Spacer(Modifier.height(12.dp))
@@ -487,9 +477,10 @@ private suspend fun applyRsvp(
 @Composable
 private fun HeroHeader(
     descriptor: EventDescriptor,
-    startLocal: LocalDateTime,
-    endLocal: LocalDateTime?,
+    times: EventTimes,
 ) {
+    val startLocal = times.viewerStartLocal
+    val endLocal = times.viewerEndLocal
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
@@ -531,9 +522,25 @@ private fun HeroHeader(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = formatHero(startLocal, endLocal, descriptor.timezone),
+                    text = formatHero(startLocal, endLocal, times.viewerTz.id),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (times.authoredStartLocal != null && times.authoredTzId != null) {
+                Spacer(Modifier.height(2.dp))
+                val authoredDayTime = "${times.authoredStartLocal.dayOfWeek.name.take(3)} " +
+                    times.authoredStartLocal.hour.toString().padStart(2, '0') + ":" +
+                    times.authoredStartLocal.minute.toString().padStart(2, '0')
+                val authoredZoneShort = times.authoredTzId.substringAfterLast('/').replace('_', ' ')
+                Text(
+                    text = stringResource(
+                        MR.string.chat_event_scheduled_in_zone,
+                        authoredDayTime,
+                        authoredZoneShort,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                 )
             }
         }

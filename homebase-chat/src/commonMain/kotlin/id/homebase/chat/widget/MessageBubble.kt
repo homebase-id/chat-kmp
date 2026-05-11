@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
@@ -67,10 +68,13 @@ import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.event.EventDateChip
+import id.homebase.chat.event.rememberEventTimes
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
@@ -931,6 +935,8 @@ fun InlineReplyPreview(
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
     )
+    val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
+    val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
     val displayMessage = resolveReplyContentText(
         replyText = replyPreview.message,
         contentLabelText = contentLabel?.text,
@@ -997,8 +1003,21 @@ fun InlineReplyPreview(
                     }
                 }
             }
-        // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
-        if (imageData != null) {
+        // Event date badge takes the trailing slot for event replies; it spans
+        // the full bubble height and runs flush to the right edge — the parent
+        // Row's clip(RoundedCornerShape(...)) carves the chip's right corners
+        // to match the bubble, while RectangleShape here keeps the left side
+        // flat so the chip reads as part of the bubble.
+        if (eventStartLocal != null) {
+            EventDateChip(
+                local = eventStartLocal,
+                compact = true,
+                fillHeight = true,
+                shape = RectangleShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            )
+        } else if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,
                 modifier = Modifier
