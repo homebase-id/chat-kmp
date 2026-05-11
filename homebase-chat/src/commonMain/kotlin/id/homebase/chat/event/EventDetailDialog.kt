@@ -60,6 +60,7 @@ import id.homebase.resources.chat_event_add_to_google_calendar
 import id.homebase.resources.chat_event_download_ics
 import id.homebase.resources.chat_event_join_meeting
 import id.homebase.resources.chat_event_open_in_maps
+import id.homebase.resources.chat_event_organized_by
 import id.homebase.resources.chat_event_rsvp_maybe
 import id.homebase.resources.chat_event_rsvp_no
 import id.homebase.resources.chat_event_rsvp_summary
@@ -95,6 +96,7 @@ fun EventDetailDialog(
     ownReactions: ImmutableList<String>,
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
+    organizer: OdinId? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -107,6 +109,7 @@ fun EventDetailDialog(
             ownReactions = ownReactions,
             counts = counts,
             onDismiss = onDismiss,
+            organizer = organizer,
         )
     }
 }
@@ -120,6 +123,7 @@ private fun EventDetailContent(
     ownReactions: ImmutableList<String>,
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
+    organizer: OdinId?,
 ) {
     val actionService: ChatMessageActionService = koinInject()
     val contactService: ContactService = koinInject()
@@ -176,6 +180,17 @@ private fun EventDetailContent(
                 .padding(horizontal = 20.dp),
         ) {
             HeroHeader(descriptor = descriptor, startLocal = startLocal, endLocal = endLocal)
+
+            organizer?.let { host ->
+                Spacer(Modifier.height(12.dp))
+                OrganizerRow(
+                    odinId = host,
+                    isOwner = host == selfOdinId,
+                    youLabel = stringResource(MR.string.you),
+                    organizedByLabel = stringResource(MR.string.chat_event_organized_by),
+                    contactService = contactService,
+                )
+            }
 
             if (descriptor.description.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
@@ -355,6 +370,52 @@ private fun RsvpSection(
                 isOwner = reactor.odinId == selfOdinId,
                 youLabel = youLabel,
                 contactService = contactService,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OrganizerRow(
+    odinId: OdinId,
+    isOwner: Boolean,
+    youLabel: String,
+    organizedByLabel: String,
+    contactService: ContactService,
+) {
+    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val avatarOptions = AvatarOptions(size = 32.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isOwner) {
+            OwnerAvatar(
+                odinId = odinId,
+                profileImageData = null,
+                initials = resolvedName.initials(),
+                options = avatarOptions,
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+            )
+        } else {
+            PublicAvatar(
+                odinId = odinId,
+                initials = resolvedName.initials(),
+                options = avatarOptions,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(
+                text = organizedByLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = if (isOwner) youLabel else resolvedName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

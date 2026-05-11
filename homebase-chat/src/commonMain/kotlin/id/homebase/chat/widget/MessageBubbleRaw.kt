@@ -144,6 +144,8 @@ fun MessageBubbleRaw(
                 conversationId = message.conversationId,
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
             )
             return
         }

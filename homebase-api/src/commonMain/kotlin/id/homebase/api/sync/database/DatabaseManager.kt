@@ -106,6 +106,32 @@ class DatabaseManager(
                 instance.wipeAndRecreate()
             }
         }
+
+        /**
+         * Open the database via [factory], using the key from
+         * [DatabaseKeyManager.getOrGenerateKey]. If the open throws (corrupted
+         * file, undecryptable with the stored key, schema mismatch), delete the
+         * on-disk files via [DatabaseDriverFactory.deleteOnDiskFiles], rotate
+         * the encryption key, and retry once. Replaces the recovery dance each
+         * platform entry point used to implement inline.
+         *
+         * The catch is `Exception` rather than `Throwable` to preserve parity
+         * with the prior per-platform implementations — `Error` (OOM,
+         * `StackOverflow`) is not swallowed.
+         */
+        suspend fun initializeWithRecovery(factory: DatabaseDriverFactory) {
+            val key = DatabaseKeyManager.getOrGenerateKey()
+            try {
+                initialize { factory.createDriver(key) }
+            } catch (e: Exception) {
+                Logger.withTag("DatabaseManager")
+                    .e(e) { "initializeWithRecovery: open failed, resetting" }
+                factory.deleteOnDiskFiles()
+                DatabaseKeyManager.clearKey()
+                val freshKey = DatabaseKeyManager.getOrGenerateKey()
+                initialize { factory.createDriver(freshKey) }
+            }
+        }
     }
 
     val appNotifications: AppNotificationsWrapper by lazy {

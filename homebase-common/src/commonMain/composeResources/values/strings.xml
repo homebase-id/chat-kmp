@@ -552,6 +552,7 @@
     <string name="chat_event_your_time_in_zone">your time: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
+    <string name="chat_event_organized_by">Organized by</string>
 
     <!-- Dice attachment -->
     <string name="chat_dice_share">Dice</string>

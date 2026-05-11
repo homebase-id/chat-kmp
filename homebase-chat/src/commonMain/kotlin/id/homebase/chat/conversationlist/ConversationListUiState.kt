@@ -5,7 +5,9 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
+import id.homebase.chat.event.EventDescriptor
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -99,6 +101,27 @@ data class MessageListUiState(
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */
     val isLoadingNewer: Boolean = false,
+    /** Set when the user taps a reply-preview that points at an Event message;
+     *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
+     *  this state. Null means no host-level event detail is open. */
+    val replyTargetEventDetail: ReplyTargetEventDetail? = null,
+)
+
+/**
+ * Snapshot of an Event message resolved from a reply-preview tap. Carries
+ * everything [id.homebase.chat.event.EventDetailDialog] needs without holding
+ * a reference to the live MessageUiModel — the dialog's RSVP roster fetches
+ * fresh reactions, and the counts are aggregated up-front so closing the
+ * dialog doesn't re-render the host.
+ */
+@Immutable
+data class ReplyTargetEventDetail(
+    val descriptor: EventDescriptor,
+    val messageId: Uuid,
+    val conversationId: Uuid,
+    val ownReactions: ImmutableList<String>,
+    val reactionSummary: ReactionSummary?,
+    val organizer: OdinId?,
 )
 
 @Immutable
