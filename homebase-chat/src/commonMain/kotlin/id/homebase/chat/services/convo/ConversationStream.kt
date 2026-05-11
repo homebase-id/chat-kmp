@@ -1146,6 +1146,18 @@ class ConversationStream(
     //   - ArchivedConversationsViewModel init (user opens archived screen)
     //   - GroupSettingsViewModel init     (user opens group settings)
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
+
+    /**
+     * Clear all in-memory state so a subsequent [start] loads cleanly for
+     * a different identity. Called from [onPostAuthenticated] before [start].
+     */
+    fun reset() {
+        started = false
+        _conversations.value = ConversationsData(dataReady = false)
+        _shareableConversations.value = emptyList()
+        deletedIds.clear()
+    }
+
     fun start() {
         if (started) return
         started = true
