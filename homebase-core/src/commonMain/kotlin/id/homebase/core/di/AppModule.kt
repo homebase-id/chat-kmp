@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import okio.FileSystem
@@ -87,6 +89,7 @@ import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
+import id.homebase.core.upgrade.PendingUpgradeManager
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -152,6 +155,7 @@ val appModule = module {
         val imageLoader: ImageLoader = get()
         val fileOps: FileOperationsProvider = get()
         val fileSystem = FileSystem.SYSTEM
+        val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
             driveSyncManager = get(),
             credentialsManager = get(),
@@ -173,6 +177,7 @@ val appModule = module {
                         "orphan coil disk cache delete failed on logout"
                     }
                 }
+                pendingUpgradeManager.reset()
             },
         )
     }
@@ -260,6 +265,13 @@ val appModule = module {
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
     singleOf(::NotificationService)
+    single {
+        val upgradeProvider = get<IdentityUpgradeProvider>()
+        PendingUpgradeManager(
+            credentialsManager = get(),
+            isUpgradeRequired = { upgradeProvider.isUpgradeRequired() },
+        )
+    }
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
     singleOf(::VaultStream)
