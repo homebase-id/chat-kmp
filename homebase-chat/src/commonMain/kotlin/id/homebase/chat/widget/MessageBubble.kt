@@ -70,6 +70,7 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.event.EventDateChip
 import id.homebase.chat.event.rememberEventTimes
+import id.homebase.chat.event.rememberViewerLocalDate
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
@@ -935,8 +936,18 @@ fun InlineReplyPreview(
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
     )
-    val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
-    val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
+    // Prefer the self-contained wire field on ReplyPreview (so the chip
+    // renders even when the parent event message is paged out, deleted, or
+    // never received). Fall back to the parent-message lookup for replies
+    // sent by older clients that don't populate it.
+    val eventStartLocal = when {
+        replyPreview.eventStartUtcMs != null ->
+            rememberViewerLocalDate(replyPreview.eventStartUtcMs)
+        else -> {
+            val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
+            eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
+        }
+    }
     val displayMessage = resolveReplyContentText(
         replyText = replyPreview.message,
         contentLabelText = contentLabel?.text,

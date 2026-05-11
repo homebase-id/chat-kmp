@@ -57,3 +57,18 @@ fun rememberEventTimes(descriptor: EventDescriptor): EventTimes =
     remember(descriptor.startUtcMs, descriptor.endUtcMs, descriptor.timezone) {
         computeEventTimes(descriptor, TimeZone.currentSystemDefault())
     }
+
+/**
+ * Convert a UTC instant to a date in the viewer's local zone. Used by the
+ * reply chip's self-contained path, where only the start instant is
+ * carried on the wire — authoring zone isn't needed because the chip
+ * renders in the viewer's zone, and viewer→viewer is just a UTC→local
+ * conversion.
+ */
+@Composable
+fun rememberViewerLocalDate(startUtcMs: Long): LocalDateTime {
+    val viewerTz = TimeZone.currentSystemDefault()
+    return remember(startUtcMs, viewerTz) {
+        Instant.fromEpochMilliseconds(startUtcMs).toLocalDateTime(viewerTz)
+    }
+}

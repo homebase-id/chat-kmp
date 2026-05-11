@@ -991,11 +991,13 @@ internal class MessageActionsHandler(
             try {
                 val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
+                val eventDescriptor = (replyTo.messageContent as? MessageContent.Event)?.descriptor
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
                     authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
                     message = replyTo.content.truncateToCodePoints(80),
-                    previewThumbnail = replyTo.previewThumbnail
+                    previewThumbnail = replyTo.previewThumbnail,
+                    eventStartUtcMs = eventDescriptor?.startUtcMs,
                 )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
