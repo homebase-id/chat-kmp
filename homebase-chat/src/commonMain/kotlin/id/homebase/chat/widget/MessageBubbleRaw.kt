@@ -374,14 +374,16 @@ fun MessageBubbleRaw(
                         }
                     },
                 ) { measurables, constraints ->
-                    val mediaPlaceable = measurables[1].measure(constraints)
-                    val replyPlaceable = measurables[0].measure(
-                        constraints.copy(
-                            minWidth = mediaPlaceable.width,
-                            maxWidth = mediaPlaceable.width,
-                        )
+                    val minContentWidth = Dimens.MediaBubble.minWidthWithContent.roundToPx()
+                        .coerceAtMost(constraints.maxWidth)
+                    val mediaPlaceable = measurables[1].measure(
+                        constraints.copy(minWidth = minContentWidth)
                     )
-                    layout(mediaPlaceable.width, replyPlaceable.height + mediaPlaceable.height) {
+                    val width = mediaPlaceable.width
+                    val replyPlaceable = measurables[0].measure(
+                        constraints.copy(minWidth = width, maxWidth = width)
+                    )
+                    layout(width, replyPlaceable.height + mediaPlaceable.height) {
                         replyPlaceable.placeRelative(0, 0)
                         mediaPlaceable.placeRelative(0, replyPlaceable.height)
                     }
