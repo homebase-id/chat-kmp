@@ -463,14 +463,21 @@ class OdinWebSocketClient(
                 notification.data
             )
 
-        // processInbox no longer needed — server auto-processes on QueryBatch.
-        // notify(
-        //     command = "processInbox",
-        //     payload = ProcessInboxPayload(
-        //         targetDrive = n.targetDrive,
-        //         batchSize = 100
-        //     )
-        // )
+        // Reverts block #3 of commit 18483c4e. The WS push path bypasses
+        // QueryBatch in steady state, so the server's "auto-process inbox on
+        // QueryBatch" never fires for a recipient sitting in an already-loaded
+        // conversation — the inboxItemReceived notification arrives but no
+        // fileAdded follows, and the message body never makes it to the
+        // WebSocket. Send the explicit processInbox ack so the server moves
+        // the inbox entry onto the drive. Remove once the server-side
+        // auto-process behaviour is fixed.
+        notify(
+            command = "processInbox",
+            payload = ProcessInboxPayload(
+                targetDrive = n.targetDrive,
+                batchSize = 100
+            )
+        )
     }
 
     /**
@@ -736,16 +743,18 @@ class OdinWebSocketClient(
      * Call this right after a successful handshake / reconnect.
      */
     suspend fun processAllInboxes() {
-        // processInbox no longer needed — server auto-processes on QueryBatch.
-        // for (drive in drives) {
-        //     notify(
-        //         command = "processInbox",
-        //         payload = ProcessInboxPayload(
-        //             targetDrive = drive,
-        //             batchSize = 100
-        //         )
-        //     )
-        // }
+        // Reverts block #2 of commit 18483c4e — see AuthConnectionCoordinator
+        // for the rationale. Called on every (re)connect to flush any inbox
+        // backlog accumulated while we were offline, before syncAll() runs.
+        for (drive in drives) {
+            notify(
+                command = "processInbox",
+                payload = ProcessInboxPayload(
+                    targetDrive = drive,
+                    batchSize = 100
+                )
+            )
+        }
     }
 
     /**

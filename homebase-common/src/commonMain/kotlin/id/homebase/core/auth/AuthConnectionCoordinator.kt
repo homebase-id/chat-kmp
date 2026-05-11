@@ -185,8 +185,14 @@ class AuthConnectionCoordinator(
                             // would silently skip if isRunning is still false.
                             driveSyncManager.start()
 
-                            // processInbox no longer needed — server auto-processes on QueryBatch.
-                            // wsClient?.processAllInboxes()
+                            // Reverts block #2 of commit 18483c4e. The WS push path is
+                            // engineered to bypass QueryBatch in steady state, so the
+                            // server's "auto-process inbox on QueryBatch" doesn't fire
+                            // for backlog accumulated while we were offline. Poke each
+                            // subscribed drive explicitly so syncAll() below sees the
+                            // freshly-processed items. Remove once the server-side
+                            // auto-process behaviour is fixed.
+                            wsClient?.processAllInboxes()
 
                             driveSyncManager.syncAll()
                         } catch (e: Exception) {
