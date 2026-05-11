@@ -79,8 +79,12 @@ fun MessageItem(
         if (policy.allowReactionDetails) remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } } else null
     val onDecryptFile =
         remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.DecryptFile(messageId = message.id, payloadKey = payload.key)) } }
+    // Tapping the inline reply-preview chip pinned above a bubble. We route
+    // through OpenReplyTarget so the handler can branch on content kind: an
+    // Event target opens the detail dialog directly; everything else falls
+    // through to ScrollToMessageId.
     val onClickMessageId =
-        remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.ScrollToMessageId(messageId)) } }
+        remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.OpenReplyTarget(messageId)) } }
     val onMediaClick = remember(message.id) {
         { payload: PayloadDescriptor ->
             onUiAction(
