@@ -74,6 +74,7 @@ import id.homebase.chat.event.rememberViewerLocalDate
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
@@ -936,14 +937,16 @@ fun InlineReplyPreview(
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
     )
-    // Prefer the self-contained wire field on ReplyPreview (so the chip
-    // renders even when the parent event message is paged out, deleted, or
-    // never received). Fall back to the parent-message lookup for replies
-    // sent by older clients that don't populate it.
-    val eventStartLocal = when {
-        replyPreview.eventStartUtcMs != null ->
-            rememberViewerLocalDate(replyPreview.eventStartUtcMs)
-        else -> {
+    // Dispatch on the typed ReplyContext carried on the wire — that's how
+    // the renderer knows it's an event reply without looking up the parent.
+    // Pre-context senders leave it null; we fall back to a parent-message
+    // lookup so old replies still get the chip when the parent is in
+    // memory. Future kinds parse as Unknown → default reply preview, no
+    // crash.
+    val eventStartLocal = when (val ctx = ReplyContext.fromJson(replyPreview.context)) {
+        is ReplyContext.Event -> rememberViewerLocalDate(ctx.startUtcMs)
+        ReplyContext.Unknown -> null
+        null -> {
             val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
             eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
         }
