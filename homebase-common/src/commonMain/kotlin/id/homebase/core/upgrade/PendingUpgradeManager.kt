@@ -6,25 +6,40 @@ import id.homebase.api.storage.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
 sealed interface PendingUpgradeState {
     data object None : PendingUpgradeState
-    data class ShowSnackbar(val upgradeUrl: String) : PendingUpgradeState
-    data class ShowDialog(val upgradeUrl: String) : PendingUpgradeState
+    data class ShowSnackbar(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
+    data class ShowDialog(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
 }
 
 class PendingUpgradeManager(
     private val credentialsManager: CredentialsManager,
+    private val isUpgradeRequired: suspend () -> Boolean,
     private val clock: Clock = Clock.System,
 ) {
     private val _state = MutableStateFlow<PendingUpgradeState>(PendingUpgradeState.None)
     val state: StateFlow<PendingUpgradeState> = _state.asStateFlow()
 
     private var dialogDismissedThisSession: Boolean = false
+    private var epoch = 0L
 
-    suspend fun onUpgradeCheckResult(required: Boolean) {
+    suspend fun checkUpgrade() {
+        val required = try {
+            isUpgradeRequired()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG) { "Upgrade check failed: ${e.message}" }
+            return
+        }
+        onUpgradeCheckResult(required)
+    }
+
+    internal suspend fun onUpgradeCheckResult(required: Boolean) {
         Logger.d(tag = TAG) { "onUpgradeCheckResult(required=$required)" }
         if (!required) {
             SharedPreferences.remove(KEY_FIRST_SEEN_MS)
@@ -57,12 +72,13 @@ class PendingUpgradeManager(
         val nowMs = clock.now().toEpochMilliseconds()
         val elapsedDays = (nowMs - firstSeenMs) / (1000 * 60 * 60 * 24)
 
+        val nextEpoch = ++epoch
         _state.value = if (nowMs - firstSeenMs >= ESCALATION_THRESHOLD_MS) {
             Logger.i(tag = TAG) { "Upgrade pending for $elapsedDays days — escalating to dialog" }
-            PendingUpgradeState.ShowDialog(upgradeUrl)
+            PendingUpgradeState.ShowDialog(upgradeUrl, nextEpoch)
         } else {
             Logger.d(tag = TAG) { "Upgrade pending for $elapsedDays days — showing snackbar" }
-            PendingUpgradeState.ShowSnackbar(upgradeUrl)
+            PendingUpgradeState.ShowSnackbar(upgradeUrl, nextEpoch)
         }
     }
 

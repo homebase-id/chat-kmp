@@ -4,7 +4,8 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.youauth.PendingUpgradeChecker
+import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import okio.FileSystem
@@ -245,8 +246,13 @@ val appModule = module {
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
     singleOf(::NotificationService)
-    single { PendingUpgradeManager(get()) }
-    singleOf(::PendingUpgradeChecker)
+    single {
+        val upgradeProvider = get<IdentityUpgradeProvider>()
+        PendingUpgradeManager(
+            credentialsManager = get(),
+            isUpgradeRequired = { upgradeProvider.isUpgradeRequired() },
+        )
+    }
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
 

@@ -23,7 +23,6 @@ import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
-import id.homebase.api.youauth.PendingUpgradeChecker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +43,6 @@ class AppViewModel(
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
-    private val pendingUpgradeChecker: PendingUpgradeChecker,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -57,6 +55,7 @@ class AppViewModel(
 
     private var credentialsJob: Job? = null
     private var listenForConnectionRequestsJob: Job? = null
+    private var upgradeCheckJob: Job? = null
 
     init {
         collectNotificationEvents()
@@ -145,9 +144,9 @@ class AppViewModel(
     }
 
     private fun checkPendingUpgrade() {
-        viewModelScope.launch {
-            val required = pendingUpgradeChecker.isUpgradeRequired()
-            pendingUpgradeManager.onUpgradeCheckResult(required)
+        upgradeCheckJob?.cancel()
+        upgradeCheckJob = viewModelScope.launch {
+            pendingUpgradeManager.checkUpgrade()
         }
     }
 
