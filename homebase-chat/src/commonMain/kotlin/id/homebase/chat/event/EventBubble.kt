@@ -3,7 +3,6 @@ package id.homebase.chat.event
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,10 +41,9 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
 import id.homebase.resources.chat_event_starting_soon
+import id.homebase.resources.chat_event_scheduled_in_zone
 import id.homebase.resources.chat_event_unparseable
-import id.homebase.resources.chat_event_your_time_in_zone
 import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlin.uuid.ExperimentalUuidApi
@@ -53,8 +51,6 @@ import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -102,15 +98,9 @@ fun EventBubble(
     var showDetail by remember(messageId) { mutableStateOf(false) }
     val canOpenDetail = messageId != null && conversationId != null
 
-    val tz = remember(descriptor.timezone) {
-        runCatching { TimeZone.of(descriptor.timezone) }.getOrElse { TimeZone.currentSystemDefault() }
-    }
-    val startLocal = remember(descriptor.startUtcMs, tz) {
-        Instant.fromEpochMilliseconds(descriptor.startUtcMs).toLocalDateTime(tz)
-    }
-    val endLocal = remember(descriptor.endUtcMs, tz) {
-        descriptor.endUtcMs?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(tz) }
-    }
+    val times = rememberEventTimes(descriptor)
+    val startLocal = times.viewerStartLocal
+    val endLocal = times.viewerEndLocal
 
     // 30-second ticker drives the live/starting-soon/past pill. Recomposes
     // only the pill subtree (the title and time rows are stable).
@@ -146,7 +136,7 @@ fun EventBubble(
     val effectiveContent = if (isPast) contentColor.copy(alpha = 0.55f) else contentColor
 
     Row(modifier = baseModifier, verticalAlignment = Alignment.Top) {
-        DateChip(startLocal, effectiveContent)
+        EventDateChip(local = startLocal, contentColor = effectiveContent)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -163,21 +153,19 @@ fun EventBubble(
                 LiveStatusPill(phase = phase)
             }
             Spacer(Modifier.height(4.dp))
-            TimeRow(startLocal = startLocal, endLocal = endLocal, timezone = descriptor.timezone, contentColor = effectiveContent)
-            // When the event's IANA zone differs from the device zone, show the
-            // device-local time on a second line so cross-zone events read at
-            // a glance ("Tue 18:00 CET (your time: Tue 12:00 EST)").
-            val deviceTz = remember { TimeZone.currentSystemDefault() }
-            if (deviceTz.id != tz.id) {
-                val deviceLocal = remember(descriptor.startUtcMs, deviceTz) {
-                    Instant.fromEpochMilliseconds(descriptor.startUtcMs).toLocalDateTime(deviceTz)
-                }
+            // Primary time row is the viewer's local clock. Author's authoring
+            // zone is surfaced below as "Scheduled: …" only when it differs —
+            // that way cross-zone viewers read the event like a local calendar
+            // entry without losing the organizer's intended wall-clock.
+            TimeRow(startLocal = startLocal, endLocal = endLocal, timezone = times.viewerTz.id, contentColor = effectiveContent)
+            if (times.authoredStartLocal != null && times.authoredTzId != null) {
                 Spacer(Modifier.height(2.dp))
+                val authoredDayTime = "${times.authoredStartLocal.dayOfWeek.name.take(3)} ${formatTime(times.authoredStartLocal)}"
                 Text(
                     text = stringResource(
-                        MR.string.chat_event_your_time_in_zone,
-                        formatTime(deviceLocal),
-                        shortZone(deviceTz.id),
+                        MR.string.chat_event_scheduled_in_zone,
+                        authoredDayTime,
+                        shortZone(times.authoredTzId),
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = effectiveContent.copy(alpha = 0.6f),
@@ -203,32 +191,6 @@ fun EventBubble(
             counts = remember(reactionSummary) { EventRsvp.counts(reactionSummary) },
             onDismiss = { showDetail = false },
             organizer = organizer,
-        )
-    }
-}
-
-@Composable
-private fun DateChip(local: LocalDateTime, contentColor: androidx.compose.ui.graphics.Color) {
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .size(width = 56.dp, height = 64.dp)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = local.month.name.take(3),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-        Text(
-            text = local.day.toString(),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
     }
 }
