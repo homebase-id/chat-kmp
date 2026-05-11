@@ -118,7 +118,26 @@ fun main() {
 
     runBlocking {
         val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        try {
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        } catch (e: Exception) {
+            Logger.e("Main", e, "Database init failed, resetting")
+            // Delete the corrupted/undecryptable database file and its journal
+            // files. Path resolution goes through DatabaseDriverFactory.resolveDbFile
+            // so the two stay in lock-step. Mirrors the Android recovery path in
+            // MainApplication.onCreate.
+            val dbFile = DatabaseDriverFactory.resolveDbFile()
+            dbFile.delete()
+            File(dbFile.path + "-journal").delete()
+            File(dbFile.path + "-wal").delete()
+            File(dbFile.path + "-shm").delete()
+
+            // Clear the stale encryption key and generate a fresh one
+            DatabaseKeyManager.clearKey()
+            val freshKey = DatabaseKeyManager.getOrGenerateKey()
+
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
+        }
     }
 
     application {
