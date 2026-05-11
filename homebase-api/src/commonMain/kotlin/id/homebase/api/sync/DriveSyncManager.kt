@@ -30,7 +30,10 @@ class DriveSyncManager(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val databaseManager: DatabaseManager,
-    private val drives: Map<Uuid, String>,
+    // The drives this manager is responsible for syncing on every (re)connect.
+    // Optional add-on drives discovered from the cross-device registry are added
+    // via [mountDrive] — same code path, just a different caller.
+    private val mandatoryDrives: Map<Uuid, String>,
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
     // All writes are serialized via driveSyncsMutex, which provides the happens-before
@@ -126,52 +129,29 @@ class DriveSyncManager(
     suspend fun start() {
         // getActiveCredentials() + null-check instead of requireActiveCredentials()
         // so a logout race can't crash the caller. Not all callers try-catch this.
-        val credentials = credentialsManager.getActiveCredentials() ?: run {
+        if (credentialsManager.getActiveCredentials() == null) {
             Logger.w { "DriveSyncManager.start() skipped — no active credentials" }
             return
         }
-        val identityId = credentials.getIdentityId()
 
-        val freshLogin = expectFreshCursors
+        // Defensive top-up: callers (AuthConnectionCoordinator, BackgroundSyncOrchestrator)
+        // are expected to mountDrive() the mandatory set before start(), but mounting
+        // them here too is idempotent (mountDrive early-returns on already-mounted
+        // drives) and keeps the manager robust to callers that forget.
+        for ((driveId, label) in mandatoryDrives) {
+            mountDrive(driveId, label)
+        }
+
+        isRunning = true
+
+        // Consume the "first start after logout" signal. Any mount that happened
+        // between clearStorage() and here saw expectFreshCursors=true; subsequent
+        // mid-session mounts (add-on activations, observer callbacks) should not.
         expectFreshCursors = false
 
-        drives.forEach { (driveId, label) ->
-            val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
-            if (alreadyExists) {
-                Logger.w { "DriveSync for drive=$driveId already exists, skipping" }
-                return@forEach
-            }
-
-            runCatching {
-                DriveSync(
-                    identityId = identityId,
-                    driveId = driveId,
-                    driveQueryProvider = driveQueryProvider,
-                    databaseManager = databaseManager,
-                    eventBus = eventBus,
-                    scope = scope,
-                    expectFreshCursor = freshLogin,
-                )
-            }.onSuccess { sync ->
-                driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
-                _driveStatuses.update { current ->
-                    current + (driveId to DriveStatus(driveId, label, DriveState.Initialized))
-                }
-            }.onFailure { e ->
-                Logger.e(
-                    "Failed to create DriveSync for drive=$driveId: ${e.message}",
-                    e
-                )
-            }
-        }
-        isRunning = true
-        // Note: drives registered via mountDrive() while isRunning was false
-        // (bootstrap pre-mounts, or add-on activations during a paused window)
-        // sit in driveSyncs with their initial sync deferred. The caller is
-        // expected to follow start() with syncAll(), which iterates the full
-        // map and kicks each — same path that handles the mandatory drives
-        // we just added above. Both production callers (AuthConnectionCoordinator
-        // and BackgroundSyncOrchestrator) already do this.
+        // Callers are expected to follow start() with syncAll() to kick the initial
+        // sync on every mounted drive. mountDrive() is now the sole DriveSync
+        // construction site.
     }
 
     suspend fun syncAll() {
@@ -222,14 +202,21 @@ class DriveSyncManager(
     }
 
     /**
-     * Dynamically mounts a drive into the sync engine (e.g. when an add-on is activated
-     * mid-session, or during cold-boot bootstrap before [start] has flipped
-     * [isRunning] true).
+     * Mounts a drive into the sync engine — the sole [DriveSync] construction
+     * site. Called by [start] for mandatory drives, by [AuthConnectionCoordinator]
+     * during cold-boot bootstrap for optional add-on drives, and by add-on
+     * activation paths mid-session.
      *
      * Splits cleanly into "register" (in-memory bookkeeping — always runs once
      * credentials exist) and "kick a sync" (network I/O — only runs while the
      * manager is in the running state). A drive registered while paused/not-yet-
-     * started is picked up by the next [start]'s catch-up loop.
+     * started is picked up by the subsequent [syncAll] call after [start] flips
+     * [isRunning] true.
+     *
+     * Reads [expectFreshCursors] so any mount during the post-logout/pre-first-
+     * start window applies the stale-cursor safety check uniformly to mandatory
+     * and optional drives. [start] clears the flag once the first session-start
+     * sweep has run, so subsequent mid-session mounts default to false.
      */
     suspend fun mountDrive(driveId: Uuid, label: String) {
         val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
@@ -243,7 +230,15 @@ class DriveSyncManager(
         }
 
         val sync = try {
-            DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
+            DriveSync(
+                identityId = identityId,
+                driveId = driveId,
+                driveQueryProvider = driveQueryProvider,
+                databaseManager = databaseManager,
+                eventBus = eventBus,
+                scope = scope,
+                expectFreshCursor = expectFreshCursors,
+            )
         } catch (e: CancellationException) {
             // Don't swallow cancellation — let the caller's scope tear down cleanly.
             throw e
@@ -254,8 +249,8 @@ class DriveSyncManager(
         driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
         _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
 
-        // Defer the network kick if the manager isn't running yet — start()'s
-        // catch-up loop will pick it up when isRunning flips true.
+        // Defer the network kick if the manager isn't running yet — the caller's
+        // post-start syncAll() will pick it up when isRunning flips true.
         if (isRunning) sync.sync()
     }
 

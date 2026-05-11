@@ -100,6 +100,13 @@ class AuthConnectionCoordinator(
                 // list before opening the WebSocket, so the first WS connect already
                 // subscribes to the full set — no late observer-driven reconnect.
                 val initialDrives = driveRegistry.bootstrap()
+                // Mandatory drives first, then optional. Both go through the same
+                // mountDrive() code path so failure modes are symmetric. start()
+                // (called later in connect()'s onConnected) is a no-op on already-
+                // mounted drives.
+                for (drive in mandatorySyncDrives) {
+                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                }
                 for (drive in initialDrives) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }

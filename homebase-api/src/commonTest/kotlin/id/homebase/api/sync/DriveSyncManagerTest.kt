@@ -59,7 +59,7 @@ class DriveSyncManagerTest {
                 eventBus = EventBus(),
                 scope = backgroundScope,
                 databaseManager = db,
-                drives = mapOf(driveId to "Test Drive"),
+                mandatoryDrives = mapOf(driveId to "Test Drive"),
             )
 
             manager.start()
@@ -97,7 +97,7 @@ class DriveSyncManagerTest {
                 eventBus = eventBus,
                 scope = backgroundScope,
                 databaseManager = db,
-                drives = mapOf(driveId to "Test Drive"),
+                mandatoryDrives = mapOf(driveId to "Test Drive"),
             )
 
             manager.start()
@@ -138,7 +138,7 @@ class DriveSyncManagerTest {
             eventBus = eventBus,
             scope = scope,
             databaseManager = db,
-            drives = drives,
+            mandatoryDrives = drives,
         )
     }
 

@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.config.mandatorySyncDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,6 +17,7 @@ class BackgroundSyncOrchestrator(
     private val driveSyncManager: DriveSyncManager,
     private val driveFileHttpProvider: DriveFileHttpProvider,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val driveRegistry: DriveRegistry,
 ) {
     suspend fun syncIfAuthenticated(): SyncOutcome {
         Logger.d(tag = "BackgroundSync") { "syncIfAuthenticated: checking..." }
@@ -31,6 +33,17 @@ class BackgroundSyncOrchestrator(
         }
         Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: WS offline — running background sync" }
         return runCatching {
+            // Mount mandatory + optional drives through the same single code path
+            // AuthConnectionCoordinator uses on its Authenticated transition. This
+            // makes background sync self-sufficient on every platform: when the
+            // app is launched directly into a background-fetch window (no prior
+            // WS session), optional drives like Vault/Moments still sync.
+            for (drive in mandatorySyncDrives) {
+                driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+            }
+            for (drive in driveRegistry.bootstrap()) {
+                driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+            }
             driveSyncManager.start()
 
             // processInbox no longer needed — server auto-processes on QueryBatch.
