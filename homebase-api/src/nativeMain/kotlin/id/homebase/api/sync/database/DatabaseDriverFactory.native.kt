@@ -3,8 +3,6 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseConfiguration
-import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
 
 actual class DatabaseDriverFactory {
@@ -19,15 +17,8 @@ actual class DatabaseDriverFactory {
             })
     }
 
-    @OptIn(ExperimentalForeignApi::class)
-    actual fun deleteOnDiskFiles() {
-        // NativeSqliteDriver resolves `name` to "${NSHomeDirectory()}/databases/<name>"
-        // under the hood; mirror that path here so deletion matches the live file.
-        val fileManager = NSFileManager.defaultManager
-        val dbDir = "${NSHomeDirectory()}/databases"
-        fileManager.removeItemAtPath("$dbDir/$DB_FILE_NAME", null)
-        fileManager.removeItemAtPath("$dbDir/$DB_FILE_NAME-journal", null)
-        fileManager.removeItemAtPath("$dbDir/$DB_FILE_NAME-wal", null)
-        fileManager.removeItemAtPath("$dbDir/$DB_FILE_NAME-shm", null)
-    }
+    // NativeSqliteDriver resolves `name` to "${NSHomeDirectory()}/databases/<name>"
+    // under the hood; report the same path here so the shared recovery deletes
+    // the file the driver was looking at.
+    actual fun dbFilePath(): String = "${NSHomeDirectory()}/databases/$DB_FILE_NAME"
 }

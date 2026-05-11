@@ -23,20 +23,13 @@ actual class DatabaseDriverFactory {
         return JdbcSqliteDriver(jdbcUrl, Properties())
     }
 
-    actual fun deleteOnDiskFiles() {
-        val dbFile = resolveDbFile()
-        dbFile.delete()
-        File(dbFile.path + "-journal").delete()
-        File(dbFile.path + "-wal").delete()
-        File(dbFile.path + "-shm").delete()
-    }
+    actual fun dbFilePath(): String = resolveDbFile().absolutePath
 
     companion object {
         /**
          * The on-disk location of the SQLite database for the JVM/Desktop target.
-         * Exposed as a companion-level helper so [createDriver] and
-         * [deleteOnDiskFiles] share one source of truth for the path. Mirrors
-         * the role of `Context.getDatabasePath(DB_FILE_NAME)` on Android.
+         * Single source of truth shared by [createDriver] and [dbFilePath].
+         * Mirrors the role of `Context.getDatabasePath(DB_FILE_NAME)` on Android.
          */
         fun resolveDbFile(): File {
             val userHome = JvmFileSystemUtil.getAppDataDirectory()

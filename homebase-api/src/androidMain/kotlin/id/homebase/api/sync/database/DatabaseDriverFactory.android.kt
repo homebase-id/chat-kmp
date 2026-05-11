@@ -4,7 +4,6 @@ import android.content.Context
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
-import java.io.File
 
 @Suppress(names = ["EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING"])
 actual class DatabaseDriverFactory(private val context: Context) {
@@ -16,11 +15,5 @@ actual class DatabaseDriverFactory(private val context: Context) {
         )
     }
 
-    actual fun deleteOnDiskFiles() {
-        val dbFile = context.getDatabasePath(DB_FILE_NAME)
-        dbFile.delete()
-        File(dbFile.path + "-journal").delete()
-        File(dbFile.path + "-wal").delete()
-        File(dbFile.path + "-shm").delete()
-    }
+    actual fun dbFilePath(): String = context.getDatabasePath(DB_FILE_NAME).absolutePath
 }

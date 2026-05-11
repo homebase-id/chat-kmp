@@ -8,7 +8,7 @@ actual class DatabaseDriverFactory {
         TODO("Not yet implemented")
     }
 
-    actual fun deleteOnDiskFiles() {
+    actual fun dbFilePath(): String {
         TODO("Not yet implemented")
     }
 }
