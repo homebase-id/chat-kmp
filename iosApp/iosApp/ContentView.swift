@@ -20,23 +20,44 @@ struct ComposeView: UIViewControllerRepresentable {
 
 struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
+    @State private var showPrivacyOverlay = false
 
     var body: some View {
-        ComposeView()
-            .ignoresSafeArea()
-            .onAppear {
-                // Cold-start: .onChange(of: scenePhase) won't fire when .active
-                // is already the initial phase, so the glyph-atlas stays stale.
-                // Post a delayed nudge to cover the first-launch path.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    nudgeMetalLayer()
-                }
+        ZStack {
+            ComposeView()
+                .ignoresSafeArea()
+
+            if showPrivacyOverlay {
+                PrivacyOverlayView()
+                    .ignoresSafeArea()
+                    .transition(.opacity)
             }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    nudgeMetalLayer()
-                }
+        }
+        .onAppear {
+            // Cold-start: .onChange(of: scenePhase) won't fire when .active
+            // is already the initial phase, so the glyph-atlas stays stale.
+            // Post a delayed nudge to cover the first-launch path.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                nudgeMetalLayer()
             }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .inactive:
+                if VaultPrivacyBridge.shared.shouldProtect {
+                    withAnimation(.easeIn(duration: 0.15)) {
+                        showPrivacyOverlay = true
+                    }
+                }
+            case .active:
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPrivacyOverlay = false
+                }
+                nudgeMetalLayer()
+            default:
+                break
+            }
+        }
     }
 
     private func nudgeMetalLayer() {
@@ -46,5 +67,23 @@ struct ContentView: View {
     }
 }
 
-
-
+private struct PrivacyOverlayView: View {
+    var body: some View {
+        ZStack {
+            Color(UIColor.systemBackground)
+            VStack(spacing: 24) {
+                Image(systemName: "lock")
+                    .font(.system(size: 64, weight: .thin))
+                    .foregroundColor(.accentColor)
+                VStack(spacing: 8) {
+                    Text(String(localized: "Vault is locked"))
+                        .font(.title3.weight(.medium))
+                        .foregroundColor(.primary)
+                    Text(String(localized: "Authenticate to access your vault"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,184 @@
+@file:OptIn(ExperimentalEncodingApi::class)
+
+package id.homebase.core.ui.screens.vault.gallery
+
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.ui.screens.vault.components.fileTypeIcon
+import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.resources.MR
+import id.homebase.resources.vault_error_image_unavailable
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import org.jetbrains.compose.resources.stringResource
+
+@Composable
+fun VaultZoomableImage(
+    file: VaultEntry,
+    descriptor: PayloadDescriptor,
+    localAttachmentStore: LocalAttachmentContextStore,
+    onToggleUI: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+) {
+    var scale by remember(descriptor.key) { mutableStateOf(1f) }
+    var offset by remember(descriptor.key) { mutableStateOf(Offset.Zero) }
+
+    val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
+        .collectAsStateWithLifecycle(
+            initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
+        )
+    val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
+
+    val pageImageData = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
+        val payloadIv = descriptor.iv?.let {
+            try {
+                Base64.decode(it)
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return@remember null
+        HomebaseImageData(
+            driveId = file.driveId,
+            fileId = file.fileId,
+            payloadKey = descriptor.key,
+            previewThumbnail = file.previewThumbnail,
+            loadFullPayload = true,
+            lastModified = descriptor.lastModified,
+            isEncrypted = file.isEncrypted,
+            keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
+        )
+    }
+
+    val zoomableModifier = Modifier.fillMaxSize().graphicsLayer(
+        scaleX = scale,
+        scaleY = scale,
+        translationX = offset.x,
+        translationY = offset.y,
+    )
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val viewportWidth = constraints.maxWidth.toFloat()
+        val viewportHeight = constraints.maxHeight.toFloat()
+
+        val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+            scale = (scale * zoomChange).coerceIn(1f, 5f)
+            if (scale > 1f) {
+                val velocityFactor = 2f
+                val newOffset = offset + (offsetChange * velocityFactor)
+                val maxOffsetX = (viewportWidth * scale - viewportWidth) / 2f
+                val maxOffsetY = (viewportHeight * scale - viewportHeight) / 2f
+                offset = Offset(
+                    x = newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                    y = newOffset.y.coerceIn(-maxOffsetY, maxOffsetY),
+                )
+            } else {
+                offset = Offset.Zero
+            }
+        }
+
+        val gestureModifier = Modifier.transformable(
+            state = transformState,
+            canPan = { scale > 1f },
+        ).pointerInput(Unit) {
+            detectTapGestures(
+                onDoubleTap = {
+                    scale = if (scale > 1f) 1f else 2f
+                    if (scale == 1f) offset = Offset.Zero
+                },
+                onTap = { onToggleUI() },
+            )
+        }
+
+        val isPending = descriptor.iv == null
+        if (localFilePath != null) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = localFilePath,
+                    contentDescription = file.label?.ifBlank { null } ?: file.fileName,
+                    modifier = zoomableModifier.then(gestureModifier),
+                    contentScale = ContentScale.Fit,
+                )
+                if (isPending) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(48.dp),
+                            color = MaterialTheme.colorScheme.inversePrimary,
+                        )
+                    }
+                }
+            }
+        } else if (pageImageData != null) {
+            HomebaseImage(
+                imageData = pageImageData,
+                modifier = zoomableModifier.then(gestureModifier),
+                contentScale = ContentScale.Fit,
+                contentDescription = file.label?.ifBlank { null } ?: file.fileName,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                    detectTapGestures(onTap = { onToggleUI() })
+                },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Text(
+                        text = stringResource(MR.string.vault_error_image_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    )
+                }
+            }
+        }
+    }
+}
