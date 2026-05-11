@@ -24,7 +24,6 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
@@ -117,27 +116,7 @@ fun main() {
     val config = DesktopPreferences()
 
     runBlocking {
-        val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        try {
-            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
-        } catch (e: Exception) {
-            Logger.e("Main", e, "Database init failed, resetting")
-            // Delete the corrupted/undecryptable database file and its journal
-            // files. Path resolution goes through DatabaseDriverFactory.resolveDbFile
-            // so the two stay in lock-step. Mirrors the Android recovery path in
-            // MainApplication.onCreate.
-            val dbFile = DatabaseDriverFactory.resolveDbFile()
-            dbFile.delete()
-            File(dbFile.path + "-journal").delete()
-            File(dbFile.path + "-wal").delete()
-            File(dbFile.path + "-shm").delete()
-
-            // Clear the stale encryption key and generate a fresh one
-            DatabaseKeyManager.clearKey()
-            val freshKey = DatabaseKeyManager.getOrGenerateKey()
-
-            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
-        }
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
     }
 
     application {

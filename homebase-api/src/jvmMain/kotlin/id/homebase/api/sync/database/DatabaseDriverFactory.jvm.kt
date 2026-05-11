@@ -23,14 +23,20 @@ actual class DatabaseDriverFactory {
         return JdbcSqliteDriver(jdbcUrl, Properties())
     }
 
+    actual fun deleteOnDiskFiles() {
+        val dbFile = resolveDbFile()
+        dbFile.delete()
+        File(dbFile.path + "-journal").delete()
+        File(dbFile.path + "-wal").delete()
+        File(dbFile.path + "-shm").delete()
+    }
+
     companion object {
         /**
          * The on-disk location of the SQLite database for the JVM/Desktop target.
-         * Exposed as a companion-level helper so the corruption-recovery path in
-         * `desktopApp/Main` can locate the same file (plus its WAL/SHM/journal
-         * siblings) without re-stating the path and silently drifting from the
-         * factory's view. Mirrors the role of
-         * `Context.getDatabasePath("odin-2.db")` on Android.
+         * Exposed as a companion-level helper so [createDriver] and
+         * [deleteOnDiskFiles] share one source of truth for the path. Mirrors
+         * the role of `Context.getDatabasePath(DB_FILE_NAME)` on Android.
          */
         fun resolveDbFile(): File {
             val userHome = JvmFileSystemUtil.getAppDataDirectory()
@@ -38,7 +44,7 @@ actual class DatabaseDriverFactory {
             if (!dbDir.exists()) {
                 dbDir.mkdirs()
             }
-            return File(dbDir, "odin-2.db")
+            return File(dbDir, DB_FILE_NAME)
         }
     }
 }

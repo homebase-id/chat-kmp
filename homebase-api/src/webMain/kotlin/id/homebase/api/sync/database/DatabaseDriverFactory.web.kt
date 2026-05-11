@@ -7,4 +7,8 @@ actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
         TODO("Not yet implemented")
     }
+
+    actual fun deleteOnDiskFiles() {
+        TODO("Not yet implemented")
+    }
 }
