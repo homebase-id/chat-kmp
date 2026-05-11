@@ -244,9 +244,10 @@ private fun ZoneRow(zoneId: String, selected: Boolean, now: Instant, onClick: ()
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp),
     ) {
+        val cityWithOffset = "${cityName(zoneId)} · ${currentOffsetLabel(zoneId, now)}"
         Column {
             Text(
-                text = "${cityName(zoneId)} · ${currentOffsetLabel(zoneId, now)}",
+                text = cityWithOffset,
                 style = MaterialTheme.typography.bodyLarge,
                 color = onBg,
             )
