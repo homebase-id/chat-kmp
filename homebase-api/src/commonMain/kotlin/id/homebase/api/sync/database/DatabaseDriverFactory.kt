@@ -26,17 +26,28 @@ expect class DatabaseDriverFactory {
  * loop and suffix list live in commonMain because they aren't
  * platform-specific — only [DatabaseDriverFactory.dbFilePath] is. Missing
  * files are treated as a no-op (`mustExist = false`).
+ */
+internal fun DatabaseDriverFactory.deleteOnDiskFiles() {
+    deleteDatabaseFiles(dbFilePath())
+}
+
+/**
+ * Delete the database file at [dbFilePath] plus its WAL/SHM/journal
+ * siblings. Extracted from [DatabaseDriverFactory.deleteOnDiskFiles] so
+ * unit tests can exercise the suffix loop against a temp-directory path
+ * without instantiating a real factory (which would target the user's
+ * actual data directory).
  *
  * SQLite writes up to three side files alongside the primary database:
  *   - `-journal` (rollback journal mode)
  *   - `-wal` (write-ahead log mode)
  *   - `-shm` (WAL shared-memory index)
- * All three may exist at recovery time depending on which mode last touched
- * the file; deleting the primary alone would leave the others as zombies.
+ * All three may exist at recovery time depending on which mode last
+ * touched the file; deleting the primary alone would leave the others as
+ * zombies.
  */
-internal fun DatabaseDriverFactory.deleteOnDiskFiles() {
-    val path = dbFilePath()
+internal fun deleteDatabaseFiles(dbFilePath: String) {
     for (suffix in listOf("", "-journal", "-wal", "-shm")) {
-        SystemFileSystem.delete(Path(path + suffix), mustExist = false)
+        SystemFileSystem.delete(Path(dbFilePath + suffix), mustExist = false)
     }
 }
