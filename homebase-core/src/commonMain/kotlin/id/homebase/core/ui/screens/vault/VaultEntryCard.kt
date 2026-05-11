@@ -62,7 +62,6 @@ fun VaultEntryCard(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val cardShape = RoundedCornerShape(CARD_CORNER)
-    val topCornersShape = RoundedCornerShape(topStart = CARD_CORNER, topEnd = CARD_CORNER)
     val description = file.label?.ifBlank { null } ?: file.fileName
 
     Column(
@@ -90,7 +89,7 @@ fun VaultEntryCard(
                         .fillMaxSize()
                         .padding(start = 6.dp, end = 2.dp, top = 4.dp)
                         .graphicsLayer { rotationZ = -2f }
-                        .clip(topCornersShape)
+                        .clip(cardShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                 )
                 Box(
@@ -98,7 +97,7 @@ fun VaultEntryCard(
                         .fillMaxSize()
                         .padding(start = 4.dp, end = 2.dp, top = 2.dp)
                         .graphicsLayer { rotationZ = -1f }
-                        .clip(topCornersShape)
+                        .clip(cardShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
                 )
             }
@@ -107,7 +106,7 @@ fun VaultEntryCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(topCornersShape)
+                    .clip(cardShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -249,7 +248,7 @@ fun VaultEntryCard(
                     .fillMaxWidth()
                     .height(LABEL_HEIGHT)
                     .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.CenterStart,
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = file.label,

@@ -723,7 +723,64 @@ Three rows:
 `StateFlow`s into its `UiState`.
 
 The *Show Foo icon* switch is the one the user has to find if they previously
-dismissed onboarding — it's the only way the icon comes back.
+dismissed onboarding — but the Home screen shortcut (Step 7b) always remains
+visible as a secondary entry point.
+
+---
+
+## Step 7b — Home screen shortcut
+
+Reference: `HomeScreen.kt`, `AppNavHost.kt`.
+
+The bottom-bar icon can be hidden by the user (via *Dismiss* / settings toggle),
+so add a permanent shortcut on the **Home** tab. This ensures the feature is
+always discoverable regardless of the icon-visibility preference.
+
+### In `HomeScreen.kt`
+
+Add an `onNavigateToFoo: () -> Unit` parameter and render a tappable tile above
+the log buttons:
+
+```kotlin
+Surface(
+    onClick = onNavigateToFoo,
+    shape = RoundedCornerShape(16.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+    tonalElevation = 1.dp,
+    modifier = Modifier.size(96.dp),
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.<FooIcon>,
+            contentDescription = stringResource(MR.string.foo_label),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(40.dp),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(MR.string.foo_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+```
+
+### In `AppNavHost.kt`
+
+Wire the callback in the `composable<Route.Home>` block:
+
+```kotlin
+HomeScreen(
+    viewModel = koinViewModel(),
+    onNavigateToFoo = openFoo,
+    onNavigateToExamples = { navController.navigate(Route.Examples) },
+)
+```
 
 ---
 
@@ -974,6 +1031,7 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
 - [ ] Settings row + `onNavigateToFooSettings` wired
+- [ ] Home screen shortcut tile wired via `onNavigateToFoo` (always visible)
 - [ ] (Optional) `FooBiometricAuth` expect + three actuals
 - [ ] (Optional) `auth/FooBiometricGate.kt` extracted from screen
 

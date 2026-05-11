@@ -138,7 +138,7 @@ private fun SectionHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = title.uppercase(),
+            text = title,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),

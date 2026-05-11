@@ -642,7 +642,7 @@
     <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver\u2019s license, certificates, credit cards, or any other important documents.</string>
     <string name="vault_onboarding_body_2">Your documents are zero-knowledge encrypted on your personal private Homebase cloud server. They are additionally protected by your device biometrics.</string>
     <string name="vault_onboarding_setup">Set it up</string>
-    <string name="vault_onboarding_dismiss">Dismiss</string>
+    <string name="vault_onboarding_dismiss">Hide it away</string>
     <string name="vault_permission_dialog_title">Extend Permissions</string>
     <string name="vault_permission_dialog_text">To set up your Vault we need to extend permissions for secure storage and cloud sync.</string>
     <string name="vault_permission_extend">Extend</string>

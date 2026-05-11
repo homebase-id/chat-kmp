@@ -433,7 +433,9 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 HomeScreen(
                                     viewModel = koinViewModel(),
-                                    onNavigateToExamples = { navController.navigate(Route.Examples) })
+                                    onNavigateToVault = openVault,
+                                    onNavigateToExamples = { navController.navigate(Route.Examples) },
+                                )
                             }
                         }
 
