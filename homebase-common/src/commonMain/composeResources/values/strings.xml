@@ -638,6 +638,7 @@
 
     <!-- Vault -->
     <string name="vault_label">Vault</string>
+    <string name="vault_home_subtitle">Your secure document store</string>
     <string name="vault_onboarding_title">Your personal document vault</string>
     <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver\u2019s license, certificates, credit cards, or any other important documents.</string>
     <string name="vault_onboarding_body_2">Your documents are zero-knowledge encrypted on your personal private Homebase cloud server. They are additionally protected by your device biometrics.</string>
