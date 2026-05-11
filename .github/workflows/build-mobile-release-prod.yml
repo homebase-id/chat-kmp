@@ -188,7 +188,7 @@ jobs:
           XCEOF
 
       - name: Build iOS
-        timeout-minutes: 70
+        timeout-minutes: 180
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
