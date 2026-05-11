@@ -553,6 +553,19 @@
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
     <string name="chat_event_organized_by">Organized by</string>
+    <string name="chat_event_tz_picker_title">Time zone</string>
+    <string name="chat_event_tz_picker_search">Search city or zone</string>
+    <string name="chat_event_tz_suggested">Suggested</string>
+    <string name="chat_event_tz_region_africa">Africa</string>
+    <string name="chat_event_tz_region_americas">Americas</string>
+    <string name="chat_event_tz_region_antarctica">Antarctica</string>
+    <string name="chat_event_tz_region_arctic">Arctic</string>
+    <string name="chat_event_tz_region_asia">Asia</string>
+    <string name="chat_event_tz_region_atlantic">Atlantic</string>
+    <string name="chat_event_tz_region_australia">Australia</string>
+    <string name="chat_event_tz_region_europe">Europe</string>
+    <string name="chat_event_tz_region_indian">Indian Ocean</string>
+    <string name="chat_event_tz_region_pacific">Pacific</string>
 
     <!-- Dice attachment -->
     <string name="chat_dice_share">Dice</string>
