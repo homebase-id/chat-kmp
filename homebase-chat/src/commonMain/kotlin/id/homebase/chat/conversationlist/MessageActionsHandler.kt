@@ -430,11 +430,13 @@ internal class MessageActionsHandler(
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {
         messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
+        val replyTo = messagesUiState.value.replyToMessage
 
         addMessageWithFiles(
             conversationId = action.conversationId,
             content = action.message.trimEnd(),
             files = action.attachments,
+            replyTo = replyTo,
         )
         // Input is cleared inside addMessageWithFiles after
         // the send is successfully queued.
@@ -606,6 +608,7 @@ internal class MessageActionsHandler(
         conversationId: Uuid,
         content: String,
         files: List<AttachmentPendingFile>,
+        replyTo: MessageUiModel? = null,
     ) {
         val sentAt = UnixTimeUtc.now()
         scope.launch {
@@ -800,6 +803,7 @@ internal class MessageActionsHandler(
                 text = content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                replyPreview = replyTo?.toReplyPreview(),
             )
 
             // Register the placeholder, register upload progress, clear the
@@ -811,6 +815,7 @@ internal class MessageActionsHandler(
                     pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
                     fullScreenOverlay = null,
                     isSendingMessage = false,
+                    replyToMessage = if (replyTo != null) null else state.replyToMessage,
                 )
             }
             messageInputTextState.clear()
@@ -824,14 +829,27 @@ internal class MessageActionsHandler(
                             "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                         })
 
-                    chatMessageSenderService.sendNewMessage(
-                        messageUniqueId = newMessageId,
-                        conversationId = conversationId,
-                        messageText = content,
-                        previousMessageUniqueId = null,
-                        payloadBundle = bundle,
-                        userDate = sentAt,
-                    )
+                    if (replyTo != null) {
+                        Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
+                        chatMessageSenderService.replyToMessage(
+                            messageUniqueId = newMessageId,
+                            conversationId = conversationId,
+                            replyTo = replyTo.toReplyPreview(),
+                            messageText = content,
+                            previousMessageUniqueId = null,
+                            payloadBundle = bundle,
+                            userDate = sentAt,
+                        )
+                    } else {
+                        chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = newMessageId,
+                            conversationId = conversationId,
+                            messageText = content,
+                            previousMessageUniqueId = null,
+                            payloadBundle = bundle,
+                            userDate = sentAt,
+                        )
+                    }
                     // Real optimistic bubble has landed — drop the placeholder.
                     messagesUiState.update { state ->
                         state.copy(
@@ -851,6 +869,7 @@ internal class MessageActionsHandler(
                             pendingOutgoing = state.pendingOutgoing
                                 .filterNot { it.id == newMessageId }
                                 .toPersistentList(),
+                            replyToMessage = replyTo ?: state.replyToMessage,
                         )
                     }
                     sendEvent(
@@ -981,6 +1000,13 @@ internal class MessageActionsHandler(
         }
     }
 
+    private fun MessageUiModel.toReplyPreview() = ReplyPreview(
+        replyUniqueId = id,
+        authorOdinId = originalAuthor?.domainName ?: "null",
+        message = content.truncateToCodePoints(80),
+        previewThumbnail = previewThumbnail,
+    )
+
     private fun replyToMessage(
         conversationId: Uuid,
         replyTo: MessageUiModel,
@@ -991,12 +1017,6 @@ internal class MessageActionsHandler(
             try {
                 val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
-                val replyPreview = ReplyPreview(
-                    replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
-                    message = replyTo.content.truncateToCodePoints(80),
-                    previewThumbnail = replyTo.previewThumbnail
-                )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
@@ -1004,7 +1024,7 @@ internal class MessageActionsHandler(
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
-                    replyTo = replyPreview,
+                    replyTo = replyTo.toReplyPreview(),
                     messageText = content,
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
