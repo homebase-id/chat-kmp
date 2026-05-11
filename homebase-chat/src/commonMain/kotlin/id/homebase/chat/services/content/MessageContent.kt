@@ -40,6 +40,14 @@ sealed interface MessageContent {
      * "unsupported format" chip rather than the message disappearing.
      */
     data class Event(val descriptor: EventDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // events are immutable announcements
+            allowReply = true,            // organizer pings, RSVP nudges, follow-up Qs
+            allowForward = false,         // forwarding an event out of context loses RSVP
+            allowShare = false,           // copy-text of "Title @ time" adds little
+            allowInlineReactions = false, // RSVP happens in the detail dialog
+            allowReactionDetails = false, // RSVP rollup is the dialog's roster
+        )
         override val displayLabel: String get() = descriptor?.title ?: UNPARSEABLE_EVENT_LABEL
     }
 

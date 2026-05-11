@@ -746,6 +746,10 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ScrollToMessageId -> messageActionsHandler.handleScrollToMessageId(action)
 
+            is ConversationListUiAction.OpenReplyTarget -> messageActionsHandler.handleOpenReplyTarget(action)
+
+            ConversationListUiAction.DismissEventDetailFromReply -> messageActionsHandler.handleDismissEventDetailFromReply()
+
             is ConversationListUiAction.LoadOlderMessages -> {
                 viewModelScope.launch { chatMessageStream.loadOlderMessages(action.conversationId) }
             }

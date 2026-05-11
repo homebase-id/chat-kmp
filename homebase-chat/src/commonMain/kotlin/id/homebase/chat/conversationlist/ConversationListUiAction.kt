@@ -173,6 +173,18 @@ sealed interface ConversationListUiAction {
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
 
+    /**
+     * User tapped the inline reply-preview chip pinned above a message bubble.
+     * The handler resolves the target via [ChatMessageStream.getMessage]
+     * (in-memory window first, single DB read on miss) and chooses what to
+     * surface: a typed-content target like an Event opens its detail dialog,
+     * everything else falls back to [ScrollToMessageId].
+     */
+    data class OpenReplyTarget(val messageId: Uuid) : ConversationListUiAction
+
+    /** Dismiss the host-level Event detail dialog opened from a reply target. */
+    data object DismissEventDetailFromReply : ConversationListUiAction
+
     /** Fetch the next page of older messages into the visible window. */
     data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
 
