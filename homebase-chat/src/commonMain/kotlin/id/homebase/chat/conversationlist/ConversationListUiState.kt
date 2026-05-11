@@ -11,6 +11,7 @@ import id.homebase.chat.event.EventDescriptor
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
@@ -130,6 +131,7 @@ data class PendingOutgoingMessage(
     val text: String,
     val attachmentCount: Int,
     val sentAt: Instant,
+    val replyPreview: ReplyPreview? = null,
 )
 
 sealed interface MessageListUiSheet {
