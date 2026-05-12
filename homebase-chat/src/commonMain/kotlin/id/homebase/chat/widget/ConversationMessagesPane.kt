@@ -39,6 +39,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.rememberCameraManager
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
@@ -61,12 +62,15 @@ fun ConversationMessagesPane(
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        files?.takeIf { it.isNotEmpty() }?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
                     conversationId = conversation.conversation.id,
-                    files = listOf(file),
+                    files = it,
                     isImage = true,
                 )
             )

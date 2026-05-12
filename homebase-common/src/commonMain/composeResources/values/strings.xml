@@ -736,6 +736,9 @@
     <string name="vault_gallery_delete_page_confirm">Delete this page? This cannot be undone.</string>
     <string name="vault_gallery_delete_last_page_confirm">This is the last page. Deleting it will remove the entire entry.</string>
     <string name="vault_gallery_share_page">Share this page</string>
+    <string name="vault_gallery_save_page">Save to device</string>
+    <string name="vault_gallery_delete_file">Delete file</string>
+    <string name="vault_gallery_delete_all">Delete all</string>
 
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
