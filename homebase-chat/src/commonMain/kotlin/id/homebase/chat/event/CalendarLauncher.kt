@@ -46,15 +46,34 @@ expect fun rememberCalendarLauncher(): CalendarLauncher
  */
 fun googleCalendarUrl(event: EventDescriptor): String {
     val endMs = event.endUtcMs ?: (event.startUtcMs + 60L * 60L * 1000L)
+    val details = composeCalendarDescription(event.description, event.meetingUrl)
     val params = listOfNotNull(
         "action" to "TEMPLATE",
         "text" to event.title,
         "dates" to "${formatGcalUtc(event.startUtcMs)}/${formatGcalUtc(endMs)}",
-        event.description.takeIf { it.isNotBlank() }?.let { "details" to it },
+        details.takeIf { it.isNotBlank() }?.let { "details" to it },
         event.locationText?.takeIf { it.isNotBlank() }?.let { "location" to it },
         "ctz" to event.timezone,
     ).joinToString("&") { (k, v) -> "$k=${urlEncode(v)}" }
     return "https://calendar.google.com/calendar/render?$params"
+}
+
+/**
+ * Build the description text for calendar paths that have no dedicated meeting
+ * URL field (Google Calendar's `?action=TEMPLATE` URL, Android's
+ * `Intent.ACTION_INSERT`). Prepends a `Join: <url>` line so the URL travels
+ * with the event and stays clickable inside the calendar app.
+ *
+ * `.ics` and iOS EventKit do not use this — they have native `URL:` /
+ * `EKEvent.setURL` fields and would just duplicate the URL.
+ *
+ * Idempotent: if [description] already contains [meetingUrl] verbatim
+ * (e.g. the author pasted it manually) we don't add a second copy.
+ */
+internal fun composeCalendarDescription(description: String, meetingUrl: String?): String {
+    val url = meetingUrl?.takeIf { it.isNotBlank() } ?: return description
+    if (description.contains(url)) return description
+    return if (description.isBlank()) "Join: $url" else "Join: $url\n\n$description"
 }
 
 /** Format epoch milliseconds as Google Calendar's compact UTC: `YYYYMMDDTHHMMSSZ`. */
