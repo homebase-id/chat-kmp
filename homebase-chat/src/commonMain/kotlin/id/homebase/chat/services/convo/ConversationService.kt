@@ -1994,9 +1994,38 @@ class ConversationService(
      *
      * Each step is debug-logged so a failure can be diagnosed in homebase.log.
      */
+    /**
+     * Coarse-grained phase callback fired by [healGroupDistribution] at the
+     * three natural transitions the UI cares about: heal-message send, main
+     * file resend, admin file resend. The Sending event fires before the
+     * outbox enqueue; Sent fires after a successful enqueue; Failed fires
+     * if the enqueue throws. The [recipients] list is the actual targeted
+     * subset, ready for "Sending X to peer-by-peer" UI rendering.
+     *
+     * Skipped phases (caller not the author, recipient set empty) DO emit
+     * a phase event so the dialog can render them as "Skipped — already in
+     * sync" rather than leaving rows in Pending forever.
+     */
+    sealed interface HealPhase {
+        val recipients: List<OdinId>
+        data class HealMessageSending(override val recipients: List<OdinId>) : HealPhase
+        data class HealMessageSent(override val recipients: List<OdinId>) : HealPhase
+        data class HealMessageFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
+        data class HealMessageSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
+        data class MainSending(override val recipients: List<OdinId>) : HealPhase
+        data class MainSent(override val recipients: List<OdinId>) : HealPhase
+        data class MainFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
+        data class MainSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
+        data class AdminSending(override val recipients: List<OdinId>) : HealPhase
+        data class AdminSent(override val recipients: List<OdinId>) : HealPhase
+        data class AdminFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
+        data class AdminSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
+    }
+
     suspend fun healGroupDistribution(
         conversationId: Uuid,
         plan: HealPlan? = null,
+        onPhase: ((HealPhase) -> Unit)? = null,
     ): HealGroupResult {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("healGroupDistribution")
@@ -2051,7 +2080,11 @@ class ConversationService(
             else -> healMessageTargets
         }
         val shouldSendHealMessage = callerIsMainAuthor && healMessageRecipientsActual != emptyList<OdinId>()
+        // Audience for progress-event purposes only. When override is null we'll
+        // broadcast, so use allRecipients as the visible set.
+        val healMessageAudience = healMessageRecipientsActual ?: allRecipients
         if (shouldSendHealMessage) {
+            onPhase?.invoke(HealPhase.HealMessageSending(healMessageAudience))
             try {
                 val canonicalAdminsForStatus = conversation.admins.toList()
                 Logger.i {
@@ -2082,29 +2115,37 @@ class ConversationService(
                     recipientOverride = healMessageRecipientsActual,
                 )
                 healMessageRecipientCount = healMessageRecipientsActual?.size ?: allRecipients.size
+                onPhase?.invoke(HealPhase.HealMessageSent(healMessageAudience))
             } catch (t: Throwable) {
                 // Best-effort: don't let a status-send failure block the file pushes.
                 Logger.w(t) { "healGroupDistribution: GroupHealRequested status send FAILED for $conversationId" }
+                onPhase?.invoke(HealPhase.HealMessageFailed(healMessageAudience, t))
             }
         } else if (!callerIsMainAuthor) {
             Logger.d { "healGroupDistribution: skipping status broadcast — caller is not the original author of main file" }
+            onPhase?.invoke(HealPhase.HealMessageSkipped(healMessageAudience, "not-author"))
         } else {
             Logger.d { "healGroupDistribution: skipping status broadcast — heal message recipient set is empty (no Stale peers)" }
+            onPhase?.invoke(HealPhase.HealMessageSkipped(emptyList(), "no-stale-peers"))
         }
 
         // Main conversation file
         val mainFile = preMainFile
         if (mainFile == null) {
             Logger.w { "healGroupDistribution: no local main conversation file for $conversationId — skipping main" }
+            onPhase?.invoke(HealPhase.MainSkipped(mainTargets, "no-local-file"))
         } else {
             val mainAuthor = mainFile.fileMetadata.originalAuthor ?: mainFile.fileMetadata.senderOdinId
             val mainPending = mainFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
             Logger.d { "healGroupDistribution: main file fileId=${mainFile.fileId} sender=${mainFile.fileMetadata.senderOdinId} originalAuthor=${mainFile.fileMetadata.originalAuthor} resolvedAuthor=$mainAuthor versionTag=${mainFile.fileMetadata.versionTag} isPending=$mainPending localTags=${mainFile.fileMetadata.localAppData?.tags}" }
             if (mainAuthor != domain) {
                 Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
+                onPhase?.invoke(HealPhase.MainSkipped(mainTargets, "not-author"))
             } else if (mainTargets.isEmpty()) {
                 Logger.d { "healGroupDistribution: skipping main — no peers need the file (all InSync)" }
+                onPhase?.invoke(HealPhase.MainSkipped(emptyList(), "all-in-sync"))
             } else {
+                onPhase?.invoke(HealPhase.MainSending(mainTargets))
                 try {
                     Logger.i { "healGroupDistribution: redistributing main conversation file $conversationId to recipients=$mainTargets" }
                     updateConversationInternal(
@@ -2117,8 +2158,10 @@ class ConversationService(
                     mainHealed = true
                     mainRecipientCount = mainTargets.size
                     Logger.i { "healGroupDistribution: main conversation file enqueued for redistribute $conversationId" }
+                    onPhase?.invoke(HealPhase.MainSent(mainTargets))
                 } catch (t: Throwable) {
                     Logger.e("healGroupDistribution: main conversation file redistribute FAILED for $conversationId", t)
+                    onPhase?.invoke(HealPhase.MainFailed(mainTargets, t))
                     throw t
                 }
             }
@@ -2128,15 +2171,19 @@ class ConversationService(
         val adminFile = preAdminFile
         if (adminFile == null) {
             Logger.w { "healGroupDistribution: no local admin file for $conversationId — skipping admin" }
+            onPhase?.invoke(HealPhase.AdminSkipped(adminTargets, "no-local-file"))
         } else {
             val adminAuthor = adminFile.fileMetadata.originalAuthor ?: adminFile.fileMetadata.senderOdinId
             val adminPending = adminFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
             Logger.d { "healGroupDistribution: admin file fileId=${adminFile.fileId} sender=${adminFile.fileMetadata.senderOdinId} originalAuthor=${adminFile.fileMetadata.originalAuthor} resolvedAuthor=$adminAuthor versionTag=${adminFile.fileMetadata.versionTag} isPending=$adminPending localTags=${adminFile.fileMetadata.localAppData?.tags}" }
             if (adminAuthor != domain) {
                 Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
+                onPhase?.invoke(HealPhase.AdminSkipped(adminTargets, "not-author"))
             } else if (adminTargets.isEmpty()) {
                 Logger.d { "healGroupDistribution: skipping admin — no peers need the file (all InSync)" }
+                onPhase?.invoke(HealPhase.AdminSkipped(emptyList(), "all-in-sync"))
             } else {
+                onPhase?.invoke(HealPhase.AdminSending(adminTargets))
                 try {
                     Logger.i { "healGroupDistribution: redistributing admin file $conversationId admins=${conversation.admins} recipients=$adminTargets" }
                     updateAdminFile(
@@ -2147,8 +2194,10 @@ class ConversationService(
                     adminHealed = true
                     adminRecipientCount = adminTargets.size
                     Logger.i { "healGroupDistribution: admin file enqueued for redistribute $conversationId" }
+                    onPhase?.invoke(HealPhase.AdminSent(adminTargets))
                 } catch (t: Throwable) {
                     Logger.e("healGroupDistribution: admin file redistribute FAILED for $conversationId", t)
+                    onPhase?.invoke(HealPhase.AdminFailed(adminTargets, t))
                     throw t
                 }
             }

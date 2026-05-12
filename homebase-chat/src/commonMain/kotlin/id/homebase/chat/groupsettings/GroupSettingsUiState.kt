@@ -187,6 +187,35 @@ sealed interface GroupSettingsUiDialog {
 
 sealed interface GroupSettingsUiSheet {
     data class Member(val contactId: Uuid): GroupSettingsUiSheet
+
+    /**
+     * Streams one row per (peer, action) while a heal is in flight. Rows are
+     * created up-front from the [ConversationService.HealPlan] so the user
+     * sees the full list of intended work immediately, then each row
+     * transitions Pending → InFlight → Done (or Failed / Skipped) as the
+     * service emits its [ConversationService.HealPhase] callbacks.
+     *
+     * [finished] flips to true when the heal call returns (success or fail);
+     * the dialog then enables its close button.
+     */
+    data class HealProgress(
+        val items: List<HealProgressItem>,
+        val finished: Boolean,
+    ) : GroupSettingsUiSheet
 }
+
+@Immutable
+data class HealProgressItem(
+    val key: String,
+    val kind: HealActionKind,
+    val peer: OdinId,
+    val state: HealProgressState,
+)
+
+@Immutable
+enum class HealActionKind { GroupFile, AdminFile, HealRequest }
+
+@Immutable
+enum class HealProgressState { Pending, InFlight, Done, Failed, Skipped }
 
 

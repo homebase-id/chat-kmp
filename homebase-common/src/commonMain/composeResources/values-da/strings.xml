@@ -362,6 +362,12 @@
     <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
     <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
     <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
+    <string name="chat_group_heal_progress_title">Reparerer gruppe</string>
+    <string name="chat_group_heal_progress_subtitle_running">Arbejder gennem den per-modtager plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup">Beder %1$s om at rydde op i deres kopi</string>
     <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
     <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
     <string name="chat_group_main_file_delivered">Gruppefil leveret</string>

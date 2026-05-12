@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyOff
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.Button
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
@@ -99,6 +102,12 @@ import id.homebase.resources.chat_group_heal
 import id.homebase.resources.chat_group_heal_admin_resent
 import id.homebase.resources.chat_group_heal_already_in_sync
 import id.homebase.resources.chat_group_heal_main_resent
+import id.homebase.resources.chat_group_heal_progress_asking_cleanup
+import id.homebase.resources.chat_group_heal_progress_sending_admin_file
+import id.homebase.resources.chat_group_heal_progress_sending_group_file
+import id.homebase.resources.chat_group_heal_progress_subtitle_finished
+import id.homebase.resources.chat_group_heal_progress_subtitle_running
+import id.homebase.resources.chat_group_heal_progress_title
 import id.homebase.resources.chat_group_heal_request_sent
 import id.homebase.resources.chat_group_main_file_delivered
 import id.homebase.resources.chat_group_main_file_loading
@@ -770,6 +779,136 @@ fun GroupSettingsSheets(
                 }
             }
         }
+
+        is GroupSettingsUiSheet.HealProgress -> {
+            val sheetState = rememberModalBottomSheetState()
+            ModalBottomSheet(
+                // Block dismiss until the heal call returns so the user can see
+                // every line transition. After [finished] flips true, the Close
+                // button (rendered below) is the explicit dismiss path.
+                onDismissRequest = { if (sheet.finished) onSheetClosed() },
+                sheetState = sheetState,
+            ) {
+                HealProgressSheetContent(
+                    items = sheet.items,
+                    finished = sheet.finished,
+                    onClose = { onSheetClosed() },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealProgressSheetContent(
+    items: List<HealProgressItem>,
+    finished: Boolean,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(MR.string.chat_group_heal_progress_title),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(
+                if (finished) MR.string.chat_group_heal_progress_subtitle_finished
+                else MR.string.chat_group_heal_progress_subtitle_running
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (items.isEmpty()) {
+            Text(
+                text = stringResource(MR.string.chat_group_heal_already_in_sync),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else {
+            items.forEach { item ->
+                HealProgressRow(item)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onClose,
+            enabled = finished,
+            modifier = Modifier
+                .align(Alignment.End)
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(text = stringResource(MR.string.ok))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun HealProgressRow(item: HealProgressItem) {
+    val labelRes = when (item.kind) {
+        HealActionKind.GroupFile -> MR.string.chat_group_heal_progress_sending_group_file
+        HealActionKind.AdminFile -> MR.string.chat_group_heal_progress_sending_admin_file
+        HealActionKind.HealRequest -> MR.string.chat_group_heal_progress_asking_cleanup
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (item.state) {
+                HealProgressState.Pending -> Icon(
+                    imageVector = Icons.Default.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.4f),
+                    modifier = Modifier.size(14.dp),
+                )
+                HealProgressState.InFlight -> CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 1.8.dp,
+                )
+                HealProgressState.Done -> Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                HealProgressState.Failed -> Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                HealProgressState.Skipped -> Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.4f),
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = stringResource(labelRes, item.peer.domainName),
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (item.state) {
+                HealProgressState.Skipped -> LocalContentColor.current.copy(alpha = 0.55f)
+                HealProgressState.Failed -> MaterialTheme.colorScheme.error
+                else -> LocalContentColor.current
+            },
+        )
     }
 }
 

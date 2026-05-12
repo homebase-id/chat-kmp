@@ -455,6 +455,12 @@
     <string name="chat_group_heal_completed">Re-distributing group files…</string>
     <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn't author the group files).</string>
     <string name="chat_group_heal_already_in_sync">Group is already in sync on every peer</string>
+    <string name="chat_group_heal_progress_title">Healing group</string>
+    <string name="chat_group_heal_progress_subtitle_running">Working through the per-recipient plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Done. You can close this dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sending group file to %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sending admin file to %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup">Asking %1$s to clean up their copy</string>
 
     <!-- Group-info file health diagnostic (footer at the bottom of group settings).
          Each row reports the local-DB or own-server state of one of the two group

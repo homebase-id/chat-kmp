@@ -226,12 +226,21 @@ class GroupSettingsViewModel(
                 if (uiState.value.isHealing) return
                 if (!uiState.value.canHeal) return
                 val plan = buildHealPlan(uiState.value)
-                _uiState.update { it.copy(isHealing = true) }
+                val initialItems = buildInitialProgressItems(plan)
+                _uiState.update {
+                    it.copy(
+                        isHealing = true,
+                        uiSheet = GroupSettingsUiSheet.HealProgress(initialItems, finished = false),
+                    )
+                }
                 viewModelScope.launch {
                     try {
                         Logger.i("GroupSettings: heal requested for ${conversation.id} plan=$plan")
                         logTransferSnapshot("BEFORE heal", conversation.id, uiState.value)
-                        val result = conversationService.healGroupDistribution(conversation.id, plan)
+                        val result = conversationService.healGroupDistribution(
+                            conversation.id,
+                            plan,
+                        ) { phase -> applyHealPhase(phase) }
                         Logger.i(
                             "GroupSettings: heal result for ${conversation.id} " +
                                 "mainHealed=${result.mainHealed} adminHealed=${result.adminHealed} " +
@@ -242,9 +251,11 @@ class GroupSettingsViewModel(
                         // Re-load transfer history so the user sees outbox/sending state immediately
                         loadTransferHistory(conversation)
                         logTransferSnapshot("AFTER heal", conversation.id, uiState.value)
-                        _uiState.update {
-                            it.copy(
+                        _uiState.update { state ->
+                            val sheet = state.uiSheet
+                            state.copy(
                                 isHealing = false,
+                                uiSheet = if (sheet is GroupSettingsUiSheet.HealProgress) sheet.copy(finished = true) else sheet,
                                 uiEvent = GroupSettingsUiEvent.HealCompleted(
                                     mainHealed = result.mainHealed,
                                     adminHealed = result.adminHealed,
@@ -256,9 +267,11 @@ class GroupSettingsViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("GroupSettings: heal failed for ${conversation.id}", e)
-                        _uiState.update {
-                            it.copy(
+                        _uiState.update { state ->
+                            val sheet = state.uiSheet
+                            state.copy(
                                 isHealing = false,
+                                uiSheet = if (sheet is GroupSettingsUiSheet.HealProgress) sheet.copy(finished = true) else sheet,
                                 uiEvent = Error("Failed to heal group: ${e.message ?: "unknown error"}")
                             )
                         }
@@ -716,5 +729,73 @@ class GroupSettingsViewModel(
             resendAdminTo = resendAdmin,
             healMessageTo = healMessage,
         )
+    }
+
+    /**
+     * Seed the progress sheet with one row per (peer, action) the heal plans to
+     * perform. Rows start [HealProgressState.Pending]; the [applyHealPhase]
+     * callback transitions them to InFlight / Done / Failed / Skipped as the
+     * service emits [ConversationService.HealPhase] events.
+     *
+     * Order: heal-request rows first (those peers do nothing until they get the
+     * request), then group-file resends, then admin-file resends. Within each
+     * group rows are sorted by peer domain for stable display.
+     *
+     * A null per-file slot in the plan means "no per-recipient signal — fall
+     * back to all-recipients legacy behavior". We still surface those rows
+     * (one per peer in the conversation's participant list, minus self) so
+     * the user sees what the heal is actually doing.
+     */
+    private fun buildInitialProgressItems(plan: ConversationService.HealPlan): List<HealProgressItem> {
+        val conversation = uiState.value.conversation ?: return emptyList()
+        val self = uiState.value.currentOdinId
+        val fallback = conversation.participants.filter { it != self }.distinct()
+
+        val mainSet = (plan.resendMainTo ?: fallback).sortedBy { it.domainName }
+        val adminSet = (plan.resendAdminTo ?: fallback).sortedBy { it.domainName }
+        val healSet = (plan.healMessageTo ?: fallback).sortedBy { it.domainName }
+
+        return buildList {
+            healSet.forEach { add(HealProgressItem("heal-${it.domainName}", HealActionKind.HealRequest, it, HealProgressState.Pending)) }
+            mainSet.forEach { add(HealProgressItem("main-${it.domainName}", HealActionKind.GroupFile, it, HealProgressState.Pending)) }
+            adminSet.forEach { add(HealProgressItem("admin-${it.domainName}", HealActionKind.AdminFile, it, HealProgressState.Pending)) }
+        }
+    }
+
+    /**
+     * Walk the current progress items and update any whose (kind, peer) matches
+     * the given phase. The service's phase callback is invoked synchronously on
+     * the same coroutine that called [ConversationService.healGroupDistribution]
+     * (via [viewModelScope.launch]), so [_uiState.update] from here is safe.
+     */
+    private fun applyHealPhase(phase: ConversationService.HealPhase) {
+        val (targetKind, newState) = when (phase) {
+            is ConversationService.HealPhase.HealMessageSending -> HealActionKind.HealRequest to HealProgressState.InFlight
+            is ConversationService.HealPhase.HealMessageSent -> HealActionKind.HealRequest to HealProgressState.Done
+            is ConversationService.HealPhase.HealMessageFailed -> HealActionKind.HealRequest to HealProgressState.Failed
+            is ConversationService.HealPhase.HealMessageSkipped -> HealActionKind.HealRequest to HealProgressState.Skipped
+            is ConversationService.HealPhase.MainSending -> HealActionKind.GroupFile to HealProgressState.InFlight
+            is ConversationService.HealPhase.MainSent -> HealActionKind.GroupFile to HealProgressState.Done
+            is ConversationService.HealPhase.MainFailed -> HealActionKind.GroupFile to HealProgressState.Failed
+            is ConversationService.HealPhase.MainSkipped -> HealActionKind.GroupFile to HealProgressState.Skipped
+            is ConversationService.HealPhase.AdminSending -> HealActionKind.AdminFile to HealProgressState.InFlight
+            is ConversationService.HealPhase.AdminSent -> HealActionKind.AdminFile to HealProgressState.Done
+            is ConversationService.HealPhase.AdminFailed -> HealActionKind.AdminFile to HealProgressState.Failed
+            is ConversationService.HealPhase.AdminSkipped -> HealActionKind.AdminFile to HealProgressState.Skipped
+        }
+        val recipients = phase.recipients.toSet()
+        Logger.i(tag = "HealAudit") {
+            "applyHealPhase: ${phase::class.simpleName} kind=$targetKind newState=$newState " +
+                "recipients=${phase.recipients.map { it.domainName }}"
+        }
+        _uiState.update { state ->
+            val sheet = state.uiSheet
+            if (sheet !is GroupSettingsUiSheet.HealProgress) return@update state
+            val updatedItems = sheet.items.map { item ->
+                if (item.kind == targetKind && item.peer in recipients) item.copy(state = newState)
+                else item
+            }
+            state.copy(uiSheet = sheet.copy(items = updatedItems))
+        }
     }
 }
