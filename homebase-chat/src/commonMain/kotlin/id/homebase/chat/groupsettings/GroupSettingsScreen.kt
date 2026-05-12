@@ -96,8 +96,10 @@ import id.homebase.resources.chat_group_admin_peer_missing
 import id.homebase.resources.chat_group_admin_peer_stale
 import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.resources.chat_group_heal
-import id.homebase.resources.chat_group_heal_completed
-import id.homebase.resources.chat_group_heal_completed_nothing
+import id.homebase.resources.chat_group_heal_admin_resent
+import id.homebase.resources.chat_group_heal_already_in_sync
+import id.homebase.resources.chat_group_heal_main_resent
+import id.homebase.resources.chat_group_heal_request_sent
 import id.homebase.resources.chat_group_main_file_delivered
 import id.homebase.resources.chat_group_main_file_loading
 import id.homebase.resources.chat_group_main_file_problem
@@ -147,8 +149,7 @@ fun GroupSettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
-    val healCompletedMessage = stringResource(MR.string.chat_group_heal_completed)
-    val healCompletedNothingMessage = stringResource(MR.string.chat_group_heal_completed_nothing)
+    val healAlreadyInSyncMessage = stringResource(MR.string.chat_group_heal_already_in_sync)
 
     when (val event = uiState.uiEvent) {
         is GroupSettingsUiEvent.Back -> {
@@ -183,11 +184,39 @@ fun GroupSettingsScreen(
 
         is GroupSettingsUiEvent.HealCompleted -> {
             viewModel.eventConsumed()
-            val message = if (event.mainHealed || event.adminHealed) {
-                healCompletedMessage
-            } else {
-                healCompletedNothingMessage
+            val parts = buildList {
+                if (event.mainRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_main_resent,
+                            event.mainRecipientCount,
+                            event.mainRecipientCount,
+                        )
+                    )
+                }
+                if (event.adminRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_admin_resent,
+                            event.adminRecipientCount,
+                            event.adminRecipientCount,
+                        )
+                    )
+                }
+                if (event.healMessageRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_request_sent,
+                            event.healMessageRecipientCount,
+                            event.healMessageRecipientCount,
+                        )
+                    )
+                }
             }
+            // Counts all zero ⇒ either every peer was already InSync or there
+            // were no peers to begin with; canHeal would have blocked the
+            // not-author case before the click reached us.
+            val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
             scope.launch { snackbarHostState.showSnackbar(message = message) }
         }
 

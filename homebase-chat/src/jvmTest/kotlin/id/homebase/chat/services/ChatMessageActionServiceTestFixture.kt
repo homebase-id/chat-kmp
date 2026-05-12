@@ -649,6 +649,7 @@ class FakeConversationParticipantLookup :
     override suspend fun getRecipients(
         conversationId: Uuid,
         additionalRecipients: List<id.homebase.api.common.OdinId>,
+        recipientOverride: List<id.homebase.api.common.OdinId>?,
     ): List<id.homebase.api.common.OdinId> = emptyList()
 }
 

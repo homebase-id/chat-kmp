@@ -361,6 +361,7 @@
     <string name="chat_group_heal">Reparér gruppe</string>
     <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
     <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
+    <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
     <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
     <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
     <string name="chat_group_main_file_delivered">Gruppefil leveret</string>

@@ -1107,7 +1107,12 @@ class ConversationService(
          *  list locally without waiting for the outbox to drain — most notably [leaveGroup]
          *  step 2, which would otherwise race [ChatProtocol.ConversationLeftTag] against the
          *  pending participant change and produce a spurious [ConversationState.RejoinPending]. */
-        applyOptimisticContentLocally: Boolean = false
+        applyOptimisticContentLocally: Boolean = false,
+        /** Heal-only: when non-null, distribute the new file only to this subset of peers
+         *  instead of to the full [participants] list. The canonical participants stored
+         *  in the file content stay unchanged — this just narrows the outbox recipient
+         *  list. Null = legacy behavior (distribute to every participant). */
+        distributeOnlyTo: List<OdinId>? = null,
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateConversationInternal")
@@ -1181,6 +1186,15 @@ class ConversationService(
         var thumbs: List<ThumbnailFile>?
 
         if (payloadBundle == null) {
+            // No new bundle: the existing payloads stay on OUR drive (server preserves
+            // them since we don't list them under DeletePayload). HOWEVER — for peer
+            // transit, the manifest is empty so peer-side servers receive only the
+            // file header. If the existing file has the convo_img payload, peers
+            // who receive this update will NOT see the image until they fetch the
+            // payload separately. Logged below as part of the HealAudit ENQUEUE
+            // line so we can confirm this from the log. TODO(heal-image): include
+            // existing payloads via re-upload or a dedicated "include-existing"
+            // manifest op once we have evidence from server-side behavior.
             manifest = UpdateManifest.build(
                 payloads = null,
                 toDeletePayloads = null,
@@ -1251,12 +1265,34 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = if (distribute) (participants + additionalDistributionRecipients).filterNot { it == domain }
-                    .distinct() else emptyList(),
+                recipients = if (distribute) {
+                    val baseSet = distributeOnlyTo ?: participants
+                    (baseSet + additionalDistributionRecipients).filterNot { it == domain }
+                        .distinct()
+                } else emptyList(),
                 manifest = manifest
             )
 
         Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
+
+        // Full-shape log of what we're about to enqueue. Lets us read the
+        // log and see exactly which recipients are on this push, whether
+        // any payloads are being shipped (heal carries none today — see
+        // [healGroupDistribution] image gap), and what versionTag the
+        // server-side per-peer apply will check against. Tagged so it
+        // stands out in a sea of debug noise.
+        Logger.i(tag = "HealAudit") {
+            val existingPayloadKeys = conversationFile.fileMetadata.payloads?.joinToString(",") { it.key } ?: "<none>"
+            val manifestKeys = manifest.payloadDescriptors?.joinToString(",") { "${it.payloadKey}:${it.operationType}" } ?: "<empty>"
+            "updateConversationInternal ENQUEUE conversationId=$conversationId " +
+                "versionTagIn=${conversationFile.fileMetadata.versionTag} " +
+                "distribute=$distribute distributeOnlyTo=${distributeOnlyTo?.map { it.domainName }} " +
+                "instructions.recipients=${instructions.recipients.map { it.domainName }} " +
+                "manifest.payloadDescriptors=[$manifestKeys] " +
+                "request.payloadsCount=${payloads.size} request.thumbsCount=${thumbs.size} " +
+                "existingFilePayloads=[$existingPayloadKeys] (these stay on OUR server but are " +
+                "NOT in the manifest, so peer transit may not ship them — see image-on-heal bug)"
+        }
 
         val request =
             UpdateFileByUniqueIdRequest(
@@ -1958,10 +1994,13 @@ class ConversationService(
      *
      * Each step is debug-logged so a failure can be diagnosed in homebase.log.
      */
-    suspend fun healGroupDistribution(conversationId: Uuid): HealGroupResult {
+    suspend fun healGroupDistribution(
+        conversationId: Uuid,
+        plan: HealPlan? = null,
+    ): HealGroupResult {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("healGroupDistribution")
-        audit.start("conversationId=$conversationId")
+        audit.start("conversationId=$conversationId planned=${plan != null}")
         // ---- end DEBUG ----
         val conversation = requireConversation(conversationId)
         if (!conversation.isGroupConversation) {
@@ -1971,12 +2010,29 @@ class ConversationService(
         }
 
         val domain = credentialsManager.requireActiveDomain()
-        val recipients = conversation.participants.filterNot { it == domain }.distinct()
+        val allRecipients = conversation.participants.filterNot { it == domain }.distinct()
 
-        Logger.i { "healGroupDistribution: START conversationId=$conversationId domain=$domain participants=${conversation.participants} recipients=$recipients admins=${conversation.admins}" }
+        // Per-file recipient targeting. When the plan carries a non-null subset,
+        // narrow the resend to exactly those peers. When the plan is null or the
+        // per-file subset is null (e.g. all peer-exists checks errored), fall
+        // back to the legacy all-recipients behavior so heal remains useful on
+        // server builds without the peer-exists endpoint.
+        val mainTargets = plan?.resendMainTo ?: allRecipients
+        val adminTargets = plan?.resendAdminTo ?: allRecipients
+        val healMessageTargets = plan?.healMessageTo  // null = broadcast to all participants
+
+        Logger.i {
+            "healGroupDistribution: START conversationId=$conversationId domain=$domain " +
+                "participants=${conversation.participants} mainTargets=$mainTargets " +
+                "adminTargets=$adminTargets healMessageTargets=$healMessageTargets " +
+                "admins=${conversation.admins}"
+        }
 
         var mainHealed = false
         var adminHealed = false
+        var mainRecipientCount = 0
+        var adminRecipientCount = 0
+        var healMessageRecipientCount = 0
 
         // Status broadcast — send the canonical group identity BEFORE the file
         // pushes so a recipient processing the same sync batch sees the
@@ -1989,7 +2045,13 @@ class ConversationService(
         val preAdminFile = getConversationAdminHomebaseFile(conversationId)
         val callerIsMainAuthor = preMainFile != null &&
                 (preMainFile.fileMetadata.originalAuthor ?: preMainFile.fileMetadata.senderOdinId) == domain
-        if (callerIsMainAuthor) {
+        val healMessageRecipientsActual: List<OdinId>? = when {
+            healMessageTargets == null -> null               // null = legacy broadcast (no override)
+            healMessageTargets.isEmpty() -> emptyList()      // empty = skip the send entirely
+            else -> healMessageTargets
+        }
+        val shouldSendHealMessage = callerIsMainAuthor && healMessageRecipientsActual != emptyList<OdinId>()
+        if (shouldSendHealMessage) {
             try {
                 val canonicalAdminsForStatus = conversation.admins.toList()
                 Logger.i {
@@ -1998,7 +2060,8 @@ class ConversationService(
                         "adminVersionTag=${preAdminFile?.fileMetadata?.versionTag} " +
                         "title=\"${conversation.name}\" " +
                         "participants(${conversation.participants.size})=${conversation.participants.map { it.domainName }} " +
-                        "admins(${canonicalAdminsForStatus.size})=${canonicalAdminsForStatus.map { it.domainName }}"
+                        "admins(${canonicalAdminsForStatus.size})=${canonicalAdminsForStatus.map { it.domainName }} " +
+                        "recipientOverride=${healMessageRecipientsActual?.map { it.domainName }}"
                 }
                 chatMessageSenderService.sendStatusMessage(
                     messageUniqueId = Uuid.random(),
@@ -2016,13 +2079,17 @@ class ConversationService(
                             canonicalAdmins = canonicalAdminsForStatus,
                         ),
                     ),
+                    recipientOverride = healMessageRecipientsActual,
                 )
+                healMessageRecipientCount = healMessageRecipientsActual?.size ?: allRecipients.size
             } catch (t: Throwable) {
                 // Best-effort: don't let a status-send failure block the file pushes.
                 Logger.w(t) { "healGroupDistribution: GroupHealRequested status send FAILED for $conversationId" }
             }
-        } else {
+        } else if (!callerIsMainAuthor) {
             Logger.d { "healGroupDistribution: skipping status broadcast — caller is not the original author of main file" }
+        } else {
+            Logger.d { "healGroupDistribution: skipping status broadcast — heal message recipient set is empty (no Stale peers)" }
         }
 
         // Main conversation file
@@ -2033,23 +2100,27 @@ class ConversationService(
             val mainAuthor = mainFile.fileMetadata.originalAuthor ?: mainFile.fileMetadata.senderOdinId
             val mainPending = mainFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
             Logger.d { "healGroupDistribution: main file fileId=${mainFile.fileId} sender=${mainFile.fileMetadata.senderOdinId} originalAuthor=${mainFile.fileMetadata.originalAuthor} resolvedAuthor=$mainAuthor versionTag=${mainFile.fileMetadata.versionTag} isPending=$mainPending localTags=${mainFile.fileMetadata.localAppData?.tags}" }
-            if (mainAuthor == domain) {
+            if (mainAuthor != domain) {
+                Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
+            } else if (mainTargets.isEmpty()) {
+                Logger.d { "healGroupDistribution: skipping main — no peers need the file (all InSync)" }
+            } else {
                 try {
-                    Logger.i { "healGroupDistribution: redistributing main conversation file $conversationId to recipients=$recipients" }
+                    Logger.i { "healGroupDistribution: redistributing main conversation file $conversationId to recipients=$mainTargets" }
                     updateConversationInternal(
                         conversationId = conversationId,
                         title = conversation.name,
                         participants = conversation.participants,
-                        distribute = true
+                        distribute = true,
+                        distributeOnlyTo = if (plan?.resendMainTo != null) mainTargets else null,
                     )
                     mainHealed = true
+                    mainRecipientCount = mainTargets.size
                     Logger.i { "healGroupDistribution: main conversation file enqueued for redistribute $conversationId" }
                 } catch (t: Throwable) {
                     Logger.e("healGroupDistribution: main conversation file redistribute FAILED for $conversationId", t)
                     throw t
                 }
-            } else {
-                Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
             }
         }
 
@@ -2061,36 +2132,77 @@ class ConversationService(
             val adminAuthor = adminFile.fileMetadata.originalAuthor ?: adminFile.fileMetadata.senderOdinId
             val adminPending = adminFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
             Logger.d { "healGroupDistribution: admin file fileId=${adminFile.fileId} sender=${adminFile.fileMetadata.senderOdinId} originalAuthor=${adminFile.fileMetadata.originalAuthor} resolvedAuthor=$adminAuthor versionTag=${adminFile.fileMetadata.versionTag} isPending=$adminPending localTags=${adminFile.fileMetadata.localAppData?.tags}" }
-            if (adminAuthor == domain) {
+            if (adminAuthor != domain) {
+                Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
+            } else if (adminTargets.isEmpty()) {
+                Logger.d { "healGroupDistribution: skipping admin — no peers need the file (all InSync)" }
+            } else {
                 try {
-                    Logger.i { "healGroupDistribution: redistributing admin file $conversationId admins=${conversation.admins} recipients=$recipients" }
+                    Logger.i { "healGroupDistribution: redistributing admin file $conversationId admins=${conversation.admins} recipients=$adminTargets" }
                     updateAdminFile(
                         conversationId = conversationId,
                         admins = conversation.admins.toList(),
-                        recipients = recipients
+                        recipients = adminTargets,
                     )
                     adminHealed = true
+                    adminRecipientCount = adminTargets.size
                     Logger.i { "healGroupDistribution: admin file enqueued for redistribute $conversationId" }
                 } catch (t: Throwable) {
                     Logger.e("healGroupDistribution: admin file redistribute FAILED for $conversationId", t)
                     throw t
                 }
-            } else {
-                Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
             }
         }
 
-        Logger.i { "healGroupDistribution: DONE conversationId=$conversationId mainHealed=$mainHealed adminHealed=$adminHealed" }
+        Logger.i { "healGroupDistribution: DONE conversationId=$conversationId mainHealed=$mainHealed adminHealed=$adminHealed mainRecipients=$mainRecipientCount adminRecipients=$adminRecipientCount healMessageRecipients=$healMessageRecipientCount" }
         // ---- DEBUG instrumentation ----
-        audit.info("mainHealed=$mainHealed adminHealed=$adminHealed")
-        audit.check("anythingHealed", mainHealed || adminHealed, "neither main nor admin file was redistributed (caller is not the original author of either) — heal was a no-op")
+        audit.info("mainHealed=$mainHealed adminHealed=$adminHealed mainRecipients=$mainRecipientCount adminRecipients=$adminRecipientCount healMessageRecipients=$healMessageRecipientCount")
+        audit.check(
+            "anythingHealed",
+            mainHealed || adminHealed || healMessageRecipientCount > 0,
+            "neither main nor admin file was redistributed and no heal message was sent — heal was a no-op (caller not the author of either, or every peer was already InSync)",
+        )
         audit.finish()
         // ---- end DEBUG ----
-        return HealGroupResult(mainHealed = mainHealed, adminHealed = adminHealed)
+        return HealGroupResult(
+            mainHealed = mainHealed,
+            adminHealed = adminHealed,
+            mainRecipientCount = mainRecipientCount,
+            adminRecipientCount = adminRecipientCount,
+            healMessageRecipientCount = healMessageRecipientCount,
+        )
     }
 
-    data class HealGroupResult(val mainHealed: Boolean, val adminHealed: Boolean) {
-        val didAnything: Boolean get() = mainHealed || adminHealed
+    /**
+     * Per-(recipient, file) plan derived from [MemberFileExistsStatus].
+     *
+     * - [resendMainTo] / [resendAdminTo]: peers reported Missing for that file → push it.
+     *   A null list means "we have no per-recipient signal for this file" — the heal
+     *   service falls back to redistribution-to-all-participants (legacy behavior).
+     *   An empty list means "every peer is InSync (or Error/Stale) — skip this file."
+     * - [healMessageTo]: union of peers reported Stale on either file → ask them to
+     *   clean up their copy via [StatusMessage.GroupHealRequested]. A null list means
+     *   "broadcast to all participants" (legacy). An empty list means "skip the message
+     *   entirely — nobody needs the cleanup request."
+     *
+     * Peers with [MemberFileExistsStatus.Error] / [MemberFileExistsStatus.Loading]
+     * MUST be filtered out by the caller before constructing the plan.
+     */
+    data class HealPlan(
+        val resendMainTo: List<OdinId>?,
+        val resendAdminTo: List<OdinId>?,
+        val healMessageTo: List<OdinId>?,
+    )
+
+    data class HealGroupResult(
+        val mainHealed: Boolean,
+        val adminHealed: Boolean,
+        val mainRecipientCount: Int = 0,
+        val adminRecipientCount: Int = 0,
+        val healMessageRecipientCount: Int = 0,
+    ) {
+        val didAnything: Boolean
+            get() = mainHealed || adminHealed || healMessageRecipientCount > 0
     }
 
     /**
@@ -2601,6 +2713,16 @@ class ConversationService(
                 generatePayloadIv = false
             )
         )
+
+        Logger.i(tag = "HealAudit") {
+            val manifestKeys = instructions.manifest.payloadDescriptors
+                ?.joinToString(",") { "${it.payloadKey}:${it.operationType}" } ?: "<empty>"
+            "updateAdminFile ENQUEUE conversationId=$conversationId adminUniqueId=$adminUniqueId " +
+                "versionTagIn=${existingFile.fileMetadata.versionTag} " +
+                "admins=${admins.map { it.domainName }} " +
+                "instructions.recipients=${instructions.recipients.map { it.domainName }} " +
+                "manifest.payloadDescriptors=[$manifestKeys]"
+        }
 
         val request = UpdateFileByUniqueIdRequest(
             driveId = chatDrive,

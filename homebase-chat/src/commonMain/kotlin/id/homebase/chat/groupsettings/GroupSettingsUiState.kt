@@ -45,7 +45,26 @@ data class GroupSettingsUiState(
     val uiDialog: GroupSettingsUiDialog? = null,
     val uiSheet: GroupSettingsUiSheet? = null,
 ) {
-    val canHeal: Boolean get() = mainFileTransfer != null || adminFileTransfer != null
+    /**
+     * True when the Heal button should be enabled.
+     *
+     * Requires (1) the caller is the original author of at least one of the
+     * two group files — without authorship there's nothing to redistribute,
+     * and (2) all peer-exists checks have resolved (no [MemberFileExistsStatus.Loading]
+     * entries left). The second clause blocks the click until we have enough
+     * data to compute a targeted plan; pressing earlier would either over-send
+     * or fall back to the all-recipients legacy path mid-load. A `null` map
+     * (the column is hidden because the caller is not the author of that file)
+     * is fine — heal still works for the other file.
+     */
+    val canHeal: Boolean
+        get() {
+            val anyAuthored = mainFileTransfer != null || adminFileTransfer != null
+            if (!anyAuthored) return false
+            val mainHasLoading = mainFileExists?.values?.any { it is MemberFileExistsStatus.Loading } == true
+            val adminHasLoading = adminFileExists?.values?.any { it is MemberFileExistsStatus.Loading } == true
+            return !mainHasLoading && !adminHasLoading
+        }
 }
 
 @Immutable
@@ -144,7 +163,13 @@ sealed interface GroupSettingsUiEvent {
     data class ShowAddMembers(val conversationId: String) : GroupSettingsUiEvent
     data class ShowEditGroup(val conversationId: String) : GroupSettingsUiEvent
     data class OpenUrl(val url: String) : GroupSettingsUiEvent
-    data class HealCompleted(val mainHealed: Boolean, val adminHealed: Boolean) : GroupSettingsUiEvent
+    data class HealCompleted(
+        val mainHealed: Boolean,
+        val adminHealed: Boolean,
+        val mainRecipientCount: Int = 0,
+        val adminRecipientCount: Int = 0,
+        val healMessageRecipientCount: Int = 0,
+    ) : GroupSettingsUiEvent
 }
 
 sealed interface GroupSettingsUiDialog {

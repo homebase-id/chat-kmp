@@ -454,6 +454,7 @@
     <string name="chat_group_heal">Heal group</string>
     <string name="chat_group_heal_completed">Re-distributing group files…</string>
     <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn't author the group files).</string>
+    <string name="chat_group_heal_already_in_sync">Group is already in sync on every peer</string>
 
     <!-- Group-info file health diagnostic (footer at the bottom of group settings).
          Each row reports the local-DB or own-server state of one of the two group

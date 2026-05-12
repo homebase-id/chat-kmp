@@ -1176,13 +1176,16 @@ class ConversationStream(
 
     override suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId>
+        additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val conversation = getConversationById(conversationId) ?: return listOf()
+        val base = recipientOverride
+            ?: getConversationById(conversationId)?.participants
+            ?: return listOf()
         val recipients =
-            (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
+            (base + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 

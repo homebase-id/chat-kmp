@@ -224,13 +224,21 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.HealGroupClicked -> {
                 val conversation = uiState.value.conversation ?: return
                 if (uiState.value.isHealing) return
+                if (!uiState.value.canHeal) return
+                val plan = buildHealPlan(uiState.value)
                 _uiState.update { it.copy(isHealing = true) }
                 viewModelScope.launch {
                     try {
-                        Logger.i("GroupSettings: heal requested for ${conversation.id}")
+                        Logger.i("GroupSettings: heal requested for ${conversation.id} plan=$plan")
                         logTransferSnapshot("BEFORE heal", conversation.id, uiState.value)
-                        val result = conversationService.healGroupDistribution(conversation.id)
-                        Logger.i("GroupSettings: heal result for ${conversation.id} mainHealed=${result.mainHealed} adminHealed=${result.adminHealed}")
+                        val result = conversationService.healGroupDistribution(conversation.id, plan)
+                        Logger.i(
+                            "GroupSettings: heal result for ${conversation.id} " +
+                                "mainHealed=${result.mainHealed} adminHealed=${result.adminHealed} " +
+                                "mainRecipients=${result.mainRecipientCount} " +
+                                "adminRecipients=${result.adminRecipientCount} " +
+                                "healMsgRecipients=${result.healMessageRecipientCount}"
+                        )
                         // Re-load transfer history so the user sees outbox/sending state immediately
                         loadTransferHistory(conversation)
                         logTransferSnapshot("AFTER heal", conversation.id, uiState.value)
@@ -240,6 +248,9 @@ class GroupSettingsViewModel(
                                 uiEvent = GroupSettingsUiEvent.HealCompleted(
                                     mainHealed = result.mainHealed,
                                     adminHealed = result.adminHealed,
+                                    mainRecipientCount = result.mainRecipientCount,
+                                    adminRecipientCount = result.adminRecipientCount,
+                                    healMessageRecipientCount = result.healMessageRecipientCount,
                                 )
                             )
                         }
@@ -464,19 +475,37 @@ class GroupSettingsViewModel(
         domain: OdinId,
         mainFile: HomebaseFile?,
         adminFile: HomebaseFile?,
+        reason: String = "screen-open",
     ) {
         val recipients = conversation.participants.filter { it != domain }
-        if (recipients.isEmpty()) return
+        if (recipients.isEmpty()) {
+            Logger.d(tag = "HealAudit") { "loadPeerFileExists($reason): conversationId=${conversation.id} no recipients — skipping" }
+            return
+        }
 
         val mainAuthored = mainFile != null && isAuthor(mainFile, domain)
         val adminAuthored = adminFile != null && isAuthor(adminFile, domain)
-        if (!mainAuthored && !adminAuthored) return
+        if (!mainAuthored && !adminAuthored) {
+            Logger.d(tag = "HealAudit") {
+                "loadPeerFileExists($reason): conversationId=${conversation.id} caller=$domain not the author of either file — skipping " +
+                    "(mainAuthor=${mainFile?.fileMetadata?.originalAuthor ?: mainFile?.fileMetadata?.senderOdinId}, " +
+                    "adminAuthor=${adminFile?.fileMetadata?.originalAuthor ?: adminFile?.fileMetadata?.senderOdinId})"
+            }
+            return
+        }
 
         val drive = chatTargetDrive.alias
         val mainUid = conversation.id
         val adminUid = ChatProtocol.getAdminFileUniqueId(conversation.id)
         val mainLocalVersion = mainFile?.fileMetadata?.versionTag
         val adminLocalVersion = adminFile?.fileMetadata?.versionTag
+
+        Logger.i(tag = "HealAudit") {
+            "loadPeerFileExists($reason): START conversationId=${conversation.id} " +
+                "recipients=${recipients.map { it.domainName }} " +
+                "mainAuthored=$mainAuthored mainLocalVersion=$mainLocalVersion " +
+                "adminAuthored=$adminAuthored adminLocalVersion=$adminLocalVersion"
+        }
 
         // Seed visible columns with Loading for every recipient so the UI shows
         // spinners immediately instead of empty cells.
@@ -499,6 +528,9 @@ class GroupSettingsViewModel(
                     val status = gate.withPermit {
                         queryPeerFileExists("main", recipient, drive, mainUid, mainLocalVersion)
                     }
+                    Logger.i(tag = "HealAudit") {
+                        "loadPeerFileExists($reason): main result peer=${recipient.domainName} → ${renderExistsStatus(status, mainLocalVersion)}"
+                    }
                     _uiState.update { s ->
                         s.copy(mainFileExists = s.mainFileExists?.plus(recipient to status))
                     }
@@ -509,12 +541,23 @@ class GroupSettingsViewModel(
                     val status = gate.withPermit {
                         queryPeerFileExists("admin", recipient, drive, adminUid, adminLocalVersion)
                     }
+                    Logger.i(tag = "HealAudit") {
+                        "loadPeerFileExists($reason): admin result peer=${recipient.domainName} → ${renderExistsStatus(status, adminLocalVersion)}"
+                    }
                     _uiState.update { s ->
                         s.copy(adminFileExists = s.adminFileExists?.plus(recipient to status))
                     }
                 }
             }
         }
+    }
+
+    private fun renderExistsStatus(status: MemberFileExistsStatus, ourVersion: Uuid?): String = when (status) {
+        MemberFileExistsStatus.Loading -> "Loading"
+        MemberFileExistsStatus.Missing -> "Missing"
+        is MemberFileExistsStatus.InSync -> "InSync(version=${status.versionTag})"
+        is MemberFileExistsStatus.Stale -> "Stale(peerVersion=${status.peerVersionTag}, ourVersion=$ourVersion)"
+        MemberFileExistsStatus.Error -> "Error"
     }
 
     private suspend fun queryPeerFileExists(
@@ -533,8 +576,8 @@ class GroupSettingsViewModel(
             else -> MemberFileExistsStatus.Stale(peerVersion)
         }
     } catch (e: Exception) {
-        Logger.w(throwable = e) {
-            "loadPeerFileExists: fileExists($label, peer=$peer, drive=$drive, uid=$uniqueId) failed"
+        Logger.w(throwable = e, tag = "HealAudit") {
+            "queryPeerFileExists: fileExists($label, peer=${peer.domainName}, drive=$drive, uid=$uniqueId) failed"
         }
         MemberFileExistsStatus.Error
     }
@@ -621,5 +664,57 @@ class GroupSettingsViewModel(
             Logger.w(throwable = e) { "loadTransferHistory: getTransferHistory($label) failed for fileId=${file.fileId}" }
             null
         }
+    }
+
+    /**
+     * Build the per-(recipient, file) [ConversationService.HealPlan] from the
+     * currently-loaded [MemberFileExistsStatus] maps.
+     *
+     * - For each file, peers reported `Missing` go into the resend set; peers
+     *   reported `Stale` go into the heal-message set; `InSync` peers are
+     *   excluded entirely.
+     * - `Error` peers are filtered out — they get skipped this round (we don't
+     *   know whether resending or heal-messaging them is safe).
+     * - The Heal button is gated on `canHeal`, which already blocks while any
+     *   entry is `Loading`, so we never see Loading here.
+     * - When a file's map is `null` (caller is not the author of that file) or
+     *   the map exists but yields zero usable peers (all-Error), the plan's
+     *   per-file slot becomes `null` — the service then falls back to its
+     *   legacy "redistribute to every participant" behavior for that file.
+     *
+     * The heal-message slot is null only when neither file gave us any usable
+     * signal at all; otherwise it's the (possibly empty) union of Stale peers
+     * across both files. Empty means "skip the message — no Stale peers need
+     * cleanup", non-empty means "address it to exactly this set".
+     */
+    private fun buildHealPlan(state: GroupSettingsUiState): ConversationService.HealPlan {
+        fun resendSet(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId>? {
+            if (map == null) return null
+            val anyUsable = map.values.any { it !is MemberFileExistsStatus.Error }
+            if (!anyUsable) return null
+            return map.entries
+                .filter { it.value is MemberFileExistsStatus.Missing }
+                .map { it.key }
+        }
+
+        fun staleSet(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
+            map?.entries.orEmpty()
+                .filter { it.value is MemberFileExistsStatus.Stale }
+                .map { it.key }
+
+        val resendMain = resendSet(state.mainFileExists)
+        val resendAdmin = resendSet(state.adminFileExists)
+        val noUsableSignal = resendMain == null && resendAdmin == null
+        val healMessage: List<OdinId>? = if (noUsableSignal) {
+            null
+        } else {
+            (staleSet(state.mainFileExists) + staleSet(state.adminFileExists)).distinct()
+        }
+
+        return ConversationService.HealPlan(
+            resendMainTo = resendMain,
+            resendAdminTo = resendAdmin,
+            healMessageTo = healMessage,
+        )
     }
 }

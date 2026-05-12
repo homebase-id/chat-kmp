@@ -13,7 +13,13 @@ interface StatusMessageSender {
         statusMessage: StatusMessageData,
         previousMessageUniqueId: Uuid? = null,
         payloadBundle: PayloadBundle? = null,
-        additionalRecipients: List<OdinId> = emptyList()
+        additionalRecipients: List<OdinId> = emptyList(),
+        /** When non-null, replaces the conversation's participants term in the
+         *  recipient calculation — the status message is delivered only to
+         *  this set (minus self). Used by the targeted-heal path to address
+         *  GroupHealRequested at only the Stale recipients. Null = legacy
+         *  broadcast to every participant. */
+        recipientOverride: List<OdinId>? = null,
     ): SendMessageResult
 }
 
@@ -35,6 +41,10 @@ interface ConversationParticipantLookup {
     fun getConversationById(conversationId: Uuid): id.homebase.chat.data.ConversationUiModel?
     suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId> = emptyList()
+        additionalRecipients: List<OdinId> = emptyList(),
+        /** When non-null, used in place of the conversation's participants list.
+         *  The self-domain is still filtered out and the result is deduplicated.
+         *  Lets the heal path address messages at a specific subset of peers. */
+        recipientOverride: List<OdinId>? = null,
     ): List<OdinId>
 }

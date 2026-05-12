@@ -482,6 +482,7 @@ class FakeStatusMessageSender : StatusMessageSender {
         val statusMessage: StatusMessageData,
         val previousMessageUniqueId: Uuid?,
         val additionalRecipients: List<OdinId>,
+        val recipientOverride: List<OdinId>?,
     )
     val calls = mutableListOf<Call>()
     override suspend fun sendStatusMessage(
@@ -491,6 +492,7 @@ class FakeStatusMessageSender : StatusMessageSender {
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
         additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): SendMessageResult {
         calls += Call(
             messageUniqueId = messageUniqueId,
@@ -498,6 +500,7 @@ class FakeStatusMessageSender : StatusMessageSender {
             statusMessage = statusMessage,
             previousMessageUniqueId = previousMessageUniqueId,
             additionalRecipients = additionalRecipients,
+            recipientOverride = recipientOverride,
         )
         return SendMessageResult(messageUniqueId)
     }
