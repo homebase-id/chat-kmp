@@ -129,13 +129,14 @@ val appModule = module {
         )
     }
 
-    // Seeded with mandatory drives only — optional drives from the registry are cold-loaded
-    // into DriveSyncManager by AuthConnectionCoordinator after authentication, because
-    // reading the registry requires active credentials (not available at Koin time).
+    // Mandatory drives (chat, contacts) are baked into the constructor as an invariant
+    // of the sync engine. Optional drives from the cross-device registry are mounted
+    // dynamically by AuthConnectionCoordinator after authentication, because reading
+    // the registry requires active credentials (not available at Koin time).
     single {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
-            mandatorySyncDrives.associate { it.drive.alias to it.label },
+            mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
         )
     }
 

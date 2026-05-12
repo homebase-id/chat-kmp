@@ -158,9 +158,7 @@ class DriveSync(
                         recordsRead = searchResults.size
                         totalCount += recordsRead
                         val batchCursorToSave = cursor
-                        val batchTotalCount = totalCount
-                        val batchRecordsRead = recordsRead
-                        val latestModified = searchResults.last().fileMetadata.updated
+                        val batchTotalCount = totalCount  // captured for the async closure
 
                         pendingDbJob = scope.async {
                             val (_, upsertElapsed) = measureTimedValue {
@@ -171,22 +169,18 @@ class DriveSync(
                                     cursor = batchCursorToSave
                                 )
                             }
-                            // Wall-clock for the batch upsert (queue wait +
-                            // SQLite transaction). Lets us tell whether sync's
-                            // 100+-row catch-up batches are starving concurrent
-                            // UI reads on the shared DB dispatcher.
                             Logger.i {
                                 "DriveSync: batch upsert drive=$driveId rows=${searchResults.size} took=$upsertElapsed"
                             }
-
+                            // DriveSync is a silent batched DB write — no per-batch
+                            // BatchReceived (consumers reload from DriveMainIndex on
+                            // Stopped(Success); live per-file events come via
+                            // DriveWebSocketUpsertWorker WS push). The one signal we
+                            // DO emit per batch is a payload-free Progress event so
+                            // DriveSyncManager can advance Synchronizing(count) for
+                            // the login-screen progress UI.
                             eventBus.emit(
-                                BackendEvent.DriveEvent.BatchReceived(
-                                    driveId = driveId,
-                                    totalCount = batchTotalCount,
-                                    batchCount = batchRecordsRead,
-                                    latestModified = latestModified,
-                                    batchData = searchResults
-                                )
+                                BackendEvent.DriveEvent.Progress(driveId, batchTotalCount)
                             )
                         }
                     }

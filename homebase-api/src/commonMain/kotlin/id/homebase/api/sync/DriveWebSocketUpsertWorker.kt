@@ -142,18 +142,14 @@ class DriveWebSocketUpsertWorker(
                     cursor = null,
                 )
             }
-            Logger.i {
-                "WSPush: batch upsert drive=$driveId rows=${batch.size} took=$upsertElapsed"
+            Logger.i(tag = "WSPush") {
+                "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed (emitting BatchReceived)"
             }
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = batch.last().fileMetadata.updated,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket,
                 )
             )
         } catch (e: Exception) {

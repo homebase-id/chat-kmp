@@ -71,11 +71,15 @@ class DriveContactService(
             eventBus.events.collect { event ->
                 if (event is BackendEvent.DriveEvent.Stopped &&
                     event.result is BackendEvent.DriveResult.Success &&
-                    event.driveId == contactDrive
+                    event.driveId == contactDrive &&
+                    event.totalCount > 0
                 ) {
                     // Never do blocking IO inside a SharedFlow collect body: refresh()
                     // calls QueryBatch which hangs on partial connectivity, parking the
-                    // 11-slot EventBus buffer and cascading to stall the chat Send path.
+                    // EventBus buffer and cascading to stall the chat Send path.
+                    // Also gated on totalCount > 0 — a no-op reconnect catch-up
+                    // (cursor at HEAD) would re-query the same contact set we already
+                    // have in memory.
                     scope.launch { refresh() }
                 }
             }
