@@ -671,9 +671,10 @@ class ChatMessageStreamPagingTest {
     fun refreshCachedWindows_mergesNewlyLandedMessages_withoutDuplicates() = runTest {
         // Simulates the flight-mode repro: an open conversation window
         // exists, DriveSync silently lands new messages in DriveMainIndex,
-        // refreshCachedWindows fires on Stopped(Success, totalCount > 0)
-        // and must surface the new rows in the in-memory window without
-        // duplicating the already-present ones.
+        // refreshCachedWindows fires on any Stopped with totalCount > 0
+        // (Completed or Aborted-with-partial-data) and must surface the
+        // new rows in the in-memory window without duplicating the
+        // already-present ones.
         val conversationId = Uuid.random()
         val baseTime = 1_700_000_000_000L
         val initial = (0 until 5).map {
@@ -689,8 +690,9 @@ class ChatMessageStreamPagingTest {
         )
 
         // Two new messages land in the DB (DriveSync analog) while the
-        // window is open. The production handler responds to
-        // DriveEvent.Stopped(Success, totalCount > 0).
+        // window is open. The production handler responds to any
+        // DriveEvent.Stopped with totalCount > 0 (including Failure with
+        // partial data — earlier batches' writes have already committed).
         val arrived1 = seedMessage(conversationId, userDateMs = baseTime + 10_000L)
         val arrived2 = seedMessage(conversationId, userDateMs = baseTime + 11_000L)
 

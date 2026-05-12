@@ -7,9 +7,22 @@ import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
 
 sealed interface BackendEvent {
+    /**
+     * Termination reason for a DriveSync round. Independent of `totalCount` —
+     * `Aborted` and `PermissionDenied` may still carry `totalCount > 0` because
+     * earlier batches' DB writes commit before any later batch can fail.
+     * Consumers that just want "did any data land in DriveMainIndex this round"
+     * should gate on `totalCount > 0` alone, NOT on result == Completed.
+     */
     sealed interface DriveResult {
-        data object Success : DriveResult
-        data class Failure(
+        /** Sync walked the cursor all the way to HEAD without error. */
+        data object Completed : DriveResult
+        /**
+         * Sync stopped early because of a DB write error or a network error
+         * that exceeded retries. Some earlier batches may already have landed
+         * (see `Stopped.totalCount`).
+         */
+        data class Aborted(
             val errorMessage: String
         ) : DriveResult
         /** Server returned 403 Forbidden — drive is unmounted for this session; no retry. */
@@ -81,7 +94,7 @@ sealed interface BackendEvent {
      *  - [DriveWebSocketUpsertWorker]: per drained batch of WS-pushed file headers
      *  - [OptimisticWriter]: per in-process optimistic write
      * NOT emitted by [DriveSync.performSync] (silent-DriveSync contract —
-     * consumers reload from local DB on [DriveEvent.Stopped] with Success).
+     * consumers reload from local DB on [DriveEvent.Stopped] with totalCount > 0).
      */
     sealed interface DataEvent : BackendEvent {
         val driveId: Uuid

@@ -51,9 +51,12 @@ class ChatMessageStream(
     // Two paths converge on paginatedState afterward:
     //   1) Live WS pushes arrive as DataEvent.BatchReceived → processIncrementalBatch.
     //   2) Silent DriveSync (no per-batch BatchReceived) finishes with
-    //      DriveEvent.Stopped(Success, totalCount > 0) → refreshCachedWindows
+    //      DriveEvent.Stopped(totalCount > 0) → refreshCachedWindows
     //      re-queries the newest page from the DB for every cached window.
-    // Mirrors ConversationStream's post-Stopped reload.
+    //      Gated on totalCount > 0 only — NOT on result == Success — because
+    //      Stopped(Aborted, totalCount > 0) still means earlier batches'
+    //      writes landed cleanly. Mirrors ConversationStream's post-Stopped
+    //      reload.
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -71,11 +74,18 @@ class ChatMessageStream(
                         // landed N files in DriveMainIndex with no per-batch
                         // BatchReceived emits. Re-query the newest page for every
                         // open conversation window so the in-memory windows
-                        // converge to the post-sync snapshot. Gate on totalCount
-                        // > 0 (cursor-already-at-HEAD reconnects are a no-op) and
-                        // on Success (Failure/PermissionDenied leave state
-                        // unchanged).
-                        if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                        // converge to the post-sync snapshot.
+                        //
+                        // Gate on totalCount > 0 ALONE (not on result == Success):
+                        // DriveSync.performSync increments totalCount per batch,
+                        // and earlier batches' DB writes have already completed
+                        // by the time a later batch fails. So a Stopped(Aborted)
+                        // with totalCount > 0 still means real rows landed in
+                        // DriveMainIndex — we want to surface those rather than
+                        // wait for the next round (which on PermissionDenied may
+                        // never come). totalCount == 0 means cursor at HEAD: no
+                        // DB change, nothing to refresh.
+                        if (event.totalCount > 0) {
                             scope.launch { refreshCachedWindows() }
                         }
                     }

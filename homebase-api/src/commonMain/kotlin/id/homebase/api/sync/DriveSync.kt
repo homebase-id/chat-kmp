@@ -148,7 +148,7 @@ class DriveSync(
                         eventBus.emit(
                             BackendEvent.DriveEvent.Stopped(
                                 driveId, totalCount,
-                                BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
+                                BackendEvent.DriveResult.Aborted("DB write failed: ${e.message ?: "unknown error"}")
                             )
                         )
                         return
@@ -174,7 +174,7 @@ class DriveSync(
                             }
                             // DriveSync is a silent batched DB write — no per-batch
                             // BatchReceived (consumers reload from DriveMainIndex on
-                            // Stopped(Success); live per-file events come via
+                            // Stopped(Completed); live per-file events come via
                             // DriveWebSocketUpsertWorker WS push). The one signal we
                             // DO emit per batch is a payload-free Progress event so
                             // DriveSyncManager can advance Synchronizing(count) for
@@ -216,7 +216,7 @@ class DriveSync(
                         BackendEvent.DriveEvent.Stopped(
                             driveId,
                             totalCount,
-                            BackendEvent.DriveResult.Failure("Sync failed: $reason")
+                            BackendEvent.DriveResult.Aborted("Sync failed: $reason")
                         )
                     )
                     break
@@ -239,11 +239,11 @@ class DriveSync(
             if (totalCount > 0) {
                 Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
             }
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Completed))
             Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {
             Logger.e("Sync failed due to DB error: ${e.message}")
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Failure(e.message ?: "DB upsert failed")))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Aborted(e.message ?: "DB upsert failed")))
         }
     }
 }
