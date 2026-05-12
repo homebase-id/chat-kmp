@@ -28,6 +28,14 @@ data class GroupSettingsUiState(
     val mainFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
     /** Same as [mainFileExists], for the admin file. */
     val adminFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
+    /** True when the local main conversation file carries a `convo_img`
+     *  payload — i.e. the group has an avatar/image set. Drives the 5th row
+     *  in the member sync-status sheet ("Group image on peer"). The image's
+     *  per-peer status is derived from [mainFileExists] (image lives inside
+     *  the main file, so InSync main implies InSync image — modulo lazy
+     *  payload-fetch failures we can't detect yet). Null when peer-exists
+     *  data is unavailable, false when the group has no image set. */
+    val mainFileHasImage: Boolean = false,
     val isHealing: Boolean = false,
     /** Members with an in-flight server op (make/remove admin, remove from group). The
      *  member-action sheet swaps its action rows for a spinner while the OdinId is
@@ -213,7 +221,20 @@ data class HealProgressItem(
 )
 
 @Immutable
-enum class HealActionKind { GroupFile, AdminFile, HealRequest }
+enum class HealActionKind {
+    /** Pushing the main conversation file (with all current payloads) to a peer. */
+    GroupFile,
+    /** Pushing the admin file to a peer. */
+    AdminFile,
+    /** Asking a peer to clean up their copy of the main conversation file
+     *  via [StatusMessage.GroupHealRequested]. One row per (peer, file)
+     *  even though the underlying status message covers both files — lets
+     *  the user see exactly which files were stale on which peer. All
+     *  matching rows transition together when the single message sends. */
+    HealRequestGroupFile,
+    /** Asking a peer to clean up their copy of the admin file. */
+    HealRequestAdminFile,
+}
 
 @Immutable
 enum class HealProgressState { Pending, InFlight, Done, Failed, Skipped }

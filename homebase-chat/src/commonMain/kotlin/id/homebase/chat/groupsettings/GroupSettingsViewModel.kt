@@ -25,6 +25,7 @@ import id.homebase.chat.services.convo.ConversationStream
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import id.homebase.chat.services.convo.contact.ContactConnectionState
@@ -248,9 +249,14 @@ class GroupSettingsViewModel(
                                 "adminRecipients=${result.adminRecipientCount} " +
                                 "healMsgRecipients=${result.healMessageRecipientCount}"
                         )
-                        // Re-load transfer history so the user sees outbox/sending state immediately
-                        loadTransferHistory(conversation)
+                        // Re-load transfer history immediately. Skip the trailing
+                        // peer-exists recheck — the heal just bumped our local
+                        // vt; every peer is technically Stale until transit
+                        // lands, and running the probe now would paint everyone
+                        // red. Schedule a delayed recheck instead.
+                        loadTransferHistory(conversation, recheckPeerExists = false)
                         logTransferSnapshot("AFTER heal", conversation.id, uiState.value)
+                        scheduleDelayedPeerExistsRecheck(conversation)
                         _uiState.update { state ->
                             val sheet = state.uiSheet
                             state.copy(
@@ -377,7 +383,17 @@ class GroupSettingsViewModel(
      * same status mapping. Result is exposed in [GroupSettingsUiState.mainFileTransfer] /
      * [GroupSettingsUiState.adminFileTransfer]; null map = column hidden in the UI.
      */
-    private suspend fun loadTransferHistory(conversation: ConversationUiModel) {
+    private suspend fun loadTransferHistory(
+        conversation: ConversationUiModel,
+        /**
+         * When false, the trailing [loadPeerFileExists] is skipped. The heal
+         * completion path uses this to avoid the "everyone instantly shows
+         * Stale" flash that happens because the heal bumps our local vt and
+         * the recheck races transit. The heal handler schedules its own
+         * delayed recheck via [scheduleDelayedPeerExistsRecheck] instead.
+         */
+        recheckPeerExists: Boolean = true,
+    ) {
         val domain = credentialsManager.requireActiveDomain()
 
         val mainFile = try {
@@ -453,20 +469,30 @@ class GroupSettingsViewModel(
                 "expectedMainUid=${diagnostic.expectedMainUniqueId} expectedAdminUid=${diagnostic.expectedAdminUniqueId}"
         }
 
+        val hasImage = mainFile?.fileMetadata?.payloads
+            ?.any { it.key == ChatProtocol.ConversationImageKey } == true
+
         _uiState.update {
             it.copy(
                 mainFileTransfer = mainTransfer,
                 adminFileTransfer = adminTransfer,
                 filesDiagnostic = diagnostic,
+                mainFileHasImage = hasImage,
             )
         }
 
-        loadPeerFileExists(
-            conversation = conversation,
-            domain = domain,
-            mainFile = mainFile,
-            adminFile = adminFile,
-        )
+        if (recheckPeerExists) {
+            loadPeerFileExists(
+                conversation = conversation,
+                domain = domain,
+                mainFile = mainFile,
+                adminFile = adminFile,
+            )
+        } else {
+            Logger.i(tag = "HealAudit") {
+                "loadTransferHistory: skipping peer-exists recheck (recheckPeerExists=false) for ${conversation.id} — heal handler will schedule a delayed recheck"
+            }
+        }
     }
 
     /**
@@ -701,12 +727,29 @@ class GroupSettingsViewModel(
      * cleanup", non-empty means "address it to exactly this set".
      */
     private fun buildHealPlan(state: GroupSettingsUiState): ConversationService.HealPlan {
+        // CRITICAL CONTEXT: heal redistribution goes through
+        // [ConversationService.updateConversationInternal] which rewrites the
+        // file server-side and bumps its versionTag. After the bump, every
+        // previously-InSync peer is temporarily at the OLD versionTag —
+        // technically "Stale" until transit lands the new copy.
+        //
+        // If we only resend to Missing peers, the InSync peers never catch up
+        // and stay Stale forever (until the next heal). So whenever we resend
+        // AT ALL, we resend to everyone *except* Stale peers (who reject the
+        // push due to versionTag mismatch — they get the heal-message path
+        // instead). Error peers are included as best-effort: if their server
+        // happens to be reachable for the push but the exists-probe failed,
+        // they still converge.
         fun resendSet(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId>? {
             if (map == null) return null
             val anyUsable = map.values.any { it !is MemberFileExistsStatus.Error }
             if (!anyUsable) return null
+            val anyMissing = map.values.any { it is MemberFileExistsStatus.Missing }
+            if (!anyMissing) return emptyList() // every peer InSync (or Stale) — nothing to send
+            // Resend to every peer that isn't Stale. The vt bump will
+            // catch up InSync peers and the Missing peers will receive fresh.
             return map.entries
-                .filter { it.value is MemberFileExistsStatus.Missing }
+                .filter { it.value !is MemberFileExistsStatus.Stale }
                 .map { it.key }
         }
 
@@ -718,16 +761,14 @@ class GroupSettingsViewModel(
         val resendMain = resendSet(state.mainFileExists)
         val resendAdmin = resendSet(state.adminFileExists)
         val noUsableSignal = resendMain == null && resendAdmin == null
-        val healMessage: List<OdinId>? = if (noUsableSignal) {
-            null
-        } else {
-            (staleSet(state.mainFileExists) + staleSet(state.adminFileExists)).distinct()
-        }
+        val healMainStale: List<OdinId>? = if (noUsableSignal) null else staleSet(state.mainFileExists)
+        val healAdminStale: List<OdinId>? = if (noUsableSignal) null else staleSet(state.adminFileExists)
 
         return ConversationService.HealPlan(
             resendMainTo = resendMain,
             resendAdminTo = resendAdmin,
-            healMessageTo = healMessage,
+            healMessageMainTo = healMainStale,
+            healMessageAdminTo = healAdminStale,
         )
     }
 
@@ -751,14 +792,20 @@ class GroupSettingsViewModel(
         val self = uiState.value.currentOdinId
         val fallback = conversation.participants.filter { it != self }.distinct()
 
-        val mainSet = (plan.resendMainTo ?: fallback).sortedBy { it.domainName }
-        val adminSet = (plan.resendAdminTo ?: fallback).sortedBy { it.domainName }
-        val healSet = (plan.healMessageTo ?: fallback).sortedBy { it.domainName }
+        val mainResend = (plan.resendMainTo ?: fallback).sortedBy { it.domainName }
+        val adminResend = (plan.resendAdminTo ?: fallback).sortedBy { it.domainName }
+        // Split heal-request by which file is stale so a peer with both stale
+        // gets two rows ("clean up group file" + "clean up admin file"). The
+        // single underlying status message resolves both rows simultaneously
+        // when applyHealPhase fires HealMessageSent for the union.
+        val healMain = (plan.healMessageMainTo ?: fallback).sortedBy { it.domainName }
+        val healAdmin = (plan.healMessageAdminTo ?: fallback).sortedBy { it.domainName }
 
         return buildList {
-            healSet.forEach { add(HealProgressItem("heal-${it.domainName}", HealActionKind.HealRequest, it, HealProgressState.Pending)) }
-            mainSet.forEach { add(HealProgressItem("main-${it.domainName}", HealActionKind.GroupFile, it, HealProgressState.Pending)) }
-            adminSet.forEach { add(HealProgressItem("admin-${it.domainName}", HealActionKind.AdminFile, it, HealProgressState.Pending)) }
+            healMain.forEach { add(HealProgressItem("healMain-${it.domainName}", HealActionKind.HealRequestGroupFile, it, HealProgressState.Pending)) }
+            healAdmin.forEach { add(HealProgressItem("healAdmin-${it.domainName}", HealActionKind.HealRequestAdminFile, it, HealProgressState.Pending)) }
+            mainResend.forEach { add(HealProgressItem("main-${it.domainName}", HealActionKind.GroupFile, it, HealProgressState.Pending)) }
+            adminResend.forEach { add(HealProgressItem("admin-${it.domainName}", HealActionKind.AdminFile, it, HealProgressState.Pending)) }
         }
     }
 
@@ -769,33 +816,78 @@ class GroupSettingsViewModel(
      * (via [viewModelScope.launch]), so [_uiState.update] from here is safe.
      */
     private fun applyHealPhase(phase: ConversationService.HealPhase) {
-        val (targetKind, newState) = when (phase) {
-            is ConversationService.HealPhase.HealMessageSending -> HealActionKind.HealRequest to HealProgressState.InFlight
-            is ConversationService.HealPhase.HealMessageSent -> HealActionKind.HealRequest to HealProgressState.Done
-            is ConversationService.HealPhase.HealMessageFailed -> HealActionKind.HealRequest to HealProgressState.Failed
-            is ConversationService.HealPhase.HealMessageSkipped -> HealActionKind.HealRequest to HealProgressState.Skipped
-            is ConversationService.HealPhase.MainSending -> HealActionKind.GroupFile to HealProgressState.InFlight
-            is ConversationService.HealPhase.MainSent -> HealActionKind.GroupFile to HealProgressState.Done
-            is ConversationService.HealPhase.MainFailed -> HealActionKind.GroupFile to HealProgressState.Failed
-            is ConversationService.HealPhase.MainSkipped -> HealActionKind.GroupFile to HealProgressState.Skipped
-            is ConversationService.HealPhase.AdminSending -> HealActionKind.AdminFile to HealProgressState.InFlight
-            is ConversationService.HealPhase.AdminSent -> HealActionKind.AdminFile to HealProgressState.Done
-            is ConversationService.HealPhase.AdminFailed -> HealActionKind.AdminFile to HealProgressState.Failed
-            is ConversationService.HealPhase.AdminSkipped -> HealActionKind.AdminFile to HealProgressState.Skipped
+        // HealMessage* phases map to BOTH heal-request kinds — the single status
+        // message covers main AND admin file cleanup, so any (peer, file) row
+        // whose peer is in the message audience transitions together.
+        val (targetKinds, newState) = when (phase) {
+            is ConversationService.HealPhase.HealMessageSending -> HEAL_REQUEST_KINDS to HealProgressState.InFlight
+            is ConversationService.HealPhase.HealMessageSent -> HEAL_REQUEST_KINDS to HealProgressState.Done
+            is ConversationService.HealPhase.HealMessageFailed -> HEAL_REQUEST_KINDS to HealProgressState.Failed
+            is ConversationService.HealPhase.HealMessageSkipped -> HEAL_REQUEST_KINDS to HealProgressState.Skipped
+            is ConversationService.HealPhase.MainSending -> setOf(HealActionKind.GroupFile) to HealProgressState.InFlight
+            is ConversationService.HealPhase.MainSent -> setOf(HealActionKind.GroupFile) to HealProgressState.Done
+            is ConversationService.HealPhase.MainFailed -> setOf(HealActionKind.GroupFile) to HealProgressState.Failed
+            is ConversationService.HealPhase.MainSkipped -> setOf(HealActionKind.GroupFile) to HealProgressState.Skipped
+            is ConversationService.HealPhase.AdminSending -> setOf(HealActionKind.AdminFile) to HealProgressState.InFlight
+            is ConversationService.HealPhase.AdminSent -> setOf(HealActionKind.AdminFile) to HealProgressState.Done
+            is ConversationService.HealPhase.AdminFailed -> setOf(HealActionKind.AdminFile) to HealProgressState.Failed
+            is ConversationService.HealPhase.AdminSkipped -> setOf(HealActionKind.AdminFile) to HealProgressState.Skipped
         }
         val recipients = phase.recipients.toSet()
         Logger.i(tag = "HealAudit") {
-            "applyHealPhase: ${phase::class.simpleName} kind=$targetKind newState=$newState " +
+            "applyHealPhase: ${phase::class.simpleName} kinds=$targetKinds newState=$newState " +
                 "recipients=${phase.recipients.map { it.domainName }}"
         }
         _uiState.update { state ->
             val sheet = state.uiSheet
             if (sheet !is GroupSettingsUiSheet.HealProgress) return@update state
             val updatedItems = sheet.items.map { item ->
-                if (item.kind == targetKind && item.peer in recipients) item.copy(state = newState)
+                if (item.kind in targetKinds && item.peer in recipients) item.copy(state = newState)
                 else item
             }
             state.copy(uiSheet = sheet.copy(items = updatedItems))
         }
+    }
+
+    /**
+     * Schedule a peer-exists recheck a few seconds after a heal completes.
+     * Heal redistribution server-side rewrites the file and hands us back a
+     * new versionTag; transit then ships the new copy to each recipient async.
+     * If we re-poll peer-exists immediately, every peer still has the OLD
+     * versionTag → all classified as Stale → red flash everywhere.
+     *
+     * Waiting [POST_HEAL_RECHECK_DELAY_MS] gives transit time to land for
+     * peers on healthy networks. Peers whose servers are slow or offline will
+     * still show Stale/Missing afterwards — that's an accurate state, not the
+     * versionTag race.
+     */
+    private fun scheduleDelayedPeerExistsRecheck(conversation: ConversationUiModel) {
+        viewModelScope.launch {
+            Logger.i(tag = "HealAudit") {
+                "scheduleDelayedPeerExistsRecheck: waiting ${POST_HEAL_RECHECK_DELAY_MS}ms before re-querying peer-exists for ${conversation.id}"
+            }
+            delay(POST_HEAL_RECHECK_DELAY_MS)
+            val domain = credentialsManager.requireActiveDomain()
+            val mainFile = try { conversationService.getConversationHomebaseFile(conversation.id) } catch (e: Exception) { null }
+            val adminFile = try { conversationService.getConversationAdminHomebaseFile(conversation.id) } catch (e: Exception) { null }
+            Logger.i(tag = "HealAudit") {
+                "scheduleDelayedPeerExistsRecheck: firing post-heal peer-exists for ${conversation.id} mainVt=${mainFile?.fileMetadata?.versionTag} adminVt=${adminFile?.fileMetadata?.versionTag}"
+            }
+            loadPeerFileExists(
+                conversation = conversation,
+                domain = domain,
+                mainFile = mainFile,
+                adminFile = adminFile,
+                reason = "post-heal",
+            )
+        }
+    }
+
+    companion object {
+        private val HEAL_REQUEST_KINDS = setOf(HealActionKind.HealRequestGroupFile, HealActionKind.HealRequestAdminFile)
+        /** Pause between heal completion and the peer-exists recheck. Long enough
+         *  for transit to plausibly land for healthy peers; short enough that
+         *  the UI still feels responsive. Tunable; tracked under HealAudit. */
+        private const val POST_HEAL_RECHECK_DELAY_MS = 30_000L
     }
 }

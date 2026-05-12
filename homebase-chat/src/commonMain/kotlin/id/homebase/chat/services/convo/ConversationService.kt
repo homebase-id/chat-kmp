@@ -2048,7 +2048,7 @@ class ConversationService(
         // server builds without the peer-exists endpoint.
         val mainTargets = plan?.resendMainTo ?: allRecipients
         val adminTargets = plan?.resendAdminTo ?: allRecipients
-        val healMessageTargets = plan?.healMessageTo  // null = broadcast to all participants
+        val healMessageTargets = plan?.healMessageUnionTo  // null = broadcast to all participants
 
         Logger.i {
             "healGroupDistribution: START conversationId=$conversationId domain=$domain " +
@@ -2229,10 +2229,13 @@ class ConversationService(
      *   A null list means "we have no per-recipient signal for this file" — the heal
      *   service falls back to redistribution-to-all-participants (legacy behavior).
      *   An empty list means "every peer is InSync (or Error/Stale) — skip this file."
-     * - [healMessageTo]: union of peers reported Stale on either file → ask them to
-     *   clean up their copy via [StatusMessage.GroupHealRequested]. A null list means
-     *   "broadcast to all participants" (legacy). An empty list means "skip the message
-     *   entirely — nobody needs the cleanup request."
+     * - [healMessageMainTo] / [healMessageAdminTo]: peers reported Stale for the
+     *   main / admin file respectively → ask them to clean up their copy of THAT file
+     *   via [StatusMessage.GroupHealRequested]. Mechanically the heal-message is a
+     *   single status carrying both canonical versionTags, so [healGroupDistribution]
+     *   only sends one message addressed to the *union* of these two sets — the split
+     *   lets callers render one progress row per (peer, file). Null lists mean
+     *   "broadcast" (legacy); empty means "skip the message".
      *
      * Peers with [MemberFileExistsStatus.Error] / [MemberFileExistsStatus.Loading]
      * MUST be filtered out by the caller before constructing the plan.
@@ -2240,8 +2243,18 @@ class ConversationService(
     data class HealPlan(
         val resendMainTo: List<OdinId>?,
         val resendAdminTo: List<OdinId>?,
-        val healMessageTo: List<OdinId>?,
-    )
+        val healMessageMainTo: List<OdinId>?,
+        val healMessageAdminTo: List<OdinId>?,
+    ) {
+        /** Union of the per-file heal-message sets — what actually goes out on the wire. */
+        val healMessageUnionTo: List<OdinId>?
+            get() {
+                val main = healMessageMainTo
+                val admin = healMessageAdminTo
+                if (main == null && admin == null) return null
+                return ((main.orEmpty()) + (admin.orEmpty())).distinct()
+            }
+    }
 
     data class HealGroupResult(
         val mainHealed: Boolean,

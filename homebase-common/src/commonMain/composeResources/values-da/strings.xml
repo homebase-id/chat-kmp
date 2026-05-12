@@ -367,7 +367,8 @@
     <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
     <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
     <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
-    <string name="chat_group_heal_progress_asking_cleanup">Beder %1$s om at rydde op i deres kopi</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
     <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
     <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
     <string name="chat_group_main_file_delivered">Gruppefil leveret</string>
@@ -384,6 +385,11 @@
     <string name="chat_group_admin_file_loading">Tjekker levering af adminfil…</string>
     <string name="chat_group_main_peer_loading">Tjekker modtager for gruppefil…</string>
     <string name="chat_group_admin_peer_loading">Tjekker modtager for adminfil…</string>
+    <string name="chat_group_image_peer_in_sync">Gruppebillede synkroniseret hos modtager</string>
+    <string name="chat_group_image_peer_missing">Gruppebillede endnu ikke hos modtager</string>
+    <string name="chat_group_image_peer_stale">Gruppebillede ude af sync hos modtager</string>
+    <string name="chat_group_image_peer_error">Kunne ikke nå modtager for gruppebillede</string>
+    <string name="chat_group_image_peer_loading">Tjekker modtager for gruppebillede…</string>
     <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
     <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
     <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>

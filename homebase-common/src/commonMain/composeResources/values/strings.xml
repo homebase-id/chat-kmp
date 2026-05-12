@@ -450,6 +450,11 @@
     <string name="chat_group_admin_file_loading">Checking admin file delivery…</string>
     <string name="chat_group_main_peer_loading">Checking peer for group file…</string>
     <string name="chat_group_admin_peer_loading">Checking peer for admin file…</string>
+    <string name="chat_group_image_peer_in_sync">Group image in sync on peer</string>
+    <string name="chat_group_image_peer_missing">Group image not yet on peer</string>
+    <string name="chat_group_image_peer_stale">Group image version mismatch on peer</string>
+    <string name="chat_group_image_peer_error">Couldn\'t reach peer for group image</string>
+    <string name="chat_group_image_peer_loading">Checking peer for group image…</string>
     <string name="chat_group_member_sync_status">Sync status</string>
     <string name="chat_group_summary_all_ok">All in sync</string>
     <string name="chat_group_summary_problem">Sync issue — tap for details</string>
@@ -462,7 +467,8 @@
     <string name="chat_group_heal_progress_subtitle_finished">Done. You can close this dialog.</string>
     <string name="chat_group_heal_progress_sending_group_file">Sending group file to %1$s</string>
     <string name="chat_group_heal_progress_sending_admin_file">Sending admin file to %1$s</string>
-    <string name="chat_group_heal_progress_asking_cleanup">Asking %1$s to clean up their copy</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Asking %1$s to clean up their group file</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Asking %1$s to clean up their admin file</string>
 
     <!-- Group-info file health diagnostic (footer at the bottom of group settings).
          Each row reports the local-DB or own-server state of one of the two group
