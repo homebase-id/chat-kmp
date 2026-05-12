@@ -113,6 +113,19 @@ import id.homebase.resources.nav_home
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.TextButton
+import id.homebase.core.upgrade.PendingUpgradeState
+import id.homebase.resources.cancel
+import id.homebase.resources.pending_upgrade_snackbar_message
+import id.homebase.resources.pending_upgrade_snackbar_action
+import id.homebase.resources.pending_upgrade_title
+import id.homebase.resources.pending_upgrade_message
+import id.homebase.resources.pending_upgrade_confirm
 
 @Composable
 fun AppNavHost(
@@ -138,6 +151,9 @@ fun AppNavHost(
         }
     }
     val uriHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarMessage = stringResource(MR.string.pending_upgrade_snackbar_message)
+    val snackbarAction = stringResource(MR.string.pending_upgrade_snackbar_action)
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
     val permissionManager = createPermissionsManager { type, status, _ ->
@@ -292,6 +308,7 @@ fun AppNavHost(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (showBottomNavigationBar) {
                 NavigationBar {
@@ -371,6 +388,38 @@ fun AppNavHost(
                                         uriHandler.openUrl(requestsUrl)
                                     }
                                 })
+                        }
+
+                        val pendingUpgrade = uiState.pendingUpgrade
+                        if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
+                            LaunchedEffect(pendingUpgrade) {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = snackbarMessage,
+                                    actionLabel = snackbarAction,
+                                    duration = SnackbarDuration.Long,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    uriHandler.openUrl(pendingUpgrade.upgradeUrl)
+                                }
+                            }
+                        }
+
+                        if (pendingUpgrade is PendingUpgradeState.ShowDialog) {
+                            AlertDialog(
+                                onDismissRequest = { viewModel.dismissUpgradeDialog() },
+                                title = { Text(stringResource(MR.string.pending_upgrade_title)) },
+                                text = { Text(stringResource(MR.string.pending_upgrade_message)) },
+                                confirmButton = {
+                                    TextButton(onClick = { uriHandler.openUrl(pendingUpgrade.upgradeUrl) }) {
+                                        Text(stringResource(MR.string.pending_upgrade_confirm))
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { viewModel.dismissUpgradeDialog() }) {
+                                        Text(stringResource(MR.string.cancel))
+                                    }
+                                },
+                            )
                         }
                     }
 

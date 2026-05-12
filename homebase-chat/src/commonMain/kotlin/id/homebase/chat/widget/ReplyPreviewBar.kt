@@ -27,7 +27,10 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.event.EventDateChip
+import id.homebase.chat.event.rememberEventTimes
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -101,6 +104,9 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
 
     val previewText = contentLabel?.text ?: message.content.truncateToCodePoints(80)
 
+    val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
+    val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -147,8 +153,12 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                 }
             }
 
-            // Thumbnail if visual media
-            if (thumbnailData != null) {
+            // Event date badge — replaces media thumbnail when replying to an event
+            if (eventStartLocal != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                EventDateChip(local = eventStartLocal)
+            } else if (thumbnailData != null) {
+                // Thumbnail if visual media
                 Spacer(modifier = Modifier.width(8.dp))
                 HomebaseImage(
                     imageData = thumbnailData,
