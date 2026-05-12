@@ -97,11 +97,6 @@ import id.homebase.resources.chat_group_admin_peer_in_sync
 import id.homebase.resources.chat_group_admin_peer_loading
 import id.homebase.resources.chat_group_admin_peer_missing
 import id.homebase.resources.chat_group_admin_peer_stale
-import id.homebase.resources.chat_group_image_peer_error
-import id.homebase.resources.chat_group_image_peer_in_sync
-import id.homebase.resources.chat_group_image_peer_loading
-import id.homebase.resources.chat_group_image_peer_missing
-import id.homebase.resources.chat_group_image_peer_stale
 import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.resources.chat_group_heal
 import id.homebase.resources.chat_group_heal_admin_resent
@@ -730,7 +725,6 @@ fun GroupSettingsSheets(
                             showAdminColumn = uiState.adminFileTransfer != null,
                             showMainPeerExistsColumn = uiState.mainFileExists != null,
                             showAdminPeerExistsColumn = uiState.adminFileExists != null,
-                            showImageRow = uiState.mainFileHasImage && uiState.mainFileExists != null,
                         )
 
                         // While a server op is in flight for this contact, swap the
@@ -1163,16 +1157,9 @@ private fun MemberSyncStatusSection(
     showAdminColumn: Boolean,
     showMainPeerExistsColumn: Boolean,
     showAdminPeerExistsColumn: Boolean,
-    /** When true, render a 5th row reporting the group image's per-peer state.
-     *  The image is a payload on the main conversation file, so its status is
-     *  derived from [mainPeerExists] (InSync main implies InSync image,
-     *  modulo a separate per-payload probe we don't have yet). Caller passes
-     *  true only when (a) the group actually has an image set and (b) the
-     *  main-file peer-exists column is available. */
-    showImageRow: Boolean,
 ) {
     val anyShown = showMainColumn || showAdminColumn ||
-        showMainPeerExistsColumn || showAdminPeerExistsColumn || showImageRow
+        showMainPeerExistsColumn || showAdminPeerExistsColumn
     if (!anyShown) return
 
     Column(
@@ -1253,28 +1240,6 @@ private fun MemberSyncStatusSection(
             ) {
                 FileExistsStatusIcon(
                     status = adminPeerExists,
-                    inSyncDescription = "",
-                    missingDescription = "",
-                    staleDescription = "",
-                    errorDescription = "",
-                )
-            }
-        }
-        if (showImageRow) {
-            // Image lives as a payload on the main file. Status mirrors the
-            // main file's peer-exists state until we have a per-payload probe.
-            SyncStatusRow(
-                text = peerExistsText(
-                    status = mainPeerExists,
-                    inSync = stringResource(MR.string.chat_group_image_peer_in_sync),
-                    missing = stringResource(MR.string.chat_group_image_peer_missing),
-                    stale = stringResource(MR.string.chat_group_image_peer_stale),
-                    error = stringResource(MR.string.chat_group_image_peer_error),
-                    loading = stringResource(MR.string.chat_group_image_peer_loading),
-                ),
-            ) {
-                FileExistsStatusIcon(
-                    status = mainPeerExists,
                     inSyncDescription = "",
                     missingDescription = "",
                     staleDescription = "",

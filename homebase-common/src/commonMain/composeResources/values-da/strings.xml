@@ -385,11 +385,6 @@
     <string name="chat_group_admin_file_loading">Tjekker levering af adminfil…</string>
     <string name="chat_group_main_peer_loading">Tjekker modtager for gruppefil…</string>
     <string name="chat_group_admin_peer_loading">Tjekker modtager for adminfil…</string>
-    <string name="chat_group_image_peer_in_sync">Gruppebillede synkroniseret hos modtager</string>
-    <string name="chat_group_image_peer_missing">Gruppebillede endnu ikke hos modtager</string>
-    <string name="chat_group_image_peer_stale">Gruppebillede ude af sync hos modtager</string>
-    <string name="chat_group_image_peer_error">Kunne ikke nå modtager for gruppebillede</string>
-    <string name="chat_group_image_peer_loading">Tjekker modtager for gruppebillede…</string>
     <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
     <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
     <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>

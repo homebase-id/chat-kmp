@@ -469,15 +469,11 @@ class GroupSettingsViewModel(
                 "expectedMainUid=${diagnostic.expectedMainUniqueId} expectedAdminUid=${diagnostic.expectedAdminUniqueId}"
         }
 
-        val hasImage = mainFile?.fileMetadata?.payloads
-            ?.any { it.key == ChatProtocol.ConversationImageKey } == true
-
         _uiState.update {
             it.copy(
                 mainFileTransfer = mainTransfer,
                 adminFileTransfer = adminTransfer,
                 filesDiagnostic = diagnostic,
-                mainFileHasImage = hasImage,
             )
         }
 

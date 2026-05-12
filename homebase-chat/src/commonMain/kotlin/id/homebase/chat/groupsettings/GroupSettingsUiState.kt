@@ -28,14 +28,6 @@ data class GroupSettingsUiState(
     val mainFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
     /** Same as [mainFileExists], for the admin file. */
     val adminFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
-    /** True when the local main conversation file carries a `convo_img`
-     *  payload — i.e. the group has an avatar/image set. Drives the 5th row
-     *  in the member sync-status sheet ("Group image on peer"). The image's
-     *  per-peer status is derived from [mainFileExists] (image lives inside
-     *  the main file, so InSync main implies InSync image — modulo lazy
-     *  payload-fetch failures we can't detect yet). Null when peer-exists
-     *  data is unavailable, false when the group has no image set. */
-    val mainFileHasImage: Boolean = false,
     val isHealing: Boolean = false,
     /** Members with an in-flight server op (make/remove admin, remove from group). The
      *  member-action sheet swaps its action rows for a spinner while the OdinId is
