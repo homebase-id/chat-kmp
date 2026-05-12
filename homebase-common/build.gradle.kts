@@ -69,6 +69,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":homebase-api"))
+            api(project(":homebase-notifshared"))
 
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
