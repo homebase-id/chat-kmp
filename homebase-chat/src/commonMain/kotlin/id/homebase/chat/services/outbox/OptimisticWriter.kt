@@ -127,13 +127,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = created,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
 
@@ -144,12 +140,12 @@ class OptimisticWriter(
     }
 
     /**
-     * Persist a local-only conversation-file placeholder for an orphaned
-     * conversation (one whose messages arrived but whose conversation file
-     * never synced down). Called by the post-sync reconciliation in
-     * [id.homebase.chat.services.convo.ConversationStream] after the chat
-     * drive emits [BackendEvent.DriveEvent.Stopped] with any placeholders
-     * still unresolved.
+     * Persist a local-only conversation-file placeholder for a conversation
+     * that needs to surface in the UI before (or instead of) a real server
+     * file. Live callers:
+     *   - [id.homebase.chat.services.convo.ConversationService.recoverConversation]:
+     *     explicit local recovery (e.g. orphan-branch fallback when a message
+     *     arrived for a conversation whose definition file never synced).
      *
      * Strictly local: no `outboxSync.tryEnqueue`, no server distribution,
      * no `isPendingSendTag`. The row exists only so the conversation
@@ -408,13 +404,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
 
@@ -494,13 +486,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
@@ -524,13 +512,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = original.fileMetadata.updated,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
         } catch (e: Exception) {
@@ -620,13 +604,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
@@ -718,13 +698,9 @@ class OptimisticWriter(
                 cursor = null
             )
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
             Logger.d(tag = "MarkAsRead") {
@@ -780,13 +756,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
