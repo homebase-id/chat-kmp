@@ -4,7 +4,9 @@ package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.data.MessageUiModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -219,6 +221,42 @@ class PaginatedConversationStateTest {
         val window = state.getWindow(convoId)!!
         assertEquals(listOf(aRevised.id, b.id, c.id), window.messages.map { it.id })
         assertEquals("revised", window.messages.first { it.id == a.id }.content)
+    }
+
+    @Test
+    fun upsert_preservesCursorsHasMoreFlagsAndIsLoadingState() {
+        // ChatMessageStream.refreshCachedWindows uses upsert (not
+        // setInitialWindow) precisely so the user's paging position
+        // survives a DriveSync.Stopped refresh. This pins down that
+        // contract so a future change can't silently reset cursors,
+        // hasOlder/Newer flags, or in-flight isLoading state on every
+        // sync.
+        val state = PaginatedConversationState()
+        val a = message(userDateMs = 10, conversationId = convoId)
+        val b = message(userDateMs = 20, conversationId = convoId)
+        val olderCursor = QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(10), 0L))
+        val newerCursor = QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(20), Long.MAX_VALUE))
+        state.setInitialWindow(
+            conversationId = convoId,
+            messages = listOf(a, b),
+            olderCursor = olderCursor,
+            hasOlderMessages = true,
+            newerCursor = newerCursor,
+            hasNewerMessages = false,
+        )
+        state.setLoadingOlder(convoId, true)
+
+        val c = message(userDateMs = 30, conversationId = convoId)
+        state.upsert(convoId, listOf(c))
+
+        val window = state.getWindow(convoId)!!
+        assertEquals(listOf(a.id, b.id, c.id), window.messages.map { it.id })
+        assertEquals(olderCursor, window.olderCursor)
+        assertEquals(newerCursor, window.newerCursor)
+        assertTrue(window.hasOlderMessages)
+        assertFalse(window.hasNewerMessages)
+        assertTrue(window.isLoadingOlder,
+            "refresh must not clear the user's in-flight older-page load")
     }
 
     @Test
