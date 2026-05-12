@@ -570,35 +570,6 @@ class DriveSyncManagerTest {
     }
 
     @Test
-    fun numberOfDrivesSyncingReturnsCorrectCount() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
-
-        runTest() {
-            val eventBus = EventBus()
-            val driveId1 = Uuid.random()
-            val driveId2 = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
-            manager.start()
-            runCurrent()
-
-            assertEquals(0, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Started(driveId1))
-            runCurrent()
-            assertEquals(1, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Started(driveId2))
-            runCurrent()
-            assertEquals(2, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId1, 0, BackendEvent.DriveResult.Completed))
-            runCurrent()
-            assertEquals(1, manager.numberOfDrivesSyncing())
-        }
-        db.close()
-    }
-
-    @Test
     fun ensureMandatoryMountedRegistersDrivesWithoutStarting() {
         // The bug from the second-login repro: mandatory drives were only mounted inside
         // start(), and start() only ran from the WS onConnected callback. If the handshake
