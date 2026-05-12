@@ -200,6 +200,7 @@ import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import id.homebase.resources.you
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
@@ -504,12 +505,15 @@ fun ConversationContent(
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        files?.takeIf { it.isNotEmpty() }?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
                     conversationId = conversation.conversation.id,
-                    files = listOf(file),
+                    files = it,
                     isImage = true,
                 )
             )
