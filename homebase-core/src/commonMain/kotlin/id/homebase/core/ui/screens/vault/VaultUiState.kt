@@ -57,6 +57,7 @@ sealed interface VaultUiAction {
     data class EntryClicked(val file: VaultEntry) : VaultUiAction
     data class ShareFile(val file: VaultEntry) : VaultUiAction
     data class SharePage(val file: VaultEntry, val payloadKey: String) : VaultUiAction
+    data class SavePage(val file: VaultEntry, val payloadKey: String) : VaultUiAction
     data class RenameFile(val file: VaultEntry, val newName: String) : VaultUiAction
     data class DeleteFile(val file: VaultEntry) : VaultUiAction
     data object CloseOverlay : VaultUiAction
@@ -70,6 +71,10 @@ sealed interface VaultUiEvent {
         val filePath: String,
         val fileName: String,
         val contentType: String,
+    ) : VaultUiEvent
+    data class SaveFileReady(
+        val filePath: String,
+        val fileName: String,
     ) : VaultUiEvent
     data class Error(val error: VaultError) : VaultUiEvent
 }

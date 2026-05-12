@@ -127,6 +127,12 @@ fun VaultScreen(
                 is VaultUiEvent.ShareFileReady -> {
                     fileSystemHandler.shareFile(Path(event.filePath))
                 }
+                is VaultUiEvent.SaveFileReady -> {
+                    fileSystemHandler.saveFile(
+                        file = Path(event.filePath),
+                        suggestedName = event.fileName,
+                    )
+                }
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
                 }
@@ -269,6 +275,9 @@ fun VaultScreen(
                             onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
                             onSharePage = { key ->
                                 viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                            },
+                            onSavePage = { key ->
+                                viewModel.onAction(VaultUiAction.SavePage(overlay.file, key))
                             },
                             onDeletePage = { key ->
                                 viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))

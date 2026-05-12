@@ -26,6 +26,8 @@ import id.homebase.core.util.formatFileSize
 import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
 import id.homebase.resources.vault_delete_confirm_action
+import id.homebase.resources.vault_gallery_delete_all
+import id.homebase.resources.vault_gallery_delete_file
 import id.homebase.resources.vault_more_options
 import id.homebase.resources.vault_rename_action
 import id.homebase.resources.vault_share
@@ -60,6 +62,7 @@ fun VaultFileDropdownMenu(
     file: VaultEntry,
     onShare: (VaultEntry) -> Unit,
     onDelete: (VaultEntry) -> Unit,
+    onDeletePage: (() -> Unit)? = null,
     iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -76,17 +79,37 @@ fun VaultFileDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.vault_share)) },
-                onClick = {
-                    expanded = false
-                    onShare(file)
-                },
-            )
+            if (onDeletePage == null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.vault_share)) },
+                    onClick = {
+                        expanded = false
+                        onShare(file)
+                    },
+                )
+            }
+            if (onDeletePage != null) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(MR.string.vault_gallery_delete_file),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onDeletePage()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = {
                     Text(
-                        text = stringResource(MR.string.vault_delete_confirm_action),
+                        text = if (onDeletePage != null) {
+                            stringResource(MR.string.vault_gallery_delete_all)
+                        } else {
+                            stringResource(MR.string.vault_delete_confirm_action)
+                        },
                         color = MaterialTheme.colorScheme.error,
                     )
                 },
