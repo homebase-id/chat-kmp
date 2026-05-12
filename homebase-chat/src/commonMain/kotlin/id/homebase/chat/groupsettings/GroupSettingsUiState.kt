@@ -21,6 +21,13 @@ data class GroupSettingsUiState(
     val mainFileTransfer: Map<OdinId, RecipientFileStatus>? = null,
     /** Per-recipient transfer state for the admin file. null = column hidden (see above). */
     val adminFileTransfer: Map<OdinId, RecipientFileStatus>? = null,
+    /** Per-recipient live "does the peer hold this file right now?" check for
+     *  the main conversation file, asking the user's own server via the V2
+     *  `/peer/{odinId}/drives/{driveId}/files/by-uid/{uid}/exists` endpoint.
+     *  Author-only; null = column hidden (caller is not the original author). */
+    val mainFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
+    /** Same as [mainFileExists], for the admin file. */
+    val adminFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
     val isHealing: Boolean = false,
     /** Members with an in-flight server op (make/remove admin, remove from group). The
      *  member-action sheet swaps its action rows for a spinner while the OdinId is
@@ -45,6 +52,35 @@ data class GroupSettingsUiState(
 sealed interface RecipientFileStatus {
     data object Ok : RecipientFileStatus
     data class Problem(val rawStatus: TransferStatus, val detailRes: StringResource?) : RecipientFileStatus
+}
+
+/**
+ * Per-member result of asking the user's own server "does this peer hold
+ * this group file right now, and at what versionTag?". Populated by
+ * [GroupSettingsViewModel.loadPeerFileExists] via [PeerDriveQueryProvider].
+ *
+ * Distinct from [RecipientFileStatus], which only reflects our local
+ * outbox/transfer-history (i.e. whether *our* last send was acked). This
+ * one is a live read of the peer's current state.
+ */
+@Immutable
+sealed interface MemberFileExistsStatus {
+    /** Call in flight. */
+    data object Loading : MemberFileExistsStatus
+
+    /** Peer reports no copy. A fresh send is safe — no heal path needed. */
+    data object Missing : MemberFileExistsStatus
+
+    /** Peer holds the file and its versionTag matches ours. Safe to overwrite. */
+    data class InSync(val versionTag: Uuid) : MemberFileExistsStatus
+
+    /** Peer holds a copy whose versionTag differs from (or is unknown to) us.
+     *  Heal-request path required to converge. */
+    data class Stale(val peerVersionTag: Uuid?) : MemberFileExistsStatus
+
+    /** RPC failed (unauthorized, network, peer unreachable). Throwable is
+     *  logged at the call site, not retained in state. */
+    data object Error : MemberFileExistsStatus
 }
 
 /**

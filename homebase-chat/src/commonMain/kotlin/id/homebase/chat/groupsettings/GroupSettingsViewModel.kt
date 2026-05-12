@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
 import id.homebase.api.client.drives.files.TransferStatus
+import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
@@ -24,6 +25,8 @@ import id.homebase.chat.services.convo.ConversationStream
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.toErrorDetailRes
@@ -46,6 +49,7 @@ class GroupSettingsViewModel(
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
     private val driveFileProvider: DriveFileProvider,
+    private val peerDriveQueryProvider: PeerDriveQueryProvider,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.GroupSettings>()
@@ -432,6 +436,112 @@ class GroupSettingsViewModel(
                 filesDiagnostic = diagnostic,
             )
         }
+
+        loadPeerFileExists(
+            conversation = conversation,
+            domain = domain,
+            mainFile = mainFile,
+            adminFile = adminFile,
+        )
+    }
+
+    /**
+     * For each group recipient, asks the user's own server "does the peer hold
+     * this group file right now, and at what versionTag?" via the V2 fileExists
+     * endpoint. Fired once at screen-load (off the back of [loadTransferHistory]).
+     *
+     * Author-only — only the file's original author gets a meaningful versionTag
+     * back from the server, which is what lets us tell InSync apart from Stale.
+     * For non-authors the column is hidden, matching the existing transfer-history
+     * gate in [fetchTransferIfAuthor].
+     *
+     * One coroutine per recipient × authored-file, gated by a [Semaphore] so we
+     * never have more than 7 in-flight peer queries at once. Each completion
+     * atomically merges its result into the per-file map on uiState.
+     */
+    private suspend fun loadPeerFileExists(
+        conversation: ConversationUiModel,
+        domain: OdinId,
+        mainFile: HomebaseFile?,
+        adminFile: HomebaseFile?,
+    ) {
+        val recipients = conversation.participants.filter { it != domain }
+        if (recipients.isEmpty()) return
+
+        val mainAuthored = mainFile != null && isAuthor(mainFile, domain)
+        val adminAuthored = adminFile != null && isAuthor(adminFile, domain)
+        if (!mainAuthored && !adminAuthored) return
+
+        val drive = chatTargetDrive.alias
+        val mainUid = conversation.id
+        val adminUid = ChatProtocol.getAdminFileUniqueId(conversation.id)
+        val mainLocalVersion = mainFile?.fileMetadata?.versionTag
+        val adminLocalVersion = adminFile?.fileMetadata?.versionTag
+
+        // Seed visible columns with Loading for every recipient so the UI shows
+        // spinners immediately instead of empty cells.
+        _uiState.update { state ->
+            state.copy(
+                mainFileExists = if (mainAuthored)
+                    recipients.associateWith { MemberFileExistsStatus.Loading }
+                else null,
+                adminFileExists = if (adminAuthored)
+                    recipients.associateWith { MemberFileExistsStatus.Loading }
+                else null,
+            )
+        }
+
+        val gate = Semaphore(permits = 7)
+
+        for (recipient in recipients) {
+            if (mainAuthored) {
+                viewModelScope.launch {
+                    val status = gate.withPermit {
+                        queryPeerFileExists("main", recipient, drive, mainUid, mainLocalVersion)
+                    }
+                    _uiState.update { s ->
+                        s.copy(mainFileExists = s.mainFileExists?.plus(recipient to status))
+                    }
+                }
+            }
+            if (adminAuthored) {
+                viewModelScope.launch {
+                    val status = gate.withPermit {
+                        queryPeerFileExists("admin", recipient, drive, adminUid, adminLocalVersion)
+                    }
+                    _uiState.update { s ->
+                        s.copy(adminFileExists = s.adminFileExists?.plus(recipient to status))
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun queryPeerFileExists(
+        label: String,
+        peer: OdinId,
+        drive: Uuid,
+        uniqueId: Uuid,
+        localVersionTag: Uuid?,
+    ): MemberFileExistsStatus = try {
+        val resp = peerDriveQueryProvider.fileExistsByUniqueId(peer, drive, uniqueId)
+        val peerVersion = resp.versionTag
+        when {
+            !resp.exists -> MemberFileExistsStatus.Missing
+            peerVersion != null && peerVersion == localVersionTag ->
+                MemberFileExistsStatus.InSync(peerVersion)
+            else -> MemberFileExistsStatus.Stale(peerVersion)
+        }
+    } catch (e: Exception) {
+        Logger.w(throwable = e) {
+            "loadPeerFileExists: fileExists($label, peer=$peer, drive=$drive, uid=$uniqueId) failed"
+        }
+        MemberFileExistsStatus.Error
+    }
+
+    private fun isAuthor(file: HomebaseFile, currentUser: OdinId): Boolean {
+        val author = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId
+        return author == currentUser
     }
 
     private fun describeDb(row: DbFileRow): String = when (row) {
