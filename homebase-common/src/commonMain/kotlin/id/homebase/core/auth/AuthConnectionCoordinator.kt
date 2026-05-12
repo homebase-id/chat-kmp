@@ -67,6 +67,7 @@ class AuthConnectionCoordinator(
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     init {
+        Logger.i(tag = "AuthLifecycle") { "AuthCC: collector started" }
         scope.launch {
             youAuthFlowManager.authState.collect {
                 onAuthStateChanged(it)
@@ -92,9 +93,18 @@ class AuthConnectionCoordinator(
     }
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
+        Logger.i(tag = "AuthLifecycle") { "AuthCC: onAuthStateChanged(${state::class.simpleName})" }
+        logLifecycleSnapshot("onAuthStateChanged:${state::class.simpleName}")
         when (state) {
             is YouAuthState.Authenticated -> {
                 onPostAuthenticated()
+
+                // Mount mandatory drives FIRST — before bootstrap, before any network I/O.
+                // Encodes the invariant that this app's sync engine always syncs these
+                // drives; nothing about the WS handshake or the registry should be able to
+                // prevent them from appearing in driveStatuses.
+                driveSyncManager.ensureMandatoryMounted()
+
                 // Resolve the cross-device registry: local DB on cold boot (free), or one
                 // targeted server fetch on fresh login. Either way we have the canonical
                 // list before opening the WebSocket, so the first WS connect already
@@ -107,6 +117,7 @@ class AuthConnectionCoordinator(
                 for (drive in initialDrives) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
+                logLifecycleSnapshot("drives mounted")
                 connect(extraDrives = initialDrives)
                 // Observe cross-device registry changes. We seed the diff baseline with the
                 // bootstrap result so the chat-drive sync that later writes the same file
@@ -125,6 +136,27 @@ class AuthConnectionCoordinator(
             else -> {
                 disconnect()
             }
+        }
+    }
+
+    /**
+     * Single-line summary of session-critical state. Fired at every auth transition and
+     * after each [_connectionState] mutation so a grep on `AuthLifecycle SNAPSHOT` gives
+     * a complete narrative of the mount / connect / sync flow.
+     */
+    private fun logLifecycleSnapshot(label: String) {
+        val statuses = driveSyncManager.driveStatuses.value
+        val statusesSummary = if (statuses.isEmpty()) "{}" else statuses.entries.joinToString(
+            prefix = "{", postfix = "}", separator = ", "
+        ) { (id, s) -> "$id:${s.state::class.simpleName}" }
+        val cs = _connectionState.value
+        Logger.i(tag = "AuthLifecycle") {
+            "AuthCC: SNAPSHOT[$label] " +
+                "authState=${youAuthFlowManager.authState.value::class.simpleName} " +
+                "isConnecting=${cs.isConnecting} isConnected=${cs.isConnected} " +
+                "wsClient=${wsClient?.let { "WS[${it.instanceId}]" } ?: "null"} " +
+                "dsmRunning=${driveSyncManager.isRunning} " +
+                "driveStatuses=$statusesSummary"
         }
     }
 
@@ -158,7 +190,20 @@ class AuthConnectionCoordinator(
      *   `driveRegistry.loadDrives()`, which reads the (now-populated) local index.
      */
     private suspend fun connect(extraDrives: List<LabeledDrive>? = null) {
-        if (wsClient != null) return
+        Logger.i(tag = "AuthLifecycle") {
+            "AuthCC: connect() called (wsClient=${wsClient?.let { "WS[${it.instanceId}]" } ?: "null"}, " +
+                "extraDrives=${extraDrives?.size})"
+        }
+        if (wsClient != null) {
+            // This guard is what would surface the "stale wsClient from previous session"
+            // hypothesis. If a logout's disconnect() left wsClient non-null, every
+            // subsequent login no-ops here and the WS handshake never happens — which is
+            // exactly the second-login symptom we're tracking down.
+            Logger.w(tag = "AuthLifecycle") {
+                "AuthCC: connect() SHORT-CIRCUITED — wsClient[${wsClient!!.instanceId}] already exists"
+            }
+            return
+        }
 
         val optionalDrives = extraDrives ?: driveRegistry.loadDrives()
         _connectionState.update { it.copy(isConnecting = true) }
@@ -181,7 +226,11 @@ class AuthConnectionCoordinator(
                 //                                         a clean send window.
                 //   4. outboxSync.send()                — flush the outbox queue.
                 onConnected = {
+                    Logger.i(tag = "AuthLifecycle") {
+                        "AuthCC: onConnected fired for ${wsClient?.let { "WS[${it.instanceId}]" } ?: "null-wsClient"}"
+                    }
                     _connectionState.update { it.copy(isConnected = true) }
+                    logLifecycleSnapshot("onConnected")
                     scope.launch {
                         try {
                             // start() must be called on every (re)connect — not just the first —
@@ -199,8 +248,9 @@ class AuthConnectionCoordinator(
                             wsClient?.processAllInboxes()
 
                             driveSyncManager.syncAll()
+                            Logger.i(tag = "AuthLifecycle") { "AuthCC: onConnected post-sync done" }
                         } catch (e: Exception) {
-                            Logger.e(e) { "syncAll() failed on connect" }
+                            Logger.e(throwable = e, tag = "AuthLifecycle") { "AuthCC: syncAll() failed on connect" }
                         } finally {
                             if (_connectionState.value.isConnected) {
                                 _connectionState.update { it.copy(isConnecting = false) }
@@ -212,15 +262,26 @@ class AuthConnectionCoordinator(
                     }
                 },
                 onDisconnected = {
+                    Logger.i(tag = "AuthLifecycle") {
+                        "AuthCC: onDisconnected fired for ${wsClient?.let { "WS[${it.instanceId}]" } ?: "null-wsClient"}"
+                    }
                     outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     driveSyncManager.pause()
+                    logLifecycleSnapshot("onDisconnected")
                 },
-                onConnectError = {
+                onConnectError = { e ->
+                    Logger.w(throwable = e, tag = "AuthLifecycle") {
+                        "AuthCC: onConnectError for ${wsClient?.let { "WS[${it.instanceId}]" } ?: "null-wsClient"}: ${e.message}"
+                    }
                     outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
+                    logLifecycleSnapshot("onConnectError")
                 }
-            ).also { it.start() }
+            ).also {
+                Logger.i(tag = "AuthLifecycle") { "AuthCC: WS[${it.instanceId}] created, start() invoked" }
+                it.start()
+            }
     }
 
     fun setForeground(foreground: Boolean) {
@@ -240,7 +301,20 @@ class AuthConnectionCoordinator(
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
         if (persist) driveRegistry.addDrive(drive)
-        driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+        val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+        if (!newlyMounted) {
+            // Redundant mount — drive was already in DSM. Skipping the refresh
+            // trigger is critical: refreshWsSubscription.trigger() would close
+            // an in-flight WebSocket connection 500ms later, which is exactly
+            // the regression that broke the post-login sync when VaultViewModel
+            // reactively re-mounted a drive that AuthCC had already mounted at
+            // login time. Logged loud so we can spot redundant callers.
+            Logger.w(tag = "AuthLifecycle") {
+                "AuthCC: mountDrive(${drive.drive.alias}, ${drive.label}) — already mounted, " +
+                    "skipping WS-refresh trigger"
+            }
+            return
+        }
         refreshWsSubscription.trigger()
     }
 
@@ -275,6 +349,9 @@ class AuthConnectionCoordinator(
     }
 
     private suspend fun disconnect() {
+        Logger.i(tag = "AuthLifecycle") {
+            "AuthCC: disconnect() begin (wsClient=${wsClient?.let { "WS[${it.instanceId}]" } ?: "null"})"
+        }
         refreshWsSubscription.cancel()
         driveRegistry.stop()
         outboxSync.setOnline(false)
@@ -285,6 +362,8 @@ class AuthConnectionCoordinator(
         wsClient?.close()
         wsClient = null
         driveSyncManager.stop()
+        Logger.i(tag = "AuthLifecycle") { "AuthCC: disconnect() end (wsClient nulled)" }
+        logLifecycleSnapshot("disconnect end")
     }
 
     companion object {

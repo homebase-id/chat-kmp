@@ -398,11 +398,8 @@ class DriveRegistryTest {
         val registryFile = buildRegistryFile(listOf(feedLabeledDrive))
         launch {
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = SystemDriveConstants.chatDrive.alias,
-                    totalCount = 1,
-                    batchCount = 1,
-                    latestModified = null,
                     batchData = listOf(registryFile),
                 )
             )
@@ -430,17 +427,14 @@ class DriveRegistryTest {
         )
         advanceUntilIdle()
 
-        // Simulate another device activating Feed: chat-drive sync writes the registry
-        // file to our local DB and emits BatchReceived.
+        // Simulate another device activating Feed: chat-drive WS push delivers the
+        // updated registry file via a BatchReceived event.
         seedRegistryFile(db, listOf(feedLabeledDrive))
         val registryFile = buildRegistryFile(listOf(feedLabeledDrive))
         launch {
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = SystemDriveConstants.chatDrive.alias,
-                    totalCount = 1,
-                    batchCount = 1,
-                    latestModified = null,
                     batchData = listOf(registryFile),
                 )
             )
@@ -470,17 +464,14 @@ class DriveRegistryTest {
         )
         advanceUntilIdle()
 
-        // Another device calls removeDrive(vault) — the registry file is updated in
-        // the sync pipeline and a BatchReceived event is emitted with the shrunk list.
+        // Another device calls removeDrive(vault) — WS push delivers the shrunk
+        // registry file via a BatchReceived event.
         seedRegistryFile(db, listOf(feedLabeledDrive))
         val updatedFile = buildRegistryFile(listOf(feedLabeledDrive))
         launch {
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = SystemDriveConstants.chatDrive.alias,
-                    totalCount = 1,
-                    batchCount = 1,
-                    latestModified = null,
                     batchData = listOf(updatedFile),
                 )
             )
@@ -512,11 +503,8 @@ class DriveRegistryTest {
         val registryFile = buildRegistryFile(listOf(feedLabeledDrive))
         launch {
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = Uuid.random(),  // not the chat drive
-                    totalCount = 1,
-                    batchCount = 1,
-                    latestModified = null,
                     batchData = listOf(registryFile),
                 )
             )
@@ -553,11 +541,8 @@ class DriveRegistryTest {
         )
         launch {
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = SystemDriveConstants.chatDrive.alias,
-                    totalCount = 1,
-                    batchCount = 1,
-                    latestModified = null,
                     batchData = listOf(otherFile),
                 )
             )

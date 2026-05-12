@@ -8,7 +8,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import co.touchlab.kermit.Logger
-import id.homebase.core.sync.BackgroundSyncOrchestrator
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.sync.SyncOutcome
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -18,8 +18,15 @@ class DriveSyncWorker(appContext: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         Logger.i(tag = "DriveSyncWorker") { "doWork: starting (attempt=$runAttemptCount)" }
-        val orchestrator: BackgroundSyncOrchestrator = get()
-        return when (val outcome = orchestrator.syncIfAuthenticated()) {
+        val title = inputData.getString(DriveFcmService.KEY_TITLE)
+        val body = inputData.getString(DriveFcmService.KEY_BODY)
+        val data = inputData.keyValueMap
+            .filterKeys { it.startsWith(DriveFcmService.KEY_DATA_PREFIX) }
+            .mapKeys { (k, _) -> k.removePrefix(DriveFcmService.KEY_DATA_PREFIX) }
+            .mapValues { (_, v) -> v?.toString() ?: "" }
+
+        val entry: NotificationEntry = get()
+        return when (val outcome = entry.onPushArrived(title, body, data)) {
             is SyncOutcome.Success -> {
                 Logger.i(tag = "DriveSyncWorker") { "doWork: success" }
                 Result.success()

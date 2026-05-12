@@ -68,6 +68,7 @@ import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -128,13 +129,14 @@ val appModule = module {
         )
     }
 
-    // Seeded with mandatory drives only — optional drives from the registry are cold-loaded
-    // into DriveSyncManager by AuthConnectionCoordinator after authentication, because
-    // reading the registry requires active credentials (not available at Koin time).
+    // Mandatory drives (chat, contacts) are baked into the constructor as an invariant
+    // of the sync engine. Optional drives from the cross-device registry are mounted
+    // dynamically by AuthConnectionCoordinator after authentication, because reading
+    // the registry requires active credentials (not available at Koin time).
     single {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
-            mandatorySyncDrives.associate { it.drive.alias to it.label },
+            mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
         )
     }
 
@@ -265,6 +267,7 @@ val appModule = module {
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
     singleOf(::NotificationService)
+    singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(

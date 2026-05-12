@@ -48,28 +48,58 @@ class ChatMessageStream(
     private val chatDrive = chatTargetDrive.alias
 
     // Messages for open conversations are loaded on demand via loadConversation().
-    // All subsequent updates arrive incrementally through BatchReceived events —
-    // we do not re-read from DB on DriveEvent.Stopped (same rationale as ConversationStream).
+    // Two paths converge on paginatedState afterward:
+    //   1) Live WS pushes arrive as DataEvent.BatchReceived → processIncrementalBatch.
+    //   2) Silent DriveSync (no per-batch BatchReceived) finishes with
+    //      DriveEvent.Stopped(totalCount > 0) → refreshCachedWindows
+    //      re-queries the newest page from the DB for every cached window.
+    //      Gated on totalCount > 0 only — NOT on result == Success — because
+    //      Stopped(Aborted, totalCount > 0) still means earlier batches'
+    //      writes landed cleanly. Mirrors ConversationStream's post-Stopped
+    //      reload.
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.OutboxEvent.OptimisticRollback && event.driveId == chatDrive) {
-                    paginatedState.removeMessage(event.uniqueId)
-                    return@collect
-                }
-
-                if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
-
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {}
+                    is BackendEvent.OutboxEvent.OptimisticRollback -> {
+                        if (event.driveId == chatDrive) {
+                            paginatedState.removeMessage(event.uniqueId)
+                        }
+                    }
 
                     is BackendEvent.DriveEvent.Stopped -> {
-                        Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount})")
+                        if (event.driveId != chatDrive) return@collect
+                        Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount}, result=${event.result})")
+                        // Silent-DriveSync contract: the chat-drive DriveSync just
+                        // landed N files in DriveMainIndex with no per-batch
+                        // BatchReceived emits. Re-query the newest page for every
+                        // open conversation window so the in-memory windows
+                        // converge to the post-sync snapshot.
+                        //
+                        // Gate on totalCount > 0 ALONE (not on result == Success):
+                        // DriveSync.performSync increments totalCount per batch,
+                        // and earlier batches' DB writes have already completed
+                        // by the time a later batch fails. So a Stopped(Aborted)
+                        // with totalCount > 0 still means real rows landed in
+                        // DriveMainIndex — we want to surface those rather than
+                        // wait for the next round (which on PermissionDenied may
+                        // never come). totalCount == 0 means cursor at HEAD: no
+                        // DB change, nothing to refresh.
+                        if (event.totalCount > 0) {
+                            scope.launch { refreshCachedWindows() }
+                        }
                     }
 
-                    is BackendEvent.DriveEvent.BatchReceived -> {
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != chatDrive) return@collect
+                        // Every BatchReceived is a live WS-push event (DriveSync is
+                        // silent). The window gate inside processIncrementalBatch
+                        // no-ops batches for conversations the user hasn't opened.
                         processIncrementalBatch(event.batchData)
                     }
+
+                    // Started / Progress are state-machine signals we don't act on.
+                    else -> {}
                 }
             }
         }
@@ -251,6 +281,45 @@ class ChatMessageStream(
         Logger.d(tag = "ChatPaging") {
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
+        }
+    }
+
+    /**
+     * Re-query the newest page for every cached conversation window and
+     * upsert the results into [paginatedState]. Called from the
+     * [BackendEvent.DriveEvent.Stopped] handler — `DriveSync.performSync`
+     * is silent (no `BatchReceived` events), so the in-memory windows
+     * would otherwise stay stale across a sync round.
+     *
+     * Skips windows where the user has scrolled deep into history
+     * (`hasNewerMessages == true`): merging the latest page into such a
+     * window would leave a gap. Those windows refresh naturally when the
+     * user scrolls back to the latest page (`loadNewerMessages` pulls the
+     * intervening pages).
+     *
+     * Uses [PaginatedConversationState.upsert] (idempotent by message id)
+     * rather than [PaginatedConversationState.setInitialWindow] so the
+     * caller's scroll position, isLoading flags, and cursors are
+     * preserved.
+     */
+    private suspend fun refreshCachedWindows() {
+        val snapshot = paginatedState.windows.value
+        if (snapshot.isEmpty()) return
+        for ((conversationId, window) in snapshot) {
+            if (window.hasNewerMessages) {
+                Logger.d("ChatMessageStream: refreshCachedWindows skip convo=$conversationId (paged into history)")
+                continue
+            }
+            try {
+                val result = fetchMessages(
+                    conversationId = conversationId,
+                    limit = PaginatedConversationState.PAGE_SIZE,
+                )
+                if (result.records.isEmpty()) continue
+                paginatedState.upsert(conversationId, result.records)
+            } catch (t: Throwable) {
+                Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
+            }
         }
     }
 

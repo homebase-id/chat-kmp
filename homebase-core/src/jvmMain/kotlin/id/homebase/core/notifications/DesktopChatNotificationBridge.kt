@@ -54,13 +54,13 @@ class DesktopChatNotificationBridge(
         }
         scope.launch {
             eventBus.events
-                .filterIsInstance<BackendEvent.DriveEvent.BatchReceived>()
+                .filterIsInstance<BackendEvent.DataEvent.BatchReceived>()
                 .filter { it.driveId == chatDriveId }
                 .collect { event -> handleBatch(event) }
         }
     }
 
-    private suspend fun handleBatch(event: BackendEvent.DriveEvent.BatchReceived) {
+    private suspend fun handleBatch(event: BackendEvent.DataEvent.BatchReceived) {
         val domain = try {
             credentialsManager.requireActiveDomain()
         } catch (e: Exception) {

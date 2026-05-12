@@ -138,9 +138,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func application(_ application: UIApplication,
                    didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-      NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
-      let orchestrator = BackgroundSyncOrchestrator.companion.fromKoin()
-      orchestrator.triggerSync { success in
+      // Funnel into the shared NotificationEntry.onPushArrived so iOS goes
+      // through the same code path as Android (DriveSyncWorker invokes the
+      // same method). onPushArrived runs both the rich-notification display
+      // (NotificationService.onFcmMessageReceived → handleIncomingPayload)
+      // and the background sync (BackgroundSyncOrchestrator.syncIfAuthenticated).
+      let aps = userInfo["aps"] as? [String: Any]
+      let alert = aps?["alert"] as? [String: Any]
+      let title = alert?["title"] as? String
+      let body = alert?["body"] as? String
+      var data: [String: String] = [:]
+      for (k, v) in userInfo {
+          guard let key = k as? String, key != "aps" else { continue }
+          if let str = v as? String { data[key] = str }
+      }
+      let entry = NotificationEntry.companion.fromKoin()
+      entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)
       }
   }

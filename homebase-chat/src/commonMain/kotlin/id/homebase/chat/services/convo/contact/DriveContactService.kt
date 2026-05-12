@@ -70,12 +70,19 @@ class DriveContactService(
         scope.launch {
             eventBus.events.collect { event ->
                 if (event is BackendEvent.DriveEvent.Stopped &&
-                    event.result is BackendEvent.DriveResult.Success &&
-                    event.driveId == contactDrive
+                    event.driveId == contactDrive &&
+                    event.totalCount > 0
                 ) {
                     // Never do blocking IO inside a SharedFlow collect body: refresh()
                     // calls QueryBatch which hangs on partial connectivity, parking the
-                    // 11-slot EventBus buffer and cascading to stall the chat Send path.
+                    // EventBus buffer and cascading to stall the chat Send path.
+                    //
+                    // Gate on totalCount > 0 ALONE (not on result == Success):
+                    // DriveSync writes each batch to DriveMainIndex before the next
+                    // batch starts, so totalCount > 0 with Failure still means real
+                    // contact rows landed — we want to surface them rather than
+                    // wait for the next round (which on PermissionDenied may never
+                    // come). totalCount == 0 means cursor at HEAD: nothing to refresh.
                     scope.launch { refresh() }
                 }
             }
