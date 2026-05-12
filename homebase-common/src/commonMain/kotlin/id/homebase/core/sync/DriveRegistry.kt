@@ -219,12 +219,18 @@ class DriveRegistry(
                         if (event.driveId != chatDriveAlias) return@collect
                         // Silent-DriveSync contract: DriveSync runs landed N files
                         // in DriveMainIndex without per-batch events; the registry
-                        // file may be among them. Reconcile on Success to pick up
-                        // any cross-device drive add/remove. Gated on totalCount > 0
-                        // because totalCount=0 means the cursor was already at HEAD —
-                        // no files were upserted this round, so the registry file is
-                        // unchanged and the reconcile diff would be empty anyway.
-                        if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                        // file may be among them. Reconcile picks up any cross-
+                        // device drive add/remove.
+                        //
+                        // Gate on totalCount > 0 ALONE (not on result == Success):
+                        // DriveSync writes each batch before the next starts, so
+                        // Stopped(Aborted, totalCount > 0) still means real rows
+                        // landed — possibly including the registry file. Reconcile
+                        // reads from DB and is idempotent against unchanged state,
+                        // so a spurious call when the registry didn't change is a
+                        // cheap no-op. totalCount == 0 means cursor at HEAD: no
+                        // DB change, nothing to reconcile against.
+                        if (event.totalCount > 0) {
                             reconcile(onMount, onUnmount)
                         }
                     }
