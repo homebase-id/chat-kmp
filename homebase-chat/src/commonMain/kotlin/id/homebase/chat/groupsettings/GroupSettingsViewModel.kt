@@ -727,79 +727,80 @@ class GroupSettingsViewModel(
      * cleanup", non-empty means "address it to exactly this set".
      */
     private fun buildHealPlan(state: GroupSettingsUiState): ConversationService.HealPlan {
-        // CRITICAL CONTEXT: heal redistribution goes through
-        // [ConversationService.updateConversationInternal] which rewrites the
-        // file server-side and bumps its versionTag. The bump means every
-        // previously-InSync peer is desynced unless they're included in the
-        // resend — even peers that look "fine" right now will become Stale
-        // the moment we hand the server new metadata.
+        // KNOWN ARCHITECTURAL LIMITATION — read before touching this logic:
         //
-        // The earlier per-recipient optimization (resend only to Missing,
-        // heal-message only to Stale) was therefore incorrect: it left
-        // previously-InSync peers behind on the old vt, with no future
-        // mechanism to catch them up. Empirical evidence from the log: the
-        // pre-refactor heal that spammed to all 3 participants advanced
-        // bishwa + todd from Missing → InSync at aebbe119 in one shot; the
-        // Missing-only refactor then bumped to 90bde119 without including
-        // them, stranding both.
+        // Heal redistribution goes through ConversationService.updateConversationInternal
+        // which rewrites the file server-side and bumps its versionTag. The
+        // upgrade-from-pre-bump-vt update is then transited to recipients.
         //
-        // The correct heal is the original behavior: heal-message to every
-        // peer + resend to every peer. The heal-message is idempotent for
-        // peers who match canonical (they no-op); for those who don't, they
-        // clean up to a vt=null placeholder. The subsequent resend then
-        // ships our new vt to every peer — those matching the pre-bump
-        // canonical apply the update, those at vt=null accept it as a
-        // fresh create.
+        // What the server's peer transit actually does (per Michael, owner of
+        // the protocol): if the peer's existing file versionTag doesn't match
+        // the incoming update's expected vt, the peer-side apply REJECTS the
+        // push. So a "resend to previously-InSync peer" doesn't actually fix
+        // them — their server-side vt stays at the pre-bump value forever,
+        // they're now Stale relative to our new vt with no remediation path.
         //
-        // We still gate the whole thing on "anyone needs anything": if every
-        // peer is already InSync on both files, pressing Heal is a no-op
-        // (the Heal button itself stays enabled but the plan is empty).
-        // Error peers count as "needs work" — we don't know their state
-        // and including them is best-effort.
+        // This means heal as currently implemented CANNOT recover previously-
+        // InSync peers when our vt bumps. The only honest move is to:
+        //   - Resend to peers we CAN heal: Missing peers (create branch on
+        //     peer's server) and peers who just cleaned up to vt=null via
+        //     the heal-message.
+        //   - Send heal-message to anyone non-InSync so they cleanup first;
+        //     subsequent peer push lands on their now-empty drive.
+        //
+        // Peers that look InSync right now WILL desync the moment we press
+        // Heal. There's no client-side fix for this — it needs either a
+        // server endpoint that ships an existing file to a peer without
+        // rewriting the local copy, or the ability to specify the new vt
+        // client-side so the heal-message can announce the post-bump vt
+        // (forcing all peers to cleanup). Both are out of scope here;
+        // tracked for another pass.
+        //
+        // For the current cycle, the most honest plan is: resend only to
+        // peers who can actually accept the push (Missing peers), and let
+        // previously-InSync peers be picked up on the NEXT heal cycle after
+        // a future event has re-classified them as Stale.
         val conversation = state.conversation ?: return ConversationService.HealPlan(null, null, null, null)
         val self = state.currentOdinId
         val recipients = conversation.participants.filter { it != self }.distinct()
 
-        fun anyNeedsWork(map: Map<OdinId, MemberFileExistsStatus>?): Boolean =
-            map?.values?.any { it !is MemberFileExistsStatus.InSync } == true
-
         val mainAuthored = state.mainFileExists != null
         val adminAuthored = state.adminFileExists != null
-        val mainNeedsWork = anyNeedsWork(state.mainFileExists)
-        val adminNeedsWork = anyNeedsWork(state.adminFileExists)
 
-        // Heal-message only goes to peers that aren't already InSync. Stale
-        // peers need it to cleanup; Missing peers get a local placeholder
-        // written so the conversation "appears" before the resend lands;
-        // InSync peers are by definition fine and don't need the request.
-        // The resend itself goes to every recipient because the upcoming
-        // vt bump will desync them all.
+        // Heal-message goes to every non-InSync peer (Missing/Stale/Error).
+        // Cleanup leaves them at vt=null, ready to receive the resend as a
+        // fresh create. InSync peers are excluded — sending them the heal-
+        // message would be a no-op anyway (their vt matches canonical).
         fun nonInSync(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
             map?.entries.orEmpty()
                 .filter { it.value !is MemberFileExistsStatus.InSync }
                 .map { it.key }
 
+        // Resend goes only to peers the server's peer transit will actually
+        // accept: Missing peers. Peers that JUST cleaned up via heal-message
+        // are also Missing at the moment the resend lands, so they get it
+        // too — that's handled implicitly because we re-poll peer-exists
+        // after the cleanup writes the placeholder + hard-delete completes
+        // server-side. (No, we don't actually re-poll between heal-message
+        // and resend within one heal cycle — see TODO below.)
+        //
+        // TODO(heal-vt-rejection): the underlying primitive rejects pushes
+        // to peers whose vt doesn't match the incoming envelope's expected
+        // vt. So a peer who got heal-messaged in this same cycle and is now
+        // at vt=null may still get rejected because the resend's envelope
+        // was constructed with the pre-bump vt as "expected". Need to
+        // investigate (a) UpdateLocale.Peer semantics, and (b) whether we
+        // can ship a resend that the server accepts against any peer state.
+        fun missingOnly(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
+            map?.entries.orEmpty()
+                .filter { it.value is MemberFileExistsStatus.Missing }
+                .map { it.key }
+
         return ConversationService.HealPlan(
-            resendMainTo = when {
-                !mainAuthored -> null
-                mainNeedsWork -> recipients
-                else -> emptyList()
-            },
-            resendAdminTo = when {
-                !adminAuthored -> null
-                adminNeedsWork -> recipients
-                else -> emptyList()
-            },
-            healMessageMainTo = when {
-                !mainAuthored -> null
-                mainNeedsWork -> nonInSync(state.mainFileExists)
-                else -> emptyList()
-            },
-            healMessageAdminTo = when {
-                !adminAuthored -> null
-                adminNeedsWork -> nonInSync(state.adminFileExists)
-                else -> emptyList()
-            },
+            resendMainTo = if (mainAuthored) missingOnly(state.mainFileExists) else null,
+            resendAdminTo = if (adminAuthored) missingOnly(state.adminFileExists) else null,
+            healMessageMainTo = if (mainAuthored) nonInSync(state.mainFileExists) else null,
+            healMessageAdminTo = if (adminAuthored) nonInSync(state.adminFileExists) else null,
         )
     }
 
