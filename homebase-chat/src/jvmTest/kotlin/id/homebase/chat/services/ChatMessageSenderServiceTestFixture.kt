@@ -247,9 +247,12 @@ class SeedableConversationLookup(private val testDomain: String) : ConversationP
     override suspend fun getRecipients(
         conversationId: Uuid,
         additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): List<OdinId> {
-        val conversation = conversations[conversationId] ?: return emptyList()
-        return (conversation.participants + additionalRecipients)
+        val base = recipientOverride
+            ?: conversations[conversationId]?.participants
+            ?: return emptyList()
+        return (base + additionalRecipients)
             .filter { it.domainName != testDomain }
             .distinct()
     }

@@ -149,7 +149,8 @@ class ChatMessageSenderService(
         statusMessage: StatusMessageData,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
-        additionalRecipients: List<OdinId>
+        additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -159,7 +160,8 @@ class ChatMessageSenderService(
         payloadBundle = payloadBundle,
         dataType = ChatProtocol.ChatStatusMessageDataType,
         isStatusMessage = true,
-        additionalRecipients = additionalRecipients
+        additionalRecipients = additionalRecipients,
+        recipientOverride = recipientOverride,
     )
 
     /**
@@ -199,6 +201,7 @@ class ChatMessageSenderService(
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList(),
         userDate: UnixTimeUtc? = null,
+        recipientOverride: List<OdinId>? = null,
     ): SendMessageResult {
         Logger.d(tag = TAG) { "sendMessageInternal: starting message=$messageUniqueId conversation=$conversationId" }
 
@@ -213,7 +216,11 @@ class ChatMessageSenderService(
         }
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
+        val recipients = conversationStream.getRecipients(
+            conversationId = conversationId,
+            additionalRecipients = additionalRecipients,
+            recipientOverride = recipientOverride,
+        )
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val effectiveNotificationText = if (recipients.size > 1) {

@@ -21,6 +21,7 @@ import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -81,6 +82,7 @@ val apiModule = module {
     factoryOf(::DriveFileGroupReactionProvider)
 
     factoryOf(::ConnectionNetworkProvider)
+    factoryOf(::PeerDriveQueryProvider)
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
     factoryOf(::IdentityUpgradeProvider)
