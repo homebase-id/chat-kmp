@@ -62,49 +62,6 @@ import kotlin.uuid.Uuid
 // ║    3. Remove the `import id.homebase.api.sync.database.QueryBatch` line     ║
 // ║       above (only used by the audit).                                       ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
-private class MethodAudit(private val method: String) {
-    companion object { const val TAG = "ConvoAudit" }
-    private val checks = mutableListOf<String>()
-
-    fun start(detail: String = "") {
-        Logger.i(tag = TAG) { "═════ $method START $detail ═════" }
-    }
-    fun pre(line: String) { Logger.i(tag = TAG) { "[$method] PRE $line" } }
-    fun step(num: Int, what: String) { Logger.i(tag = TAG) { "[$method] STEP $num $what" } }
-    fun post(line: String) { Logger.i(tag = TAG) { "[$method] POST $line" } }
-    fun info(line: String) { Logger.i(tag = TAG) { "[$method] $line" } }
-
-    fun checkPass(name: String) { checks += "$name=PASS" }
-    fun checkFail(name: String, bugMessage: String) {
-        checks += "$name=FAIL"
-        Logger.w(tag = TAG) { "[$method] BUG? $name: $bugMessage" }
-    }
-    fun checkWarn(name: String, bugMessage: String) {
-        checks += "$name=WARN"
-        Logger.w(tag = TAG) { "[$method] BUG? $name: $bugMessage" }
-    }
-    fun check(name: String, pass: Boolean, failBugMessage: String) {
-        if (pass) checkPass(name) else checkFail(name, failBugMessage)
-    }
-    fun threw(stepLabel: String, e: Throwable) {
-        checks += "$stepLabel=THREW"
-        Logger.e(throwable = e, tag = TAG) {
-            "[$method] BUG? $stepLabel threw: ${e::class.simpleName}: ${e.message}"
-        }
-    }
-    fun finish(extra: String = "") {
-        val verdict = when {
-            checks.any { it.endsWith("=FAIL") || it.endsWith("=THREW") } -> "FAIL"
-            checks.any { it.endsWith("=WARN") } -> "WARN"
-            else -> "OK"
-        }
-        Logger.i(tag = TAG) {
-            "DIAGNOSIS: $method verdict=$verdict ${checks.joinToString(" ")} $extra".trim()
-        }
-        Logger.i(tag = TAG) { "═════ $method END ═════" }
-    }
-}
-
 class ConversationService(
     private val credentialsManager: CredentialsManager,
     private val payloadBundleEncryptionService: PayloadBundleEncryptor,
@@ -123,7 +80,7 @@ class ConversationService(
     /** Used by the heal redistribute path to spill the encrypted payload bytes
      *  to a temp file for upload. Same nullable-for-tests rationale as above. */
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
-) : LocalLastReadUpdater {
+) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
 
     private val mapper: ConversationMapper = ConversationMapper(
@@ -554,7 +511,7 @@ class ConversationService(
         }
     }
 
-    suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
+    override suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
         return getConversation(conversationId)
             ?: throw IllegalStateException("No conversation found")
     }
@@ -564,7 +521,7 @@ class ConversationService(
             ?: throw IllegalStateException("No conversation found")
     }
 
-    suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
+    override suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
         val file = getConversationHomebaseFile(conversationId) ?: return null
         return mapper.mapToConversationUi(file, null)
     }
@@ -1096,37 +1053,19 @@ class ConversationService(
         audit.finish()
     }
 
-    suspend fun updateConversationInternal(
+    override suspend fun updateConversationInternal(
         conversationId: Uuid,
         title: String?,
         participants: List<OdinId>,
-        payloadBundle: PayloadBundle? = null,
-        dependencyUniqueId: Uuid? = null,
-        archivalStatus: ArchivalStatus? = null,
-        distribute: Boolean = true,
-        additionalDistributionRecipients: List<OdinId> = emptyList(),
-        /** When true, ensures [ChatProtocol.ConversationGroupTag] is present in the file's
-         *  tags (used by recovery/revive paths to heal legacy or untagged group files).
-         *  null = preserve existing tags as-is. */
-        isGroup: Boolean? = null,
-        /** When true, immediately writes the new metadata to the local DB via
-         *  [OptimisticWriter.writeUpdate] BEFORE enqueuing the server upload. Use this when
-         *  the caller needs subsequent code (or the mapper) to observe the new participant
-         *  list locally without waiting for the outbox to drain — most notably [leaveGroup]
-         *  step 2, which would otherwise race [ChatProtocol.ConversationLeftTag] against the
-         *  pending participant change and produce a spurious [ConversationState.RejoinPending]. */
-        applyOptimisticContentLocally: Boolean = false,
-        /** Heal-only: when non-null, distribute the new file only to this subset of peers
-         *  instead of to the full [participants] list. The canonical participants stored
-         *  in the file content stay unchanged — this just narrows the outbox recipient
-         *  list. Null = legacy behavior (distribute to every participant). */
-        distributeOnlyTo: List<OdinId>? = null,
-        /** When true and [payloadBundle] is null, re-attach the file's existing payloads
-         *  (e.g. the `convo_img` group image) to the update request so peer transit
-         *  ships them along. Without this the manifest is empty and peers receiving
-         *  the heal'd file have no image. Set by heal; default off for normal
-         *  edits which either change payloads (bundle != null) or don't touch them. */
-        preserveExistingPayloads: Boolean = false,
+        payloadBundle: PayloadBundle?,
+        dependencyUniqueId: Uuid?,
+        archivalStatus: ArchivalStatus?,
+        distribute: Boolean,
+        additionalDistributionRecipients: List<OdinId>,
+        isGroup: Boolean?,
+        applyOptimisticContentLocally: Boolean,
+        distributeOnlyTo: List<OdinId>?,
+        preserveExistingPayloads: Boolean,
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateConversationInternal")
@@ -1676,7 +1615,7 @@ class ConversationService(
      * (which writes versionTag=null so a later peer push supersedes it cleanly),
      * and refreshes the in-memory conversation entry.
      */
-    private suspend fun writeOrReplaceConversationPlaceholder(
+    override suspend fun writeOrReplaceConversationPlaceholder(
         conversationId: Uuid,
         brokenFileIdToDelete: Uuid?,
         participants: List<OdinId>,
@@ -1729,7 +1668,7 @@ class ConversationService(
      * [OptimisticWriter.writeLocalOnlyAdminPlaceholder] (versionTag=null so
      * a later genuine peer push from the canonical author replaces it).
      */
-    private suspend fun writeOrReplaceAdminPlaceholder(
+    override suspend fun writeOrReplaceAdminPlaceholder(
         conversationId: Uuid,
         brokenFileIdToDelete: Uuid?,
         admins: List<OdinId>,
@@ -2080,678 +2019,17 @@ class ConversationService(
         return payloads to emptyList()
     }
 
-    suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
+    override suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, conversationId)
     }
 
-    suspend fun getConversationAdminHomebaseFile(conversationId: Uuid): HomebaseFile? {
+    override suspend fun getConversationAdminHomebaseFile(conversationId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
         return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, adminUniqueId)
     }
 
-    /**
-     * Manually re-distribute the group files (main conversation file + admin file) to all
-     * current participants, for any of those files the caller authored. This is a recovery
-     * aid for groups where one or more recipients did not receive (or lost) the original
-     * group file. Per-file authorship is checked individually — the caller may have
-     * authored only one of the two and the other will be left untouched.
-     *
-     * Each step is debug-logged so a failure can be diagnosed in homebase.log.
-     */
-    /**
-     * Coarse-grained phase callback fired by [healGroupDistribution] at the
-     * three natural transitions the UI cares about: heal-message send, main
-     * file resend, admin file resend. The Sending event fires before the
-     * outbox enqueue; Sent fires after a successful enqueue; Failed fires
-     * if the enqueue throws. The [recipients] list is the actual targeted
-     * subset, ready for "Sending X to peer-by-peer" UI rendering.
-     *
-     * Skipped phases (caller not the author, recipient set empty) DO emit
-     * a phase event so the dialog can render them as "Skipped — already in
-     * sync" rather than leaving rows in Pending forever.
-     */
-    sealed interface HealPhase {
-        val recipients: List<OdinId>
-        data class HealMessageSending(override val recipients: List<OdinId>) : HealPhase
-        data class HealMessageSent(override val recipients: List<OdinId>) : HealPhase
-        data class HealMessageFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
-        data class HealMessageSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
-        data class MainSending(override val recipients: List<OdinId>) : HealPhase
-        data class MainSent(override val recipients: List<OdinId>) : HealPhase
-        data class MainFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
-        data class MainSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
-        data class AdminSending(override val recipients: List<OdinId>) : HealPhase
-        data class AdminSent(override val recipients: List<OdinId>) : HealPhase
-        data class AdminFailed(override val recipients: List<OdinId>, val cause: Throwable) : HealPhase
-        data class AdminSkipped(override val recipients: List<OdinId>, val reason: String) : HealPhase
-    }
-
-    suspend fun healGroupDistribution(
-        conversationId: Uuid,
-        plan: HealPlan? = null,
-        onPhase: ((HealPhase) -> Unit)? = null,
-    ): HealGroupResult {
-        // ---- DEBUG instrumentation ----
-        val audit = MethodAudit("healGroupDistribution")
-        audit.start("conversationId=$conversationId planned=${plan != null}")
-        // ---- end DEBUG ----
-        val conversation = requireConversation(conversationId)
-        if (!conversation.isGroupConversation) {
-            audit.checkFail("isGroupGuard", "called on non-group conversation")
-            audit.finish("REJECTED at guard")
-            throw IllegalStateException("healGroupDistribution: not a group conversation $conversationId")
-        }
-
-        val domain = credentialsManager.requireActiveDomain()
-        val allRecipients = conversation.participants.filterNot { it == domain }.distinct()
-
-        // Per-file recipient targeting. When the plan carries a non-null subset,
-        // narrow the resend to exactly those peers. When the plan is null or the
-        // per-file subset is null (e.g. all peer-exists checks errored), fall
-        // back to the legacy all-recipients behavior so heal remains useful on
-        // server builds without the peer-exists endpoint.
-        val mainTargets = plan?.resendMainTo ?: allRecipients
-        val adminTargets = plan?.resendAdminTo ?: allRecipients
-        val healMessageTargets = plan?.healMessageUnionTo  // null = broadcast to all participants
-
-        Logger.i {
-            "healGroupDistribution: START conversationId=$conversationId domain=$domain " +
-                "participants=${conversation.participants} mainTargets=$mainTargets " +
-                "adminTargets=$adminTargets healMessageTargets=$healMessageTargets " +
-                "admins=${conversation.admins}"
-        }
-
-        var mainHealed = false
-        var adminHealed = false
-        var mainRecipientCount = 0
-        var adminRecipientCount = 0
-        var healMessageRecipientCount = 0
-
-        // Status broadcast — send the canonical group identity BEFORE the file
-        // pushes so a recipient processing the same sync batch sees the
-        // cleanup directive first. Only the original author of the main file
-        // has authority to announce the canonical identity, so the same
-        // mainAuthor == domain gate below applies — but we send the status
-        // even when only the admin file is healable, since both files share
-        // the same originalAuthor in practice.
-        val preMainFile = getConversationHomebaseFile(conversationId)
-        val preAdminFile = getConversationAdminHomebaseFile(conversationId)
-        val callerIsMainAuthor = preMainFile != null &&
-                (preMainFile.fileMetadata.originalAuthor ?: preMainFile.fileMetadata.senderOdinId) == domain
-        val healMessageRecipientsActual: List<OdinId>? = when {
-            healMessageTargets == null -> null               // null = legacy broadcast (no override)
-            healMessageTargets.isEmpty() -> emptyList()      // empty = skip the send entirely
-            else -> healMessageTargets
-        }
-        val shouldSendHealMessage = callerIsMainAuthor && healMessageRecipientsActual != emptyList<OdinId>()
-        // Audience for progress-event purposes only. When override is null we'll
-        // broadcast, so use allRecipients as the visible set.
-        val healMessageAudience = healMessageRecipientsActual ?: allRecipients
-        if (shouldSendHealMessage) {
-            onPhase?.invoke(HealPhase.HealMessageSending(healMessageAudience))
-            try {
-                val canonicalAdminsForStatus = conversation.admins.toList()
-                Logger.i {
-                    "healGroupDistribution: sending GroupHealRequested status conversationId=$conversationId " +
-                        "versionTag=${preMainFile.fileMetadata.versionTag} " +
-                        "adminVersionTag=${preAdminFile?.fileMetadata?.versionTag} " +
-                        "title=\"${conversation.name}\" " +
-                        "participants(${conversation.participants.size})=${conversation.participants.map { it.domainName }} " +
-                        "admins(${canonicalAdminsForStatus.size})=${canonicalAdminsForStatus.map { it.domainName }} " +
-                        "recipientOverride=${healMessageRecipientsActual?.map { it.domainName }}"
-                }
-                chatMessageSenderService.sendStatusMessage(
-                    messageUniqueId = Uuid.random(),
-                    conversationId = conversationId,
-                    statusMessage = StatusMessageData(
-                        statusMessage = StatusMessage.GroupHealRequested,
-                        groupHeal = GroupHealInfo(
-                            conversationUniqueId = conversationId,
-                            canonicalOriginalAuthor = domain,
-                            canonicalVersionTag = preMainFile.fileMetadata.versionTag,
-                            canonicalTitle = conversation.name,
-                            canonicalParticipants = conversation.participants,
-                            canonicalAdminFileUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId),
-                            canonicalAdminVersionTag = preAdminFile?.fileMetadata?.versionTag,
-                            canonicalAdmins = canonicalAdminsForStatus,
-                        ),
-                    ),
-                    recipientOverride = healMessageRecipientsActual,
-                )
-                healMessageRecipientCount = healMessageRecipientsActual?.size ?: allRecipients.size
-                onPhase?.invoke(HealPhase.HealMessageSent(healMessageAudience))
-            } catch (t: Throwable) {
-                // Best-effort: don't let a status-send failure block the file pushes.
-                Logger.w(t) { "healGroupDistribution: GroupHealRequested status send FAILED for $conversationId" }
-                onPhase?.invoke(HealPhase.HealMessageFailed(healMessageAudience, t))
-            }
-        } else if (!callerIsMainAuthor) {
-            Logger.d { "healGroupDistribution: skipping status broadcast — caller is not the original author of main file" }
-            onPhase?.invoke(HealPhase.HealMessageSkipped(healMessageAudience, "not-author"))
-        } else {
-            Logger.d { "healGroupDistribution: skipping status broadcast — heal message recipient set is empty (no Stale peers)" }
-            onPhase?.invoke(HealPhase.HealMessageSkipped(emptyList(), "no-stale-peers"))
-        }
-
-        // Main conversation file
-        val mainFile = preMainFile
-        if (mainFile == null) {
-            Logger.w { "healGroupDistribution: no local main conversation file for $conversationId — skipping main" }
-            onPhase?.invoke(HealPhase.MainSkipped(mainTargets, "no-local-file"))
-        } else {
-            val mainAuthor = mainFile.fileMetadata.originalAuthor ?: mainFile.fileMetadata.senderOdinId
-            val mainPending = mainFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
-            Logger.d { "healGroupDistribution: main file fileId=${mainFile.fileId} sender=${mainFile.fileMetadata.senderOdinId} originalAuthor=${mainFile.fileMetadata.originalAuthor} resolvedAuthor=$mainAuthor versionTag=${mainFile.fileMetadata.versionTag} isPending=$mainPending localTags=${mainFile.fileMetadata.localAppData?.tags}" }
-            if (mainAuthor != domain) {
-                Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
-                onPhase?.invoke(HealPhase.MainSkipped(mainTargets, "not-author"))
-            } else if (mainTargets.isEmpty()) {
-                Logger.d { "healGroupDistribution: skipping main — no peers need the file (all InSync)" }
-                onPhase?.invoke(HealPhase.MainSkipped(emptyList(), "all-in-sync"))
-            } else {
-                onPhase?.invoke(HealPhase.MainSending(mainTargets))
-                try {
-                    Logger.i { "healGroupDistribution: redistributing main conversation file $conversationId to recipients=$mainTargets" }
-                    updateConversationInternal(
-                        conversationId = conversationId,
-                        title = conversation.name,
-                        participants = conversation.participants,
-                        distribute = true,
-                        distributeOnlyTo = if (plan?.resendMainTo != null) mainTargets else null,
-                        preserveExistingPayloads = true,
-                    )
-                    mainHealed = true
-                    mainRecipientCount = mainTargets.size
-                    Logger.i { "healGroupDistribution: main conversation file enqueued for redistribute $conversationId" }
-                    onPhase?.invoke(HealPhase.MainSent(mainTargets))
-                } catch (t: Throwable) {
-                    Logger.e("healGroupDistribution: main conversation file redistribute FAILED for $conversationId", t)
-                    onPhase?.invoke(HealPhase.MainFailed(mainTargets, t))
-                    throw t
-                }
-            }
-        }
-
-        // Admin file
-        val adminFile = preAdminFile
-        if (adminFile == null) {
-            Logger.w { "healGroupDistribution: no local admin file for $conversationId — skipping admin" }
-            onPhase?.invoke(HealPhase.AdminSkipped(adminTargets, "no-local-file"))
-        } else {
-            val adminAuthor = adminFile.fileMetadata.originalAuthor ?: adminFile.fileMetadata.senderOdinId
-            val adminPending = adminFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
-            Logger.d { "healGroupDistribution: admin file fileId=${adminFile.fileId} sender=${adminFile.fileMetadata.senderOdinId} originalAuthor=${adminFile.fileMetadata.originalAuthor} resolvedAuthor=$adminAuthor versionTag=${adminFile.fileMetadata.versionTag} isPending=$adminPending localTags=${adminFile.fileMetadata.localAppData?.tags}" }
-            if (adminAuthor != domain) {
-                Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
-                onPhase?.invoke(HealPhase.AdminSkipped(adminTargets, "not-author"))
-            } else if (adminTargets.isEmpty()) {
-                Logger.d { "healGroupDistribution: skipping admin — no peers need the file (all InSync)" }
-                onPhase?.invoke(HealPhase.AdminSkipped(emptyList(), "all-in-sync"))
-            } else {
-                onPhase?.invoke(HealPhase.AdminSending(adminTargets))
-                try {
-                    Logger.i { "healGroupDistribution: redistributing admin file $conversationId admins=${conversation.admins} recipients=$adminTargets" }
-                    updateAdminFile(
-                        conversationId = conversationId,
-                        admins = conversation.admins.toList(),
-                        recipients = adminTargets,
-                    )
-                    adminHealed = true
-                    adminRecipientCount = adminTargets.size
-                    Logger.i { "healGroupDistribution: admin file enqueued for redistribute $conversationId" }
-                    onPhase?.invoke(HealPhase.AdminSent(adminTargets))
-                } catch (t: Throwable) {
-                    Logger.e("healGroupDistribution: admin file redistribute FAILED for $conversationId", t)
-                    onPhase?.invoke(HealPhase.AdminFailed(adminTargets, t))
-                    throw t
-                }
-            }
-        }
-
-        Logger.i { "healGroupDistribution: DONE conversationId=$conversationId mainHealed=$mainHealed adminHealed=$adminHealed mainRecipients=$mainRecipientCount adminRecipients=$adminRecipientCount healMessageRecipients=$healMessageRecipientCount" }
-        // ---- DEBUG instrumentation ----
-        audit.info("mainHealed=$mainHealed adminHealed=$adminHealed mainRecipients=$mainRecipientCount adminRecipients=$adminRecipientCount healMessageRecipients=$healMessageRecipientCount")
-        audit.check(
-            "anythingHealed",
-            mainHealed || adminHealed || healMessageRecipientCount > 0,
-            "neither main nor admin file was redistributed and no heal message was sent — heal was a no-op (caller not the author of either, or every peer was already InSync)",
-        )
-        audit.finish()
-        // ---- end DEBUG ----
-        return HealGroupResult(
-            mainHealed = mainHealed,
-            adminHealed = adminHealed,
-            mainRecipientCount = mainRecipientCount,
-            adminRecipientCount = adminRecipientCount,
-            healMessageRecipientCount = healMessageRecipientCount,
-        )
-    }
-
-    /**
-     * Per-(recipient, file) plan derived from [MemberFileExistsStatus].
-     *
-     * - [resendMainTo] / [resendAdminTo]: peers reported Missing for that file → push it.
-     *   A null list means "we have no per-recipient signal for this file" — the heal
-     *   service falls back to redistribution-to-all-participants (legacy behavior).
-     *   An empty list means "every peer is InSync (or Error/Stale) — skip this file."
-     * - [healMessageMainTo] / [healMessageAdminTo]: peers reported Stale for the
-     *   main / admin file respectively → ask them to clean up their copy of THAT file
-     *   via [StatusMessage.GroupHealRequested]. Mechanically the heal-message is a
-     *   single status carrying both canonical versionTags, so [healGroupDistribution]
-     *   only sends one message addressed to the *union* of these two sets — the split
-     *   lets callers render one progress row per (peer, file). Null lists mean
-     *   "broadcast" (legacy); empty means "skip the message".
-     *
-     * Peers with [MemberFileExistsStatus.Error] / [MemberFileExistsStatus.Loading]
-     * MUST be filtered out by the caller before constructing the plan.
-     */
-    data class HealPlan(
-        val resendMainTo: List<OdinId>?,
-        val resendAdminTo: List<OdinId>?,
-        val healMessageMainTo: List<OdinId>?,
-        val healMessageAdminTo: List<OdinId>?,
-    ) {
-        /** Union of the per-file heal-message sets — what actually goes out on the wire. */
-        val healMessageUnionTo: List<OdinId>?
-            get() {
-                val main = healMessageMainTo
-                val admin = healMessageAdminTo
-                if (main == null && admin == null) return null
-                return ((main.orEmpty()) + (admin.orEmpty())).distinct()
-            }
-    }
-
-    data class HealGroupResult(
-        val mainHealed: Boolean,
-        val adminHealed: Boolean,
-        val mainRecipientCount: Int = 0,
-        val adminRecipientCount: Int = 0,
-        val healMessageRecipientCount: Int = 0,
-    ) {
-        val didAnything: Boolean
-            get() = mainHealed || adminHealed || healMessageRecipientCount > 0
-    }
-
-    /**
-     * Receive-side handler for an incoming [StatusMessage.GroupHealRequested]
-     * status. Compares the local conversation + admin files against the
-     * canonical fields the sender announced; if either is *broken* (mismatched
-     * originalAuthor or versionTag) or *missing* (no local row at all), hard-
-     * deletes the broken row from our own server (no-op when the file is
-     * merely missing), writes a local-only placeholder seeded from the heal
-     * payload — title/participants for the main file, [GroupHealInfo.canonicalAdmins]
-     * for the admin file when present — so the UI behaves as if nothing was
-     * ever broken, and surfaces a local-only [StatusMessage.GroupHealLocalCleanup]
-     * status into the conversation so the user sees the cleanup.
-     *
-     * Two-step protocol:
-     *   1. First heal status: receiver cleans up its broken/missing server
-     *      state and writes a versionTag=null placeholder. The receiver's
-     *      drive on the server is now empty for this conversation.
-     *   2. Subsequent peer push (driven by the canonical author's
-     *      [healGroupDistribution] → [updateConversationInternal] /
-     *      [updateAdminFile]) lands as a fresh create on the receiver's
-     *      drive (no versionTag conflict because the broken row was hard-
-     *      deleted), and DriveMainIndex's modified-timestamp guard passes
-     *      because the placeholder's `updated` is ZeroTime — so the
-     *      placeholder is replaced in-place by the real file.
-     *
-     * Legacy compatibility: pre-hardening senders set
-     * [GroupHealInfo.canonicalAdmins] to null. In that case the admin branch
-     * falls back to the old delete-only behaviour (relying on getAdmins()'
-     * originalAuthor fallback to keep things functional in the gap). The
-     * main-file branch always has enough data to rebuild — title and
-     * participants have always been in the payload.
-     *
-     * No-op cases (return without side effects beyond markHealApplied):
-     *   - Sender's domain doesn't match the canonical originalAuthor (forgery
-     *     guard).
-     *   - The canonical originalAuthor is us (we're seeing our own outgoing
-     *     status loop back).
-     *   - The local conversation is in Left/Removed/RejoinPending state — we
-     *     don't resurrect groups the user has explicitly left.
-     *   - Both local files exist and match the canonical identity.
-     */
-    suspend fun handleIncomingHealRequest(
-        status: StatusMessageData,
-        sender: OdinId,
-        messageFile: HomebaseFile,
-    ) {
-        val info = status.groupHeal ?: return
-        val audit = MethodAudit("handleIncomingHealRequest")
-        audit.start("conversationId=${info.conversationUniqueId} sender=${sender.domainName} canonicalAuthor=${info.canonicalOriginalAuthor.domainName} messageFileId=${messageFile.fileId}")
-
-        // Per-message idempotency gate. The marker rides on this status message
-        // file's localAppData and syncs across the recipient's devices, so a
-        // re-fired BatchReceived (cursor reset, full re-sync, sibling device)
-        // can't replay the destructive cleanup against state that has since
-        // moved on (e.g. canonical author bumped the group's versionTag —
-        // isFileBroken would otherwise misread that as a divergence).
-        val currentTags = messageFile.fileMetadata.localAppData?.tags?.toSet().orEmpty()
-        if (ChatProtocol.HealAppliedTag in currentTags) {
-            audit.info("HealAppliedTag already present on status message ${messageFile.fileId} — skipping")
-            audit.finish("already-applied")
-            return
-        }
-
-        // Forgery guard: only the canonical author can announce themselves.
-        if (sender != info.canonicalOriginalAuthor) {
-            audit.checkFail("authorMatch", "message sender ${sender.domainName} != canonicalOriginalAuthor ${info.canonicalOriginalAuthor.domainName}")
-            audit.finish("REJECTED at authorMatch")
-            return
-        }
-
-        val domain = credentialsManager.requireActiveDomain()
-        if (info.canonicalOriginalAuthor == domain) {
-            audit.info("self-loopback (canonical author is us) — ignoring")
-            audit.finish("self-loopback")
-            return
-        }
-
-        // Don't heal conversations the user has explicitly left.
-        val convo = runCatching { getConversation(info.conversationUniqueId) }.getOrNull()
-        val state = convo?.conversationState
-        if (state == ConversationState.Left
-            || state == ConversationState.Removed
-            || state == ConversationState.RejoinPending
-        ) {
-            audit.info("local state=$state — skipping heal for left/removed conversation")
-            audit.finish("skipped — left/removed")
-            return
-        }
-
-        val mainFile = getConversationHomebaseFile(info.conversationUniqueId)
-        val adminFile = getConversationAdminHomebaseFile(info.conversationUniqueId)
-
-        // Distinguish "missing" from "broken":
-        //   missing → no local row at all (post-wipe, never-synced, hard-
-        //             deleted on a prior heal pass that happened to lose the
-        //             follow-up peer push).
-        //   broken  → row exists but originalAuthor or versionTag diverges
-        //             from the canonical identity (the classic heal target).
-        // The previous implementation collapsed missing into "not broken"
-        // because mainFile==null short-circuited the && isFileBroken check.
-        // That left users whose file had vanished from both their local DB
-        // and their server-side drive permanently stuck — markHealApplied
-        // would tag the status message and every future replay would
-        // short-circuit at the HealAppliedTag gate.
-        val mainMissing = mainFile == null
-        val adminMissing = adminFile == null
-        val mainBroken = mainFile != null && isFileBroken(
-            file = mainFile,
-            canonicalAuthor = info.canonicalOriginalAuthor,
-            canonicalVersionTag = info.canonicalVersionTag,
-        )
-        val adminBroken = adminFile != null && isFileBroken(
-            file = adminFile,
-            canonicalAuthor = info.canonicalOriginalAuthor,
-            canonicalVersionTag = info.canonicalAdminVersionTag,
-        )
-        val mainNeedsHeal = mainMissing || mainBroken
-        val adminNeedsHeal = adminMissing || adminBroken
-
-        audit.pre(
-            "mainFile: exists=${mainFile != null} missing=$mainMissing broken=$mainBroken needsHeal=$mainNeedsHeal " +
-                "fileId=${mainFile?.fileId} localAuthor=${mainFile?.fileMetadata?.originalAuthor?.domainName} " +
-                "localVT=${mainFile?.fileMetadata?.versionTag} " +
-                "canonicalAuthor=${info.canonicalOriginalAuthor.domainName} canonicalVT=${info.canonicalVersionTag}"
-        )
-        audit.pre(
-            "adminFile: exists=${adminFile != null} missing=$adminMissing broken=$adminBroken needsHeal=$adminNeedsHeal " +
-                "fileId=${adminFile?.fileId} localAuthor=${adminFile?.fileMetadata?.originalAuthor?.domainName} " +
-                "localVT=${adminFile?.fileMetadata?.versionTag} canonicalAdminVT=${info.canonicalAdminVersionTag} " +
-                "canonicalAdminsCarried=${info.canonicalAdmins != null} canonicalAdminCount=${info.canonicalAdmins?.size ?: -1}"
-        )
-        Logger.i {
-            "handleIncomingHealRequest: PRE conversationId=${info.conversationUniqueId} sender=${sender.domainName} " +
-                "messageFileId=${messageFile.fileId} " +
-                "main(missing=$mainMissing broken=$mainBroken needsHeal=$mainNeedsHeal) " +
-                "admin(missing=$adminMissing broken=$adminBroken needsHeal=$adminNeedsHeal) " +
-                "canonicalParticipants(${info.canonicalParticipants.size})=${info.canonicalParticipants.map { it.domainName }} " +
-                "canonicalAdmins=${info.canonicalAdmins?.map { it.domainName }}"
-        }
-
-        if (!mainNeedsHeal && !adminNeedsHeal) {
-            // !mainNeedsHeal && !adminNeedsHeal ⇒ both files exist (mainMissing
-            // and adminMissing are both false) — smart-cast confirms non-null,
-            // so no safe-call needed for the audit values below.
-            audit.info("nothing to clean up — local copies match canonical identity")
-            Logger.i {
-                "handleIncomingHealRequest: NO-OP — local main+admin already match canonical " +
-                    "conversationId=${info.conversationUniqueId} mainVT=${mainFile.fileMetadata.versionTag} " +
-                    "adminVT=${adminFile.fileMetadata.versionTag}"
-            }
-            // Still mark applied: if we don't, a future BatchReceived carrying
-            // this same heal message could re-evaluate against a now-different
-            // local versionTag (canonical author updated the group in the
-            // interim) and misclassify the file as broken.
-            markHealApplied(messageFile, currentTags, audit)
-            audit.finish("no-op")
-            return
-        }
-
-        // Hard-delete the broken file(s) on our own server. recipients=null keeps
-        // this strictly local (no peer fan-out); hardDelete=true removes the row
-        // entirely so the next peer push from the canonical author lands as a
-        // fresh create rather than a versionTag conflict.
-        //
-        // Note: we delete only the *broken* files, not the *missing* ones.
-        // A missing file has no local fileId to act on and the server already
-        // lacks the row — DeleteLocalFilesByFileIdRequest with no targets is
-        // a pointless outbox job. The placeholder-write step below covers
-        // both missing and broken cases.
-        val brokenFileIds = buildList {
-            if (mainBroken) add(mainFile.fileId)
-            if (adminBroken) add(adminFile.fileId)
-        }
-        if (brokenFileIds.isNotEmpty()) {
-            Logger.i { "handleIncomingHealRequest: hard-deleting ${brokenFileIds.size} broken file(s) for conversation=${info.conversationUniqueId} mainBroken=$mainBroken adminBroken=$adminBroken fileIds=$brokenFileIds" }
-            audit.step(1, "outboxSync.tryEnqueue(DeleteLocalFilesByFileIdRequest hardDelete=true recipients=null fileIds=$brokenFileIds)")
-            runCatching {
-                outboxSync.tryEnqueue(
-                    DeleteLocalFilesByFileIdRequest(
-                        driveId = chatDrive,
-                        fileIds = brokenFileIds,
-                        recipients = null,
-                        hardDelete = true,
-                    )
-                )
-            }.onSuccess { enqueued ->
-                audit.info("STEP 1 enqueued=$enqueued")
-                if (enqueued) audit.checkPass("hardDeleteEnqueue") else audit.checkWarn("hardDeleteEnqueue", "tryEnqueue returned false (UNIQUE collision)")
-            }.onFailure { e -> audit.threw("hardDeleteEnqueue", e) }
-        } else {
-            audit.info("STEP 1 SKIPPED — no broken local files to hard-delete (mainMissing=$mainMissing adminMissing=$adminMissing)")
-            Logger.i { "handleIncomingHealRequest: STEP 1 skipped (no broken local files); mainMissing=$mainMissing adminMissing=$adminMissing conversationId=${info.conversationUniqueId}" }
-        }
-
-        // STEP 2 — write a local placeholder (versionTag=null) for either the
-        // conversation file, the admin file, or both. The placeholder is
-        // self-sufficient: title + participants for the main file, admins for
-        // the admin file. From the user's perspective the conversation looks
-        // healthy immediately. When the canonical author's peer push lands
-        // (driven by their healGroupDistribution → updateConversationInternal /
-        // updateAdminFile), it replaces the placeholder by uniqueId with the
-        // real file (DriveMainIndex's modified-timestamp guard passes because
-        // the placeholder's `updated` is ZeroTime).
-        if (mainNeedsHeal) {
-            val placeholderParticipants = info.canonicalParticipants.distinct()
-            val placeholderTitle = info.canonicalTitle
-            val brokenMainId = if (mainBroken) mainFile.fileId else null
-            Logger.i {
-                "handleIncomingHealRequest: STEP 2 main → writeOrReplaceConversationPlaceholder " +
-                    "conversationId=${info.conversationUniqueId} brokenFileIdToDelete=$brokenMainId " +
-                    "participants(${placeholderParticipants.size})=${placeholderParticipants.map { it.domainName }} title=\"$placeholderTitle\""
-            }
-            audit.step(2, "writeOrReplaceConversationPlaceholder(participants=${placeholderParticipants.size}, title=\"$placeholderTitle\", brokenFileIdToDelete=$brokenMainId, missing=$mainMissing)")
-            runCatching {
-                writeOrReplaceConversationPlaceholder(
-                    conversationId = info.conversationUniqueId,
-                    brokenFileIdToDelete = brokenMainId,
-                    participants = placeholderParticipants,
-                    isGroup = true,
-                    title = placeholderTitle,
-                    audit = audit,
-                )
-            }.onFailure { e ->
-                Logger.w(e) { "handleIncomingHealRequest: main placeholder write failed for ${info.conversationUniqueId}" }
-            }
-        }
-
-        if (adminNeedsHeal) {
-            val canonicalAdmins = info.canonicalAdmins.orEmpty().distinct()
-            val brokenAdminId = if (adminBroken) adminFile.fileId else null
-            if (canonicalAdmins.isNotEmpty()) {
-                Logger.i {
-                    "handleIncomingHealRequest: STEP 2 admin → writeOrReplaceAdminPlaceholder " +
-                        "conversationId=${info.conversationUniqueId} brokenFileIdToDelete=$brokenAdminId " +
-                        "admins(${canonicalAdmins.size})=${canonicalAdmins.map { it.domainName }} adminMissing=$adminMissing adminBroken=$adminBroken"
-                }
-                audit.step(2, "writeOrReplaceAdminPlaceholder(admins=${canonicalAdmins.size}, brokenFileIdToDelete=$brokenAdminId, missing=$adminMissing)")
-                runCatching {
-                    writeOrReplaceAdminPlaceholder(
-                        conversationId = info.conversationUniqueId,
-                        brokenFileIdToDelete = brokenAdminId,
-                        admins = canonicalAdmins,
-                        audit = audit,
-                    )
-                }.onFailure { e ->
-                    Logger.w(e) { "handleIncomingHealRequest: admin placeholder write failed for ${info.conversationUniqueId}" }
-                }
-            } else {
-                // Legacy sender (canonicalAdmins not in payload) — we can't
-                // fully rebuild the admin file. Fall back to the prior
-                // behaviour: if the admin row is broken locally, delete it so
-                // a future peer push lands cleanly; getAdmins() falls back to
-                // originalAuthor in the gap. If the admin file is merely
-                // missing there's nothing to do here — a future heal from a
-                // hardened sender will carry canonicalAdmins.
-                audit.checkWarn(
-                    "legacyAdminPayload",
-                    "incoming heal payload omits canonicalAdmins (legacy sender) — " +
-                        "cannot rebuild admin placeholder; falling back to delete-only path. " +
-                        "adminMissing=$adminMissing adminBroken=$adminBroken brokenAdminId=$brokenAdminId"
-                )
-                Logger.w {
-                    "handleIncomingHealRequest: legacy heal payload (no canonicalAdmins) for ${info.conversationUniqueId} — " +
-                        "admin placeholder will NOT be rebuilt. adminMissing=$adminMissing adminBroken=$adminBroken brokenAdminId=$brokenAdminId"
-                }
-                if (adminBroken) {
-                    audit.step(2, "deleteBy(local admin row fileId=${adminFile.fileId}) [legacy fallback]")
-                    runCatching {
-                        dbm.driveMainIndex.deleteBy(
-                            identityId = credentialsManager.requireActiveCredentials().getIdentityId(),
-                            driveId = chatDrive,
-                            fileId = adminFile.fileId,
-                        )
-                    }.onSuccess { audit.checkPass("deleteBrokenAdminRow") }
-                        .onFailure { e -> audit.threw("deleteBrokenAdminRow", e) }
-                }
-            }
-        }
-
-        // Surface the cleanup to the user. Local-only status message — never
-        // sent to peers (additionalRecipients stays empty; the conversation
-        // recipients list is irrelevant because sendStatusMessage routes the
-        // optimistic write through the same path regardless of fan-out).
-        audit.step(3, "sendStatusMessage(GroupHealLocalCleanup mainNeedsHeal=$mainNeedsHeal adminNeedsHeal=$adminNeedsHeal)")
-        runCatching {
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = Uuid.random(),
-                conversationId = info.conversationUniqueId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.GroupHealLocalCleanup,
-                    groupHealCleanup = GroupHealCleanupInfo(
-                        cleanedUpMain = mainNeedsHeal,
-                        cleanedUpAdmin = adminNeedsHeal,
-                    ),
-                ),
-            )
-            audit.checkPass("cleanupStatusSent")
-        }.onFailure { e ->
-            audit.threw("cleanupStatusSent", e)
-            Logger.w(e) { "handleIncomingHealRequest: failed to write GroupHealLocalCleanup status for ${info.conversationUniqueId}" }
-        }
-
-        // Mark the status message file as applied so this device — and, once
-        // the upload lands, sibling devices — short-circuit on any future
-        // BatchReceived carrying the same heal message.
-        markHealApplied(messageFile, currentTags, audit)
-
-        Logger.i {
-            "handleIncomingHealRequest: DONE conversationId=${info.conversationUniqueId} " +
-                "mainNeedsHeal=$mainNeedsHeal (missing=$mainMissing broken=$mainBroken) " +
-                "adminNeedsHeal=$adminNeedsHeal (missing=$adminMissing broken=$adminBroken)"
-        }
-        audit.finish("mainNeedsHeal=$mainNeedsHeal (missing=$mainMissing broken=$mainBroken) adminNeedsHeal=$adminNeedsHeal (missing=$adminMissing broken=$adminBroken)")
-    }
-
-    /**
-     * Writes [ChatProtocol.HealAppliedTag] into the status message file's
-     * `localAppData.tags` (optimistic) and enqueues the server upload so the
-     * marker syncs across the recipient's devices. Failure is logged but not
-     * propagated — the heal action itself has already succeeded.
-     */
-    private suspend fun markHealApplied(
-        messageFile: HomebaseFile,
-        currentTags: Set<Uuid>,
-        audit: MethodAudit,
-    ) {
-        val messageUniqueId = messageFile.fileMetadata.appData.uniqueId
-        if (messageUniqueId == null) {
-            audit.checkWarn("markHealApplied", "status message has no uniqueId — cannot tag, idempotency falls back to isFileBroken")
-            return
-        }
-        val newTags = (currentTags + ChatProtocol.HealAppliedTag).toList()
-        audit.step(4, "updateLocalTags(+HealAppliedTag) on status message ${messageFile.fileId}")
-        runCatching {
-            optimisticWriter.updateLocalTags(
-                driveId = chatDrive,
-                uniqueId = messageUniqueId,
-                newTags = newTags,
-            )
-            outboxSync.tryEnqueue(
-                request = UpdateLocalMetadataTagsOutboxRequest(
-                    file = FileIdFileIdentifier(
-                        fileId = messageFile.fileId.toString(),
-                        targetDrive = chatTargetDrive,
-                    ),
-                    versionTag = messageFile.fileMetadata.localAppData?.versionTag?.toString(),
-                    tags = newTags.map { it.toString() },
-                ),
-                driveId = chatDrive,
-                uniqueId = Uuid.random(),
-                dependencyUniqueId = null,
-            )
-        }.onSuccess { audit.checkPass("healAppliedTagWritten") }
-            .onFailure { e ->
-                audit.threw("healAppliedTagWritten", e)
-                Logger.w(e) { "handleIncomingHealRequest: failed to write HealAppliedTag for status message ${messageFile.fileId}" }
-            }
-    }
-
-    private fun isFileBroken(
-        file: HomebaseFile,
-        canonicalAuthor: OdinId,
-        canonicalVersionTag: Uuid?,
-    ): Boolean {
-        // Placeholder check FIRST: versionTag=null marks a local-only
-        // placeholder we (or recoverConversation) wrote in a prior pass —
-        // by design the next peer push from the canonical author will
-        // replace it, so it must be left alone here regardless of what its
-        // synthetic originalAuthor reads (placeholders are stamped with the
-        // local domain, not the canonical author, so an author check fired
-        // before this placeholder gate would re-classify the placeholder as
-        // broken on every replay and produce an infinite cleanup loop).
-        val localVT = file.fileMetadata.versionTag
-        if (localVT == null) return false
-
-        val localAuthor = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId
-        if (localAuthor != canonicalAuthor) return true
-        return localVT != canonicalVersionTag
-    }
 
     /** Reads the admin list from the dedicated admin file, falling back to originalAuthor. */
     suspend fun getAdmins(conversationId: Uuid): Set<OdinId> {
@@ -2823,7 +2101,7 @@ class ConversationService(
     }
 
     /** Updates an existing admin file (or creates one if it doesn't exist yet). */
-    private suspend fun updateAdminFile(
+    override suspend fun updateAdminFile(
         conversationId: Uuid,
         admins: List<OdinId>,
         recipients: List<OdinId>

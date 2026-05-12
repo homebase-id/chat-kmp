@@ -22,10 +22,15 @@ import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.GroupHealService
+import id.homebase.chat.services.convo.HealGroupResult
+import id.homebase.chat.services.convo.HealPhase
+import id.homebase.chat.services.convo.HealPlan
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import id.homebase.chat.services.convo.contact.ContactConnectionState
@@ -47,6 +52,7 @@ class GroupSettingsViewModel(
     savedStateHandle: SavedStateHandle,
     private val conversationStream: ConversationStream,
     private val conversationService: ConversationService,
+    private val groupHealService: GroupHealService,
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
     private val driveFileProvider: DriveFileProvider,
@@ -238,7 +244,7 @@ class GroupSettingsViewModel(
                     try {
                         Logger.i("GroupSettings: heal requested for ${conversation.id} plan=$plan")
                         logTransferSnapshot("BEFORE heal", conversation.id, uiState.value)
-                        val result = conversationService.healGroupDistribution(
+                        val result = groupHealService.healGroupDistribution(
                             conversation.id,
                             plan,
                         ) { phase -> applyHealPhase(phase) }
@@ -247,8 +253,19 @@ class GroupSettingsViewModel(
                                 "mainHealed=${result.mainHealed} adminHealed=${result.adminHealed} " +
                                 "mainRecipients=${result.mainRecipientCount} " +
                                 "adminRecipients=${result.adminRecipientCount} " +
-                                "healMsgRecipients=${result.healMessageRecipientCount}"
+                                "healMsgRecipients=${result.healMessageRecipientCount} " +
+                                "mainFileId=${result.mainFileId} adminFileId=${result.adminFileId} " +
+                                "healMessageUniqueId=${result.healMessageUniqueId}"
                         )
+                        // Poll the server-side transfer-history for each
+                        // enqueued file in parallel, flipping per-(peer, kind)
+                        // rows from InFlight → Done/Failed/StillQueued as
+                        // peer-transit results settle. Bounded window — the
+                        // outbox keeps retrying for hours, but we stop
+                        // watching after [HEAL_POLL_WINDOW_MS]. Polling runs
+                        // INSIDE this launch so the dialog's `finished=true`
+                        // flag only flips once watching is over.
+                        pollHealDeliveryOutcomes(result)
                         // Re-load transfer history immediately. Skip the trailing
                         // peer-exists recheck — the heal just bumped our local
                         // vt; every peer is technically Stale until transit
@@ -702,7 +719,7 @@ class GroupSettingsViewModel(
     }
 
     /**
-     * Build the per-(recipient, file) [ConversationService.HealPlan] from the
+     * Build the per-(recipient, file) [HealPlan] from the
      * currently-loaded [MemberFileExistsStatus] maps.
      *
      * - For each file, peers reported `Missing` go into the resend set; peers
@@ -722,7 +739,7 @@ class GroupSettingsViewModel(
      * across both files. Empty means "skip the message — no Stale peers need
      * cleanup", non-empty means "address it to exactly this set".
      */
-    private fun buildHealPlan(state: GroupSettingsUiState): ConversationService.HealPlan {
+    private fun buildHealPlan(state: GroupSettingsUiState): HealPlan {
         // KNOWN ARCHITECTURAL LIMITATION — read before touching this logic:
         //
         // Heal redistribution goes through ConversationService.updateConversationInternal
@@ -756,7 +773,7 @@ class GroupSettingsViewModel(
         // peers who can actually accept the push (Missing peers), and let
         // previously-InSync peers be picked up on the NEXT heal cycle after
         // a future event has re-classified them as Stale.
-        val conversation = state.conversation ?: return ConversationService.HealPlan(null, null, null, null)
+        val conversation = state.conversation ?: return HealPlan(null, null, null, null)
         val self = state.currentOdinId
         val recipients = conversation.participants.filter { it != self }.distinct()
 
@@ -792,7 +809,7 @@ class GroupSettingsViewModel(
                 .filter { it.value is MemberFileExistsStatus.Missing }
                 .map { it.key }
 
-        return ConversationService.HealPlan(
+        return HealPlan(
             resendMainTo = if (mainAuthored) missingOnly(state.mainFileExists) else null,
             resendAdminTo = if (adminAuthored) missingOnly(state.adminFileExists) else null,
             healMessageMainTo = if (mainAuthored) nonInSync(state.mainFileExists) else null,
@@ -804,7 +821,7 @@ class GroupSettingsViewModel(
      * Seed the progress sheet with one row per (peer, action) the heal plans to
      * perform. Rows start [HealProgressState.Pending]; the [applyHealPhase]
      * callback transitions them to InFlight / Done / Failed / Skipped as the
-     * service emits [ConversationService.HealPhase] events.
+     * service emits [HealPhase] events.
      *
      * Order: heal-request rows first (those peers do nothing until they get the
      * request), then group-file resends, then admin-file resends. Within each
@@ -815,7 +832,7 @@ class GroupSettingsViewModel(
      * (one per peer in the conversation's participant list, minus self) so
      * the user sees what the heal is actually doing.
      */
-    private fun buildInitialProgressItems(plan: ConversationService.HealPlan): List<HealProgressItem> {
+    private fun buildInitialProgressItems(plan: HealPlan): List<HealProgressItem> {
         val conversation = uiState.value.conversation ?: return emptyList()
         val self = uiState.value.currentOdinId
         val fallback = conversation.participants.filter { it != self }.distinct()
@@ -843,23 +860,30 @@ class GroupSettingsViewModel(
      * the same coroutine that called [ConversationService.healGroupDistribution]
      * (via [viewModelScope.launch]), so [_uiState.update] from here is safe.
      */
-    private fun applyHealPhase(phase: ConversationService.HealPhase) {
+    private fun applyHealPhase(phase: HealPhase) {
         // HealMessage* phases map to BOTH heal-request kinds — the single status
         // message covers main AND admin file cleanup, so any (peer, file) row
         // whose peer is in the message audience transitions together.
+        //
+        // *Sent events deliberately do NOT flip rows to Done — they only mean
+        // "successfully enqueued on our own server". The real per-recipient
+        // outcome arrives via transfer-history polling in
+        // [pollHealDeliveryOutcomes], which is what actually moves rows to
+        // Done/Failed/StillQueued. We leave them at InFlight so the spinner
+        // keeps running until polling resolves.
         val (targetKinds, newState) = when (phase) {
-            is ConversationService.HealPhase.HealMessageSending -> HEAL_REQUEST_KINDS to HealProgressState.InFlight
-            is ConversationService.HealPhase.HealMessageSent -> HEAL_REQUEST_KINDS to HealProgressState.Done
-            is ConversationService.HealPhase.HealMessageFailed -> HEAL_REQUEST_KINDS to HealProgressState.Failed
-            is ConversationService.HealPhase.HealMessageSkipped -> HEAL_REQUEST_KINDS to HealProgressState.Skipped
-            is ConversationService.HealPhase.MainSending -> setOf(HealActionKind.GroupFile) to HealProgressState.InFlight
-            is ConversationService.HealPhase.MainSent -> setOf(HealActionKind.GroupFile) to HealProgressState.Done
-            is ConversationService.HealPhase.MainFailed -> setOf(HealActionKind.GroupFile) to HealProgressState.Failed
-            is ConversationService.HealPhase.MainSkipped -> setOf(HealActionKind.GroupFile) to HealProgressState.Skipped
-            is ConversationService.HealPhase.AdminSending -> setOf(HealActionKind.AdminFile) to HealProgressState.InFlight
-            is ConversationService.HealPhase.AdminSent -> setOf(HealActionKind.AdminFile) to HealProgressState.Done
-            is ConversationService.HealPhase.AdminFailed -> setOf(HealActionKind.AdminFile) to HealProgressState.Failed
-            is ConversationService.HealPhase.AdminSkipped -> setOf(HealActionKind.AdminFile) to HealProgressState.Skipped
+            is HealPhase.HealMessageSending -> HEAL_REQUEST_KINDS to HealProgressState.InFlight
+            is HealPhase.HealMessageSent -> return  // polling owns Done/Failed
+            is HealPhase.HealMessageFailed -> HEAL_REQUEST_KINDS to HealProgressState.Failed
+            is HealPhase.HealMessageSkipped -> HEAL_REQUEST_KINDS to HealProgressState.Skipped
+            is HealPhase.MainSending -> setOf(HealActionKind.GroupFile) to HealProgressState.InFlight
+            is HealPhase.MainSent -> return        // polling owns Done/Failed
+            is HealPhase.MainFailed -> setOf(HealActionKind.GroupFile) to HealProgressState.Failed
+            is HealPhase.MainSkipped -> setOf(HealActionKind.GroupFile) to HealProgressState.Skipped
+            is HealPhase.AdminSending -> setOf(HealActionKind.AdminFile) to HealProgressState.InFlight
+            is HealPhase.AdminSent -> return       // polling owns Done/Failed
+            is HealPhase.AdminFailed -> setOf(HealActionKind.AdminFile) to HealProgressState.Failed
+            is HealPhase.AdminSkipped -> setOf(HealActionKind.AdminFile) to HealProgressState.Skipped
         }
         val recipients = phase.recipients.toSet()
         Logger.i(tag = "HealAudit") {
@@ -872,6 +896,179 @@ class GroupSettingsViewModel(
             val updatedItems = sheet.items.map { item ->
                 if (item.kind in targetKinds && item.peer in recipients) item.copy(state = newState)
                 else item
+            }
+            state.copy(uiSheet = sheet.copy(items = updatedItems))
+        }
+    }
+
+    /**
+     * After heal enqueues, poll the server-side transfer-history for each
+     * enqueued file in parallel, flipping per-(peer, kind) rows from InFlight
+     * to a terminal state (Done / Failed / StillQueued) as peer-transit
+     * results settle. Skips fileIds the heal didn't actually enqueue (null
+     * fileId, empty target set).
+     *
+     * Three concurrent loops: main file, admin file, heal-request status
+     * message. Each runs until either every targeted recipient has reached a
+     * terminal transfer status OR the polling window expires. Any recipient
+     * still unsettled at timeout transitions to StillQueued — the outbox
+     * keeps retrying for hours in the background, but for this dialog we
+     * stop watching.
+     */
+    private suspend fun pollHealDeliveryOutcomes(result: HealGroupResult) {
+        // Resolve the heal-request status message's fileId from its uniqueId.
+        // sendStatusMessage doesn't return a fileId; we look it up locally
+        // after enqueue. May return null if the local DB write hasn't landed
+        // yet — we retry a few times below.
+        val healMessageFileId = result.healMessageUniqueId?.let { resolveStatusMessageFileId(it) }
+        Logger.i(tag = "HealAudit") {
+            "pollHealDeliveryOutcomes: starting parallel polls " +
+                "mainFileId=${result.mainFileId} adminFileId=${result.adminFileId} " +
+                "healMessageFileId=$healMessageFileId " +
+                "mainTargets=${result.mainTargets.map { it.domainName }} " +
+                "adminTargets=${result.adminTargets.map { it.domainName }} " +
+                "healMessageTargets=${result.healMessageTargets.map { it.domainName }}"
+        }
+        coroutineScope {
+            val jobs = mutableListOf<kotlinx.coroutines.Job>()
+            if (result.mainFileId != null && result.mainTargets.isNotEmpty()) {
+                jobs += launch {
+                    pollOneFileDelivery(
+                        fileId = result.mainFileId,
+                        targets = result.mainTargets.toSet(),
+                        kinds = setOf(HealActionKind.GroupFile),
+                        label = "main",
+                    )
+                }
+            }
+            if (result.adminFileId != null && result.adminTargets.isNotEmpty()) {
+                jobs += launch {
+                    pollOneFileDelivery(
+                        fileId = result.adminFileId,
+                        targets = result.adminTargets.toSet(),
+                        kinds = setOf(HealActionKind.AdminFile),
+                        label = "admin",
+                    )
+                }
+            }
+            if (healMessageFileId != null && result.healMessageTargets.isNotEmpty()) {
+                jobs += launch {
+                    // Single status message covers BOTH heal-request kinds for
+                    // a given peer, so any per-peer delivery outcome flips
+                    // both rows together.
+                    pollOneFileDelivery(
+                        fileId = healMessageFileId,
+                        targets = result.healMessageTargets.toSet(),
+                        kinds = HEAL_REQUEST_KINDS,
+                        label = "healMessage",
+                    )
+                }
+            }
+            jobs.forEach { it.join() }
+        }
+    }
+
+    /**
+     * Look up a freshly-enqueued status message's fileId from its uniqueId.
+     * The local DB write happens during sendStatusMessage but the file
+     * header lookup may briefly miss; retry a few times with a small backoff
+     * before giving up.
+     */
+    private suspend fun resolveStatusMessageFileId(uniqueId: Uuid): Uuid? {
+        repeat(HEAL_FILEID_LOOKUP_RETRIES) {
+            try {
+                val header = driveFileProvider.getFileHeaderByUid(chatTargetDrive.alias, uniqueId)
+                if (header != null) return header.fileId
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = "HealAudit") {
+                    "resolveStatusMessageFileId: getFileHeaderByUid threw for uniqueId=$uniqueId"
+                }
+            }
+            delay(HEAL_FILEID_LOOKUP_INTERVAL_MS)
+        }
+        Logger.w(tag = "HealAudit") {
+            "resolveStatusMessageFileId: gave up resolving uniqueId=$uniqueId after $HEAL_FILEID_LOOKUP_RETRIES tries"
+        }
+        return null
+    }
+
+    /**
+     * Poll the transfer-history endpoint for a single fileId until every
+     * targeted recipient has reached a terminal status or the window
+     * expires. Per-recipient row updates are pushed into the heal-progress
+     * sheet as results settle.
+     *
+     * Termination rules per recipient (from RecipientTransferHistoryEntry):
+     *   - latestTransferStatus == Delivered → Done
+     *   - latestTransferStatus is in failedStatuses AND !isInOutbox → Failed
+     *   - otherwise (server still retrying, or peer unresponsive but the
+     *     outbox hasn't given up) → keep polling; at timeout → StillQueued
+     *
+     * We do NOT try to map specific failure codes to UI text — the user just
+     * needs to know "got through" vs "didn't" per peer. A peer rejecting on
+     * vt mismatch surfaces here as RecipientIdentityReturnedBadRequest, same
+     * bucket as any other 400-class peer-side rejection.
+     */
+    private suspend fun pollOneFileDelivery(
+        fileId: Uuid,
+        targets: Set<OdinId>,
+        kinds: Set<HealActionKind>,
+        label: String,
+    ) {
+        val settled = mutableSetOf<OdinId>()
+        withTimeoutOrNull(HEAL_POLL_WINDOW_MS) {
+            while (settled.size < targets.size) {
+                delay(HEAL_POLL_INTERVAL_MS)
+                val history = try {
+                    driveFileProvider.getTransferHistory(chatTargetDrive.alias, fileId)
+                } catch (e: Exception) {
+                    Logger.w(throwable = e, tag = "HealAudit") {
+                        "pollOneFileDelivery($label): getTransferHistory threw for fileId=$fileId — will retry next tick"
+                    }
+                    continue
+                }
+                val entries = history?.history?.results ?: continue
+                for (entry in entries) {
+                    val peer = OdinId(entry.recipient)
+                    if (peer !in targets || peer in settled) continue
+                    val terminal = classifyDelivery(entry)
+                    if (terminal != null) {
+                        settled.add(peer)
+                        Logger.i(tag = "HealAudit") {
+                            "pollOneFileDelivery($label): peer=${peer.domainName} settled at $terminal " +
+                                "(latestTransferStatus=${entry.latestTransferStatus} isInOutbox=${entry.isInOutbox})"
+                        }
+                        setRowState(kinds, peer, terminal)
+                    }
+                }
+            }
+        }
+        // Anyone still unsettled at the window edge becomes StillQueued so
+        // the dialog stops showing a spinner forever. The outbox may still
+        // deliver to them in the background.
+        val unsettled = targets - settled
+        if (unsettled.isNotEmpty()) {
+            Logger.i(tag = "HealAudit") {
+                "pollOneFileDelivery($label): window expired with unsettled peers=${unsettled.map { it.domainName }} — marking StillQueued"
+            }
+            unsettled.forEach { peer -> setRowState(kinds, peer, HealProgressState.StillQueued) }
+        }
+    }
+
+    private fun classifyDelivery(entry: RecipientTransferHistoryEntry): HealProgressState? {
+        if (entry.latestTransferStatus == TransferStatus.Delivered) return HealProgressState.Done
+        if (TransferStatus.isFailedStatus(entry.latestTransferStatus) && !entry.isInOutbox) {
+            return HealProgressState.Failed
+        }
+        return null
+    }
+
+    private fun setRowState(kinds: Set<HealActionKind>, peer: OdinId, newState: HealProgressState) {
+        _uiState.update { state ->
+            val sheet = state.uiSheet
+            if (sheet !is GroupSettingsUiSheet.HealProgress) return@update state
+            val updatedItems = sheet.items.map { item ->
+                if (item.kind in kinds && item.peer == peer) item.copy(state = newState) else item
             }
             state.copy(uiSheet = sheet.copy(items = updatedItems))
         }
@@ -917,5 +1114,21 @@ class GroupSettingsViewModel(
          *  for transit to plausibly land for healthy peers; short enough that
          *  the UI still feels responsive. Tunable; tracked under HealAudit. */
         private const val POST_HEAL_RECHECK_DELAY_MS = 30_000L
+        /** Total time the dialog spends watching transfer-history for each
+         *  enqueued file. Stops painting per-row results once expired (any
+         *  unsettled rows become StillQueued). The outbox itself keeps
+         *  retrying for hours regardless. */
+        private const val HEAL_POLL_WINDOW_MS = 60_000L
+        /** Gap between successive getTransferHistory polls. The endpoint is
+         *  paginated and may briefly return stale results, so polling at
+         *  2s gives the server time to actually try a delivery between
+         *  ticks without flooding it. */
+        private const val HEAL_POLL_INTERVAL_MS = 2_000L
+        /** Retries when resolving a freshly-enqueued status message's fileId
+         *  from its uniqueId. The local DB write happens during
+         *  sendStatusMessage so usually one lookup succeeds; the retry is
+         *  defensive against propagation delays. */
+        private const val HEAL_FILEID_LOOKUP_RETRIES = 5
+        private const val HEAL_FILEID_LOOKUP_INTERVAL_MS = 200L
     }
 }

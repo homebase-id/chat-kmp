@@ -190,10 +190,10 @@ sealed interface GroupSettingsUiSheet {
 
     /**
      * Streams one row per (peer, action) while a heal is in flight. Rows are
-     * created up-front from the [ConversationService.HealPlan] so the user
+     * created up-front from the [GroupHealService.HealPlan] so the user
      * sees the full list of intended work immediately, then each row
      * transitions Pending → InFlight → Done (or Failed / Skipped) as the
-     * service emits its [ConversationService.HealPhase] callbacks.
+     * service emits its [GroupHealService.HealPhase] callbacks.
      *
      * [finished] flips to true when the heal call returns (success or fail);
      * the dialog then enables its close button.
@@ -229,6 +229,29 @@ enum class HealActionKind {
 }
 
 @Immutable
-enum class HealProgressState { Pending, InFlight, Done, Failed, Skipped }
+enum class HealProgressState {
+    /** Plan row created but the underlying enqueue hasn't started yet. */
+    Pending,
+    /** Either: (1) the enqueue is in flight, or (2) the enqueue succeeded
+     *  and we're polling transfer-history for the per-recipient outcome.
+     *  In both cases the row shows a spinner. */
+    InFlight,
+    /** Server reports `TransferStatus.Delivered` for this recipient. */
+    Done,
+    /** Either the enqueue threw, or transfer-history reports a failed
+     *  TransferStatus value with the recipient no longer in our outbox.
+     *  We can't always distinguish *why* a peer rejected (e.g. vt mismatch
+     *  surfaces as `RecipientIdentityReturnedBadRequest`), so the row just
+     *  marks "did not get through this round". */
+    Failed,
+    /** Plan target where the heal service intentionally did nothing
+     *  (caller is not the file author, the per-file target set is empty
+     *  because every peer is already InSync, etc.). */
+    Skipped,
+    /** Polling window expired with the server still trying — the outbox
+     *  may retry for hours, but for the dialog's purposes we stop watching.
+     *  Distinct from Failed: the file might still land later. */
+    StillQueued,
+}
 
 

@@ -68,6 +68,8 @@ class ConversationServiceTestFixture : AutoCloseable {
         private set
     lateinit var payloadEncryptor: FakePayloadBundleEncryptor
         private set
+    lateinit var optimisticWriter: OptimisticWriter
+        private set
 
     suspend fun build(scope: CoroutineScope = TestScope()): ConversationService {
         dbm = createInMemoryDbm()
@@ -85,7 +87,7 @@ class ConversationServiceTestFixture : AutoCloseable {
         conversationLoader = FakeConversationLoader()
         payloadEncryptor = FakePayloadBundleEncryptor()
 
-        val optimisticWriter = OptimisticWriter(
+        optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus
@@ -109,6 +111,22 @@ class ConversationServiceTestFixture : AutoCloseable {
             fileOperationsProvider = null,
         )
     }
+
+    /**
+     * Build a [GroupHealService] wired against the fixture's deps and the given
+     * [conversationService] (cast as [GroupHealConversationOps]). Call after
+     * [build] — the heal service shares the fixture's `outboxSync`,
+     * `optimisticWriter`, `statusMessageSender`, etc.
+     */
+    fun buildHealService(conversationService: ConversationService): GroupHealService =
+        GroupHealService(
+            credentialsManager = credentialsManager,
+            dbm = dbm,
+            outboxSync = outboxSync,
+            optimisticWriter = optimisticWriter,
+            chatMessageSenderService = statusMessageSender,
+            convoOps = conversationService,
+        )
 
     // ---------- DB seed helpers ----------
 
@@ -440,9 +458,16 @@ class ConversationServiceTestFixture : AutoCloseable {
 
     private suspend fun insertFile(jsonHeader: String) {
         val header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
+        insertHomebaseFile(header)
+    }
+
+    /** Insert a pre-built [HomebaseFile] into the local DriveMainIndex. Used by
+     *  heal tests that need the heal status message itself present in the DB so
+     *  the self-destruct's local hard-delete has something to remove. */
+    suspend fun insertHomebaseFile(file: HomebaseFile) {
         val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
         val record = processor.convertFileHeaderToDriveMainIndexRecord(
-            testIdentityId, chatDriveId, header
+            testIdentityId, chatDriveId, file
         )
         MainIndexMetaHelpers.upsertDriveMainIndex(dbm, record)
     }

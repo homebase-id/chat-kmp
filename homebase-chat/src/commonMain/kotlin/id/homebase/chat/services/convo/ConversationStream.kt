@@ -104,8 +104,7 @@ class ConversationStream(
      * does not affect message-list dispatch.
      *
      * The status-message [HomebaseFile] is passed through so the handler can
-     * read/write its `localAppData.tags` and short-circuit on
-     * [ChatProtocol.HealAppliedTag] (per-message idempotency gate).
+     * self-destruct it (soft-delete + hard-delete) once cleanup runs.
      */
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion

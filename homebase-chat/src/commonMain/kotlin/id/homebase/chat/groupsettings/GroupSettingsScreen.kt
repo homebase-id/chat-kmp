@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyOff
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.CircularProgressIndicator
@@ -106,6 +107,7 @@ import id.homebase.resources.chat_group_heal_progress_asking_cleanup_admin_file
 import id.homebase.resources.chat_group_heal_progress_asking_cleanup_group_file
 import id.homebase.resources.chat_group_heal_progress_sending_admin_file
 import id.homebase.resources.chat_group_heal_progress_sending_group_file
+import id.homebase.resources.chat_group_heal_progress_still_queued
 import id.homebase.resources.chat_group_heal_progress_subtitle_finished
 import id.homebase.resources.chat_group_heal_progress_subtitle_running
 import id.homebase.resources.chat_group_heal_progress_title
@@ -901,15 +903,28 @@ private fun HealProgressRow(item: HealProgressItem) {
                     tint = LocalContentColor.current.copy(alpha = 0.4f),
                     modifier = Modifier.size(14.dp),
                 )
+                HealProgressState.StillQueued -> Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.6f),
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = stringResource(labelRes, item.peer.domainName),
+            text = when (item.state) {
+                HealProgressState.StillQueued -> stringResource(
+                    MR.string.chat_group_heal_progress_still_queued,
+                    item.peer.domainName,
+                )
+                else -> stringResource(labelRes, item.peer.domainName)
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = when (item.state) {
                 HealProgressState.Skipped -> LocalContentColor.current.copy(alpha = 0.55f)
                 HealProgressState.Failed -> MaterialTheme.colorScheme.error
+                HealProgressState.StillQueued -> LocalContentColor.current.copy(alpha = 0.7f)
                 else -> LocalContentColor.current
             },
         )

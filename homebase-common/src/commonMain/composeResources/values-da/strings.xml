@@ -369,6 +369,7 @@
     <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
     <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
     <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
+    <string name="chat_group_heal_progress_still_queued">Stadig i kø til %1$s (serveren prøver igen)</string>
     <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
     <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
     <string name="chat_group_main_file_delivered">Gruppefil leveret</string>

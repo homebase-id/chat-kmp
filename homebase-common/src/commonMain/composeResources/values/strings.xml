@@ -464,6 +464,7 @@
     <string name="chat_group_heal_progress_sending_admin_file">Sending admin file to %1$s</string>
     <string name="chat_group_heal_progress_asking_cleanup_group_file">Asking %1$s to clean up their group file</string>
     <string name="chat_group_heal_progress_asking_cleanup_admin_file">Asking %1$s to clean up their admin file</string>
+    <string name="chat_group_heal_progress_still_queued">Still queued for %1$s (the server keeps retrying)</string>
 
     <!-- Group-info file health diagnostic (footer at the bottom of group settings).
          Each row reports the local-DB or own-server state of one of the two group
