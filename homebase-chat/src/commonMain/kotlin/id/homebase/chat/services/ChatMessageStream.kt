@@ -53,23 +53,29 @@ class ChatMessageStream(
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.OutboxEvent.OptimisticRollback && event.driveId == chatDrive) {
-                    paginatedState.removeMessage(event.uniqueId)
-                    return@collect
-                }
-
-                if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
-
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {}
+                    is BackendEvent.OutboxEvent.OptimisticRollback -> {
+                        if (event.driveId == chatDrive) {
+                            paginatedState.removeMessage(event.uniqueId)
+                        }
+                    }
 
                     is BackendEvent.DriveEvent.Stopped -> {
-                        Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount})")
+                        if (event.driveId == chatDrive) {
+                            Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount})")
+                        }
                     }
 
-                    is BackendEvent.DriveEvent.BatchReceived -> {
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != chatDrive) return@collect
+                        // Every BatchReceived is a live WS-push event (DriveSync is
+                        // silent). The window gate inside processIncrementalBatch
+                        // no-ops batches for conversations the user hasn't opened.
                         processIncrementalBatch(event.batchData)
                     }
+
+                    // Started / Progress are state-machine signals we don't act on.
+                    else -> {}
                 }
             }
         }

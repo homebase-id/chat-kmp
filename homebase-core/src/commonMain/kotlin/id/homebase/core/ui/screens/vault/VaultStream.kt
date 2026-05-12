@@ -169,9 +169,32 @@ class VaultStream(
     private suspend fun observeEvents() {
         eventBus.events.collect { event ->
             when (event) {
-                is BackendEvent.DriveEvent.BatchReceived -> {
+                is BackendEvent.DataEvent.BatchReceived -> {
                     if (event.driveId != driveId) return@collect
+                    // Every BatchReceived is a live WS-push event (DriveSync is
+                    // silent — see DriveSync.kt). Drives incremental section/entry
+                    // updates in steady state.
                     processBatchIncrementally(event.batchData)
+                }
+
+                is BackendEvent.DriveEvent.Stopped -> {
+                    if (event.driveId != driveId) return@collect
+                    // Silent-DriveSync contract: when the vault drive finishes
+                    // a DriveSync round, reload the full vault state from DB so
+                    // sections + entries reflect the just-landed files. No-op on
+                    // failure — retry on next sync round. Gated on totalCount > 0
+                    // because totalCount=0 means no files were upserted this round
+                    // (cursor at HEAD) — DB state is unchanged from what we already
+                    // have in memory.
+                    if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                        try {
+                            loadAll()
+                        } catch (e: Exception) {
+                            Logger.e(e) {
+                                "VaultStream: post-Stopped reload FAILED: ${e.message}"
+                            }
+                        }
+                    }
                 }
 
                 is BackendEvent.OutboxEvent.ItemFailed -> {

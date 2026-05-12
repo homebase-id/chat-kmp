@@ -123,21 +123,32 @@ class DriveRegistry(
      * chat-drive sync later writes the same file into the local index).
      */
     suspend fun bootstrap(): List<LabeledDrive> {
+        Logger.i(tag = "DriveRegistry") { "bootstrap() begin" }
         val local = loadDrives()
-        if (local.isNotEmpty()) return local
+        Logger.i(tag = "DriveRegistry") { "bootstrap local-DB returned ${local.size} drive(s)" }
+        if (local.isNotEmpty()) {
+            Logger.i(tag = "DriveRegistry") { "bootstrap() end (local, ${local.size} drive(s))" }
+            return local
+        }
         val chatDriveId = SystemDriveConstants.chatDrive.alias
+        Logger.i(tag = "DriveRegistry") { "bootstrap falling back to server fetch" }
         val server = try {
             getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)
         } catch (e: CancellationException) {
             // Don't swallow cancellation — let the caller's scope tear down cleanly.
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) {
-                "bootstrap: server fetch failed — falling back to empty (observer will pick up after first sync)"
+            Logger.w(tag = "DriveRegistry", throwable = e) {
+                "bootstrap server fetch failed — falling back to empty (observer will pick up after first sync)"
             }
             return emptyList()
-        } ?: return emptyList()
-        return parseRegistryContent(server)
+        } ?: run {
+            Logger.i(tag = "DriveRegistry") { "bootstrap() end (server returned no registry file, 0 drives)" }
+            return emptyList()
+        }
+        val parsed = parseRegistryContent(server)
+        Logger.i(tag = "DriveRegistry") { "bootstrap() end (server, ${parsed.size} drive(s))" }
+        return parsed
     }
 
     /**
@@ -190,15 +201,36 @@ class DriveRegistry(
         }
         observerJob = scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DriveEvent.BatchReceived) return@collect
-                if (event.driveId != SystemDriveConstants.chatDrive.alias) return@collect
-                // Match on the well-known uniqueId — stronger than matching on fileType
-                // alone. There is exactly one registry file per identity.
-                val touchesRegistry = event.batchData.any {
-                    it.fileMetadata.appData.uniqueId == REGISTRY_UNIQUE_ID
+                val chatDriveAlias = SystemDriveConstants.chatDrive.alias
+                when (event) {
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != chatDriveAlias) return@collect
+                        // Live WS-push event (DriveSync is silent). Match on the
+                        // well-known uniqueId — stronger than matching on fileType
+                        // alone. There is exactly one registry file per identity.
+                        val touchesRegistry = event.batchData.any {
+                            it.fileMetadata.appData.uniqueId == REGISTRY_UNIQUE_ID
+                        }
+                        if (!touchesRegistry) return@collect
+                        reconcile(onMount, onUnmount)
+                    }
+
+                    is BackendEvent.DriveEvent.Stopped -> {
+                        if (event.driveId != chatDriveAlias) return@collect
+                        // Silent-DriveSync contract: DriveSync runs landed N files
+                        // in DriveMainIndex without per-batch events; the registry
+                        // file may be among them. Reconcile on Success to pick up
+                        // any cross-device drive add/remove. Gated on totalCount > 0
+                        // because totalCount=0 means the cursor was already at HEAD —
+                        // no files were upserted this round, so the registry file is
+                        // unchanged and the reconcile diff would be empty anyway.
+                        if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                            reconcile(onMount, onUnmount)
+                        }
+                    }
+
+                    else -> { /* Started / Progress / other events: no-op */ }
                 }
-                if (!touchesRegistry) return@collect
-                reconcile(onMount, onUnmount)
             }
         }
     }
