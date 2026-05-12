@@ -157,6 +157,35 @@ class LocalAttachmentContextStoreFileExistenceTest {
 
     // endregion
 
+    // region Non-filesystem paths (content URIs) are assumed valid
+
+    @Test
+    fun get_returnsContext_forContentUri() {
+        val uri = "content://media/external/images/media/12345"
+        store.put(messageId, payloadKey, image(uri))
+
+        val result = store.get(messageId, payloadKey)
+        assertNotNull(result)
+        assertEquals(uri, result.localFilePath)
+    }
+
+    @Test
+    fun observe_emitsContext_forContentUri() = runTest {
+        val uri = "content://com.android.providers.media/document/image%3A42"
+        store.put(messageId, payloadKey, image(uri))
+
+        val result = store.observe(messageId, payloadKey).first()
+        assertNotNull(result)
+    }
+
+    @Test
+    fun hasAny_returnsTrue_forContentUri() {
+        store.put(messageId, payloadKey, image("content://media/external/images/media/1"))
+        assertTrue(store.hasAny(messageId))
+    }
+
+    // endregion
+
     // region Eviction does not break valid entries
 
     @Test
