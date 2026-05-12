@@ -68,6 +68,7 @@ import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -266,6 +267,7 @@ val appModule = module {
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
     singleOf(::NotificationService)
+    singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
