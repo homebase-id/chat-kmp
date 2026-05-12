@@ -26,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -119,6 +120,10 @@ fun VaultScreen(
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { viewModel.onAction(VaultUiAction.CloseOverlay) }
     }
 
     BackHandler(enabled = uiState.fullScreenOverlay != null) {
