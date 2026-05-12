@@ -30,8 +30,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,10 +70,13 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
+import id.homebase.resources.vault_delete_confirm_message
+import id.homebase.resources.vault_delete_confirm_title
 import id.homebase.resources.vault_gallery_delete_last_page_confirm
 import id.homebase.resources.vault_gallery_delete_page
 import id.homebase.resources.vault_gallery_delete_page_confirm
 import id.homebase.resources.vault_gallery_page_counter
+import id.homebase.resources.vault_gallery_save_page
 import id.homebase.resources.vault_gallery_share_page
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -90,6 +93,7 @@ fun VaultGalleryScreen(
     initialPage: Int,
     onDismiss: () -> Unit,
     onSharePage: (payloadKey: String) -> Unit,
+    onSavePage: (payloadKey: String) -> Unit,
     onDeletePage: (payloadKey: String) -> Unit,
     onAppendPages: () -> Unit,
     onUpdateLabel: (String?) -> Unit,
@@ -119,6 +123,7 @@ fun VaultGalleryScreen(
 
     var showUI by remember { mutableStateOf(true) }
     var pageToDelete by remember { mutableStateOf<String?>(null) }
+    var showDeleteEntryConfirm by remember { mutableStateOf(false) }
     val sheetPeekHeight by animateDpAsState(if (showUI) 120.dp else 0.dp)
     val scaffoldState = rememberBottomSheetScaffoldState()
     val scope = rememberCoroutineScope()
@@ -300,17 +305,18 @@ fun VaultGalleryScreen(
                                         contentDescription = stringResource(MR.string.vault_gallery_share_page),
                                     )
                                 }
-                                IconButton(onClick = { pageToDelete = currentDescriptor.key }) {
+                                IconButton(onClick = { onSavePage(currentDescriptor.key) }) {
                                     Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = stringResource(MR.string.vault_gallery_delete_page),
+                                        imageVector = Icons.Outlined.Download,
+                                        contentDescription = stringResource(MR.string.vault_gallery_save_page),
                                     )
                                 }
                             }
                             VaultFileDropdownMenu(
                                 file = file,
                                 onShare = { currentDescriptor?.let { onSharePage(it.key) } },
-                                onDelete = { onDeleteEntry() },
+                                onDelete = { showDeleteEntryConfirm = true },
+                                onDeletePage = { currentDescriptor?.let { pageToDelete = it.key } },
                                 iconTint = MaterialTheme.colorScheme.onSurface,
                             )
                         },
@@ -354,6 +360,36 @@ fun VaultGalleryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pageToDelete = null }) {
+                    Text(stringResource(MR.string.vault_permission_cancel))
+                }
+            },
+        )
+    }
+
+    if (showDeleteEntryConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteEntryConfirm = false },
+            title = {
+                Text(stringResource(MR.string.vault_delete_confirm_title))
+            },
+            text = {
+                Text(stringResource(MR.string.vault_delete_confirm_message, file.label ?: file.fileName))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteEntryConfirm = false
+                        onDeleteEntry()
+                    },
+                ) {
+                    Text(
+                        text = stringResource(MR.string.vault_delete_confirm_action),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteEntryConfirm = false }) {
                     Text(stringResource(MR.string.vault_permission_cancel))
                 }
             },
