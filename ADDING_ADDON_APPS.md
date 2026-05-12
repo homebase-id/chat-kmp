@@ -490,9 +490,19 @@ class FooStream(
     private suspend fun observeEvents() {
         eventBus.events.collect { event ->
             when (event) {
-                // Incremental: merge new/updated files into in-memory state
-                is BackendEvent.DriveEvent.BatchReceived ->
+                // Incremental: merge new/updated files into in-memory state.
+                // BatchReceived is a DataEvent (WS push + OptimisticWriter).
+                // DriveSync itself is silent — see DriveEvent.Stopped below.
+                is BackendEvent.DataEvent.BatchReceived ->
                     if (event.driveId == driveId) processBatch(event.batchData)
+                // Full reload at end of a DriveSync round, gated on totalCount > 0
+                // (a no-op reconnect catch-up adds nothing to the local index).
+                // Do NOT gate on result == Success: DriveSync writes each batch
+                // before the next starts, so Stopped(Aborted, totalCount > 0)
+                // still means real rows landed — and on PermissionDenied there
+                // is no next round, so waiting for a Success would hide them.
+                is BackendEvent.DriveEvent.Stopped ->
+                    if (event.driveId == driveId && event.totalCount > 0) loadAll()
                 // Full reload: outbox confirmed, DB has authoritative state
                 is BackendEvent.OutboxEvent.ItemCompleted ->
                     if (event.driveId == driveId) loadAll()

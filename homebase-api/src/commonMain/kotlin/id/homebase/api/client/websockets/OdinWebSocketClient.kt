@@ -23,6 +23,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,6 +51,17 @@ class OdinWebSocketClient(
     private val onDisconnected: () -> Unit = {},
     private val onConnectError: (Throwable) -> Unit = {},
 ) {
+    /**
+     * Monotonic id assigned at construction. Lets the AuthLifecycle log narrative match
+     * up "WS[N] created", "WS[N] start()", "WS[N] handshake successful", "WS[N] close()",
+     * "WS[N] disconnected" across a single OdinWebSocketClient instance — and notice when
+     * a stale instance from a previous session is being torn down.
+     */
+    val instanceId: Long = nextInstanceId.incrementAndGet()
+
+    init {
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] ctor (drives=${drives.size})" }
+    }
 
     private var reconnectDelayMs = 1_000L
     private val MAX_RECONNECT_DELAY_MS = 5_000L
@@ -68,7 +80,7 @@ class OdinWebSocketClient(
     // Per-drive WS upsert workers. Lazily created on the first file
     // event for a drive (see [getOrCreateWorker]). Each worker
     // batches incoming files into one DB transaction and emits a
-    // single [BackendEvent.DriveEvent.BatchReceived] per drain;
+    // single [BackendEvent.DataEvent.BatchReceived] per drain;
     // shape mirrors [DriveSync].
     //
     // Cleared in [disconnect]. Mount/unmount of drives is handled
@@ -134,11 +146,27 @@ class OdinWebSocketClient(
     }
 
     fun start() {
-        if (connectionJob?.isActive == true) return
+        val active = connectionJob?.isActive == true
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] start() (jobActive=$active)" }
+        if (active) return
 
         connectionJob = scope.launch {
+            // Logged immediately on dispatch so we can tell from logs whether
+            // the connection loop ever actually ran. If "loop dispatched" never
+            // appears after a "start()" log line, the coroutine was cancelled
+            // before reaching its body (e.g. a refreshWsSubscription-driven
+            // close() racing with construction).
+            Logger.i(tag = "WebSocket") { "WS[$instanceId] connection loop dispatched" }
             while (true) {
-                eventBus.emit(BackendEvent.Connecting)
+                // tryEmit, not emit. The WS lifecycle is the source of truth for
+                // connection state (see [connectionState]); the bus emission is an
+                // informational mirror for collectors that care. A blocking emit
+                // here parks the entire WS connect on whatever the slowest
+                // unrelated subscriber is doing — which is what locked up the
+                // post-login sync when a singleton's eventBus collector got stuck
+                // mid-batch during the logout DB wipe. tryEmit drops the event
+                // (returns false) when the buffer is full rather than suspend.
+                eventBus.tryEmit(BackendEvent.Connecting)
 
                 try {
                     val connected = connectOnce()
@@ -152,12 +180,14 @@ class OdinWebSocketClient(
                     throw e
                 } catch (e: Exception) {
                     onConnectError(e)
-                    Logger.e(e) { "WebSocket connect failed ${e.message}" }
+                    Logger.e(throwable = e, tag = "WebSocket") {
+                        "WS[$instanceId] connect loop caught exception: ${e.message}"
+                    }
                 }
 
-                eventBus.emit(BackendEvent.ConnectionOffline)
+                eventBus.tryEmit(BackendEvent.ConnectionOffline)
 
-                Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
+                Logger.w(tag = "WebSocket") { "WS[$instanceId] disconnected, retrying in ${reconnectDelayMs}ms" }
 
                 // The sleep is launched as a child of the connection job so
                 // wakeForReconnect() can cancel just this delay (e.g. when the
@@ -201,7 +231,7 @@ class OdinWebSocketClient(
     private suspend fun connectOnce(): Boolean {
         val creds = credentialsManager.getActiveCredentials()
             ?: run {
-                Logger.w { "No active credentials, cannot connect WebSocket" }
+                Logger.w(tag = "WebSocket") { "WS[$instanceId] No active credentials, cannot connect" }
                 return false
             }
 
@@ -215,7 +245,7 @@ class OdinWebSocketClient(
         _connectionState.value = WebSocketState.Connecting
 
         val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
-        Logger.i { "Connecting to WebSocket at $wsUrl" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
 
         val appCookieName = "BX0900"
 
@@ -330,7 +360,10 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.inboxItemReceived -> {
-                handleProcessInbox(notification)
+                Logger.w(tag = "WebSocket") {
+                    "Received obsolete inboxItemReceived notification — server should auto-process on QueryBatch. data=${notification.data.take(200)}"
+                }
+                // handleProcessInbox(notification)  // disabled — server auto-processes on QueryBatch
             }
 
             ClientNotificationType.fileAdded -> {
@@ -457,30 +490,34 @@ class OdinWebSocketClient(
         }
     }
 
-    private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
-        val n =
-            OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
-                notification.data
-            )
+    // Disabled — server now auto-processes the inbox on QueryBatch, so the
+    // explicit per-message ack is no longer needed. Kept commented so it can
+    // be re-enabled if the server-side behaviour regresses.
+    //
+    // private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
+    //     val n =
+    //         OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
+    //             notification.data
+    //         )
+    //
+    //     // Reverts block #3 of commit 18483c4e. The WS push path bypasses
+    //     // QueryBatch in steady state, so the server's "auto-process inbox on
+    //     // QueryBatch" never fires for a recipient sitting in an already-loaded
+    //     // conversation — the inboxItemReceived notification arrives but no
+    //     // fileAdded follows, and the message body never makes it to the
+    //     // WebSocket. Send the explicit processInbox ack so the server moves
+    //     // the inbox entry onto the drive. Remove once the server-side
+    //     // auto-process behaviour is fixed.
+    //     notify(
+    //         command = "processInbox",
+    //         payload = ProcessInboxPayload(
+    //             targetDrive = n.targetDrive,
+    //             batchSize = 100
+    //         )
+    //     )
+    // }
 
-        // Reverts block #3 of commit 18483c4e. The WS push path bypasses
-        // QueryBatch in steady state, so the server's "auto-process inbox on
-        // QueryBatch" never fires for a recipient sitting in an already-loaded
-        // conversation — the inboxItemReceived notification arrives but no
-        // fileAdded follows, and the message body never makes it to the
-        // WebSocket. Send the explicit processInbox ack so the server moves
-        // the inbox entry onto the drive. Remove once the server-side
-        // auto-process behaviour is fixed.
-        notify(
-            command = "processInbox",
-            payload = ProcessInboxPayload(
-                targetDrive = n.targetDrive,
-                batchSize = 100
-            )
-        )
-    }
-
-    /**
+/**
      * Reaction add/remove notification — no-op for every drive.
      *
      * The server fires a parallel `statisticsChanged` notification
@@ -575,8 +612,8 @@ class OdinWebSocketClient(
             }
         }
 
-        Logger.i {
-            "WSFileEvent: syncDrive($driveId) — " +
+        Logger.i(tag = "WebSocket") {
+            "WSFileEvent: syncDrive($driveId) fallback — " +
                 "notificationType=${notification.notificationType} " +
                 "headerPresent=${header != null}"
         }
@@ -619,7 +656,7 @@ class OdinWebSocketClient(
     }
 
     private suspend fun onHandshakeSuccess() {
-        Logger.i { "Device handshake successful" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] handshake successful" }
         handshakeDone = true
         pingSupervisor.notifySessionReconnected()
         pingSupervisor.start()
@@ -654,7 +691,7 @@ class OdinWebSocketClient(
         wsUpsertWorkers.clear()
         workersSnapshot.forEach { it.cancel() }
         _connectionState.value = WebSocketState.Disconnected
-        Logger.i { "WebSocket disconnected" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] disconnected" }
     }
 
     /**
@@ -761,7 +798,13 @@ class OdinWebSocketClient(
      * Close the client and release resources
      */
     fun close() {
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] close()" }
         disconnect()
         client.close()
+    }
+
+    companion object {
+        // Process-lifetime counter for instanceId. Starts at 1 on first construction.
+        private val nextInstanceId = atomic(0L)
     }
 }

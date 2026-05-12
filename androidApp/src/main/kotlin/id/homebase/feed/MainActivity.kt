@@ -22,6 +22,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
@@ -42,6 +43,7 @@ class MainActivity : AppCompatActivity() {
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
     private val notificationService: NotificationService by inject()
+    private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -201,7 +203,7 @@ class MainActivity : AppCompatActivity() {
                 Logger.i(tag = "MainActivity") {
                     "Notification intent detected (conversation: $conversationId)"
                 }
-                notificationService.handleNotificationClicked(decision.payload)
+                notificationEntry.onNotificationTappedAsync(decision.payload)
             }
         }
 

@@ -641,4 +641,122 @@ class ChatMessageStreamPagingTest {
             "anchored open + bidirectional walk must reach every seeded row including the anchor",
         )
     }
+
+    /**
+     * Mirrors [ChatMessageStream.refreshCachedWindows] for one conversation:
+     * re-fetch the newest page from the DB and upsert it into the window.
+     * Production code iterates `paginatedState.windows.value` and applies
+     * the same gate per entry; the tests below drive one window at a time.
+     *
+     * Keep the gate and query parameters in sync with production
+     * (ChatMessageStream.kt:refreshCachedWindows). If those drift, this
+     * helper stops protecting the production path.
+     */
+    private suspend fun simRefreshCachedWindows(
+        state: PaginatedConversationState,
+        conversationId: Uuid,
+    ) {
+        val window = state.getWindow(conversationId) ?: return
+        if (window.hasNewerMessages) return
+        val (messages, _, _) = fetchPage(
+            conversationId = conversationId,
+            limit = testPageSize,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+        )
+        if (messages.isEmpty()) return
+        state.upsert(conversationId, messages)
+    }
+
+    @Test
+    fun refreshCachedWindows_mergesNewlyLandedMessages_withoutDuplicates() = runTest {
+        // Simulates the flight-mode repro: an open conversation window
+        // exists, DriveSync silently lands new messages in DriveMainIndex,
+        // refreshCachedWindows fires on any Stopped with totalCount > 0
+        // (Completed or Aborted-with-partial-data) and must surface the
+        // new rows in the in-memory window without duplicating the
+        // already-present ones.
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val initial = (0 until 5).map {
+            seedMessage(conversationId, userDateMs = baseTime + it * 1000L)
+        }
+
+        val state = PaginatedConversationState(maxWindowSize = testMaxWindowSize)
+        simLoadConversation(state, conversationId)
+        assertEquals(
+            initial.toSet(),
+            state.getWindow(conversationId)!!.messages.map { it.id }.toSet(),
+            "pre-refresh window must contain only the initially-seeded rows",
+        )
+
+        // Two new messages land in the DB (DriveSync analog) while the
+        // window is open. The production handler responds to any
+        // DriveEvent.Stopped with totalCount > 0 (including Failure with
+        // partial data — earlier batches' writes have already committed).
+        val arrived1 = seedMessage(conversationId, userDateMs = baseTime + 10_000L)
+        val arrived2 = seedMessage(conversationId, userDateMs = baseTime + 11_000L)
+
+        simRefreshCachedWindows(state, conversationId)
+
+        val ids = state.getWindow(conversationId)!!.messages.map { it.id }
+        assertTrue(arrived1 in ids, "newly-landed arrived1 must surface in the window")
+        assertTrue(arrived2 in ids, "newly-landed arrived2 must surface in the window")
+        assertEquals(
+            ids.size, ids.distinct().size,
+            "upsert must dedupe by message id — no row may appear twice",
+        )
+        assertTrue(
+            initial.all { it in ids },
+            "pre-existing messages must remain after refresh",
+        )
+    }
+
+    @Test
+    fun refreshCachedWindows_skipsWindowsPagedDeepIntoHistory() = runTest {
+        // When the user has paged into history (hasNewerMessages == true),
+        // merging the newest page from the DB into the window would leave
+        // a visible gap between the loaded slice and the new tail. The
+        // production gate skips these windows; they refresh naturally
+        // when the user scrolls back to the latest page via
+        // loadNewerMessages. This locks in that gate.
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+        val seeded = (0 until testTotal).map {
+            seedMessage(conversationId, userDateMs = baseTime + it * 1000L)
+        }
+
+        // Re-fetch to materialize the anchor as a MessageUiModel.
+        val (allMessages, _, _) = fetchPage(
+            conversationId = conversationId,
+            limit = testTotal,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+        )
+        val anchorIdx = testTotal / 2
+        val anchor = allMessages[anchorIdx]
+        val anchorUserDate = baseTime + anchorIdx * 1000L
+
+        val state = PaginatedConversationState(maxWindowSize = testMaxWindowSize)
+        simLoadAround(state, conversationId, anchorUserDate, anchor)
+        assertTrue(
+            state.getWindow(conversationId)!!.hasNewerMessages,
+            "anchored open in the middle must produce hasNewerMessages = true",
+        )
+        val before = state.getWindow(conversationId)!!.messages.map { it.id }
+        assertTrue(seeded.last() !in before, "anchored window must not already include the latest row")
+
+        // DriveSync lands a message newer than anything currently visible.
+        val arrived = seedMessage(conversationId, userDateMs = baseTime + (testTotal + 100) * 1000L)
+
+        simRefreshCachedWindows(state, conversationId)
+
+        val after = state.getWindow(conversationId)!!.messages.map { it.id }
+        assertEquals(
+            before, after,
+            "window paged deep into history must not absorb a latest-page refresh",
+        )
+        assertFalse(
+            arrived in after,
+            "the newly-arrived latest-page row must not appear until the user pages back to the latest",
+        )
+    }
 }

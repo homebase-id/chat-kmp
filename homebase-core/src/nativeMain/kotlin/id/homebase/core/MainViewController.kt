@@ -43,7 +43,11 @@ fun initializeApp() {
     if (appInitialized) return
     appInitialized = true
 
+    val startMark = kotlin.time.TimeSource.Monotonic.markNow()
+    Logger.i(tag = "TextRendering") { "initializeApp() started" }
+
     initKoin()
+    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 
     // Initialize file logging first
     try {
@@ -64,9 +68,12 @@ fun initializeApp() {
     // Set up crash handler
     setupIOSCrashHandler()
 
+    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
     runBlocking {
         DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
     }
+    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
+    Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 
 @OptIn(ExperimentalForeignApi::class)

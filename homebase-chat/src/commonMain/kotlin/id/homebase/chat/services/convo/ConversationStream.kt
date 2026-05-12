@@ -110,21 +110,7 @@ class ConversationStream(
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
 
-    // region Placeholder reconciliation
-    // Conversation IDs whose in-memory placeholder hasn't yet been replaced
-    // by a real fileType=8888 file from the sync stream. Populated when the
-    // orphan branch in processMessageBatchIncrementally creates a placeholder;
-    // drained in processConversationBatchIncrementally when a real file
-    // arrives with a matching id; any remaining ids at DriveEvent.Stopped
-    // get persisted to local DB so the conversation survives an app restart.
-    //
-    // Only mutated from inside the sequential `eventBus.events.collect { ... }`
-    // loop in init, so no synchronization is needed. The reconciliation
-    // coroutine takes a snapshot before the set is cleared.
-    private val placeholderIds = mutableSetOf<Uuid>()
-    // endregion
-
-    // region Orphan-recovery: read-path dedup of recover attempts
+// region Orphan-recovery: read-path dedup of recover attempts
     // [loadBasicConversations] triggers [onRecoverConversation] for any row
     // that mapped to [ConversationState.Invalid] (the mapper's catch-all for
     // unmappable conversation files — e.g. a 1:1 whose other participant is
@@ -171,71 +157,85 @@ class ConversationStream(
     // endregion
 
 
-    // The full conversation list is loaded once from the local DB on authentication
-    // (via start(), called from onPostAuthenticated in AppModule).
+    // Two paths converge on _conversations:
     //
-    // After that, all updates — whether from a reconnect syncAll() or a single WS
-    // file notification — arrive as BatchReceived events and are applied incrementally.
-    // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
-    // incremental BatchReceived path is sufficient and avoids an expensive full reload
-    // on every incoming message. Unread counts are re-enriched at end-of-sync only
-    // when [hasDirtyUnread] is true (see the dirty-bit region) — i.e. when a
-    // conversation file's lastRead actually advanced during the round, which is
-    // the only case `enrichAllConversationsWithUnreadCounts` materially changes.
+    // 1) Live updates — WS-push [DataEvent.BatchReceived] events drive incremental
+    //    in-memory mutations via processConversationBatchIncrementally /
+    //    processMessageBatchIncrementally / processAdminFileBatch. This is the
+    //    steady-state channel (per-file events from DriveWebSocketUpsertWorker and
+    //    in-process OptimisticWriter writes).
+    //
+    // 2) DriveSync catch-up — [DriveEvent.Stopped] (any termination) for the chat drive
+    //    fires the full reload pipeline (loadBasicConversations →
+    //    enrichWithLastMessages → enrichWithAdmins → conditional
+    //    enrichAllConversationsWithUnreadCounts). This is the silent-DriveSync
+    //    contract: DriveSync.performSync emits no per-batch BatchReceived events
+    //    (DataEvent or DriveEvent) — it just upserts file headers into
+    //    DriveMainIndex and signals Stopped, and we converge the in-memory model
+    //    from the DB then.
+    //
+    // The unread-count step in (2) is gated on [hasDirtyUnread] — it's the
+    // ~500ms full-DB pass and only materially changes the result when a
+    // conversation file's lastRead actually advanced during the round
+    // (peer-device mark-as-read echo). The other three steps are unconditional
+    // because DriveSync may have changed conversation files, last-messages, or
+    // admin membership without touching lastRead.
     init {
         scope.launch {
             eventBus.events.collect { event ->
-
-                if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
-
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {}
-
                     is BackendEvent.DriveEvent.Stopped -> {
+                        if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
-                        if (event.result is BackendEvent.DriveResult.Success) {
-                            // If placeholders remain after sync completion, the real
-                            // conversation files genuinely didn't arrive — persist
-                            // the placeholders to local DB so they survive restart.
-                            // Only on success: on failure we'd prefer to retry on the
-                            // next sync rather than commit a speculative placeholder.
-                            if (placeholderIds.isNotEmpty()) {
-                                val toReconcile = placeholderIds.toSet()
-                                placeholderIds.clear()
-                                scope.launch {
-                                    try {
-                                        reconcileUnresolvedPlaceholders(toReconcile)
-                                    } catch (e: Exception) {
-                                        Logger.e(e) {
-                                            "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
-                                        }
+                        // Silent-DriveSync contract: the chat-drive DriveSync just
+                        // landed N files in DriveMainIndex with no per-batch
+                        // BatchReceived emits. Reload the conversation list from DB
+                        // to converge to the post-sync snapshot — but only when the
+                        // round actually upserted records. totalCount=0 means the
+                        // cursor was already at HEAD (a common no-op reconnect
+                        // catch-up); DB state is unchanged, so the four-step
+                        // pipeline would be pure busywork.
+                        //
+                        // Gate on totalCount > 0 ALONE (not on result == Success).
+                        // DriveSync.performSync increments totalCount per batch and
+                        // earlier batches' DB writes complete before any later
+                        // batch can fail, so Stopped(Aborted, totalCount > 0)
+                        // still means real conversation/message/admin rows landed.
+                        // Waiting for the next Success round would hide those rows
+                        // — and on PermissionDenied there is no next round at all.
+                        //
+                        // First three steps unconditional (DriveSync may have
+                        // changed conversation files, last-messages, or admin
+                        // membership without dirtying lastRead). The unread-count
+                        // recount is the ~500ms full-DB pass and is gated on
+                        // [hasDirtyUnread] — it only materially changes the result
+                        // when a conversation file's lastRead actually advanced
+                        // during the round (peer-device mark-as-read echo).
+                        if (event.totalCount > 0) {
+                            scope.launch {
+                                try {
+                                    loadBasicConversations()
+                                    enrichWithLastMessages()
+                                    enrichWithAdmins()
+                                    if (hasDirtyUnread()) {
+                                        enrichAllConversationsWithUnreadCounts(trigger = "DriveSyncStopped")
                                     }
-                                }
-                            }
-                            // Re-enrich unread counts at end of round, but only
-                            // if a conversation file's lastRead actually advanced
-                            // during the round (peer-device mark-as-read echo).
-                            // [markUnreadDirty] is called from
-                            // [processConversationBatchIncrementally] when that
-                            // happens. Anything else the round brought —
-                            // metadata-only conversation updates, message-only
-                            // batches, admin files — leaves the dirty set empty
-                            // and skips the ~500ms full-DB recount.
-                            if (hasDirtyUnread()) {
-                                scope.launch {
-                                    try {
-                                        enrichAllConversationsWithUnreadCounts(trigger = "Stopped")
-                                    } catch (e: Exception) {
-                                        Logger.e(e) {
-                                            "ConversationStream: post-Stopped enrich failed: ${e.message}"
-                                        }
+                                } catch (e: Exception) {
+                                    Logger.e(e) {
+                                        "ConversationStream: post-Stopped reload FAILED: ${e.message}"
                                     }
                                 }
                             }
                         }
                     }
 
-                    is BackendEvent.DriveEvent.BatchReceived -> {
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != chatDrive) return@collect
+                        // Every BatchReceived is a live event from the WS push path
+                        // (DriveWebSocketUpsertWorker or its in-process analog
+                        // OptimisticWriter). DriveSync.performSync is silent — the
+                        // matching DriveEvent.Stopped(totalCount > 0) above does a full DB
+                        // reload to cover that path.
                         val conversationFiles =
                             event.batchData.filter {
                                 it.fileMetadata.appData.fileType ==
@@ -259,7 +259,7 @@ class ConversationStream(
                         )
 
                         if (conversationFiles.isNotEmpty())
-                            processConversationBatchIncrementally(conversationFiles, event.source)
+                            processConversationBatchIncrementally(conversationFiles)
 
                         if (messageFiles.isNotEmpty())
                             processMessageBatchIncrementally(messageFiles)
@@ -267,6 +267,9 @@ class ConversationStream(
                         if (adminFiles.isNotEmpty())
                             processAdminFileBatch(adminFiles)
                     }
+
+                    // Started / Progress are state-machine signals we don't act on.
+                    else -> {}
                 }
             }
         }
@@ -493,7 +496,6 @@ class ConversationStream(
                 //      restores it.
                 Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
-                placeholderIds += m.conversationId
 
                 // Fire-and-forget local-only recovery. recoveryAttemptedIds
                 // dedups within a session — exactly one attempt per missing
@@ -610,7 +612,6 @@ class ConversationStream(
         _conversations.value = current.copy(
             items = current.items.filterNot { it.id == conversationId }
         )
-        placeholderIds -= conversationId
     }
 
     private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
@@ -622,7 +623,6 @@ class ConversationStream(
 
     private suspend fun processConversationBatchIncrementally(
         conversationFiles: List<HomebaseFile>,
-        source: BackendEvent.SyncSource,
     ) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
@@ -648,9 +648,6 @@ class ConversationStream(
                 }
                 updateConversation(matchingConversation, c)
             }
-            // A real file has now arrived for this id; it no longer needs
-            // reconciliation. Safe whether or not it was ever a placeholder.
-            placeholderIds -= c.id
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -665,15 +662,10 @@ class ConversationStream(
         // should per-batch arrivals drive enrichment.
         if (!_conversations.value.enrichment.hasUnreadCounts) return
 
-        // Source-aware checkpoint:
-        //
-        // - DriveSync: nothing to do here. The matching DriveEvent.Stopped
-        //   handler will inspect [hasDirtyUnread] at end of the sync round
-        //   and run a single enrichAll for the whole round.
-        // - WebSocket: there is no Started/Stopped envelope — this batch IS
-        //   the whole event. If anything in it dirtied an unread count, run
-        //   enrichAll right here.
-        if (source == BackendEvent.SyncSource.WebSocket && hasDirtyUnread()) {
+        // Every BatchReceived is a live WS-push event (DriveSync is silent).
+        // There's no Started/Stopped envelope to defer to — this batch IS the
+        // whole event. If anything dirtied an unread count, run enrichAll now.
+        if (hasDirtyUnread()) {
             scope.launch {
                 try {
                     enrichAllConversationsWithUnreadCounts(trigger = "WebSocketBatch")
@@ -693,45 +685,6 @@ class ConversationStream(
 
         _conversations.value = _conversations.value.copy(items = currentList)
     }
-
-    // region Placeholder reconciliation
-    /**
-     * Persist any in-memory placeholders whose real conversation file did
-     * not arrive during the just-completed drive sync. Fired from the
-     * [BackendEvent.DriveEvent.Stopped] handler for the chat drive.
-     *
-     * Each placeholder is written as a local-only row via
-     * [OptimisticWriter.writeLocalOnlyConversationPlaceholder] — NO outbox
-     * enqueue, NO server distribution. The row's `modified` timestamp is
-     * set to 0 so a later-arriving real server file cleanly supersedes it
-     * via the DriveMainIndex upsert guard.
-     */
-    private suspend fun reconcileUnresolvedPlaceholders(ids: Set<Uuid>) {
-        if (ids.isEmpty()) return
-        Logger.i("ConversationStream: reconciling ${ids.size} placeholder(s) — persisting to local DB")
-
-        for (id in ids) {
-            val existing = _conversations.value.items.find { it.id == id }
-            if (existing == null) {
-                Logger.w("ConversationStream: placeholder $id vanished before reconciliation, skipping")
-                continue
-            }
-            val participants = existing.participants.filterNotNull()
-            try {
-                optimisticWriter.writeLocalOnlyConversationPlaceholder(
-                    driveId = chatDrive,
-                    conversationId = id,
-                    participants = participants,
-                    isGroup = existing.isGroup,
-                )
-            } catch (e: Exception) {
-                Logger.e(e) {
-                    "ConversationStream: failed to persist placeholder id=$id: ${e.message}"
-                }
-            }
-        }
-    }
-    // endregion
 
     private suspend fun updateConversation(
         existing: ConversationUiModel,

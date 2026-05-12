@@ -34,8 +34,7 @@ import kotlin.uuid.Uuid
 /**
  * Locks down [DriveWebSocketUpsertWorker]'s contract:
  *  - one batch upsert per drain (queue + single-flight Mutex),
- *  - a [BackendEvent.DriveEvent.BatchReceived] with
- *    `source = SyncSource.WebSocket` per drain,
+ *  - a [BackendEvent.DataEvent.BatchReceived] per drain,
  *  - works for any drive id (not just chat),
  *  - cancel() prevents pending work.
  *
@@ -67,10 +66,10 @@ class DriveWebSocketUpsertWorkerTest {
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
-        val firstBatch = CompletableDeferred<BackendEvent.DriveEvent.BatchReceived>()
+        val firstBatch = CompletableDeferred<BackendEvent.DataEvent.BatchReceived>()
         val collector = launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) {
+                if (event is BackendEvent.DataEvent.BatchReceived) {
                     firstBatch.complete(event)
                 }
             }
@@ -134,11 +133,11 @@ class DriveWebSocketUpsertWorkerTest {
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
-        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
         val firstBatch = CompletableDeferred<Unit>()
         val collector = launch(dispatcher) {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) {
+                if (event is BackendEvent.DataEvent.BatchReceived) {
                     collected.add(event)
                     if (collected.size == 1) firstBatch.complete(Unit)
                 }
@@ -183,10 +182,10 @@ class DriveWebSocketUpsertWorkerTest {
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
-        val firstBatch = CompletableDeferred<BackendEvent.DriveEvent.BatchReceived>()
+        val firstBatch = CompletableDeferred<BackendEvent.DataEvent.BatchReceived>()
         val collector = launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) firstBatch.complete(event)
+                if (event is BackendEvent.DataEvent.BatchReceived) firstBatch.complete(event)
             }
         }
 
@@ -202,11 +201,7 @@ class DriveWebSocketUpsertWorkerTest {
 
         val batch = withTimeoutOrNull(5.seconds) { firstBatch.await() }
         assertNotNull(batch)
-        assertEquals(
-            BackendEvent.SyncSource.WebSocket, batch.source,
-            "downstream consumers (dirty-bit gating) branch on this field; " +
-                "WebSocket source must be set"
-        )
+        assertEquals(driveId, batch.driveId, "batch must be tagged with the drive id")
 
         collector.cancel()
     }
@@ -218,10 +213,10 @@ class DriveWebSocketUpsertWorkerTest {
         val driveBeta = Uuid.random()
         val eventBus = EventBus()
 
-        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
         val collector = launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+                if (event is BackendEvent.DataEvent.BatchReceived) collected.add(event)
             }
         }
         delay(20)
@@ -278,10 +273,10 @@ class DriveWebSocketUpsertWorkerTest {
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
-        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
         val collector = launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+                if (event is BackendEvent.DataEvent.BatchReceived) collected.add(event)
             }
         }
         delay(20)
@@ -318,10 +313,10 @@ class DriveWebSocketUpsertWorkerTest {
         val driveId = Uuid.random()
         val eventBus = EventBus()
 
-        val collected = mutableListOf<BackendEvent.DriveEvent.BatchReceived>()
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
         val collector = launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.BatchReceived) collected.add(event)
+                if (event is BackendEvent.DataEvent.BatchReceived) collected.add(event)
             }
         }
         delay(20)

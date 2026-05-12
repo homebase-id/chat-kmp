@@ -1,6 +1,7 @@
 package id.homebase.feed
 
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -8,7 +9,6 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.core.notifications.NotificationService
 import org.koin.android.ext.android.inject
 
@@ -23,7 +23,16 @@ class DriveFcmService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // Schedule background sync
+        // Hand the FCM payload to the shared NotificationEntry via a worker —
+        // the worker runs the same onPushArrived(...) body iOS calls inline,
+        // and WorkManager gives us OS-budgeted background guarantees that
+        // FCM's onMessageReceived callback by itself does not.
+        val inputData = Data.Builder().apply {
+            putString(KEY_TITLE, message.notification?.title)
+            putString(KEY_BODY, message.notification?.body)
+            for ((k, v) in message.data) putString("$KEY_DATA_PREFIX$k", v)
+        }.build()
+
         WorkManager.getInstance(applicationContext)
             .enqueueUniqueWork(
                 WORK_TAG,
@@ -35,18 +44,15 @@ class DriveFcmService : FirebaseMessagingService() {
                             .setRequiredNetworkType(NetworkType.CONNECTED)
                             .build()
                     )
+                    .setInputData(inputData)
                     .build()
             )
-
-        // Forward to NotificationService for notification display
-        notificationService.onFcmMessageReceived(
-            title = message.notification?.title,
-            body = message.notification?.body,
-            data = message.data,
-        )
     }
 
     companion object {
         const val WORK_TAG = "drive_fcm_sync"
+        const val KEY_TITLE = "fcm_title"
+        const val KEY_BODY = "fcm_body"
+        const val KEY_DATA_PREFIX = "fcm_data_"
     }
 }

@@ -95,8 +95,14 @@ class NotificationService(
                 if (id != null) conversationMessageCounts.remove(id.toString())
             }
         }
-        // Route clicks from platform backends (Nucleus on JVM) back to this service.
-        NotificationClickRouter.handler = { data -> handleNotificationClicked(data) }
+        // Route clicks from platform backends (Nucleus on JVM) through the shared
+        // NotificationEntry so every platform's tap path lands in the same place,
+        // with the same defensive-sync semantics. Lazy Koin lookup avoids a
+        // construction-time circular dep: NotificationEntry holds a
+        // NotificationService reference, so this side can only resolve it after
+        // Koin has wired both. By the time the click handler fires (in response
+        // to a user gesture) Koin has long since completed its graph.
+        NotificationClickRouter.handler = { data -> NotificationEntry.fromKoin().onNotificationTappedAsync(data) }
     }
 
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
@@ -131,7 +137,10 @@ class NotificationService(
 
             override fun onNotificationClicked(data: PayloadData) {
                 Logger.i(tag = "NotificationService") { "Notification clicked: $data" }
-                handleNotificationClicked(data)
+                // Route through NotificationEntry so iOS taps (which arrive via
+                // KMPNotifier) hit the same defensive-sync path as Android /
+                // Desktop taps. See NotificationClickRouter.handler comment above.
+                NotificationEntry.fromKoin().onNotificationTappedAsync(data)
             }
 
             override fun onPushNotification(title: String?, body: String?) {
