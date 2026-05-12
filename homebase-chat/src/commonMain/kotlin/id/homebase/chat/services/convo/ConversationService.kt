@@ -115,6 +115,14 @@ class ConversationService(
     private val chatMessageSenderService: StatusMessageSender,
     private val optimisticWriter: OptimisticWriter,
     private val conversationStream: ConversationLoader,
+    /** Used by the heal redistribute path to pull existing payload bytes off our
+     *  drive and re-attach them to the update request. Nullable so tests can
+     *  pass null without standing up the full network stack — the
+     *  payload-reuse helper short-circuits to an empty manifest in that case. */
+    private val driveFileProvider: id.homebase.api.client.drives.files.DriveFileProvider? = null,
+    /** Used by the heal redistribute path to spill the encrypted payload bytes
+     *  to a temp file for upload. Same nullable-for-tests rationale as above. */
+    private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
 ) : LocalLastReadUpdater {
     private val chatDrive = chatTargetDrive.alias
 
@@ -1113,6 +1121,12 @@ class ConversationService(
          *  in the file content stay unchanged — this just narrows the outbox recipient
          *  list. Null = legacy behavior (distribute to every participant). */
         distributeOnlyTo: List<OdinId>? = null,
+        /** When true and [payloadBundle] is null, re-attach the file's existing payloads
+         *  (e.g. the `convo_img` group image) to the update request so peer transit
+         *  ships them along. Without this the manifest is empty and peers receiving
+         *  the heal'd file have no image. Set by heal; default off for normal
+         *  edits which either change payloads (bundle != null) or don't touch them. */
+        preserveExistingPayloads: Boolean = false,
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateConversationInternal")
@@ -1187,23 +1201,29 @@ class ConversationService(
 
         if (payloadBundle == null) {
             // No new bundle: the existing payloads stay on OUR drive (server preserves
-            // them since we don't list them under DeletePayload). HOWEVER — for peer
-            // transit, the manifest is empty so peer-side servers receive only the
-            // file header. If the existing file has the convo_img payload, peers
-            // who receive this update will NOT see the image until they fetch the
-            // payload separately. Logged below as part of the HealAudit ENQUEUE
-            // line so we can confirm this from the log. TODO(heal-image): include
-            // existing payloads via re-upload or a dedicated "include-existing"
-            // manifest op once we have evidence from server-side behavior.
+            // them since we don't list them under DeletePayload). For peer transit
+            // though, the manifest dictates what gets shipped — an empty manifest
+            // means peers receive the file header but NOT the existing payload
+            // bytes (notably the `convo_img` group image). The heal path therefore
+            // opts into [preserveExistingPayloads], which downloads each existing
+            // payload's encrypted bytes from our own drive, writes them to temp
+            // files, and re-attaches them as pre-encrypted [PayloadFile] entries
+            // keyed by the original IV so peers can decrypt with the existing
+            // file key. Other callers (rename group, change archival status, etc.)
+            // pass the flag as false — those updates intentionally don't ship
+            // payloads.
+            val (reusedPayloads, reusedThumbs) =
+                if (preserveExistingPayloads) reuseExistingPayloadsForResend(conversationFile)
+                else emptyList<PayloadFile>() to emptyList<ThumbnailFile>()
             manifest = UpdateManifest.build(
-                payloads = null,
+                payloads = reusedPayloads.takeIf { it.isNotEmpty() },
                 toDeletePayloads = null,
-                thumbnails = null,
+                thumbnails = reusedThumbs.takeIf { it.isNotEmpty() },
                 generatePayloadIv = false
             )
 
-            payloads = emptyList()
-            thumbs = emptyList()
+            payloads = reusedPayloads
+            thumbs = reusedThumbs
             previewThumb = conversationFile.fileMetadata.appData.previewThumbnail
 
         } else {
@@ -1974,6 +1994,92 @@ class ConversationService(
         audit.finish()
     }
 
+    /**
+     * Re-attaches the file's existing payloads (e.g. the `convo_img` group image) to
+     * an update request that would otherwise ship with an empty manifest. Used by the
+     * heal redistribute path so peers receiving the heal'd file also receive the
+     * payload bytes instead of an imageless header.
+     *
+     * For each payload we pull the still-encrypted bytes off our own drive, drop
+     * them into a temp file, and construct a [PayloadFile] keyed by the original IV
+     * with `isPreEncrypted=true`. The file's [KeyHeader.aesKey] is preserved across
+     * heal (see [updateConversationInternal]: `aesKey = conversationFile.keyHeader.aesKey`),
+     * so the existing IV + bytes decrypt cleanly on the peer side.
+     *
+     * Per-payload thumbnails aren't carried in this pass — the avatar UI uses the
+     * `appData.previewThumbnail` (an embedded thumb at the appData level, preserved
+     * separately in [updateConversationInternal]) so the chat list still shows the
+     * group image. If a future heal target ships rich payloads with per-payload
+     * thumbnails, we'll need to download + re-attach those too.
+     *
+     * Temp files: written with [FileOperationsProvider.writeBytesToTempFile] and
+     * left for the OS / app cleanup pass to remove once the outbox has drained.
+     * This mirrors how `MessageAttachmentBuilder` handles attachments today.
+     */
+    private suspend fun reuseExistingPayloadsForResend(
+        file: HomebaseFile,
+    ): Pair<List<PayloadFile>, List<ThumbnailFile>> {
+        val dfp = driveFileProvider
+        val fop = fileOperationsProvider
+        if (dfp == null || fop == null) {
+            Logger.d(tag = "HealAudit") {
+                "reuseExistingPayloadsForResend: skipping payload re-attach (driveFileProvider=${dfp != null}, fileOperationsProvider=${fop != null}) — likely test fixture"
+            }
+            return emptyList<PayloadFile>() to emptyList()
+        }
+        val existing = file.fileMetadata.payloads.orEmpty()
+        if (existing.isEmpty()) {
+            Logger.d(tag = "HealAudit") {
+                "reuseExistingPayloadsForResend: fileId=${file.fileId} has no existing payloads — nothing to re-attach"
+            }
+            return emptyList<PayloadFile>() to emptyList()
+        }
+
+        val payloads = mutableListOf<PayloadFile>()
+        for (descriptor in existing) {
+            try {
+                val bytes = dfp.getPayloadBytesEncrypted(chatDrive, file.fileId, descriptor.key)
+                if (bytes == null || bytes.isEmpty()) {
+                    Logger.w(tag = "HealAudit") {
+                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — getPayloadBytesEncrypted returned ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                    }
+                    continue
+                }
+                val ivBytes = descriptor.iv?.let {
+                    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+                    kotlin.io.encoding.Base64.Default.decode(it)
+                }
+                if (ivBytes == null) {
+                    Logger.w(tag = "HealAudit") {
+                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — descriptor has no iv (fileId=${file.fileId})"
+                    }
+                    continue
+                }
+                val tempPath = fop.writeBytesToTempFile(
+                    bytes = bytes,
+                    prefix = "heal_${descriptor.key}_",
+                    suffix = ".enc",
+                )
+                payloads += PayloadFile(
+                    key = descriptor.key,
+                    filePath = tempPath,
+                    contentType = descriptor.contentType ?: "",
+                    isPreEncrypted = true,
+                    iv = ivBytes,
+                    descriptorContent = descriptor.descriptorContent,
+                )
+                Logger.i(tag = "HealAudit") {
+                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} tempPath=$tempPath fileId=${file.fileId}"
+                }
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = "HealAudit") {
+                    "reuseExistingPayloadsForResend: failed to re-attach payload key=${descriptor.key} fileId=${file.fileId}"
+                }
+            }
+        }
+        return payloads to emptyList()
+    }
+
     suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, conversationId)
@@ -2154,6 +2260,7 @@ class ConversationService(
                         participants = conversation.participants,
                         distribute = true,
                         distributeOnlyTo = if (plan?.resendMainTo != null) mainTargets else null,
+                        preserveExistingPayloads = true,
                     )
                     mainHealed = true
                     mainRecipientCount = mainTargets.size

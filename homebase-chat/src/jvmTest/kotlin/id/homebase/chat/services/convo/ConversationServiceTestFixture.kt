@@ -101,6 +101,12 @@ class ConversationServiceTestFixture : AutoCloseable {
             chatMessageSenderService = statusMessageSender,
             optimisticWriter = optimisticWriter,
             conversationStream = conversationLoader,
+            // Heal-payload-reuse helpers — null in tests, real instances in prod.
+            // The fixture doesn't exercise the heal redistribute path, so a null
+            // here just short-circuits reuseExistingPayloadsForResend to an
+            // empty manifest (matches pre-image-fix behavior for tests).
+            driveFileProvider = null,
+            fileOperationsProvider = null,
         )
     }
 
