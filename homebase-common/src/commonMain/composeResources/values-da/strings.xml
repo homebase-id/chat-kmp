@@ -385,6 +385,8 @@
     <string name="chat_group_main_peer_loading">Tjekker modtager for gruppefil…</string>
     <string name="chat_group_admin_peer_loading">Tjekker modtager for adminfil…</string>
     <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
+    <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
+    <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>
 
     <!-- 1:1 connection state banner -->
     <string name="chat_not_connected_description">Du er ikke forbundet.</string>

@@ -118,6 +118,8 @@ import id.homebase.resources.chat_group_main_peer_loading
 import id.homebase.resources.chat_group_main_peer_missing
 import id.homebase.resources.chat_group_main_peer_stale
 import id.homebase.resources.chat_group_member_sync_status
+import id.homebase.resources.chat_group_summary_all_ok
+import id.homebase.resources.chat_group_summary_problem
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
 import id.homebase.resources.chat_group_leave
 import id.homebase.resources.chat_group_leave_disclaimer
@@ -967,43 +969,16 @@ private fun GroupParticipantRow(
                     showMainPeerExistsColumn || showAdminPeerExistsColumn
                 if (anyIconColumn) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    if (showMainColumn) {
-                        TransferStatusIcon(
-                            mainStatus,
-                            stringResource(MR.string.chat_group_main_file_delivered),
-                            stringResource(MR.string.chat_group_main_file_problem),
-                        )
-                    }
-                    if (showMainColumn && showAdminColumn) {
-                        Spacer(modifier = Modifier.width(2.dp))
-                    }
-                    if (showAdminColumn) {
-                        TransferStatusIcon(
-                            adminStatus,
-                            stringResource(MR.string.chat_group_admin_file_delivered),
-                            stringResource(MR.string.chat_group_admin_file_problem),
-                        )
-                    }
-                    if (showMainPeerExistsColumn) {
-                        Spacer(modifier = Modifier.width(2.dp))
-                        FileExistsStatusIcon(
-                            status = mainPeerExists,
-                            inSyncDescription = stringResource(MR.string.chat_group_main_peer_in_sync),
-                            missingDescription = stringResource(MR.string.chat_group_main_peer_missing),
-                            staleDescription = stringResource(MR.string.chat_group_main_peer_stale),
-                            errorDescription = stringResource(MR.string.chat_group_main_peer_error),
-                        )
-                    }
-                    if (showAdminPeerExistsColumn) {
-                        Spacer(modifier = Modifier.width(2.dp))
-                        FileExistsStatusIcon(
-                            status = adminPeerExists,
-                            inSyncDescription = stringResource(MR.string.chat_group_admin_peer_in_sync),
-                            missingDescription = stringResource(MR.string.chat_group_admin_peer_missing),
-                            staleDescription = stringResource(MR.string.chat_group_admin_peer_stale),
-                            errorDescription = stringResource(MR.string.chat_group_admin_peer_error),
-                        )
-                    }
+                    GroupParticipantSummaryIcon(
+                        mainStatus = mainStatus,
+                        adminStatus = adminStatus,
+                        mainPeerExists = mainPeerExists,
+                        adminPeerExists = adminPeerExists,
+                        showMainColumn = showMainColumn,
+                        showAdminColumn = showAdminColumn,
+                        showMainPeerExistsColumn = showMainPeerExistsColumn,
+                        showAdminPeerExistsColumn = showAdminPeerExistsColumn,
+                    )
                 }
             }
             subTitle?.let {
@@ -1088,6 +1063,75 @@ private fun FileExistsStatusIcon(
         MemberFileExistsStatus.Error -> Icon(
             imageVector = Icons.Default.ErrorOutline,
             contentDescription = errorDescription,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(size),
+        )
+    }
+}
+
+/**
+ * One consolidated status icon for a participant row — replaces the four
+ * 12dp icons (main transfer + admin transfer + main peer-exists + admin
+ * peer-exists) we used to render side-by-side.
+ *
+ * - **All present signals OK** (transfer Delivered, peer-exists InSync) →
+ *   green check.
+ * - **Any signal still resolving** (transfer history null entry, peer-exists
+ *   Loading) → spinner.
+ * - **Anything else** (Problem, Missing, Stale, Error) → red-dashed cloud
+ *   (`Icons.Default.CloudOff`), tinted with the error color.
+ *
+ * A column is "present" iff its `show…Column` flag is true (i.e. the caller
+ * is the author of that file and the relevant data has been loaded). Columns
+ * that aren't shown are excluded from the conjunction — a non-author still
+ * gets a green check on a peer's row when their *visible* signals are all OK,
+ * matching how the four-icon block hid those columns before.
+ *
+ * Tap the row → opens the member bottom sheet which still enumerates each
+ * underlying signal in plain text via [MemberSyncStatusSection].
+ */
+@Composable
+private fun GroupParticipantSummaryIcon(
+    mainStatus: RecipientFileStatus?,
+    adminStatus: RecipientFileStatus?,
+    mainPeerExists: MemberFileExistsStatus?,
+    adminPeerExists: MemberFileExistsStatus?,
+    showMainColumn: Boolean,
+    showAdminColumn: Boolean,
+    showMainPeerExistsColumn: Boolean,
+    showAdminPeerExistsColumn: Boolean,
+) {
+    val size = 16.dp
+
+    // Loading wins over OK/problem so we don't flash a red cloud while the
+    // peer-exists check is still in flight.
+    val anyLoading =
+        (showMainColumn && mainStatus == null) ||
+        (showAdminColumn && adminStatus == null) ||
+        (showMainPeerExistsColumn && mainPeerExists is MemberFileExistsStatus.Loading) ||
+        (showAdminPeerExistsColumn && adminPeerExists is MemberFileExistsStatus.Loading)
+
+    val allOk =
+        (!showMainColumn || mainStatus is RecipientFileStatus.Ok) &&
+        (!showAdminColumn || adminStatus is RecipientFileStatus.Ok) &&
+        (!showMainPeerExistsColumn || mainPeerExists is MemberFileExistsStatus.InSync) &&
+        (!showAdminPeerExistsColumn || adminPeerExists is MemberFileExistsStatus.InSync)
+
+    when {
+        anyLoading -> CircularProgressIndicator(
+            modifier = Modifier.size(size),
+            strokeWidth = 1.8.dp,
+            color = LocalContentColor.current.copy(alpha = 0.55f),
+        )
+        allOk -> Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = stringResource(MR.string.chat_group_summary_all_ok),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(size),
+        )
+        else -> Icon(
+            imageVector = Icons.Default.CloudOff,
+            contentDescription = stringResource(MR.string.chat_group_summary_problem),
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(size),
         )
