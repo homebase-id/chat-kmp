@@ -181,12 +181,16 @@ class VaultStream(
                     if (event.driveId != driveId) return@collect
                     // Silent-DriveSync contract: when the vault drive finishes
                     // a DriveSync round, reload the full vault state from DB so
-                    // sections + entries reflect the just-landed files. No-op on
-                    // failure — retry on next sync round. Gated on totalCount > 0
-                    // because totalCount=0 means no files were upserted this round
-                    // (cursor at HEAD) — DB state is unchanged from what we already
-                    // have in memory.
-                    if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                    // sections + entries reflect the just-landed files.
+                    //
+                    // Gate on totalCount > 0 ALONE (not on result == Success):
+                    // DriveSync writes each batch to DriveMainIndex before the
+                    // next batch starts, so Stopped(Aborted, totalCount > 0)
+                    // still means real vault rows landed — we want to surface
+                    // them rather than wait for the next round (which on
+                    // PermissionDenied may never come). totalCount == 0 means
+                    // cursor at HEAD: nothing to reload.
+                    if (event.totalCount > 0) {
                         try {
                             loadAll()
                         } catch (e: Exception) {

@@ -14,7 +14,7 @@ import org.koin.mp.KoinPlatformTools
 class BackgroundSyncOrchestrator(
     private val credentialsManager: CredentialsManager,
     private val driveSyncManager: DriveSyncManager,
-    private val driveFileHttpProvider: DriveFileHttpProvider,
+    @Suppress("unused") private val driveFileHttpProvider: DriveFileHttpProvider,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) {
     suspend fun syncIfAuthenticated(): SyncOutcome {
@@ -63,6 +63,7 @@ class BackgroundSyncOrchestrator(
      * WebSocket was offline become visible to QueryBatch.  This is the HTTP
      * counterpart of the WS "processInbox" command.
      */
+    @Suppress("unused")
     private suspend fun processInboxViaHttp() {
         // processInbox no longer needed — server auto-processes on QueryBatch.
         // driveFileHttpProvider.processInbox(chatTargetDrive.alias)

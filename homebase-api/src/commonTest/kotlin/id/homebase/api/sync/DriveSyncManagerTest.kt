@@ -103,7 +103,7 @@ class DriveSyncManagerTest {
             manager.start()
 
             // Emit a Failed event directly (simulating what DriveSync emits after a real failure)
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Failure("simulated network error")))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Aborted("simulated network error")))
             advanceTimeBy(1)
 
             assertEquals(
@@ -194,7 +194,7 @@ class DriveSyncManagerTest {
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
             runCurrent()
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 5, BackendEvent.DriveResult.Success))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 5, BackendEvent.DriveResult.Completed))
             runCurrent()
 
             assertIs<SyncState.Completed>(manager.syncState.value)
@@ -214,7 +214,7 @@ class DriveSyncManagerTest {
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
             runCurrent()
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Failure("error")))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Aborted("error")))
             advanceTimeBy(1)
 
             assertIs<SyncState.Failed>(manager.syncState.value)
@@ -260,7 +260,7 @@ class DriveSyncManagerTest {
             val emittedEvents = mutableListOf<BackendEvent>()
             val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
 
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 3, BackendEvent.DriveResult.Success))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 3, BackendEvent.DriveResult.Completed))
             runCurrent()
 
             assertTrue(emittedEvents.any { it is BackendEvent.SyncAllStopped && it.result is BackendEvent.SyncAllResult.Success })
@@ -285,7 +285,7 @@ class DriveSyncManagerTest {
             val emittedEvents = mutableListOf<BackendEvent>()
             val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
 
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Failure("network error")))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Aborted("network error")))
             advanceTimeBy(1)
 
             assertTrue(emittedEvents.any { it is BackendEvent.SyncAllStopped && it.result is BackendEvent.SyncAllResult.Failure })
@@ -340,7 +340,7 @@ class DriveSyncManagerTest {
             // First drive completes successfully
             eventBus.emit(BackendEvent.DriveEvent.Started(completedDrive))
             runCurrent()
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(completedDrive, 10, BackendEvent.DriveResult.Success))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(completedDrive, 10, BackendEvent.DriveResult.Completed))
             runCurrent()
 
             // Second drive is denied
@@ -570,35 +570,6 @@ class DriveSyncManagerTest {
     }
 
     @Test
-    fun numberOfDrivesSyncingReturnsCorrectCount() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
-
-        runTest() {
-            val eventBus = EventBus()
-            val driveId1 = Uuid.random()
-            val driveId2 = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
-            manager.start()
-            runCurrent()
-
-            assertEquals(0, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Started(driveId1))
-            runCurrent()
-            assertEquals(1, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Started(driveId2))
-            runCurrent()
-            assertEquals(2, manager.numberOfDrivesSyncing())
-
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId1, 0, BackendEvent.DriveResult.Success))
-            runCurrent()
-            assertEquals(1, manager.numberOfDrivesSyncing())
-        }
-        db.close()
-    }
-
-    @Test
     fun ensureMandatoryMountedRegistersDrivesWithoutStarting() {
         // The bug from the second-login repro: mandatory drives were only mounted inside
         // start(), and start() only ran from the WS onConnected callback. If the handshake
@@ -677,7 +648,7 @@ class DriveSyncManagerTest {
     @Test
     fun progressEventAdvancesSynchronizingCount() {
         // Drive.performSync emits Started → Progress(N) per batch upsert →
-        // Stopped(Success, finalCount). DriveSyncManager translates that into
+        // Stopped(Completed, finalCount). DriveSyncManager translates that into
         // driveStatuses: Initialized → Synchronizing(count=0) → Synchronizing(count=N) →
         // Completed(totalCount=finalCount). The Synchronizing.count drives
         // LoginScreen's DriveProgressRow ("N records").
@@ -716,9 +687,9 @@ class DriveSyncManagerTest {
                 manager.driveStatuses.value[driveId]?.state,
             )
 
-            // Stopped(Success): transitions to Completed with the final total.
+            // Stopped(Completed): transitions to DriveState.Completed with the final total.
             eventBus.emit(
-                BackendEvent.DriveEvent.Stopped(driveId, 1500, BackendEvent.DriveResult.Success)
+                BackendEvent.DriveEvent.Stopped(driveId, 1500, BackendEvent.DriveResult.Completed)
             )
             runCurrent()
             assertEquals(

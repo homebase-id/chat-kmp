@@ -238,8 +238,9 @@ fun AppNavHost(
                     navController.popBackStack()
                 }
 
-                is VaultUiEvent.ShareFileReady, is VaultUiEvent.Error -> { /* handled by VaultScreen */
-                }
+                is VaultUiEvent.ShareFileReady,
+                is VaultUiEvent.SaveFileReady,
+                is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
     }

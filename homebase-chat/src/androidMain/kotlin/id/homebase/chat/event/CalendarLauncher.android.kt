@@ -24,7 +24,10 @@ private class AndroidCalendarLauncher(private val appContext: Context) : Calenda
         val intent = Intent(Intent.ACTION_INSERT).apply {
             data = CalendarContract.Events.CONTENT_URI
             putExtra(CalendarContract.Events.TITLE, event.title)
-            putExtra(CalendarContract.Events.DESCRIPTION, event.description)
+            putExtra(
+                CalendarContract.Events.DESCRIPTION,
+                composeCalendarDescription(event.description, event.meetingUrl),
+            )
             putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.startUtcMs)
             event.endUtcMs?.let { putExtra(CalendarContract.EXTRA_EVENT_END_TIME, it) }
             putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false)

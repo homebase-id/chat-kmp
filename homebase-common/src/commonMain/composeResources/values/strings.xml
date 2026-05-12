@@ -569,6 +569,7 @@
     <string name="chat_event_use_current_location">Use current location</string>
     <string name="chat_event_open_in_maps">Open in maps</string>
     <string name="chat_event_join_meeting">Join meeting</string>
+    <string name="chat_event_copy_meeting_url">Copy meeting URL</string>
     <string name="chat_event_add_to_google_calendar">Add to Google Calendar</string>
     <string name="chat_event_download_ics">Download calendar file (.ics)</string>
     <string name="chat_event_rsvp_yes">Going</string>
@@ -759,6 +760,9 @@
     <string name="vault_gallery_delete_page_confirm">Delete this page? This cannot be undone.</string>
     <string name="vault_gallery_delete_last_page_confirm">This is the last page. Deleting it will remove the entire entry.</string>
     <string name="vault_gallery_share_page">Share this page</string>
+    <string name="vault_gallery_save_page">Save to device</string>
+    <string name="vault_gallery_delete_file">Delete file</string>
+    <string name="vault_gallery_delete_all">Delete all</string>
 
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>

@@ -164,7 +164,7 @@ class ConversationStream(
     //    steady-state channel (per-file events from DriveWebSocketUpsertWorker and
     //    in-process OptimisticWriter writes).
     //
-    // 2) DriveSync catch-up — [DriveEvent.Stopped(Success)] for the chat drive
+    // 2) DriveSync catch-up — [DriveEvent.Stopped] (any termination) for the chat drive
     //    fires the full reload pipeline (loadBasicConversations →
     //    enrichWithLastMessages → enrichWithAdmins → conditional
     //    enrichAllConversationsWithUnreadCounts). This is the silent-DriveSync
@@ -195,6 +195,14 @@ class ConversationStream(
                         // catch-up); DB state is unchanged, so the four-step
                         // pipeline would be pure busywork.
                         //
+                        // Gate on totalCount > 0 ALONE (not on result == Success).
+                        // DriveSync.performSync increments totalCount per batch and
+                        // earlier batches' DB writes complete before any later
+                        // batch can fail, so Stopped(Aborted, totalCount > 0)
+                        // still means real conversation/message/admin rows landed.
+                        // Waiting for the next Success round would hide those rows
+                        // — and on PermissionDenied there is no next round at all.
+                        //
                         // First three steps unconditional (DriveSync may have
                         // changed conversation files, last-messages, or admin
                         // membership without dirtying lastRead). The unread-count
@@ -202,7 +210,7 @@ class ConversationStream(
                         // [hasDirtyUnread] — it only materially changes the result
                         // when a conversation file's lastRead actually advanced
                         // during the round (peer-device mark-as-read echo).
-                        if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                        if (event.totalCount > 0) {
                             scope.launch {
                                 try {
                                     loadBasicConversations()
@@ -225,7 +233,7 @@ class ConversationStream(
                         // Every BatchReceived is a live event from the WS push path
                         // (DriveWebSocketUpsertWorker or its in-process analog
                         // OptimisticWriter). DriveSync.performSync is silent — the
-                        // matching DriveEvent.Stopped(Success) above does a full DB
+                        // matching DriveEvent.Stopped(totalCount > 0) above does a full DB
                         // reload to cover that path.
                         val conversationFiles =
                             event.batchData.filter {
