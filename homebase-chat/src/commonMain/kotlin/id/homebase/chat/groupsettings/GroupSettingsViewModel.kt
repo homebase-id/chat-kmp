@@ -729,46 +729,77 @@ class GroupSettingsViewModel(
     private fun buildHealPlan(state: GroupSettingsUiState): ConversationService.HealPlan {
         // CRITICAL CONTEXT: heal redistribution goes through
         // [ConversationService.updateConversationInternal] which rewrites the
-        // file server-side and bumps its versionTag. After the bump, every
-        // previously-InSync peer is temporarily at the OLD versionTag —
-        // technically "Stale" until transit lands the new copy.
+        // file server-side and bumps its versionTag. The bump means every
+        // previously-InSync peer is desynced unless they're included in the
+        // resend — even peers that look "fine" right now will become Stale
+        // the moment we hand the server new metadata.
         //
-        // If we only resend to Missing peers, the InSync peers never catch up
-        // and stay Stale forever (until the next heal). So whenever we resend
-        // AT ALL, we resend to everyone *except* Stale peers (who reject the
-        // push due to versionTag mismatch — they get the heal-message path
-        // instead). Error peers are included as best-effort: if their server
-        // happens to be reachable for the push but the exists-probe failed,
-        // they still converge.
-        fun resendSet(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId>? {
-            if (map == null) return null
-            val anyUsable = map.values.any { it !is MemberFileExistsStatus.Error }
-            if (!anyUsable) return null
-            val anyMissing = map.values.any { it is MemberFileExistsStatus.Missing }
-            if (!anyMissing) return emptyList() // every peer InSync (or Stale) — nothing to send
-            // Resend to every peer that isn't Stale. The vt bump will
-            // catch up InSync peers and the Missing peers will receive fresh.
-            return map.entries
-                .filter { it.value !is MemberFileExistsStatus.Stale }
-                .map { it.key }
-        }
+        // The earlier per-recipient optimization (resend only to Missing,
+        // heal-message only to Stale) was therefore incorrect: it left
+        // previously-InSync peers behind on the old vt, with no future
+        // mechanism to catch them up. Empirical evidence from the log: the
+        // pre-refactor heal that spammed to all 3 participants advanced
+        // bishwa + todd from Missing → InSync at aebbe119 in one shot; the
+        // Missing-only refactor then bumped to 90bde119 without including
+        // them, stranding both.
+        //
+        // The correct heal is the original behavior: heal-message to every
+        // peer + resend to every peer. The heal-message is idempotent for
+        // peers who match canonical (they no-op); for those who don't, they
+        // clean up to a vt=null placeholder. The subsequent resend then
+        // ships our new vt to every peer — those matching the pre-bump
+        // canonical apply the update, those at vt=null accept it as a
+        // fresh create.
+        //
+        // We still gate the whole thing on "anyone needs anything": if every
+        // peer is already InSync on both files, pressing Heal is a no-op
+        // (the Heal button itself stays enabled but the plan is empty).
+        // Error peers count as "needs work" — we don't know their state
+        // and including them is best-effort.
+        val conversation = state.conversation ?: return ConversationService.HealPlan(null, null, null, null)
+        val self = state.currentOdinId
+        val recipients = conversation.participants.filter { it != self }.distinct()
 
-        fun staleSet(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
+        fun anyNeedsWork(map: Map<OdinId, MemberFileExistsStatus>?): Boolean =
+            map?.values?.any { it !is MemberFileExistsStatus.InSync } == true
+
+        val mainAuthored = state.mainFileExists != null
+        val adminAuthored = state.adminFileExists != null
+        val mainNeedsWork = anyNeedsWork(state.mainFileExists)
+        val adminNeedsWork = anyNeedsWork(state.adminFileExists)
+
+        // Heal-message only goes to peers that aren't already InSync. Stale
+        // peers need it to cleanup; Missing peers get a local placeholder
+        // written so the conversation "appears" before the resend lands;
+        // InSync peers are by definition fine and don't need the request.
+        // The resend itself goes to every recipient because the upcoming
+        // vt bump will desync them all.
+        fun nonInSync(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
             map?.entries.orEmpty()
-                .filter { it.value is MemberFileExistsStatus.Stale }
+                .filter { it.value !is MemberFileExistsStatus.InSync }
                 .map { it.key }
-
-        val resendMain = resendSet(state.mainFileExists)
-        val resendAdmin = resendSet(state.adminFileExists)
-        val noUsableSignal = resendMain == null && resendAdmin == null
-        val healMainStale: List<OdinId>? = if (noUsableSignal) null else staleSet(state.mainFileExists)
-        val healAdminStale: List<OdinId>? = if (noUsableSignal) null else staleSet(state.adminFileExists)
 
         return ConversationService.HealPlan(
-            resendMainTo = resendMain,
-            resendAdminTo = resendAdmin,
-            healMessageMainTo = healMainStale,
-            healMessageAdminTo = healAdminStale,
+            resendMainTo = when {
+                !mainAuthored -> null
+                mainNeedsWork -> recipients
+                else -> emptyList()
+            },
+            resendAdminTo = when {
+                !adminAuthored -> null
+                adminNeedsWork -> recipients
+                else -> emptyList()
+            },
+            healMessageMainTo = when {
+                !mainAuthored -> null
+                mainNeedsWork -> nonInSync(state.mainFileExists)
+                else -> emptyList()
+            },
+            healMessageAdminTo = when {
+                !adminAuthored -> null
+                adminNeedsWork -> nonInSync(state.adminFileExists)
+                else -> emptyList()
+            },
         )
     }
 
