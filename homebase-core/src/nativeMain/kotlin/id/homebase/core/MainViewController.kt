@@ -43,7 +43,12 @@ fun initializeApp() {
     if (appInitialized) return
     appInitialized = true
 
+    val startTime = platform.Foundation.NSDate().timeIntervalSince1970
+    Logger.i(tag = "TextRendering") { "initializeApp() started" }
+
     initKoin()
+    val afterKoin = platform.Foundation.NSDate().timeIntervalSince1970
+    Logger.i(tag = "TextRendering") { "Koin init: ${((afterKoin - startTime) * 1000).toLong()}ms" }
 
     // Initialize file logging first
     try {
@@ -64,9 +69,13 @@ fun initializeApp() {
     // Set up crash handler
     setupIOSCrashHandler()
 
+    val beforeDb = platform.Foundation.NSDate().timeIntervalSince1970
     runBlocking {
         DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
     }
+    val afterDb = platform.Foundation.NSDate().timeIntervalSince1970
+    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${((afterDb - beforeDb) * 1000).toLong()}ms" }
+    Logger.i(tag = "TextRendering") { "initializeApp() total: ${((afterDb - startTime) * 1000).toLong()}ms" }
 }
 
 @OptIn(ExperimentalForeignApi::class)
