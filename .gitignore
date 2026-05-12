@@ -35,3 +35,4 @@ replay_pid*.log
 /.agent
 /.superpowers
 .worktrees
+/docs/superpowers

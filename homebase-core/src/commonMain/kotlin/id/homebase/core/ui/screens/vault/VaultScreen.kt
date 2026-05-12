@@ -25,9 +25,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -95,6 +98,18 @@ fun VaultScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val vaultListState = rememberLazyListState()
+    var savedScrollIndex by remember { mutableIntStateOf(0) }
+    var savedScrollOffset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(uiState.fullScreenOverlay) {
+        if (uiState.fullScreenOverlay != null) {
+            savedScrollIndex = vaultListState.firstVisibleItemIndex
+            savedScrollOffset = vaultListState.firstVisibleItemScrollOffset
+        } else if (savedScrollIndex > 0 || savedScrollOffset > 0) {
+            vaultListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
 
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
@@ -112,6 +127,12 @@ fun VaultScreen(
                 is VaultUiEvent.ShareFileReady -> {
                     fileSystemHandler.shareFile(Path(event.filePath))
                 }
+                is VaultUiEvent.SaveFileReady -> {
+                    fileSystemHandler.saveFile(
+                        file = Path(event.filePath),
+                        suggestedName = event.fileName,
+                    )
+                }
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
                 }
@@ -119,6 +140,10 @@ fun VaultScreen(
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { viewModel.onAction(VaultUiAction.CloseOverlay) }
     }
 
     BackHandler(enabled = uiState.fullScreenOverlay != null) {
@@ -239,6 +264,7 @@ fun VaultScreen(
                             onDeleteSection = { sectionToDelete = it },
                             onAddSection = { showNewSectionSheet = true },
                             modifier = contentModifier,
+                            lazyListState = vaultListState,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,
                         )
@@ -249,6 +275,9 @@ fun VaultScreen(
                             onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
                             onSharePage = { key ->
                                 viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                            },
+                            onSavePage = { key ->
+                                viewModel.onAction(VaultUiAction.SavePage(overlay.file, key))
                             },
                             onDeletePage = { key ->
                                 viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
