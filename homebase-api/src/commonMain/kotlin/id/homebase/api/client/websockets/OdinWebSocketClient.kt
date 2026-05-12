@@ -360,7 +360,10 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.inboxItemReceived -> {
-                handleProcessInbox(notification)
+                Logger.w(tag = "WebSocket") {
+                    "Received obsolete inboxItemReceived notification — server should auto-process on QueryBatch. data=${notification.data.take(200)}"
+                }
+                // handleProcessInbox(notification)  // disabled — server auto-processes on QueryBatch
             }
 
             ClientNotificationType.fileAdded -> {
@@ -487,30 +490,34 @@ class OdinWebSocketClient(
         }
     }
 
-    private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
-        val n =
-            OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
-                notification.data
-            )
+    // Disabled — server now auto-processes the inbox on QueryBatch, so the
+    // explicit per-message ack is no longer needed. Kept commented so it can
+    // be re-enabled if the server-side behaviour regresses.
+    //
+    // private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
+    //     val n =
+    //         OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
+    //             notification.data
+    //         )
+    //
+    //     // Reverts block #3 of commit 18483c4e. The WS push path bypasses
+    //     // QueryBatch in steady state, so the server's "auto-process inbox on
+    //     // QueryBatch" never fires for a recipient sitting in an already-loaded
+    //     // conversation — the inboxItemReceived notification arrives but no
+    //     // fileAdded follows, and the message body never makes it to the
+    //     // WebSocket. Send the explicit processInbox ack so the server moves
+    //     // the inbox entry onto the drive. Remove once the server-side
+    //     // auto-process behaviour is fixed.
+    //     notify(
+    //         command = "processInbox",
+    //         payload = ProcessInboxPayload(
+    //             targetDrive = n.targetDrive,
+    //             batchSize = 100
+    //         )
+    //     )
+    // }
 
-        // Reverts block #3 of commit 18483c4e. The WS push path bypasses
-        // QueryBatch in steady state, so the server's "auto-process inbox on
-        // QueryBatch" never fires for a recipient sitting in an already-loaded
-        // conversation — the inboxItemReceived notification arrives but no
-        // fileAdded follows, and the message body never makes it to the
-        // WebSocket. Send the explicit processInbox ack so the server moves
-        // the inbox entry onto the drive. Remove once the server-side
-        // auto-process behaviour is fixed.
-        notify(
-            command = "processInbox",
-            payload = ProcessInboxPayload(
-                targetDrive = n.targetDrive,
-                batchSize = 100
-            )
-        )
-    }
-
-    /**
+/**
      * Reaction add/remove notification — no-op for every drive.
      *
      * The server fires a parallel `statisticsChanged` notification
