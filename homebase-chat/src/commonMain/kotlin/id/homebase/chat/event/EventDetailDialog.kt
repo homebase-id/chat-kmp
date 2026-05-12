@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -162,6 +164,16 @@ private fun EventDetailContent(
             )
         }
     ) { padding ->
+        // SelectionContainer enables drag-select-to-copy on Desktop across the
+        // title, description, location label, and meeting-URL label — users
+        // asked for this so they can paste a meeting URL into a separate app
+        // (Zoom desktop, calendar invite, etc.) without having to follow the
+        // click. The ActionRow Surfaces inside still receive clicks; on mobile
+        // long-press inside a SelectionContainer would normally open the text
+        // selection toolbar, but each interactive subtree (RSVP buttons,
+        // roster, organizer row) is wrapped in DisableSelection below so taps
+        // and avatars stay crisp.
+        SelectionContainer {
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -173,13 +185,15 @@ private fun EventDetailContent(
 
             organizer?.let { host ->
                 Spacer(Modifier.height(12.dp))
-                OrganizerRow(
-                    odinId = host,
-                    isOwner = host == selfOdinId,
-                    youLabel = stringResource(MR.string.you),
-                    organizedByLabel = stringResource(MR.string.chat_event_organized_by),
-                    contactService = contactService,
-                )
+                DisableSelection {
+                    OrganizerRow(
+                        odinId = host,
+                        isOwner = host == selfOdinId,
+                        youLabel = stringResource(MR.string.you),
+                        organizedByLabel = stringResource(MR.string.chat_event_organized_by),
+                        contactService = contactService,
+                    )
+                }
             }
 
             if (descriptor.description.isNotBlank()) {
@@ -241,55 +255,58 @@ private fun EventDetailContent(
                 onClick = { calendarLauncher.addToCalendar(descriptor, messageId) },
             )
 
-            Spacer(Modifier.height(24.dp))
-            Text(
-                text = stringResource(
-                    MR.string.chat_event_rsvp_summary,
-                    counts.going.toString(),
-                    counts.notGoing.toString(),
-                    counts.maybe.toString(),
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                RsvpButton(
-                    emoji = EventRsvp.GOING,
-                    label = stringResource(MR.string.chat_event_rsvp_yes),
-                    selected = currentRsvp == EventRsvp.GOING,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.GOING) } },
-                    modifier = Modifier.weight(1f),
-                )
-                RsvpButton(
-                    emoji = EventRsvp.MAYBE,
-                    label = stringResource(MR.string.chat_event_rsvp_maybe),
-                    selected = currentRsvp == EventRsvp.MAYBE,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.MAYBE) } },
-                    modifier = Modifier.weight(1f),
-                )
-                RsvpButton(
-                    emoji = EventRsvp.NOT_GOING,
-                    label = stringResource(MR.string.chat_event_rsvp_no),
-                    selected = currentRsvp == EventRsvp.NOT_GOING,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.NOT_GOING) } },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
-            rosterReactions?.takeIf { it.isNotEmpty() }?.let { reactionsList ->
+            DisableSelection {
                 Spacer(Modifier.height(24.dp))
-                RsvpRoster(
-                    reactions = reactionsList,
-                    contactService = contactService,
-                    selfOdinId = selfOdinId,
+                Text(
+                    text = stringResource(
+                        MR.string.chat_event_rsvp_summary,
+                        counts.going.toString(),
+                        counts.notGoing.toString(),
+                        counts.maybe.toString(),
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RsvpButton(
+                        emoji = EventRsvp.GOING,
+                        label = stringResource(MR.string.chat_event_rsvp_yes),
+                        selected = currentRsvp == EventRsvp.GOING,
+                        onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.GOING) } },
+                        modifier = Modifier.weight(1f),
+                    )
+                    RsvpButton(
+                        emoji = EventRsvp.MAYBE,
+                        label = stringResource(MR.string.chat_event_rsvp_maybe),
+                        selected = currentRsvp == EventRsvp.MAYBE,
+                        onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.MAYBE) } },
+                        modifier = Modifier.weight(1f),
+                    )
+                    RsvpButton(
+                        emoji = EventRsvp.NOT_GOING,
+                        label = stringResource(MR.string.chat_event_rsvp_no),
+                        selected = currentRsvp == EventRsvp.NOT_GOING,
+                        onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.NOT_GOING) } },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
 
-            Spacer(Modifier.height(24.dp))
+                rosterReactions?.takeIf { it.isNotEmpty() }?.let { reactionsList ->
+                    Spacer(Modifier.height(24.dp))
+                    RsvpRoster(
+                        reactions = reactionsList,
+                        contactService = contactService,
+                        selfOdinId = selfOdinId,
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+        }
         }
     }
 }
