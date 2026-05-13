@@ -109,6 +109,12 @@ kotlin {
         jvmMain.dependencies {
                 implementation(libs.conveyor.control)
         }
+        // Uncomment in step 10 of the WASM pre-flight plan, paired with
+        // `wasmJs { browser() }`. ktor-client-js provides the browser
+        // engine (fetch/WebSocket) for the wasmJs target.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)

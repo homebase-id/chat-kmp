@@ -34,9 +34,9 @@ object LinkPreviewPayloadBuilder {
         val actualHasImage = imageBytes.isNotEmpty()
 
         // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
-        var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = null)
+        var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = null)
         if (descriptorContent.encodeToByteArray().size > ChatProtocol.MaxDescriptorContentLength) {
-            descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = 100)
+            descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 100)
         }
 
         val mimeType = if (actualHasImage && imageUrl != null) {
@@ -80,19 +80,23 @@ object LinkPreviewPayloadBuilder {
     }
 
     private fun buildDescriptorJson(
-        linkPreview: LinkPreview, hasImage: Boolean, maxDescLen: Int?
+        linkPreview: LinkPreview, hasImage: Boolean, maxTextLen: Int?
     ): String {
         val descriptor = LinkPreviewDescriptor(
             url = linkPreview.url,
             hasImage = hasImage,
             imageWidth = if (hasImage) linkPreview.imageWidth else null,
             imageHeight = if (hasImage) linkPreview.imageHeight else null,
-            description = if (maxDescLen != null) {
-                linkPreview.description.truncateToCodePoints(maxDescLen)
+            description = if (maxTextLen != null) {
+                linkPreview.description.truncateToCodePoints(maxTextLen)
             } else {
                 linkPreview.description
             },
-            title = linkPreview.title
+            title = if (maxTextLen != null) {
+                linkPreview.title.truncateToCodePoints(maxTextLen)
+            } else {
+                linkPreview.title
+            }
         )
         return OdinSystemSerializer.serialize(listOf(descriptor))
     }

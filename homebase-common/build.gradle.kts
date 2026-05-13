@@ -133,6 +133,12 @@ kotlin {
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
         }
+        // Uncomment in step 10 of the WASM pre-flight plan, paired with
+        // `wasmJs { browser() }`. ktor-client-js provides the browser
+        // engine (fetch/WebSocket) for the wasmJs target.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//        }
     }
 
     targets.all {

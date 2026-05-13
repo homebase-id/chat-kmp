@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -65,6 +67,8 @@ import id.homebase.resources.chat_dice_face_label
 import id.homebase.resources.chat_dice_faces_label
 import id.homebase.resources.chat_dice_increment
 import id.homebase.resources.chat_dice_max_dice_warning
+import id.homebase.resources.chat_dice_mode_oe_hint
+import id.homebase.resources.chat_dice_mode_oe_label
 import id.homebase.resources.chat_dice_roll
 import id.homebase.resources.chat_dice_rolling
 import id.homebase.resources.chat_dice_shake_hint
@@ -118,11 +122,19 @@ private fun DiceRollComposerContent(
 
     val initialFaces by preferences.lastFaces.collectAsStateWithLifecycle()
     val initialCount by preferences.lastCount.collectAsStateWithLifecycle()
+    val initialMode by preferences.lastMode.collectAsStateWithLifecycle()
 
-    var faces by remember { mutableIntStateOf(coerceFaces(initialFaces)) }
-    var count by remember { mutableIntStateOf(coerceCount(initialCount)) }
+    var mode by remember { mutableStateOf(initialMode) }
+    // OE mode locks dice to 2d10 in the preview / on the wire. Standard mode
+    // keeps the user's last-used count/faces.
+    var standardFaces by remember { mutableIntStateOf(coerceFaces(initialFaces)) }
+    var standardCount by remember { mutableIntStateOf(coerceCount(initialCount)) }
+    val faces = if (mode == DiceRollMode.OpenEndedD100) 10 else standardFaces
+    val count = if (mode == DiceRollMode.OpenEndedD100) 2 else standardCount
 
     // Faces visible in the preview row. While rolling, this updates rapidly.
+    // In OE mode the list grows after the roll completes if a chain extended
+    // past the initial pair.
     val displayValues: SnapshotStateList<Int?> = remember {
         List<Int?>(count) { null }.toMutableStateList()
     }
@@ -146,9 +158,15 @@ private fun DiceRollComposerContent(
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         rolling = true
         val seed = if (shakeTriggered) shakeSamples else null
-        val finalResults = roll(count = count, faces = faces, shakeSamples = seed)
+        val finalResults = if (mode == DiceRollMode.OpenEndedD100) {
+            rollOpenEndedD100(seed)
+        } else {
+            roll(count = count, faces = faces, shakeSamples = seed)
+        }
         scope.launch {
-            // Tumble animation: cycle through random faces, then settle.
+            // Tumble animation: cycle through random faces, then settle. For
+            // OE we tumble the initial 2-die pair only; the trailing chain (if
+            // any) pops in when rolling completes.
             val frames = TUMBLE_FRAMES
             for (frame in 0 until frames) {
                 for (i in 0 until count) {
@@ -156,12 +174,15 @@ private fun DiceRollComposerContent(
                 }
                 delay(TUMBLE_FRAME_MS)
             }
-            for (i in 0 until count) displayValues[i] = finalResults[i]
+            // Grow the preview list to fit the full OE chain before stamping
+            // in the final faces.
+            while (displayValues.size < finalResults.size) displayValues.add(null)
+            for (i in finalResults.indices) displayValues[i] = finalResults[i]
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             rolling = false
             sending = true
 
-            preferences.setLast(count, faces)
+            preferences.setLast(standardCount, standardFaces, mode)
             val authorOdinId = ownerSession.user.value?.odinId
             if (authorOdinId == null) {
                 sending = false
@@ -173,6 +194,7 @@ private fun DiceRollComposerContent(
             val messageId = Uuid.random()
             val descriptor = DiceRollDescriptor(
                 faces = faces,
+                mode = mode,
                 rolls = listOf(
                     ChainRoll(
                         messageId = messageId,
@@ -232,35 +254,37 @@ private fun DiceRollComposerContent(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            OpenEndedToggle(
+                checked = mode == DiceRollMode.OpenEndedD100,
+                onCheckedChange = { on ->
+                    if (!isBusy) {
+                        mode = if (on) DiceRollMode.OpenEndedD100 else DiceRollMode.Standard
+                    }
+                },
+                enabled = !isBusy,
+            )
+
             FacesSelector(
                 selectedFaces = faces,
-                onFacesChange = { if (!isBusy) faces = it },
-                enabled = !isBusy,
+                onFacesChange = { if (!isBusy && mode == DiceRollMode.Standard) standardFaces = it },
+                enabled = !isBusy && mode == DiceRollMode.Standard,
             )
 
             CountStepper(
                 count = count,
-                onCountChange = { if (!isBusy) count = it },
-                enabled = !isBusy,
+                onCountChange = { if (!isBusy && mode == DiceRollMode.Standard) standardCount = it },
+                enabled = !isBusy && mode == DiceRollMode.Standard,
             )
 
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    for (i in 0 until count) {
-                        DiceFaceImage(
-                            faces = faces,
-                            value = displayValues.getOrNull(i),
-                            modifier = Modifier.size(56.dp),
-                        )
-                    }
-                }
+                DicePreviewArea(
+                    mode = mode,
+                    faces = faces,
+                    values = displayValues,
+                )
             }
 
             Spacer(Modifier.height(4.dp))
@@ -348,7 +372,7 @@ private fun CountStepper(
     onCountChange: (Int) -> Unit,
     enabled: Boolean,
 ) {
-    val atMax = count >= DiceRollDescriptor.MAX_DICE
+    val atMax = count >= DiceRollDescriptor.MAX_STANDARD_DICE
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = stringResource(MR.string.chat_dice_count_label),
@@ -372,7 +396,7 @@ private fun CountStepper(
             )
             IconButton(
                 onClick = {
-                    onCountChange((count + 1).coerceAtMost(DiceRollDescriptor.MAX_DICE))
+                    onCountChange((count + 1).coerceAtMost(DiceRollDescriptor.MAX_STANDARD_DICE))
                 },
                 enabled = enabled && !atMax,
             ) {
@@ -386,8 +410,93 @@ private fun CountStepper(
             Text(
                 text = stringResource(
                     MR.string.chat_dice_max_dice_warning,
-                    DiceRollDescriptor.MAX_DICE,
+                    DiceRollDescriptor.MAX_STANDARD_DICE,
                 ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Shared preview helper used by both the dice composer and the battle sheet.
+ * In Standard mode shows a FlowRow of all dice; in OE mode pairs them up
+ * (tens-die first, ones-die second) so the user sees the percentile reading
+ * the way physical dice would land.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun DicePreviewArea(
+    mode: DiceRollMode,
+    faces: Int,
+    values: List<Int?>,
+    cellSize: Dp = 56.dp,
+) {
+    if (mode == DiceRollMode.OpenEndedD100) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            var i = 0
+            while (i < values.size - 1) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PercentileTensFaceImage(
+                        value = values[i],
+                        modifier = Modifier.size(cellSize),
+                    )
+                    DiceFaceImage(
+                        faces = 10,
+                        value = values[i + 1],
+                        modifier = Modifier.size(cellSize),
+                    )
+                }
+                i += 2
+            }
+        }
+    } else {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for (v in values) {
+                DiceFaceImage(
+                    faces = faces,
+                    value = v,
+                    modifier = Modifier.size(cellSize),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenEndedToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(MR.string.chat_dice_mode_oe_label),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(end = 16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+            )
+        }
+        if (checked) {
+            Text(
+                text = stringResource(MR.string.chat_dice_mode_oe_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -402,22 +511,5 @@ private fun coerceFaces(value: Int): Int =
     if (value in DiceRollDescriptor.ALLOWED_FACES) value else DiceRollPreferences.DEFAULT_FACES
 
 private fun coerceCount(value: Int): Int =
-    value.coerceIn(1, DiceRollDescriptor.MAX_DICE)
+    value.coerceIn(1, DiceRollDescriptor.MAX_STANDARD_DICE)
 
-/**
- * Pure roll function — extracted so it's unit-testable. When [shakeSamples] is
- * non-empty we XOR the samples into the seed for an extra dose of fun-grade
- * entropy; otherwise we fall back to [Random.Default].
- */
-internal fun roll(count: Int, faces: Int, shakeSamples: List<Long>?): List<Int> {
-    require(count >= 1) { "count must be >= 1" }
-    require(faces in DiceRollDescriptor.ALLOWED_FACES) { "faces $faces not allowed" }
-    val rng = if (!shakeSamples.isNullOrEmpty()) {
-        var seed = Clock.System.now().toEpochMilliseconds()
-        for (sample in shakeSamples) seed = seed xor sample
-        Random(seed)
-    } else {
-        Random.Default
-    }
-    return List(count) { rng.nextInt(1, faces + 1) }
-}

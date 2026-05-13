@@ -52,6 +52,16 @@ import id.homebase.resources.d20_17
 import id.homebase.resources.d20_18
 import id.homebase.resources.d20_19
 import id.homebase.resources.d20_20
+import id.homebase.resources.dpercent_00
+import id.homebase.resources.dpercent_10
+import id.homebase.resources.dpercent_20
+import id.homebase.resources.dpercent_30
+import id.homebase.resources.dpercent_40
+import id.homebase.resources.dpercent_50
+import id.homebase.resources.dpercent_60
+import id.homebase.resources.dpercent_70
+import id.homebase.resources.dpercent_80
+import id.homebase.resources.dpercent_90
 import id.homebase.resources.d4_01
 import id.homebase.resources.d4_02
 import id.homebase.resources.d4_03
@@ -152,6 +162,50 @@ private val D12_FACES: List<DrawableResource> = listOf(
     MR.drawable.d12_01, MR.drawable.d12_02, MR.drawable.d12_03, MR.drawable.d12_04,
     MR.drawable.d12_05, MR.drawable.d12_06, MR.drawable.d12_07, MR.drawable.d12_08,
     MR.drawable.d12_09, MR.drawable.d12_10, MR.drawable.d12_11, MR.drawable.d12_12,
+)
+
+/**
+ * Percentile tens-die face. Stored values stay in `1..10` (the d10 storage
+ * convention); the sprite shows the *tens digit*: `1 → "10"`, `2 → "20"`, …,
+ * `9 → "90"`, `10 → "00"` (paired with a `0` ones-die this reads as 100).
+ *
+ * Used by the bubble / composer in 1d100OE mode for the first die of each pair.
+ */
+@Composable
+fun PercentileTensFaceImage(
+    value: Int?,
+    modifier: Modifier = Modifier.size(48.dp),
+) {
+    val resource = percentileTensPainter(value)
+    val description = if (value != null) {
+        stringResource(MR.string.chat_dice_face_content_description, 100, value)
+    } else {
+        stringResource(MR.string.chat_dice_face_placeholder_content_description, 100)
+    }
+    Image(
+        bitmap = imageResource(resource),
+        contentDescription = description,
+        modifier = modifier,
+        contentScale = ContentScale.Fit,
+        filterQuality = FilterQuality.High,
+    )
+}
+
+private fun percentileTensPainter(value: Int?): DrawableResource {
+    val safeValue = when {
+        value == null -> 1
+        value < 1 -> 1
+        value > DPERCENT_FACES.size -> DPERCENT_FACES.size
+        else -> value
+    }
+    return DPERCENT_FACES[safeValue - 1]
+}
+
+private val DPERCENT_FACES: List<DrawableResource> = listOf(
+    MR.drawable.dpercent_10, MR.drawable.dpercent_20, MR.drawable.dpercent_30,
+    MR.drawable.dpercent_40, MR.drawable.dpercent_50, MR.drawable.dpercent_60,
+    MR.drawable.dpercent_70, MR.drawable.dpercent_80, MR.drawable.dpercent_90,
+    MR.drawable.dpercent_00,
 )
 
 private val D20_FACES: List<DrawableResource> = listOf(
