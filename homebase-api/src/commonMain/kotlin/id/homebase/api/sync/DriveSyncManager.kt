@@ -62,9 +62,6 @@ class DriveSyncManager(
         .map { computeSyncState(it) }
         .stateIn(scope, SharingStarted.Eagerly, SyncState.Idle)
 
-    fun numberOfDrivesSyncing(): Int =
-        _driveStatuses.value.values.count { it.state is DriveState.Synchronizing }
-
     init {
         scope.launch {
             var previous: SyncState = SyncState.Idle

@@ -1,5 +1,6 @@
 package id.homebase.api.client.connections
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -91,6 +92,9 @@ class ConnectionIntroductionProvider(
 
         val endpoint = "/connections/introductions/preflight"
 
+        Logger.i(tag = TAG) {
+            "preflightIntroductions: POST recipients=${group.recipients.map { it.domainName }}"
+        }
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
@@ -98,8 +102,31 @@ class ConnectionIntroductionProvider(
             secret = creds.secret
         )
 
-        throwForFailure(response)
-        return deserialize(response.body)
+        try {
+            throwForFailure(response)
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = TAG) {
+                "preflightIntroductions: FAIL status=${response.status} recipients=${group.recipients.map { it.domainName }}"
+            }
+            throw e
+        }
+        val body: IntroductionPreflightResult = deserialize(response.body)
+        // Log the full per-recipient row so the user can see *why* a recipient
+        // wasn't Ready (the boolean convenience fields + free-form `detail`
+        // carry the explanation; the enum alone is often too coarse for
+        // diagnosis — e.g. IntroductionsNotPermitted vs RecipientRejected both
+        // surface as "peer refused" but the underlying cause differs).
+        body.recipients.forEach { entry ->
+            Logger.i(tag = TAG) {
+                "preflightIntroductions: ${entry.recipient.domainName} → status=${entry.status} " +
+                    "isConfigured=${entry.isConfigured} requiresUpgrade=${entry.requiresUpgrade} " +
+                    "allowsIntroductions=${entry.allowsIntroductions} detail=${entry.detail}"
+            }
+        }
+        Logger.i(tag = TAG) {
+            "preflightIntroductions: OK   allReady=${body.allReady} recipients=${body.recipients.size}"
+        }
+        return body
     }
 
     // ------------------------------------------------------------

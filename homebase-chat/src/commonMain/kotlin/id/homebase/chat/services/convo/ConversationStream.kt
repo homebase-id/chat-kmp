@@ -104,8 +104,7 @@ class ConversationStream(
      * does not affect message-list dispatch.
      *
      * The status-message [HomebaseFile] is passed through so the handler can
-     * read/write its `localAppData.tags` and short-circuit on
-     * [ChatProtocol.HealAppliedTag] (per-message idempotency gate).
+     * self-destruct it (soft-delete + hard-delete) once cleanup runs.
      */
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
@@ -187,6 +186,10 @@ class ConversationStream(
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
+                        Logger.i(tag = "WSDiag") {
+                            "ConversationStream: Stopped chatDrive totalCount=${event.totalCount} " +
+                                "willReload=${event.totalCount > 0}"
+                        }
                         // Silent-DriveSync contract: the chat-drive DriveSync just
                         // landed N files in DriveMainIndex with no per-batch
                         // BatchReceived emits. Reload the conversation list from DB
@@ -257,6 +260,10 @@ class ConversationStream(
                                     "${event.batchData.size} files " +
                                     "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})"
                         )
+                        Logger.i(tag = "WSDiag") {
+                            "ConversationStream: BatchReceived chatDrive rows=${event.batchData.size} " +
+                                "conversations=${conversationFiles.size} messages=${messageFiles.size} admins=${adminFiles.size}"
+                        }
 
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
@@ -1184,13 +1191,16 @@ class ConversationStream(
 
     override suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId>
+        additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val conversation = getConversationById(conversationId) ?: return listOf()
+        val base = recipientOverride
+            ?: getConversationById(conversationId)?.participants
+            ?: return listOf()
         val recipients =
-            (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
+            (base + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 

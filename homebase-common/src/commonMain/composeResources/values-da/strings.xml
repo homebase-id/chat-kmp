@@ -361,10 +361,29 @@
     <string name="chat_group_heal">Reparér gruppe</string>
     <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
     <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
-    <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
-    <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
-    <string name="chat_group_main_file_delivered">Gruppefil leveret</string>
-    <string name="chat_group_main_file_problem">Problem med levering af gruppefil</string>
+    <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
+    <string name="chat_group_heal_checking_peers">Tjekker modtagere…</string>
+    <string name="chat_group_heal_progress_title">Reparerer gruppe</string>
+    <string name="chat_group_heal_progress_subtitle_running">Arbejder gennem den per-modtager plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
+    <string name="chat_group_heal_progress_still_queued">Stadig i kø til %1$s (serveren prøver igen)</string>
+    <string name="chat_group_main_peer_missing">Gruppefil: ikke hos modtager</string>
+    <string name="chat_group_main_peer_mine">Gruppefil: hos modtager (din)</string>
+    <string name="chat_group_main_peer_other_author">Gruppefil: hos modtager (tredjepart)</string>
+    <string name="chat_group_main_peer_error">Gruppefil: kunne ikke nå modtager</string>
+    <string name="chat_group_main_peer_loading">Gruppefil: tjekker modtager…</string>
+    <string name="chat_group_admin_peer_missing">Adminfil: ikke hos modtager</string>
+    <string name="chat_group_admin_peer_mine">Adminfil: hos modtager (din)</string>
+    <string name="chat_group_admin_peer_other_author">Adminfil: hos modtager (tredjepart)</string>
+    <string name="chat_group_admin_peer_error">Adminfil: kunne ikke nå modtager</string>
+    <string name="chat_group_admin_peer_loading">Adminfil: tjekker modtager…</string>
+    <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
+    <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
+    <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>
 
     <!-- 1:1 connection state banner -->
     <string name="chat_not_connected_description">Du er ikke forbundet.</string>

@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,11 +54,13 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
 import id.homebase.resources.you
 import id.homebase.resources.chat_event_add_to_google_calendar
+import id.homebase.resources.chat_event_copy_meeting_url
 import id.homebase.resources.chat_event_download_ics
 import id.homebase.resources.chat_event_join_meeting
 import id.homebase.resources.chat_event_open_in_maps
@@ -127,6 +131,7 @@ private fun EventDetailContent(
     val contactService: ContactService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
     val uriHandler = LocalUriHandler.current
+    val clipboard = LocalClipboard.current
     val calendarLauncher = rememberCalendarLauncher()
     val scope = rememberCoroutineScope()
 
@@ -218,11 +223,30 @@ private fun EventDetailContent(
             }
 
             descriptor.meetingUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                val copyLabel = stringResource(MR.string.chat_event_copy_meeting_url)
                 ActionRow(
                     icon = Icons.Default.Videocam,
                     label = url,
                     actionLabel = stringResource(MR.string.chat_event_join_meeting),
                     onClick = { runCatching { uriHandler.openUri(url) } },
+                    // Drag-select doesn't work on Desktop here — the row's
+                    // .clickable Surface consumes mouse press before
+                    // SelectionContainer can start a selection. Explicit copy
+                    // button works the same on every platform and doesn't
+                    // depend on selection gestures.
+                    trailing = {
+                        IconButton(
+                            onClick = {
+                                scope.launch { clipboard.setClipEntry(clipEntryOf(url)) }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = copyLabel,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -553,6 +577,7 @@ private fun ActionRow(
     label: String,
     actionLabel: String?,
     onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         modifier = Modifier
@@ -562,7 +587,15 @@ private fun ActionRow(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            // Lighter end padding when there's a trailing slot — the IconButton
+            // brings its own 48 dp touch target which already provides the
+            // visual breathing room.
+            modifier = Modifier.padding(
+                start = 14.dp,
+                end = if (trailing != null) 6.dp else 14.dp,
+                top = 12.dp,
+                bottom = 12.dp,
+            ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -585,6 +618,10 @@ private fun ActionRow(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(8.dp))
+                trailing()
             }
         }
     }

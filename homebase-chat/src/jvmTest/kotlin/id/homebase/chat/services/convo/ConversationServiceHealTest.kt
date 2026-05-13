@@ -29,17 +29,16 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
 /**
- * Tier-3 coverage for [ConversationService.handleIncomingHealRequest].
+ * Tier-3 coverage for [GroupHealService.handleIncomingHealRequest].
  *
  * The handler is the receive-side of the group-heal protocol. It runs when a
  * [StatusMessage.GroupHealRequested] status message arrives from the canonical
  * author of a group. The handler must:
  *
- *   1. Detect both **broken** (file present but mismatched author/versionTag)
- *      and **missing** (no local row at all) states. The pre-hardening
- *      implementation collapsed missing into "no-op" because mainFile==null
- *      short-circuited the && isFileBroken check, leaving recipients
- *      permanently stuck after markHealApplied tagged the status message.
+ *   1. Detect both **broken** (file present but mismatched author) and
+ *      **missing** (no local row at all) states. A previous implementation
+ *      collapsed missing into "no-op" because mainFile==null short-circuited
+ *      the && isServerFileBroken check, leaving recipients permanently stuck.
  *   2. Hard-delete *only* the broken local files (a missing file has no
  *      fileId to act on and the server already lacks the row).
  *   3. Write a self-sufficient local placeholder (versionTag=null) for both
@@ -49,8 +48,6 @@ import kotlinx.coroutines.test.runTest
  *      [GroupHealInfo.canonicalAdmins] (legacy senders) — fall back to the
  *      delete-only path so getAdmins()' originalAuthor fallback keeps things
  *      functional.
- *   5. Stay no-op on a second pass once the placeholder is in place
- *      (placeholder has versionTag=null, isFileBroken returns false).
  */
 class ConversationServiceHealTest {
 
@@ -60,6 +57,7 @@ class ConversationServiceHealTest {
     fun mainMissing_writesPlaceholderFromCanonicalParticipants_andDoesNotEnqueueHardDelete() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
             val canonicalParticipants = listOf(
                 OdinId(canonicalAuthorDomain),
@@ -67,8 +65,9 @@ class ConversationServiceHealTest {
                 OdinId("bob.test"),
             )
             val outboxRowsBefore = fixture.outboxRowCount()
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
 
-            service.handleIncomingHealRequest(
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     canonicalAuthor = canonicalAuthorDomain,
@@ -76,18 +75,25 @@ class ConversationServiceHealTest {
                     canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
                 ),
                 sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
             )
 
-            // Missing file ⇒ no DeleteLocalFilesByFileIdRequest enqueued.
+            // Missing file ⇒ no hard-delete for the *group* file. The only
+            // hard-delete we expect is the self-destruct of the heal message
+            // itself.
             val drained = fixture.drainOutbox()
-            val deleteRequests = drained.filter { it.isHardDeleteRequest() }
+            val hardDeletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
+            val nonSelfDestructHardDeletes = hardDeletes.filter { req ->
+                req.fileIds.any { it != healMsg.fileId }
+            }
             assertTrue(
-                deleteRequests.isEmpty(),
-                "missing file ⇒ NO hard-delete should be enqueued; got $deleteRequests",
+                nonSelfDestructHardDeletes.isEmpty(),
+                "missing file ⇒ NO hard-delete for the broken group file should be enqueued; got $nonSelfDestructHardDeletes",
             )
-            // We may have enqueued the markHealApplied tag-update — that's fine,
-            // the assertion above scoped to the hard-delete shape only.
+            assertTrue(
+                hardDeletes.any { it.fileIds.contains(healMsg.fileId) },
+                "heal message must self-destruct (hard-delete enqueued for its fileId=${healMsg.fileId}); got $hardDeletes",
+            )
 
             // Main placeholder file should now exist with versionTag=null and
             // canonical participants in its content.
@@ -114,12 +120,71 @@ class ConversationServiceHealTest {
     }
 
     @Test
+    fun healMessage_selfDestructs_localRowIsHardDeletedAfterHandling() = runTest {
+        // Seeds the heal status message itself into the local DB, runs the
+        // handler, and confirms the row is gone from DriveMainIndex. This is
+        // the load-bearing piece of "runs exactly once": once the row is gone
+        // locally, the upstream dispatcher (which iterates raw HomebaseFiles)
+        // can't surface it again on a future BatchReceived — there's nothing
+        // to surface.
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
+            val convoId = Uuid.random()
+            // No-op heal path is fine — we only care that the message itself
+            // gets erased. Seed a healthy group so cleanup is a no-op.
+            fixture.seedGroup(
+                conversationId = convoId,
+                others = listOf(canonicalAuthorDomain),
+                adminDomains = listOf(canonicalAuthorDomain),
+                seedAdminFile = false,
+            )
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
+            fixture.insertHomebaseFile(healMsg)
+            val healMsgUniqueId = healMsg.fileMetadata.appData.uniqueId
+            assertNotNull(healMsgUniqueId, "precondition: stub has a uniqueId")
+            // Precondition: the heal message is in the DB before we process it.
+            assertNotNull(
+                fixture.dbm.driveMainIndex.selectHomebaseFileByUnique(
+                    fixture.testIdentityId, fixture.chatDriveId, healMsgUniqueId,
+                ),
+                "precondition: heal message must be in the DB before handling",
+            )
+
+            healService.handleIncomingHealRequest(
+                status = healStatus(
+                    conversationId = convoId,
+                    canonicalAuthor = canonicalAuthorDomain,
+                    canonicalParticipants = listOf(
+                        OdinId(canonicalAuthorDomain),
+                        OdinId(fixture.testDomain),
+                    ),
+                    canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
+                ),
+                sender = OdinId(canonicalAuthorDomain),
+                messageFile = healMsg,
+            )
+
+            // Local hard-delete fired: the row is gone from DriveMainIndex,
+            // so the dispatcher's raw-file iteration can't see it on a
+            // future BatchReceived.
+            assertNull(
+                fixture.dbm.driveMainIndex.selectHomebaseFileByUnique(
+                    fixture.testIdentityId, fixture.chatDriveId, healMsgUniqueId,
+                ),
+                "heal message must self-destruct: row should be gone from DriveMainIndex after handling",
+            )
+        }
+    }
+
+    @Test
     fun mainBroken_hardDeletesLocalFile_andWritesPlaceholderFromCanonicalIdentity() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
             // Seed a "broken" main file: originalAuthor = us, but the canonical
-            // author claims to be alice. isFileBroken returns true (author mismatch).
+            // author claims to be alice. isServerFileBroken returns true (author mismatch).
             fixture.seedGroup(
                 conversationId = convoId,
                 others = listOf(canonicalAuthorDomain, "bob.test"),
@@ -135,8 +200,9 @@ class ConversationServiceHealTest {
                 OdinId(fixture.testDomain),
                 OdinId("bob.test"),
             )
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
 
-            service.handleIncomingHealRequest(
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     canonicalAuthor = canonicalAuthorDomain,
@@ -144,15 +210,20 @@ class ConversationServiceHealTest {
                     canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
                 ),
                 sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
             )
 
-            // Hard-delete request enqueued targeting the broken main fileId.
+            // Hard-delete request enqueued targeting the broken main fileId,
+            // AND the heal message must self-destruct.
             val drained = fixture.drainOutbox()
             val deletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
             assertTrue(
                 deletes.any { req -> req.fileIds.contains(brokenMainFileId) && req.hardDelete },
                 "broken main file ⇒ hardDelete=true request for fileId=$brokenMainFileId; got $deletes",
+            )
+            assertTrue(
+                deletes.any { req -> req.fileIds.contains(healMsg.fileId) && req.hardDelete },
+                "heal message must self-destruct (hard-delete enqueued for its fileId=${healMsg.fileId}); got $deletes",
             )
 
             // Placeholder written in place: same uniqueId, versionTag=null, new fileId.
@@ -170,16 +241,16 @@ class ConversationServiceHealTest {
     fun adminMissing_withCanonicalAdmins_writesAdminPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
             val canonicalAdmins = listOf(
                 OdinId(canonicalAuthorDomain),
                 OdinId("bob.test"),
             )
-            // Seed only the main file so isFileBroken on main returns false (versionTag matches null
-            // canonical) — but we want the main path to also be triggered to compare. Simpler: leave
-            // both files missing; both branches fire.
+            // Leave both files missing; both branches fire.
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
 
-            service.handleIncomingHealRequest(
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     canonicalAuthor = canonicalAuthorDomain,
@@ -190,7 +261,15 @@ class ConversationServiceHealTest {
                     canonicalAdmins = canonicalAdmins,
                 ),
                 sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
+            )
+
+            // Heal message must self-destruct.
+            val drained = fixture.drainOutbox()
+            val deletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertTrue(
+                deletes.any { req -> req.fileIds.contains(healMsg.fileId) && req.hardDelete },
+                "heal message must self-destruct (hard-delete enqueued for its fileId=${healMsg.fileId}); got $deletes",
             )
 
             // Admin placeholder file should now exist at the deterministic admin uniqueId.
@@ -220,10 +299,12 @@ class ConversationServiceHealTest {
     fun adminMissing_legacyPayloadWithoutCanonicalAdmins_doesNotWriteAdminPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
             // Both main and admin missing; legacy payload (canonicalAdmins=null).
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
 
-            service.handleIncomingHealRequest(
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     canonicalAuthor = canonicalAuthorDomain,
@@ -234,7 +315,15 @@ class ConversationServiceHealTest {
                     canonicalAdmins = null, // legacy sender
                 ),
                 sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
+            )
+
+            // Heal message must self-destruct.
+            val drained = fixture.drainOutbox()
+            val deletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertTrue(
+                deletes.any { req -> req.fileIds.contains(healMsg.fileId) && req.hardDelete },
+                "heal message must self-destruct (hard-delete enqueued for its fileId=${healMsg.fileId}); got $deletes",
             )
 
             // Main placeholder still gets written (we always have title+participants).
@@ -254,83 +343,12 @@ class ConversationServiceHealTest {
     }
 
     @Test
-    fun secondPass_afterPlaceholderWritten_isNoOp() = runTest {
-        // First pass writes a versionTag=null placeholder. Second pass (a
-        // different status message file id, simulating a re-fired heal from
-        // the canonical author after they updated something else) reads
-        // isFileBroken → false (placeholder versionTag=null is the explicit
-        // "leave me alone" marker) and takes the no-op branch. No additional
-        // hard-deletes or placeholders should be emitted.
-        ConversationServiceTestFixture().use { fixture ->
-            val service = fixture.build(scope = this)
-            val convoId = Uuid.random()
-            val canonicalParticipants = listOf(
-                OdinId(canonicalAuthorDomain),
-                OdinId(fixture.testDomain),
-            )
-
-            // ---- pass 1: missing → placeholder
-            service.handleIncomingHealRequest(
-                status = healStatus(
-                    conversationId = convoId,
-                    canonicalAuthor = canonicalAuthorDomain,
-                    canonicalParticipants = canonicalParticipants,
-                    canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
-                ),
-                sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
-            )
-            val placeholderAfterPass1 = fixture.getConversationFile(convoId)
-            assertNotNull(placeholderAfterPass1, "pass 1 must write a placeholder")
-            val placeholderFileIdAfterPass1 = placeholderAfterPass1.fileId
-            // Drain anything pass 1 enqueued so we can isolate pass 2.
-            fixture.drainOutbox()
-            val sendCallsAfterPass1 = fixture.statusMessageSender.calls.size
-
-            // ---- pass 2: same canonical identity, different status message file id
-            service.handleIncomingHealRequest(
-                status = healStatus(
-                    conversationId = convoId,
-                    canonicalAuthor = canonicalAuthorDomain,
-                    canonicalParticipants = canonicalParticipants,
-                    canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
-                ),
-                sender = OdinId(canonicalAuthorDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
-            )
-
-            // Placeholder still in place, fileId unchanged → no rewrite happened.
-            val placeholderAfterPass2 = fixture.getConversationFile(convoId)
-            assertNotNull(placeholderAfterPass2, "placeholder must still be present after pass 2")
-            assertEquals(
-                placeholderFileIdAfterPass1,
-                placeholderAfterPass2.fileId,
-                "pass 2 must NOT rewrite the placeholder — versionTag=null is the leave-alone marker",
-            )
-
-            // No hard-delete request was enqueued in pass 2.
-            val drainedPass2 = fixture.drainOutbox()
-            val deletesPass2 = drainedPass2.mapNotNull { it.asHardDeleteRequestOrNull() }
-            assertTrue(
-                deletesPass2.isEmpty(),
-                "pass 2 must take the no-op branch and NOT enqueue any hard-delete; got $deletesPass2",
-            )
-
-            // No GroupHealLocalCleanup status was emitted on pass 2 (no-op branch).
-            assertEquals(
-                sendCallsAfterPass1,
-                fixture.statusMessageSender.calls.size,
-                "pass 2 must NOT send a GroupHealLocalCleanup status — that would spam the user every replay",
-            )
-        }
-    }
-
-    @Test
     fun selfLoopback_skipsHandling() = runTest {
         // Sender is us — we're seeing our own outgoing heal status loop back.
         // The handler must short-circuit before any cleanup work.
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
             // Seed a "broken" file so a non-self-loopback heal would have
             // hard-deleted it. We assert that nothing happens.
@@ -342,8 +360,9 @@ class ConversationServiceHealTest {
             )
             val seededFileId = fixture.getConversationFile(convoId)?.fileId
             assertNotNull(seededFileId)
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
 
-            service.handleIncomingHealRequest(
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     // Canonical author is us → self-loopback.
@@ -352,15 +371,19 @@ class ConversationServiceHealTest {
                     canonicalAdmins = listOf(OdinId(fixture.testDomain)),
                 ),
                 sender = OdinId(fixture.testDomain),
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
             )
 
             // File untouched.
             assertEquals(seededFileId, fixture.getConversationFile(convoId)?.fileId)
-            // No outbox enqueue.
+            // No outbox enqueue — including no self-destruct of the heal message.
             val drained = fixture.drainOutbox()
             val deletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
             assertTrue(deletes.isEmpty(), "self-loopback must NOT enqueue any hard-delete")
+            assertTrue(
+                deletes.none { it.fileIds.contains(healMsg.fileId) },
+                "self-loopback must NOT self-destruct the heal message — message stays as diagnostic evidence",
+            )
         }
     }
 
@@ -369,9 +392,11 @@ class ConversationServiceHealTest {
         // Sender's domain doesn't match the canonical author — forgery guard.
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
             val convoId = Uuid.random()
 
-            service.handleIncomingHealRequest(
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
+            healService.handleIncomingHealRequest(
                 status = healStatus(
                     conversationId = convoId,
                     canonicalAuthor = canonicalAuthorDomain,
@@ -382,13 +407,21 @@ class ConversationServiceHealTest {
                     canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
                 ),
                 sender = OdinId("malicious.test"), // ≠ canonicalAuthor
-                messageFile = stubStatusMessageFile(fixture.chatDriveId),
+                messageFile = healMsg,
             )
 
             // No placeholder was written — handler exited at the forgery guard.
             assertNull(
                 fixture.getConversationFile(convoId),
                 "forged sender must not produce any local writes",
+            )
+            // And the forged heal message stays in the chat as diagnostic
+            // evidence — no self-destruct on the forgery early-return path.
+            val drained = fixture.drainOutbox()
+            val deletes = drained.mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertTrue(
+                deletes.none { it.fileIds.contains(healMsg.fileId) },
+                "forged sender must NOT self-destruct the heal message",
             )
         }
     }
@@ -420,9 +453,9 @@ class ConversationServiceHealTest {
     /**
      * Build an in-memory stub for the [HomebaseFile] passed as `messageFile`
      * to the heal handler. The file is deliberately *not* inserted into the
-     * test DB — `markHealApplied` short-circuits cleanly when the file is
-     * absent (updateLocalTags returns silently when the row doesn't exist),
-     * so tests can focus on the cleanup behaviour.
+     * test DB — the self-destruct path (optimisticWriter.writeDelete +
+     * dbm.driveMainIndex.deleteBy) short-circuits cleanly when the row is
+     * absent, so tests can focus on the cleanup behaviour.
      */
     private fun stubStatusMessageFile(driveId: Uuid): HomebaseFile = HomebaseFile(
         fileId = Uuid.random(),
