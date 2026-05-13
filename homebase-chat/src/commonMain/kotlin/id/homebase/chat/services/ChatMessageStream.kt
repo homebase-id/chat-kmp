@@ -70,10 +70,6 @@ class ChatMessageStream(
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount}, result=${event.result})")
-                        Logger.i(tag = "WSDiag") {
-                            "ChatMessageStream: Stopped chatDrive totalCount=${event.totalCount} " +
-                                "result=${event.result} willRefreshWindows=${event.totalCount > 0}"
-                        }
                         // Silent-DriveSync contract: the chat-drive DriveSync just
                         // landed N files in DriveMainIndex with no per-batch
                         // BatchReceived emits. Re-query the newest page for every
@@ -96,14 +92,6 @@ class ChatMessageStream(
 
                     is BackendEvent.DataEvent.BatchReceived -> {
                         if (event.driveId != chatDrive) return@collect
-                        Logger.i(tag = "WSDiag") {
-                            val convoIds = event.batchData
-                                .map { it.fileMetadata.appData.groupId }
-                                .distinct()
-                            val openWindows = paginatedState.windows.value.keys
-                            "ChatMessageStream: BatchReceived chatDrive rows=${event.batchData.size} " +
-                                "convoIds=$convoIds openWindows=$openWindows"
-                        }
                         // Every BatchReceived is a live WS-push event (DriveSync is
                         // silent). The window gate inside processIncrementalBatch
                         // no-ops batches for conversations the user hasn't opened.
@@ -347,18 +335,8 @@ class ChatMessageStream(
         val grouped = messages.groupBy { it.conversationId }
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
-            if (isConversationLeft(conversationId)) {
-                Logger.i(tag = "WSDiag") {
-                    "ChatMessageStream: skip convoId=$conversationId (user left); rows=${msgs.size}"
-                }
-                return@forEach
-            }
-            val window = paginatedState.getWindow(conversationId) ?: run {
-                Logger.i(tag = "WSDiag") {
-                    "ChatMessageStream: window-gate skip convoId=$conversationId (no open window); rows=${msgs.size}"
-                }
-                return@forEach
-            }
+            if (isConversationLeft(conversationId)) return@forEach
+            val window = paginatedState.getWindow(conversationId) ?: return@forEach
             // Gate: when the user has paged backwards (hasNewerMessages == true), the
             // window doesn't include the latest messages. Stream events that arrive while
             // the user is deep in history would land out of order; defer them until the

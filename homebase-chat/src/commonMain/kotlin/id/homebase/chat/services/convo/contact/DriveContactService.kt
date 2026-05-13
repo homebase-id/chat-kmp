@@ -69,17 +69,6 @@ class DriveContactService(
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.Stopped && event.driveId == contactDrive) {
-                    Logger.i(tag = "WSDiag") {
-                        "DriveContactService: Stopped contactDrive totalCount=${event.totalCount} " +
-                            "result=${event.result} willRefresh=${event.totalCount > 0}"
-                    }
-                } else if (event is BackendEvent.DataEvent.BatchReceived && event.driveId == contactDrive) {
-                    Logger.i(tag = "WSDiag") {
-                        "DriveContactService: BatchReceived contactDrive rows=${event.batchData.size} " +
-                            "— triggering refresh"
-                    }
-                }
                 // Two refresh triggers, by design — after the silent-DriveSync (e7f46062)
                 // and pure-push chat-drive (736b4f07) refactors, contact rows land via two
                 // event classes and we must converge from both:
@@ -129,15 +118,10 @@ class DriveContactService(
     }
 
     private suspend fun refresh() {
-        val beforeSize = _contacts.value.size
-        Logger.i(tag = "WSDiag") { "DriveContactService.refresh() start beforeSize=$beforeSize" }
         val result = fetchContacts()
         _contacts.value = result.records
         contactByOdinId.value =
             result.records.associateBy { it.odinId }
-        Logger.i(tag = "WSDiag") {
-            "DriveContactService.refresh() done newSize=${result.records.size} (was $beforeSize)"
-        }
     }
 
 
