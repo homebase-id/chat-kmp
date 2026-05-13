@@ -18,6 +18,10 @@ concurrency:
 
 jobs:
   build-android:
+    # Skip Android on the FFmpegKit thin-dylib experiment branch — that
+    # test only needs the iOS path, and the android job otherwise
+    # publishes to the Google Play internal track on every push.
+    if: github.ref != 'refs/heads/ci-test-ffmpeg-thin-frameworks'
     runs-on: ubuntu-latest
 
     steps:
@@ -178,6 +182,33 @@ jobs:
           // CI optimizations
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
+
+      # Experiment: ffmpeg-kit's build script always runs `lipo -create`
+      # even for a single-arch slice, producing fat-wrapped Mach-O
+      # executables inside the device-slice frameworks. Xcode 26 on
+      # macos-15 runners hangs `codesign` indefinitely on those during
+      # the Embed Frameworks phase (the symptom is a Build iOS step
+      # that stops dead at "Signing libswscale.framework" and chews the
+      # full timeout). This step strips the fat header so each
+      # framework's executable is a plain thin arm64 Mach-O before the
+      # build picks it up.
+      - name: Thin FFmpegKit device-slice dylibs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          changed=0
+          for fw in homebase-api/libs/ffmpegkit-bundled.xcframework/*.xcframework/ios-arm64/*.framework; do
+            exe="$fw/$(basename "$fw" .framework)"
+            if [ -f "$exe" ] && file "$exe" | grep -q "Mach-O universal"; then
+              echo "thinning $exe"
+              lipo -thin arm64 "$exe" -output "$exe.thin"
+              mv "$exe.thin" "$exe"
+              changed=$((changed + 1))
+            else
+              echo "skipping $exe (not fat or missing)"
+            fi
+          done
+          echo "thinned $changed executables"
 
       - name: Build iOS
         timeout-minutes: 70
