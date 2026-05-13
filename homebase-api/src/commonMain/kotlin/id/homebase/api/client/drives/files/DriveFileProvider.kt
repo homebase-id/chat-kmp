@@ -198,6 +198,24 @@ public class DriveFileProvider(
     }
 
     /**
+     * Fetch the FULL still-encrypted bytes of a payload, going through the disk cache.
+     * Returns null on 404. Used by the chat heal-redistribute path to pull an existing
+     * payload (the group image) off our own drive and re-attach it to a `updateFileByUniqueId`
+     * request as a `PayloadFile(isPreEncrypted=true, iv=<original iv>)` — that way peers
+     * receiving the heal'd file also receive the payload bytes (the manifest would
+     * otherwise be empty and the payload wouldn't ship).
+     */
+    suspend fun getPayloadBytesEncrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+    ): ByteArray? {
+        val response = driveCache.getPayloadBytesRaw(driveId, fileId, key)
+        if (response.status == 404) return null
+        return response.bytes
+    }
+
+    /**
      * Fetch the raw (still-encrypted) bytes for a specific byterange of a payload, going through
      * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
      * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).

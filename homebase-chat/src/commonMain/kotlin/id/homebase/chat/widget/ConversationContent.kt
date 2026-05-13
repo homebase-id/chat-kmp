@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -12,6 +15,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,9 +49,9 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -69,13 +75,17 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -83,6 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -102,7 +113,14 @@ import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
+import id.homebase.chat.dice.BattleRollSheet
+import id.homebase.chat.dice.DiceRollComposerSheet
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.dice.computeBattleChainCap
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
+import id.homebase.chat.event.EventDetailDialog
+import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.resources.chat_location_map_preview_unavailable
@@ -110,6 +128,7 @@ import id.homebase.resources.chat_location_permission_denied
 import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -126,9 +145,11 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
@@ -173,16 +194,20 @@ import id.homebase.resources.connect
 import id.homebase.resources.contacts
 import id.homebase.resources.groups
 import id.homebase.resources.menu_back
+import id.homebase.resources.cd_connection_succeeded
 import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import id.homebase.resources.you
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -216,6 +241,7 @@ fun ConversationContent(
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
+    var showDiceRollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -224,6 +250,7 @@ fun ConversationContent(
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val coroutineScope = rememberCoroutineScope()
     var showScrollToBottom by remember { mutableStateOf(false) }
+    var showFloatingDate by remember { mutableStateOf(false) }
 
     // Hoisted composer staging slot. Owned at this level so user-initiated attachments
     // (location, contact, etc.) can be appended from outside the input bar (e.g. from the
@@ -314,16 +341,36 @@ fun ConversationContent(
         }.collect { showScrollToBottom = it }
     }
 
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collectLatest { scrolling ->
+                if (scrolling) {
+                    showFloatingDate = true
+                } else {
+                    delay(400L)
+                    showFloatingDate = false
+                }
+            }
+    }
+
     // Auto-follow: when the list grows (new sent or received message) and the
     // user was already at the bottom, scroll to the new last item. If the user
     // is reading history further up, leave them alone.
+    //
+    // When `hasNewerMessages == true` the user is paged backwards into history;
+    // the bottom of the loaded window is NOT the latest message, and ChatMessageStream
+    // gates incoming-stream upserts on the same flag — so the only way the list
+    // grows here is via prepend, which the user wouldn't want auto-followed.
+    val hasNewerForAutoFollow = rememberUpdatedState(uiState.hasNewerMessages)
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
         snapshotFlow {
             listState.layoutInfo.totalItemsCount to listState.canScrollForward
         }.collect { (total, canScrollForward) ->
-            if (total > previousTotal && previousTotal > 0 && wasAtBottom) {
+            if (total > previousTotal && previousTotal > 0 && wasAtBottom &&
+                !hasNewerForAutoFollow.value
+            ) {
                 listState.animateScrollToItem(total - 1)
             }
             // canScrollForward == false means the user is at the absolute end
@@ -396,6 +443,29 @@ fun ConversationContent(
         }
     }
 
+    // All valid dice-roll descriptors in the loaded conversation slice. Used by
+    // dice-roll bubbles to render battle-leader lines and by the long-press menu
+    // to gate the Battle entry on chain cap / no-rebattle. One filter per
+    // message-list change, then read-only downstream.
+    val allDiceDescriptors = remember(uiState.messages) {
+        uiState.messages.asSequence()
+            .filterIsInstance<MessageListContentModel.Message>()
+            .mapNotNull { (it.message.messageContent as? MessageContent.DiceRoll)?.descriptor }
+            .filter { it.isValid() }
+            .toList()
+            .toPersistentList()
+    }
+
+    // Maximum number of rolls a battle chain can hold in this conversation:
+    // capped by the protocol's MAX_BATTLE_PARTICIPANTS, but for chats with
+    // fewer members the cap is the roster itself. `participants` already
+    // includes self (per ConversationService.kt:222), so it is the roster.
+    // When this number is reached the bubble switches from "leads" to "won"
+    // (the chain can no longer be overtaken).
+    val chainCap = remember(conversation.conversation.participants.size) {
+        computeBattleChainCap(conversation.conversation.participants.size)
+    }
+
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         showEmojiSheet = false
         showAttachmentSheet = false
@@ -435,12 +505,15 @@ fun ConversationContent(
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        files?.takeIf { it.isNotEmpty() }?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
                     conversationId = conversation.conversation.id,
-                    files = listOf(file),
+                    files = it,
                     isImage = true,
                 )
             )
@@ -452,6 +525,22 @@ fun ConversationContent(
         onUiAction = onUiAction,
     )
 
+    // Host-level event detail opened via a reply-preview tap. The per-bubble
+    // EventBubble manages its own dialog for direct taps; this one covers the
+    // case where the original Event is the *target* of a reply (and may be
+    // outside the loaded message window — handler resolves via DB on miss).
+    uiState.replyTargetEventDetail?.let { detail ->
+        EventDetailDialog(
+            descriptor = detail.descriptor,
+            messageId = detail.messageId,
+            conversationId = detail.conversationId,
+            ownReactions = detail.ownReactions,
+            counts = remember(detail.reactionSummary) { EventRsvp.counts(detail.reactionSummary) },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissEventDetailFromReply) },
+            organizer = detail.organizer,
+        )
+    }
+
     uiState.messageReactions?.let { reactions ->
         ReactionsBottomSheet(
             reactions = reactions,
@@ -459,6 +548,17 @@ fun ConversationContent(
             ownerOdinId = uiState.ownerSession?.odinId?.domainName,
             onContactClick = { odinId ->
                 onUiAction(ConversationListUiAction.ShowContactInfo(odinId))
+            },
+            onAddReaction = uiState.reactionDetailsMessageId?.let { messageId ->
+                { emoji: String ->
+                    onUiAction(
+                        ConversationListUiAction.ToggleReaction(
+                            conversationId = conversation.conversation.id,
+                            messageId = messageId,
+                            reaction = emoji,
+                        )
+                    )
+                }
             },
             onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) },
         )
@@ -487,6 +587,9 @@ fun ConversationContent(
         )
     }
 
+    CompositionLocalProvider(
+        LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+    ) {
     Scaffold(
         modifier = Modifier,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -502,7 +605,7 @@ fun ConversationContent(
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.clickable(
-                                    interactionSource = MutableInteractionSource(),
+                                    interactionSource = remember { MutableInteractionSource() },
                                     indication = null
                                 ) {
                                     onUiAction(
@@ -516,7 +619,7 @@ fun ConversationContent(
                                 ConversationAvatar(
                                     modifier = Modifier.focusable(), // to avoid textfield focus
                                     avatarModel = conversation.conversation.avatarModel,
-                                    options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
+                                    options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
@@ -567,7 +670,7 @@ fun ConversationContent(
                     if (showBackButton && !uiState.isSearchActive) {
                         IconButton(onClick = onBackClick) {
                             Icon(
-                                imageVector = Icons.Default.ChevronLeft,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back)
                             )
                         }
@@ -757,13 +860,61 @@ fun ConversationContent(
                     }
                 }
 
+                val currentMergedItems by rememberUpdatedState(mergedItems)
+                // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
+                // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
+                // `Pair<Int, List<...>>` (O(n) list-equals). See CLAUDE.md "Compose & Flow
+                // gotchas" — pairing index+list and adding `.distinctUntilChanged()` here
+                // stalled Main for 5–8 s (build 1394 watchdog, restored by PR #472, regressed
+                // by `6adcc6b1` dice-battle merge).
+                val floatingDateLabel by produceState<LocalDate?>(null, listState) {
+                    snapshotFlow {
+                        val items = currentMergedItems
+                        // boundedFirstVisibleItemIndex guards against the
+                        // `Int.MAX_VALUE` "land at bottom" sentinel that
+                        // ConversationMessagesPane puts into LazyListState before
+                        // LazyColumn's first measure clamps it. Without the clamp
+                        // this for-loop walked 2.1B iterations and froze Main for
+                        // 6+ s (build 1419 watchdog, restored by PR #473, regressed
+                        // by `6adcc6b1` dice-battle merge). See
+                        // `boundedFirstVisibleItemIndex` docs and the CLAUDE.md
+                        // "Compose & Flow gotchas" rule.
+                        val startIdx = listState.boundedFirstVisibleItemIndex(items.size)
+                        var date: LocalDate? = null
+                        if (startIdx != null) {
+                            for (i in startIdx downTo 0) {
+                                val item = items.getOrNull(i)
+                                if (item is MessageListContentModel.Section) {
+                                    date = item.date
+                                    break
+                                }
+                            }
+                        }
+                        date
+                    }.collect { value = it }
+                }
+
+                // Gate `animateItem()` until the initial composition burst has settled.
+                // animateItem activates `EnterExitTransitionModifierNode` + lookahead
+                // measurement, which interleaves badly with `Pre-initializing scroll
+                // position at bottom` mutating LazyListState during re-mount. One frame
+                // is enough for the initial layout to settle; afterwards animations run
+                // normally for live add/remove/move. Keyed on conversation id so switching
+                // chats also gets a clean first frame.
+                var animationsEnabled by remember(conversation.conversation.id) {
+                    mutableStateOf(false)
+                }
+                LaunchedEffect(conversation.conversation.id) {
+                    withFrameNanos { }
+                    animationsEnabled = true
+                }
+
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (!uiState.isLoadingMessages) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
                             state = listState,
                             contentPadding = PaddingValues(
                                 top = 24.dp,
@@ -782,7 +933,9 @@ fun ConversationContent(
                             ) { item ->
                                 when (item) {
                                     is MessageListContentModel.Header -> {
-                                        Column {
+                                        Column(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
                                             AvatarNameDisplay(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
@@ -822,41 +975,105 @@ fun ConversationContent(
                                     }
 
                                     is MessageListContentModel.Section -> {
-                                        MessagesSection(text = getDateSectionLabel(item.date))
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
+                                            MessagesSection(text = getDateSectionLabel(item.date))
+                                        }
                                     }
 
                                     is MessageListContentModel.System -> {
-                                        MessagesSystemMessage(text = item.text)
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
+                                            MessagesSystemMessage(text = item.text)
+                                        }
+                                    }
+
+                                    is MessageListContentModel.UnreadSeparator -> {
+                                        Box(
+                                            modifier = if (animationsEnabled) {
+                                                Modifier.animateItem(
+                                                    fadeInSpec = tween(300),
+                                                    fadeOutSpec = tween(400),
+                                                )
+                                            } else {
+                                                Modifier
+                                            },
+                                        ) {
+                                            UnreadMessagesSeparator()
+                                        }
                                     }
 
                                     is MessageListContentModel.Message -> {
                                         val isFocused = uiState.searchResultMessageIds.getOrNull(
                                             uiState.currentSearchResultIndex
                                         ) == item.message.id
-                                        MessageItem(
-                                            message = item.message,
-                                            userDefaultReactions = uiState.userDefaultReactions,
-                                            decryptedFiles = uiState.decryptedFiles,
-                                            currentOdinId = uiState.ownerSession?.odinId?.domainName
-                                                ?: "",
-                                            renderAuthorName = conversation.conversation.isGroupConversation,
-                                            isGroupConversation = conversation.conversation.isGroupConversation,
-                                            animatedVisibilityScope = animatedVisibilityScope,
-                                            sharedTransitionScope = sharedTransitionScope,
-                                            onUiAction = onUiAction,
-                                            downloadingFiles = uiState.downloadingFiles,
-                                            uploadStatus = uiState.uploadProgress[item.message.id],
-                                            replyMessages = replyMessages,
-                                            searchQuery = uiState.searchQuery,
-                                            isCurrentSearchResult = isFocused,
+                                        val showAuthorName = conversation.conversation.isGroupConversation &&
+                                            (item.clusterPosition == MessageClusterPosition.ALONE ||
+                                                item.clusterPosition == MessageClusterPosition.START)
+                                        val isHighlighted = uiState.highlightedMessageId == item.message.id
+                                        val highlightAlpha by animateFloatAsState(
+                                            targetValue = if (isHighlighted) 0.15f else 0f,
+                                            animationSpec = if (isHighlighted) tween(durationMillis = 300)
+                                            else tween(durationMillis = 600),
                                         )
+                                        LaunchedEffect(isHighlighted) {
+                                            if (!isHighlighted) return@LaunchedEffect
+                                            delay(1200L)
+                                            onUiAction(ConversationListUiAction.ClearHighlightedMessage)
+                                        }
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = highlightAlpha))
+                                        ) {
+                                            MessageItem(
+                                                message = item.message,
+                                                userDefaultReactions = uiState.userDefaultReactions,
+                                                decryptedFiles = uiState.decryptedFiles,
+                                                currentOdinId = uiState.ownerSession?.odinId?.domainName
+                                                    ?: "",
+                                                renderAuthorName = showAuthorName,
+                                                isGroupConversation = conversation.conversation.isGroupConversation,
+                                                clusterPosition = item.clusterPosition,
+                                                animatedVisibilityScope = animatedVisibilityScope,
+                                                sharedTransitionScope = sharedTransitionScope,
+                                                onUiAction = onUiAction,
+                                                downloadingFiles = uiState.downloadingFiles,
+                                                uploadStatus = uiState.uploadProgress[item.message.id],
+                                                replyMessages = replyMessages,
+                                                allDiceDescriptors = allDiceDescriptors,
+                                                searchQuery = uiState.searchQuery,
+                                                isCurrentSearchResult = isFocused,
+                                                chainCap = chainCap,
+                                            )
+                                        }
                                     }
 
                                     is PendingOutgoingMessage -> {
-                                        PendingMessageBubble(
-                                            message = item,
-                                            uploadStatus = uiState.uploadProgress[item.id],
-                                        )
+                                        Box(
+                                            modifier = if (animationsEnabled) Modifier.animateItem() else Modifier
+                                        ) {
+                                            PendingMessageBubble(
+                                                message = item,
+                                                uploadStatus = uiState.uploadProgress[item.id],
+                                            )
+                                        }
+                                    }
+
+                                    is MessageListContentModel.LoadingOlder,
+                                    is MessageListContentModel.LoadingNewer -> {
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(24.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -871,30 +1088,61 @@ fun ConversationContent(
                         )
 
                         Column(
-                            modifier = Modifier.align(Alignment.BottomEnd)
-                                .padding(end = 16.dp, bottom = 16.dp),
+                            modifier = Modifier.align(Alignment.TopCenter)
+                                .padding(top = 8.dp),
                         ) {
+                            var lastDateText by remember { mutableStateOf("") }
+                            floatingDateLabel?.let { lastDateText = getDateSectionLabel(it) }
+
                             AnimatedVisibility(
-                                visible = showScrollToBottom,
-                                enter = fadeIn() + scaleIn(),
-                                exit = fadeOut() + scaleOut(),
+                                visible = showFloatingDate && floatingDateLabel != null,
+                                enter = slideInVertically(
+                                    initialOffsetY = { -it },
+                                    animationSpec = tween(100),
+                                ) + fadeIn(animationSpec = tween(100)),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { -it },
+                                    animationSpec = tween(100),
+                                ) + fadeOut(animationSpec = tween(100)),
                             ) {
-                                SmallFloatingActionButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                        }
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                Surface(
+                                    shape = FloatingDateShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shadowElevation = 4.dp,
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
+                                    Text(
+                                        text = lastDateText,
+                                        modifier = Modifier.padding(
+                                            horizontal = 12.dp,
+                                            vertical = 6.dp,
+                                        ),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
                         }
+
+                        ScrollToBottomButton(
+                            visible = showScrollToBottom,
+                            unreadCount = conversation.conversation.unreadCount,
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp),
+                            onClick = {
+                                if (uiState.hasNewerMessages) {
+                                    // Deep in history: the bottom of the loaded
+                                    // window isn't the latest message, so a plain
+                                    // animateScrollToItem(last) would land mid-history.
+                                    // Reload the latest page instead — the existing
+                                    // auto-follow then snaps the user to the bottom.
+                                    onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                } else {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                    }
+                                }
+                            },
+                        )
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -1085,9 +1333,11 @@ fun ConversationContent(
                                 .focusProperties { canFocus = inputFocusable }) {
                             uiState.replyToMessage?.let { msg ->
                                 ReplyPreviewBar(
-                                    message = msg, onDismiss = {
+                                    message = msg,
+                                    onDismiss = {
                                         onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                                    })
+                                    },
+                                )
                             }
                             MessageInputBar(
                                 textFieldState = textFieldState,
@@ -1216,17 +1466,24 @@ fun ConversationContent(
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
                     visible = showAttachmentSheet && !isKeyboardVisible,
                 ) {
-                    AttachmentGallery(
-                        onImageSelected = {
-                            showAttachmentSheet = false
-                            onUiAction(
-                                ConversationListUiAction.AttachGalleryItem(
-                                    conversationId = conversation.conversation.id,
-                                    files = listOf(it)
+                    // The gallery thumb strip reads the OS photo library via GalleryCache,
+                    // which only exists on Android/iOS. On desktop/web the row would be
+                    // empty, so we skip it entirely and let the icon row sit at the top of
+                    // the sheet. The 300 dp height floor on AttachmentOptionsDisplay still
+                    // applies — desktop can host a virtual keyboard, so the floor stays.
+                    if (isMobile()) {
+                        AttachmentGallery(
+                            onImageSelected = {
+                                showAttachmentSheet = false
+                                onUiAction(
+                                    ConversationListUiAction.AttachGalleryItem(
+                                        conversationId = conversation.conversation.id,
+                                        files = listOf(it)
+                                    )
                                 )
-                            )
-                        },
-                    )
+                            },
+                        )
+                    }
                     AttachmentOptions(onGalleryClick = {
                         showAttachmentSheet = false
                         galleryLauncher.launch()
@@ -1243,6 +1500,9 @@ fun ConversationContent(
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true
+                    }, onDicesClick = {
+                        showAttachmentSheet = false
+                        showDiceRollComposer = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
@@ -1256,6 +1516,25 @@ fun ConversationContent(
             onSent = { showEventComposer = false },
         )
     }
+
+    if (showDiceRollComposer) {
+        DiceRollComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showDiceRollComposer = false },
+            onSent = { showDiceRollComposer = false },
+        )
+    }
+
+    val battleTarget = uiState.battleTargetMessage
+    if (battleTarget != null) {
+        BattleRollSheet(
+            parentMessage = battleTarget,
+            chainDescriptors = allDiceDescriptors,
+            onDismiss = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
+            onSent = { onUiAction(ConversationListUiAction.CancelBattleDiceRoll) },
+        )
+    }
+    } // CompositionLocalProvider
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1372,6 +1651,14 @@ fun ConversationContentSheets(
                                                 sheet.selectedRecipients
                                             )
                                         )
+                                        // Dismiss optimistically — the sheet is an intent picker, not a
+                                        // progress dialog. Errors surface via snackbar. Animate-hiding
+                                        // before clearing state avoids the ghost-scrim freeze that
+                                        // occurs when ModalBottomSheet is yanked from composition.
+                                        scope.launch {
+                                            sheetState.hide()
+                                            onUiAction(ConversationListUiAction.DismissSheet)
+                                        }
                                     },
                                     enabled = !uiState.isSendingMessage,
                                     imageVector = Icons.AutoMirrored.Filled.Send,
@@ -1467,7 +1754,7 @@ private fun ConnectIdentityRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_connection_succeeded),
                         tint = SuccessGreen,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1583,6 +1870,8 @@ fun RecipientItem(
 
 }
 
+private val FloatingDateShape = RoundedCornerShape(12.dp)
+
 @Composable
 private fun getDateSectionLabel(messageDate: LocalDate): String {
     val timezone = TimeZone.currentSystemDefault()
@@ -1599,6 +1888,74 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
                 day()
             }
             messageDate.format(format)
+        }
+    }
+}
+
+@Composable
+private fun ScrollToBottomButton(
+    visible: Boolean,
+    unreadCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = unreadCount > 0,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                val badgeScale = remember { Animatable(1f) }
+                var previousCount by remember { mutableIntStateOf(unreadCount) }
+                LaunchedEffect(unreadCount) {
+                    if (unreadCount > previousCount) {
+                        badgeScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = keyframes {
+                                durationMillis = 300
+                                1.25f at 100
+                                0.95f at 200
+                                1f at 300
+                            },
+                        )
+                    }
+                    previousCount = unreadCount
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = badgeScale.value
+                            scaleY = badgeScale.value
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Text(
+                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+            SmallFloatingActionButton(
+                onClick = onClick,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
+                )
+            }
         }
     }
 }

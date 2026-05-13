@@ -1,6 +1,5 @@
 package id.homebase.api.client.eventbus
 
-import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.websockets.Introduction
 import id.homebase.api.common.OdinId
@@ -8,14 +7,22 @@ import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
 
 sealed interface BackendEvent {
-    enum class SyncSource {
-        DriveSync,
-        WebSocket
-    }
-
+    /**
+     * Termination reason for a DriveSync round. Independent of `totalCount` —
+     * `Aborted` and `PermissionDenied` may still carry `totalCount > 0` because
+     * earlier batches' DB writes commit before any later batch can fail.
+     * Consumers that just want "did any data land in DriveMainIndex this round"
+     * should gate on `totalCount > 0` alone, NOT on result == Completed.
+     */
     sealed interface DriveResult {
-        data object Success : DriveResult
-        data class Failure(
+        /** Sync walked the cursor all the way to HEAD without error. */
+        data object Completed : DriveResult
+        /**
+         * Sync stopped early because of a DB write error or a network error
+         * that exceeded retries. Some earlier batches may already have landed
+         * (see `Stopped.totalCount`).
+         */
+        data class Aborted(
             val errorMessage: String
         ) : DriveResult
         /** Server returned 403 Forbidden — drive is unmounted for this session; no retry. */
@@ -48,29 +55,54 @@ sealed interface BackendEvent {
 
     }
 
-    // A DriveEvent event happens on a drive when either sync() has received a batch of data
-    // from the host, or when the websocket listener has received some data.
+    /**
+     * Sync-state-machine signals from [DriveSync.performSync]: drive started a
+     * sync round, made progress through a batch upsert, finished (success or
+     * failure). Consumed by [DriveSyncManager] to drive `DriveStatus` /
+     * `SyncState` / the login-screen progress UI. Carry no file data — that
+     * lives in [DataEvent].
+     */
     sealed interface DriveEvent : BackendEvent {
-        val driveId: Uuid  // Common property for all sync events (implement in each data class)
+        val driveId: Uuid
 
         data class Started(
             override val driveId: Uuid,
-        ) : DriveEvent // Only raised by Drive.sync()
+        ) : DriveEvent
+
+        /**
+         * Per-batch progress signal during [DriveSync.performSync]. [totalCount]
+         * is the running total of records upserted in this sync round (not the
+         * batch size). [DriveSyncManager] uses it to advance
+         * `Synchronizing(count = totalCount)` so the login-screen
+         * `DriveProgressRow` shows "N records" while sync is running.
+         */
+        data class Progress(
+            override val driveId: Uuid,
+            val totalCount: Int,
+        ) : DriveEvent
 
         data class Stopped(
             override val driveId: Uuid,
             val totalCount: Int,  // records fetched so far — always present (0 if failed immediately)
             val result: DriveResult
-        ) : DriveEvent  // Only raised by Drive.sync() when a drive finishes (success or failure)
+        ) : DriveEvent
+    }
+
+    /**
+     * Data-arrival signals: file headers have been written to `DriveMainIndex`
+     * and are ready for consumers to react to. Emitted by:
+     *  - [DriveWebSocketUpsertWorker]: per drained batch of WS-pushed file headers
+     *  - [OptimisticWriter]: per in-process optimistic write
+     * NOT emitted by [DriveSync.performSync] (silent-DriveSync contract —
+     * consumers reload from local DB on [DriveEvent.Stopped] with totalCount > 0).
+     */
+    sealed interface DataEvent : BackendEvent {
+        val driveId: Uuid
 
         data class BatchReceived(
             override val driveId: Uuid,
-            val totalCount: Int,
-            val batchCount: Int,
-            val latestModified: UnixTimeUtc?,
             val batchData: List<HomebaseFile>,
-            val source: SyncSource = SyncSource.DriveSync
-        ) : DriveEvent
+        ) : DataEvent
     }
 
 

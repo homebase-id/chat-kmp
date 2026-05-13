@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import okio.FileSystem
@@ -19,6 +21,7 @@ import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.dice.DiceRollPreferences
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -30,6 +33,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
@@ -38,6 +42,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.GroupHealConversationOps
+import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
@@ -52,12 +58,19 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.ui.screens.vault.VaultService
+import id.homebase.core.ui.screens.vault.VaultStream
+import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultUploaderService
+import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -79,6 +92,7 @@ import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
+import id.homebase.core.upgrade.PendingUpgradeManager
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -87,11 +101,15 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import id.homebase.core.config.getVaultPermissionExtensionConfig
+
+val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { VaultPreferences(get()) }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -101,20 +119,26 @@ val appModule = module {
         DriveRegistry(
             credentialsManager = get(),
             databaseManager = get(),
-            getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+            getFileHeaderByUid = { driveId, uniqueId ->
+                files.getFileHeaderByUid(
+                    driveId,
+                    uniqueId
+                )
+            },
             uploadFile = { request -> uploader.uploadFile(request) },
             updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
             eventBus = get(),
         )
     }
 
-    // Seeded with mandatory drives only — optional drives from the registry are cold-loaded
-    // into DriveSyncManager by AuthConnectionCoordinator after authentication, because
-    // reading the registry requires active credentials (not available at Koin time).
+    // Mandatory drives (chat, contacts) are baked into the constructor as an invariant
+    // of the sync engine. Optional drives from the cross-device registry are mounted
+    // dynamically by AuthConnectionCoordinator after authentication, because reading
+    // the registry requires active credentials (not available at Koin time).
     single {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
-            mandatorySyncDrives.associate { it.drive.alias to it.label },
+            mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
         )
     }
 
@@ -135,6 +159,7 @@ val appModule = module {
         val imageLoader: ImageLoader = get()
         val fileOps: FileOperationsProvider = get()
         val fileSystem = FileSystem.SYSTEM
+        val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
             driveSyncManager = get(),
             credentialsManager = get(),
@@ -156,6 +181,7 @@ val appModule = module {
                         "orphan coil disk cache delete failed on logout"
                     }
                 }
+                pendingUpgradeManager.reset()
             },
         )
     }
@@ -174,6 +200,7 @@ val appModule = module {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
+                conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
 
@@ -191,8 +218,9 @@ val appModule = module {
                 // endregion
 
                 // region Heal group: incoming GroupHealRequested status
+                val groupHealService = get<GroupHealService>()
                 conversationStream.onIncomingHealRequest = { status, sender, messageFile ->
-                    conversationService.handleIncomingHealRequest(status, sender, messageFile)
+                    groupHealService.handleIncomingHealRequest(status, sender, messageFile)
                 }
                 // endregion
 
@@ -201,6 +229,9 @@ val appModule = module {
                     conversationService.unarchiveConversation(conversationId)
                 }
                 // endregion
+
+                get<VaultPreferences>().reset()
+                get<VaultStream>().apply { reset(); start() }
             }
         )
     }
@@ -222,6 +253,8 @@ val appModule = module {
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
+    single<GroupHealConversationOps> { get<ConversationService>() }
+    singleOf(::GroupHealService)
     // One-shot bus for post-create introduction preflight: CreateConversationGroupViewModel
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
@@ -232,14 +265,26 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
+    singleOf(::DiceRollPreferences)
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
     singleOf(::NotificationService)
+    singleOf(::NotificationEntry)
+    single {
+        val upgradeProvider = get<IdentityUpgradeProvider>()
+        PendingUpgradeManager(
+            credentialsManager = get(),
+            isUpgradeRequired = { upgradeProvider.isUpgradeRequired() },
+        )
+    }
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
+    singleOf(::VaultStream)
+    singleOf(::VaultService)
+    singleOf(::VaultUploaderService)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -268,10 +313,19 @@ val appModule = module {
         }
         // Detects whether a chat-message file's appData.content can be decoded
         // as the runtime payload type ChatMessageStream.mapToMessageData would
-        // pick (StatusMessageData for status messages, MessageAppData
-        // otherwise). Returns null on success, the throwable on failure.
-        // Mirrors ChatMessageStream.kt:449-466 so the Defragmenter agrees with
-        // what the conversation list actually tries to render.
+        // pick. Returns null on success, the throwable on failure. Mirrors
+        // ChatMessageStream.kt:454-496 so the Defragmenter agrees with what the
+        // conversation list actually tries to render — three branches:
+        //   1. Status messages → StatusMessageData
+        //   2. Typed rich-content (Event=210, DiceRoll=212, future polls/etc.)
+        //      → MessageContentParser.parse, which returns non-null for any
+        //      known dataType. Even malformed typed content surfaces as
+        //      MessageContent.X(null) so the bubble shows an unsupported-format
+        //      chip rather than the message vanishing — that's still "decoded"
+        //      from the Defragmenter's perspective. The unrecognized-dataType
+        //      arm is the parser returning null itself.
+        //   3. Everything else (plain text, media, link previews, Location's
+        //      dataType 211 which has no typed-parser branch) → MessageAppData.
         val decodeMessageContentProbe: suspend (HomebaseFile) -> Throwable? = { file ->
             val appData = file.fileMetadata.appData
             val content = appData.content
@@ -281,6 +335,7 @@ val appModule = module {
                     runCatching {
                         OdinSystemSerializer.deserialize<StatusMessageData>(content)
                     }.exceptionOrNull()
+                MessageContentParser.parse(appData.dataType, content) != null -> null
                 else ->
                     runCatching {
                         OdinSystemSerializer.deserialize<MessageAppData>(content)
@@ -344,7 +399,23 @@ val appModule = module {
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
-    viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
+    viewModel(VaultPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getVaultPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
+    viewModel(FeedPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getFeedPermissionExtensionConfig()
+        )
+    }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
@@ -356,6 +427,21 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
+    viewModel {
+        VaultViewModel(
+            vaultPreferences = get(),
+            vaultPermissionViewModel = get(VaultPermissionQualifier),
+            vaultStream = get(),
+            vaultService = get(),
+            vaultUploaderService = get(),
+            eventBus = get(),
+            authConnectionCoordinator = get(),
+            driveRegistry = get(),
+            localAttachmentStore = get(),
+            driveSyncManager = get(),
+        )
+    }
+    viewModelOf(::VaultSettingsViewModel)
 }
 
 // Common module that each platform will implement

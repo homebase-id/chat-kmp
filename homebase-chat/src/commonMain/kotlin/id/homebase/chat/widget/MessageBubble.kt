@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,32 +50,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.event.EventDateChip
+import id.homebase.chat.event.rememberEventTimes
+import id.homebase.chat.event.rememberViewerLocalDate
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
+import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -90,6 +108,12 @@ import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_message_report_confirm_body
 import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
+import id.homebase.resources.cd_reply_thumbnail
+import id.homebase.resources.message_delivered
+import id.homebase.resources.message_read
+import id.homebase.resources.message_sending
+import id.homebase.resources.message_sent
+import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -100,6 +124,8 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+
+private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -123,8 +149,11 @@ fun SentMessageBubble(
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    currentOdinId: String = "",
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
@@ -142,6 +171,7 @@ fun SentMessageBubble(
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -149,9 +179,16 @@ fun SentMessageBubble(
     val isHovered by interactionSource.collectIsHoveredAsState()
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    // Captures the bubble's measured width so the reaction pill can be capped to
+    // it instead of widening the bubble for narrow messages (e.g. "."). Initial
+    // value 0 means "no constraint yet" — pill renders unconstrained for one
+    // frame then snaps to bubble width on the next composition.
+    var bubbleWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
         Row(
@@ -159,7 +196,13 @@ fun SentMessageBubble(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row {
+            // The bubble Box reserves 26dp at the bottom for the reaction pill
+            // when reactions are present, which drags `CenterVertically` ~13dp
+            // below the colored bubble's actual middle. Shift the hover-icons
+            // row (and its popup anchor) back up by that half so the icons
+            // align with the colored bubble's center, not the bubble+pill.
+            val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
+            Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
                 if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
@@ -220,6 +263,9 @@ fun SentMessageBubble(
                         onReply = onReply?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
+                        onBattle = onBattle?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
+                        },
                         onForward = onForward?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
@@ -249,26 +295,45 @@ fun SentMessageBubble(
             }
 
             Box(
-                modifier = if (isMobile()) {
-                    Modifier.fillMaxWidth().combinedClickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                        onLongClick = {
-                            if (onMessageInfo != null) {
-                                popupMode = MessagePopupMode.All
-                            }
-                        },
-                    )
-                } else Modifier,
+                // Mirror ReceivedMessageBubble's layout: on desktop the outer box
+                // wraps the bubble's content width instead of filling, so the
+                // hover-revealed icons row (which sits earlier in the parent Row)
+                // ends up immediately left of the bubble under Arrangement.End,
+                // and the action Popup anchored inside that row is adjacent to
+                // the bubble — matching Signal-style behavior. Mobile keeps
+                // fillMaxWidth so the combinedClickable target spans the row.
+                modifier = if (isMobile()) Modifier.fillMaxWidth()
+                else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Box {
+                Box(
+                    modifier = if (isMobile()) {
+                        Modifier.combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = {
+                                if (onMessageInfo != null) {
+                                    popupMode = MessagePopupMode.All
+                                }
+                            },
+                            onDoubleClick = {
+                                if (onAddReaction != null) {
+                                    popupMode = MessagePopupMode.Reaction
+                                }
+                            },
+                        )
+                    } else Modifier,
+                ) {
                     MessageBubbleRaw(
-                        modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
+                        modifier = Modifier
+                            .padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp)
+                            .onSizeChanged { bubbleWidthPx = it.width },
                         message = message,
                         decryptedFiles = decryptedFiles,
                         sentByYou = true,
+                        currentOdinId = currentOdinId,
+                        clusterPosition = clusterPosition,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
@@ -286,13 +351,22 @@ fun SentMessageBubble(
                         replyMessages = replyMessages,
                         searchQuery = searchQuery,
                         isCurrentSearchResult = isCurrentSearchResult,
+                        chainCap = chainCap,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
-                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 4.dp)
+                                .let {
+                                    if (bubbleWidthPx > 0)
+                                        it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
+                                    else it
+                                },
                             reactionSummary = reactionSummary,
-                            onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions?.invoke() },
+                            onReactionClick = { onShowReactions?.invoke() },
+                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                            ownReactions = message.ownReactions,
                         )
                     }
                 }
@@ -306,14 +380,18 @@ fun SentMessageBubbleDisplayOnly(
     modifier: Modifier = Modifier,
     message: MessageUiModel
 ) {
+    var bubbleWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     Box(
         modifier = modifier
     ) {
         MessageBubbleRaw(
-            modifier = Modifier.padding(
-                bottom = if (message.reactionPreview == null) 0.dp
-                else 26.dp
-            ),
+            modifier = Modifier
+                .padding(
+                    bottom = if (message.reactionPreview == null) 0.dp
+                    else 26.dp
+                )
+                .onSizeChanged { bubbleWidthPx = it.width },
             message = message,
             decryptedFiles = persistentMapOf(),
             sentByYou = true,
@@ -327,10 +405,17 @@ fun SentMessageBubbleDisplayOnly(
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 4.dp)
+                    .let {
+                        if (bubbleWidthPx > 0)
+                            it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
+                        else it
+                    },
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
+                ownReactions = message.ownReactions,
             )
         }
     }
@@ -358,9 +443,13 @@ fun ReceivedMessageBubble(
     message: MessageUiModel,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    currentOdinId: String = "",
     renderAuthorName: Boolean = false,
+    isGroupConversation: Boolean = false,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
@@ -378,6 +467,7 @@ fun ReceivedMessageBubble(
     onReport: (() -> Unit)? = null,
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -385,6 +475,8 @@ fun ReceivedMessageBubble(
     var showReportConfirm by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    var bubbleWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val filteredPayloads = message.payloads?.filter {
         !listOf(
             ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
@@ -400,8 +492,31 @@ fun ReceivedMessageBubble(
     val scope = rememberCoroutineScope()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth()
+            .padding(start = if (isGroupConversation) 8.dp else 16.dp, end = 16.dp)
+            .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
+        if (isGroupConversation) {
+            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
+                clusterPosition == MessageClusterPosition.END
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Bottom)
+                    .padding(start = 4.dp, end = 8.dp)
+                    .size(Dimens.Conversation.itemAvatarSize),
+            ) {
+                if (showAvatar && message.originalAuthor != null) {
+                    val initials = remember(message.displayName) {
+                        message.displayName.initials()
+                    }
+                    PublicAvatar(
+                        odinId = message.originalAuthor,
+                        initials = initials,
+                        options = GroupMessageAvatarOptions,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalArrangement = Arrangement.Start,
@@ -409,13 +524,18 @@ fun ReceivedMessageBubble(
         ) {
             Box(
                 modifier = if (isMobile()) {
-                    Modifier.fillMaxWidth().combinedClickable(
+                    Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
+                            }
+                        },
+                        onDoubleClick = {
+                            if (onAddReaction != null) {
+                                popupMode = MessagePopupMode.Reaction
                             }
                         },
                     )
@@ -441,13 +561,17 @@ fun ReceivedMessageBubble(
                     }
                     Box {
                         MessageBubbleRaw(
-                            modifier = Modifier.padding(
-                                bottom = if (message.reactionPreview == null) 0.dp
-                                else 26.dp
-                            ),
+                            modifier = Modifier
+                                .padding(
+                                    bottom = if (message.reactionPreview == null) 0.dp
+                                    else 26.dp
+                                )
+                                .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
                             sentByYou = false,
+                            currentOdinId = currentOdinId,
+                            clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
                             else null,
                             authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
@@ -467,21 +591,32 @@ fun ReceivedMessageBubble(
                             replyMessages = replyMessages,
                             searchQuery = searchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
+                            chainCap = chainCap,
                         )
                         message.reactionPreview?.let { reactionSummary ->
                             ReactionList(
-                                modifier = Modifier.align(Alignment.BottomEnd)
-                                    .padding(end = 4.dp),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 4.dp)
+                                    .let {
+                                        if (bubbleWidthPx > 0)
+                                            it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
+                                        else it
+                                    },
                                 reactionSummary = reactionSummary,
-                                onClick = { onAddReaction?.invoke(message.id, it) },
-                                onLongClick = { onShowReactions?.invoke() },
+                                onReactionClick = { onShowReactions?.invoke() },
+                                onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                                ownReactions = message.ownReactions,
                             )
                         }
                     }
                 }
             }
+            // See SentMessageBubble for rationale — compensates the 26dp pill
+            // reservation so hover icons stay centered on the colored bubble.
+            val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(
-                modifier = Modifier.wrapContentWidth(),
+                modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
                 if (onAddReaction != null && isDesktop() && !message.isDeleted) {
                     IconButton(
@@ -542,6 +677,9 @@ fun ReceivedMessageBubble(
                             onMessageInfo?.invoke()
                         },
                         onReply = onReply?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
+                        },
+                        onBattle = onBattle?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
                         },
                         onForward = onForward?.let { orig ->
@@ -626,14 +764,18 @@ fun ReceivedMessageBubbleDisplayOnly(
     modifier: Modifier = Modifier,
     message: MessageUiModel
 ) {
+    var bubbleWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     Box(
         modifier = modifier
     ) {
         MessageBubbleRaw(
-            modifier = Modifier.padding(
-                bottom = if (message.reactionPreview == null) 0.dp
-                else 26.dp
-            ),
+            modifier = Modifier
+                .padding(
+                    bottom = if (message.reactionPreview == null) 0.dp
+                    else 26.dp
+                )
+                .onSizeChanged { bubbleWidthPx = it.width },
             message = message,
             decryptedFiles = persistentMapOf(),
             sentByYou = false,
@@ -647,10 +789,17 @@ fun ReceivedMessageBubbleDisplayOnly(
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 4.dp)
+                    .let {
+                        if (bubbleWidthPx > 0)
+                            it.widthIn(max = with(density) { bubbleWidthPx.toDp() })
+                        else it
+                    },
                 reactionSummary = reactionSummary,
-                onClick = { },
-                onLongClick = { },
+                onReactionClick = { },
+                ownReactions = message.ownReactions,
             )
         }
     }
@@ -667,7 +816,7 @@ fun DeliveryStatus(
     if (isPendingSend) {
         Icon(
             Icons.Default.Alarm,
-            contentDescription = null,
+            contentDescription = stringResource(MR.string.message_sending),
             modifier = Modifier.size(16.dp),
             tint = contentColor,
         )
@@ -676,7 +825,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Read.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_read),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -685,7 +834,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Delivered.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndDelivered,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_delivered),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,)
             }
@@ -693,7 +842,7 @@ fun DeliveryStatus(
             ChatDeliveryStatus.Sent.value -> {
                 Icon(
                     HomebaseIcons.MessageSent,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.message_sent),
                     modifier = Modifier.height(DELIVERY_ICON_SIZE),
                     tint = contentColor,
                 )
@@ -729,25 +878,28 @@ fun InlineReplyPreview(
     replyMessage: MessageUiModel? = null,
     driveId: Uuid? = null,
 ) {
+    val currentOdinId = LocalCurrentOdinId.current
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Build HomebaseImageData from the original message's first image payload
+    // Build HomebaseImageData from the original message's first visual payload (image or video)
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstImagePayload = replyMessage.payloads?.firstOrNull {
-            it.contentType?.startsWith("image/") == true
+        val firstVisualPayload = replyMessage.payloads?.firstOrNull {
+            val ct = it.contentType ?: ""
+            ct.startsWith("image/") || ct.startsWith("video/") ||
+                ct == "application/vnd.apple.mpegurl"
         } ?: return@remember null
         val payloadIv = try {
-            firstImagePayload.iv?.let { Base64.decode(it) }
+            firstVisualPayload.iv?.let { Base64.decode(it) }
         } catch (_: Exception) {
             null
         } ?: return@remember null
         HomebaseImageData(
             driveId = driveId,
             fileId = replyMessage.fileId,
-            payloadKey = firstImagePayload.key,
-            previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+            payloadKey = firstVisualPayload.key,
+            previewThumbnail = firstVisualPayload.previewThumbnail?.toEmbeddedThumb()
                 ?: replyMessage.previewThumbnail
                 ?: replyPreview.previewThumbnail,
             requestedSize = ImageSize.THUMB_SMALL,
@@ -769,77 +921,154 @@ fun InlineReplyPreview(
         }
     }
 
-    val hasImage = imageData != null || replyPreview.previewThumbnail != null
-    val message = if (hasImage && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+    val hasThumb = imageData != null || thumbnailBitmap != null
+    val hasImage = hasThumb || replyPreview.previewThumbnail != null
+
+    // Content-type label for media replies (reuses shared logic with ReplyPreviewBar)
+    val mediaPayloads = remember(replyMessage?.payloads) {
+        replyMessage?.payloads?.filter { payload ->
+            payload.key != ChatProtocol.DefaultPayloadKey &&
+                !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        } ?: emptyList()
+    }
+    val contentLabel = messageContentLabel(
+        textContent = replyPreview.message,
+        isDeleted = replyMessage?.isDeleted ?: false,
+        firstPayload = mediaPayloads.firstOrNull(),
+        hasMultiplePayloads = mediaPayloads.size > 1,
+    )
+    // Dispatch on the typed ReplyContext carried on the wire — that's how
+    // the renderer knows it's an event reply without looking up the parent.
+    // Pre-context senders leave it null; we fall back to a parent-message
+    // lookup so old replies still get the chip when the parent is in
+    // memory. Future kinds parse as Unknown → default reply preview, no
+    // crash.
+    val eventStartLocal = when (val ctx = ReplyContext.fromJson(replyPreview.context)) {
+        is ReplyContext.Event -> rememberViewerLocalDate(ctx.startUtcMs)
+        ReplyContext.Unknown -> null
+        null -> {
+            val eventDescriptor = (replyMessage?.messageContent as? MessageContent.Event)?.descriptor
+            eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
+        }
+    }
+    val displayMessage = resolveReplyContentText(
+        replyText = replyPreview.message,
+        contentLabelText = contentLabel?.text,
+        hasThumbnail = hasThumb,
+        hasMedia = hasImage,
+        mediaFallbackLabel = stringResource(MR.string.media),
+    )
+    val showContentIcon = shouldShowContentIcon(hasThumb, contentLabel?.text)
 
     Row(
         modifier = Modifier
             .height(IntrinsicSize.Min)
             .padding(horizontal = 6.dp, vertical = 5.dp)
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 15.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
             .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         // Vertical accent bar
-        Row {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(color = Color.White, shape = RoundedCornerShape(2.dp))
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(color = contentColor, shape = RoundedCornerShape(2.dp))
+        )
+        Column(
+            modifier = Modifier.weight(1f)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+                val authorDisplayName = resolveReplyAuthorName(
+                    authorOdinId = replyPreview.authorOdinId,
+                    currentOdinId = currentOdinId,
+                    resolvedDisplayName = replyMessage?.displayName,
+                    youLabel = stringResource(MR.string.you),
+                )
+                Text(
+                    text = authorDisplayName,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (displayMessage.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (showContentIcon) {
+                            contentLabel?.icon?.let { icon ->
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = contentColor.copy(alpha = 0.7f),
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                            }
+                        }
+                        Text(
+                            text = displayMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        // Event date badge takes the trailing slot for event replies; it spans
+        // the full bubble height and runs flush to the right edge — the parent
+        // Row's clip(RoundedCornerShape(...)) carves the chip's right corners
+        // to match the bubble, while RectangleShape here keeps the left side
+        // flat so the chip reads as part of the bubble.
+        if (eventStartLocal != null) {
+            EventDateChip(
+                local = eventStartLocal,
+                compact = true,
+                fillHeight = true,
+                shape = RectangleShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             )
-            Column(
-                modifier = Modifier.weight(1f, fill = false)
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = replyPreview.authorOdinId,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = contentColor,
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
-                    maxLines = 2
-                )
-            }
-        }
-        // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
-        if (imageData != null) {
-            Row {
-                Spacer(modifier = Modifier.width(8.dp))
-                HomebaseImage(
-                    imageData = imageData,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = null,
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
+        } else if (imageData != null) {
+            HomebaseImage(
+                imageData = imageData,
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop,
+                contentDescription = stringResource(MR.string.cd_reply_thumbnail),
+            )
         } else {
             thumbnailBitmap?.let { bitmap ->
-                Row {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = stringResource(MR.string.cd_reply_thumbnail),
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Crop,
+                )
             }
         }
     }
+}
+
+internal fun MessageClusterPosition.topSpacing(): Dp = when (this) {
+    MessageClusterPosition.ALONE -> 6.dp
+    MessageClusterPosition.START -> 6.dp
+    MessageClusterPosition.MIDDLE -> 1.dp
+    MessageClusterPosition.END -> 1.dp
+}
+
+internal fun MessageClusterPosition.bottomSpacing(): Dp = when (this) {
+    MessageClusterPosition.ALONE -> 6.dp
+    MessageClusterPosition.END -> 6.dp
+    MessageClusterPosition.START -> 1.dp
+    MessageClusterPosition.MIDDLE -> 1.dp
 }
 
 @Preview(widthDp = 480, heightDp = 440, )

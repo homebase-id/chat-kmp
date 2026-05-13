@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,7 @@ fun SettingsItemAction(
     imageVector: ImageVector,
     text: String,
     onClick: () -> Unit,
+    tint: Color = Color.Unspecified,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     Row(
@@ -39,12 +41,14 @@ fun SettingsItemAction(
         Icon(
             imageVector = imageVector,
             contentDescription = null,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(36.dp),
+            tint = if (tint != Color.Unspecified) tint else MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
+            color = if (tint != Color.Unspecified) tint else Color.Unspecified,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)

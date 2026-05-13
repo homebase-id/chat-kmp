@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import associateNotNull
@@ -32,14 +33,18 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.resolveAnchorMessageId
+import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.core.util.rememberCameraManager
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlin.uuid.Uuid
@@ -57,12 +62,15 @@ fun ConversationMessagesPane(
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        files?.takeIf { it.isNotEmpty() }?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
                     conversationId = conversation.conversation.id,
-                    files = listOf(file),
+                    files = it,
                     isImage = true,
                 )
             )
@@ -74,6 +82,17 @@ fun ConversationMessagesPane(
                 ConversationListUiAction.AttachPlatformFile(
                     conversation.conversation.id,
                     listOf(file),
+                )
+            )
+        }
+    }
+    val cameraLauncher = rememberCameraManager { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.conversation.id,
+                    files = listOf(file),
+                    isImage = true,
                 )
             )
         }
@@ -97,24 +116,42 @@ fun ConversationMessagesPane(
         }
     }
 
+    // The LaunchedEffect below is keyed only on `listState`, so its captured
+    // `uiState.messages` would freeze at composition time. `rememberUpdatedState`
+    // gives the lambda a State handle whose `.value` reads the latest messages
+    // list at each emission — so the index → anchor resolution always uses the
+    // currently-rendered window, not a stale one.
+    val latestMessages = rememberUpdatedState(uiState.messages)
+
     // Save scroll position when it changes
     LaunchedEffect(listState) {
         val conversationId = conversation.conversation.id
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
-            300
-        ) // Only save after 300ms of no scrolling
-            .distinctUntilChanged().collect { (index, offset) ->
+        // boundedFirstVisibleItemIndex against `layoutInfo.totalItemsCount` (what
+        // LazyColumn actually rendered) drops Int.MAX_VALUE sentinel emissions
+        // that snapshotFlow can see before LazyColumn's first measure clamps the
+        // LazyListState. Without this guard, a Main-busy window > 300 ms could
+        // persist MAX_VALUE to user prefs; the next session would then
+        // reconstruct LazyListState from prefs with MAX_VALUE again, re-arming
+        // the same race we just closed in ConversationContent.kt.
+        snapshotFlow {
+            listState.boundedFirstVisibleItemIndex(listState.layoutInfo.totalItemsCount) to
+                listState.firstVisibleItemScrollOffset
+        }.debounce(300) // Only save after 300ms of no scrolling
+            .collect { (index, offset) ->
                 // Only save if we're still viewing the same conversation, messages are loaded,
                 // and not restoring
-                if (!uiState.isLoadingMessages) {
-                    Logger.i("Scroll changed: id=${conversationId} -> $index:$offset")
-                    onUiAction(
-                        SaveScrollPosition(
-                            conversationId = conversationId,
-                            firstVisibleItemIndex = index,
-                            firstVisibleItemScrollOffset = offset
+                if (index != null && !uiState.isLoadingMessages) {
+                    val anchorId = resolveAnchorMessageId(latestMessages.value, index)
+                    if (anchorId != null) {
+                        Logger.i("Scroll changed: id=${conversationId} -> anchor=$anchorId offset=$offset (idx=$index)")
+                        onUiAction(
+                            SaveScrollPosition(
+                                conversationId = conversationId,
+                                anchorMessageId = anchorId,
+                                firstVisibleItemScrollOffset = offset,
+                            )
                         )
-                    )
+                    }
                 }
             }
     }
@@ -126,6 +163,40 @@ fun ConversationMessagesPane(
                 uiState.scrollPosition.firstVisibleItemScrollOffset
             )
             onUiAction(ConversationListUiAction.ClearScrollTrigger)
+        }
+    }
+
+    // Proximity-trigger: when the visible window approaches either end and the
+    // window has more pages on that side, dispatch a load. The flag reads use
+    // rememberUpdatedState so the collect block always sees the latest values
+    // without restarting the snapshotFlow on every uiState mutation. The
+    // snapshotFlow body intentionally returns a tiny `Pair<Boolean, Boolean>`
+    // — snapshotFlow's structural dedup makes that O(1), unlike a list-shaped
+    // emission which would re-cost a full equals on every scroll tick.
+    val hasOlderState = rememberUpdatedState(uiState.hasOlderMessages)
+    val hasNewerState = rememberUpdatedState(uiState.hasNewerMessages)
+    val isLoadingOlderState = rememberUpdatedState(uiState.isLoadingOlder)
+    val isLoadingNewerState = rememberUpdatedState(uiState.isLoadingNewer)
+    LaunchedEffect(listState, conversation.conversation.id) {
+        val conversationId = conversation.conversation.id
+        val threshold = PaginatedConversationState.LOAD_MORE_THRESHOLD
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            if (total == 0) return@snapshotFlow false to false
+            val firstIdx = listState.boundedFirstVisibleItemIndex(total)
+                ?: return@snapshotFlow false to false
+            val lastIdx = info.visibleItemsInfo.lastOrNull()?.index ?: firstIdx
+            val nearTop = firstIdx < threshold
+            val nearBottom = lastIdx > total - 1 - threshold
+            nearTop to nearBottom
+        }.collect { (nearTop, nearBottom) ->
+            if (nearTop && hasOlderState.value && !isLoadingOlderState.value) {
+                onUiAction(ConversationListUiAction.LoadOlderMessages(conversationId))
+            }
+            if (nearBottom && hasNewerState.value && !isLoadingNewerState.value) {
+                onUiAction(ConversationListUiAction.LoadNewerMessages(conversationId))
+            }
         }
     }
 
@@ -252,6 +323,7 @@ fun ConversationMessagesPane(
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
+                            onCameraClick = { cameraLauncher.launch() },
                             onRemoveFile = { conversationId, attachmentId ->
                                 onUiAction(UnAttachFile(conversationId, attachmentId))
                             },

@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,8 +54,10 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -108,6 +111,8 @@ fun MessageBubbleRaw(
     message: MessageUiModel,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     sentByYou: Boolean,
+    currentOdinId: String = "",
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
@@ -123,6 +128,7 @@ fun MessageBubbleRaw(
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
 
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
@@ -138,6 +144,24 @@ fun MessageBubbleRaw(
                 conversationId = message.conversationId,
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
+            )
+            return
+        }
+        is MessageContent.DiceRoll -> {
+            DiceRollBubble(
+                descriptor = content.descriptor,
+                currentOdinId = currentOdinId,
+                chainCap = chainCap,
+                modifier = modifier,
+            )
+            return
+        }
+        is MessageContent.Unknown -> {
+            UnknownMessageBubble(
+                dataType = content.dataType,
+                modifier = modifier,
             )
             return
         }
@@ -194,7 +218,8 @@ fun MessageBubbleRaw(
     val timestamp = formatMessageTimestamp(message.userDate)
     val messageInfoText =
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
-    val mediaOnly = remember { !message.content.hasContent() && hasMedia }
+    val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
+    val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
     val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
@@ -231,14 +256,26 @@ fun MessageBubbleRaw(
             )
         }
 
-    val shape = remember {
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-            bottomStart =
-                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        )
+    val big = Dimens.Message.cornerRadius
+    val small = Dimens.Message.cornerCollapseRadius
+    val shape = remember(sentByYou, clusterPosition, mediaOnly) {
+        if (mediaOnly) {
+            RoundedCornerShape(big)
+        } else if (sentByYou) {
+            when (clusterPosition) {
+                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+                MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
+                MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
+                MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
+            }
+        } else {
+            when (clusterPosition) {
+                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+                MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
+                MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
+                MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
+            }
+        }
     }
 
     Surface(
@@ -292,41 +329,65 @@ fun MessageBubbleRaw(
                         downloadingFiles = downloadingFiles,
                         uploadStatus = uploadStatus,
                     )
-                    Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(40.dp)
-                                .align(Alignment.BottomStart).background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(
-                                                alpha = 0.6f
-                                            ),
-                                        )
-                                    )
-                                ),
-                        ) {
-                            Row(
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(
-                                        alpha = 0.7f
-                                    )
-                                )
-                                if (sentByYou) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                    )
-                                }
-                            }
+                    MediaTimestampOverlay(
+                        messageInfoText = messageInfoText,
+                        sentByYou = sentByYou,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        contentColor = contentColor,
+                    )
+                }
+            } else if (replyMediaOnly && !message.isDeleted) {
+                val reply = message.messageAppData.replyPreview!!
+                Layout(
+                    content = {
+                        InlineReplyPreview(
+                            replyPreview = reply,
+                            sentByYou = sentByYou,
+                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            replyMessage = replyMessages[reply.replyUniqueId],
+                            driveId = chatTargetDrive.alias,
+                        )
+                        Box {
+                            MediaMessage(
+                                payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                                fileId = message.fileId,
+                                decryptedFiles = decryptedFiles,
+                                keyHeader = message.keyHeader,
+                                driveId = chatTargetDrive.alias,
+                                previewThumbnail = message.previewThumbnail,
+                                onMediaClick = onMediaClick,
+                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onRequestDecryptedFile = onRequestDecryptedFile,
+                                shape = RoundedCornerShape(0.dp),
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                messageId = message.id,
+                                downloadingFiles = downloadingFiles,
+                                uploadStatus = uploadStatus,
+                            )
+                            MediaTimestampOverlay(
+                                messageInfoText = messageInfoText,
+                                sentByYou = sentByYou,
+                                isPendingSend = isPendingSend,
+                                deliveryStatus = message.messageAppData.deliveryStatus,
+                                contentColor = contentColor,
+                            )
                         }
+                    },
+                ) { measurables, constraints ->
+                    val minContentWidth = Dimens.MediaBubble.minWidthWithContent.roundToPx()
+                        .coerceAtMost(constraints.maxWidth)
+                    val mediaPlaceable = measurables[1].measure(
+                        constraints.copy(minWidth = minContentWidth)
+                    )
+                    val width = mediaPlaceable.width
+                    val replyPlaceable = measurables[0].measure(
+                        constraints.copy(minWidth = width, maxWidth = width)
+                    )
+                    layout(width, replyPlaceable.height + mediaPlaceable.height) {
+                        replyPlaceable.placeRelative(0, 0)
+                        mediaPlaceable.placeRelative(0, replyPlaceable.height)
                     }
                 }
             } else {
@@ -340,7 +401,10 @@ fun MessageBubbleRaw(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = authorColor ?: contentColor,
                                     modifier = Modifier.padding(
-                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
+                                        start = 12.dp,
+                                        top = 8.dp,
+                                        end = 12.dp,
+                                        bottom = 4.dp,
                                     ),
                                     maxLines = 1,
                                 )
@@ -364,7 +428,7 @@ fun MessageBubbleRaw(
                                     previewThumbnail = message.previewThumbnail,
                                     onMediaClick = onMediaClick,
                                     keyHeader = message.keyHeader,
-                                    shape = if (authorName == null) RoundedCornerShape(
+                                    shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
                                         topStart = Dimens.Message.cornerRadius,
                                         topEnd = Dimens.Message.cornerRadius
                                     ) else RoundedCornerShape(0.dp),
@@ -477,7 +541,8 @@ fun MessageBubbleRaw(
                             if (hasMedia && i == mediaIndex) {
                                 mediaWidth = placeable.width
                             }
-                            if (authorName != null && i == 0) {
+                            val authorIndex = 0
+                            if (authorName != null && i == authorIndex) {
                                 authorWidth = placeable.width
                             }
                         }
@@ -499,7 +564,7 @@ fun MessageBubbleRaw(
 
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
-                        val potentialFinalWidth: Int
+                        val rawPotentialFinalWidth: Int
 
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
@@ -512,7 +577,7 @@ fun MessageBubbleRaw(
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
-                            potentialFinalWidth = if (fitsOnLastLine) {
+                            rawPotentialFinalWidth = if (fitsOnLastLine) {
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
@@ -528,7 +593,7 @@ fun MessageBubbleRaw(
                                 )
                             }
                         } else {
-                            potentialFinalWidth =
+                            rawPotentialFinalWidth =
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
@@ -536,6 +601,13 @@ fun MessageBubbleRaw(
                                     authorWidth
                                 )
                         }
+
+                        // Clamp to the parent's bound. The reply re-measure below forces an exact
+                        // width, so an unclamped value here would propagate any computation drift
+                        // straight into a child measurement — turning a one-off mismeasure into a
+                        // sustained layout-invalidation loop. The clamp guarantees convergence.
+                        val potentialFinalWidth =
+                            rawPotentialFinalWidth.coerceAtMost(constraints.maxWidth)
 
                         // NOW measure reply with the correct width that accounts for info placement
                         val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
@@ -598,7 +670,8 @@ fun MessageBubbleRaw(
                                             textPlaceable.height +
                                             (showMorePlaceable.height) +
                                             infoPlaceable.height +
-                                            8.dp.roundToPx()
+                                            8.dp.roundToPx() +
+                                            4.dp.roundToPx()
                             }
                         } else {
                             finalWidth = maxOf(
@@ -612,10 +685,18 @@ fun MessageBubbleRaw(
                                 placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width
                             finalHeight =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height + 4.dp.roundToPx()
                         }
 
-                        layout(finalWidth, finalHeight) {
+                        // Same containment as `potentialFinalWidth`: never report a width
+                        // wider than the parent allows. A bubble that returns finalWidth >
+                        // constraints.maxWidth makes the parent re-measure us, which can race
+                        // with `textLayoutResult` updates and spin. Pull `infoX` back inside
+                        // the clamped width so the timestamp stays visible in the rare case
+                        // the clamp kicked in.
+                        val clampedFinalWidth = finalWidth.coerceAtMost(constraints.maxWidth)
+                        val clampedInfoX = infoX.coerceAtMost(clampedFinalWidth - infoPlaceable.width)
+                        layout(clampedFinalWidth, finalHeight) {
                             var yPos = 0
                             replyPlaceable?.let {
                                 it.placeRelative(0, yPos)
@@ -632,9 +713,51 @@ fun MessageBubbleRaw(
                             showMorePlaceable.placeRelative(0, yPos)
                             yPos += showMorePlaceable.height
 
-                            infoPlaceable.placeRelative(infoX, infoY)
+                            infoPlaceable.placeRelative(clampedInfoX, infoY)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.MediaTimestampOverlay(
+    messageInfoText: String,
+    sentByYou: Boolean,
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    contentColor: Color,
+) {
+    Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(40.dp)
+                .align(Alignment.BottomStart).background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.6f),
+                        )
+                    )
+                ),
+        ) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    text = messageInfoText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f),
+                )
+                if (sentByYou) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    DeliveryStatus(
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = deliveryStatus,
+                        contentColor = contentColor.copy(alpha = 0.7f),
+                    )
                 }
             }
         }

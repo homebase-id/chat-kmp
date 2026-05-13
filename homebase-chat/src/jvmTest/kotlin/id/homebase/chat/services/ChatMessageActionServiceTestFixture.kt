@@ -47,11 +47,15 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.time.Clock
@@ -116,10 +120,19 @@ class ChatMessageActionServiceTestFixture(
     lateinit var participantLookup: FakeConversationParticipantLookup
         private set
 
+    // Owned outbox scope. The uploader's post-`Completed` bookkeeping hops to
+    // `Dispatchers.IO`; if we attached it to `runTest`'s `backgroundScope` the
+    // hop survives `runTest` cancellation and can land DB writes after the
+    // in-memory DB is closed (loaded Linux CI: SQLException → flake). By
+    // owning the scope here we can `cancelAndJoin` it in [close] before
+    // tearing down the DB — no late writers, no race.
+    private val outboxJob = SupervisorJob()
+    private val ownedOutboxScope = CoroutineScope(outboxJob + Dispatchers.IO)
+
     suspend fun build(
         scope: CoroutineScope = TestScope(),
-        outboxScope: CoroutineScope = scope,
     ): ChatMessageActionService {
+        val outboxScope: CoroutineScope = ownedOutboxScope
         dbm = createInMemoryDbm()
         credentialsManager = createCredentialsManager(testDomain)
         eventBus = EventBus()
@@ -486,19 +499,13 @@ class ChatMessageActionServiceTestFixture(
 
     override fun close() {
         if (!::dbm.isInitialized) return
-        // Swallow teardown-time SQL races: `runTest` cancels `backgroundScope`
-        // (where the outbox uploader runs) when the test body returns, but
-        // the uploader's post-`Completed` bookkeeping writes can hop to
-        // `Dispatchers.IO` and outlive `advanceUntilIdle`. On a loaded CI
-        // box those writes can land *after* this `close()` runs, throwing
-        // `SQLException("database has been closed")` and turning a passing
-        // test into a flake. Per-test in-memory DBs make leaks harmless.
-        try {
-            dbm.close()
-        } catch (e: java.sql.SQLException) {
-            // Already torn down or in the middle of a race — nothing to
-            // recover, and propagating would mask the real assertions.
-        }
+        // Drain the outbox scope before destroying the DB. The uploader's
+        // post-`Completed` bookkeeping hops to `Dispatchers.IO`; without this
+        // join those writes can land after `dbm.close()` and throw
+        // `SQLException("database has been closed")` from an IO thread,
+        // which `runTest` reports as a test failure on loaded Linux CI.
+        runBlocking { outboxJob.cancelAndJoin() }
+        dbm.close()
     }
 
     private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
@@ -566,6 +573,15 @@ class FakeMessageLookup : MessageLookup {
 
     override suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? =
         error("FakeMessageLookup.loadFullMessage not exercised by tests using this fixture")
+
+    /** Mirrors the real implementation's contract: returns the cached fileId
+     *  if the message has been seeded into [records], otherwise null so the
+     *  caller falls through to its DB lookup. Existing requireFileId tests
+     *  seed only the DriveMainIndex row (not [records]), so they exercise
+     *  the DB fall-through; tests that want to assert the cache-hit path
+     *  add the message to [records] explicitly. */
+    override fun findCachedFileId(messageId: Uuid): Uuid? =
+        records.firstOrNull { it.id == messageId }?.fileId
 }
 
 class FakeLocalLastReadUpdater : LocalLastReadUpdater {
@@ -633,6 +649,7 @@ class FakeConversationParticipantLookup :
     override suspend fun getRecipients(
         conversationId: Uuid,
         additionalRecipients: List<id.homebase.api.common.OdinId>,
+        recipientOverride: List<id.homebase.api.common.OdinId>?,
     ): List<id.homebase.api.common.OdinId> = emptyList()
 }
 

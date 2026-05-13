@@ -27,13 +27,18 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.event.EventDateChip
+import id.homebase.chat.event.rememberEventTimes
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
+import id.homebase.resources.cd_reply_thumbnail
+import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
@@ -49,6 +54,7 @@ import kotlin.io.encoding.Base64
  */
 @Composable
 fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val currentOdinId = LocalCurrentOdinId.current
     // Filter out non-media payloads (default payload key and payload descriptor keys)
     val mediaPayloads = remember(message.payloads) {
         message.payloads?.filter { payload ->
@@ -98,6 +104,9 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
 
     val previewText = contentLabel?.text ?: message.content.truncateToCodePoints(80)
 
+    val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
+    val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -109,8 +118,15 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
         ) {
             // Author + content preview
             Column(modifier = Modifier.weight(1f)) {
+                val isYou = currentOdinId.isNotEmpty() &&
+                    message.originalAuthor?.domainName == currentOdinId
                 Text(
-                    text = message.originalAuthor?.domainName ?: "",
+                    text = resolveReplyAuthorName(
+                        authorOdinId = message.originalAuthor?.domainName ?: "",
+                        currentOdinId = currentOdinId,
+                        resolvedDisplayName = message.displayName,
+                        youLabel = stringResource(MR.string.you),
+                    ),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -137,8 +153,12 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                 }
             }
 
-            // Thumbnail if visual media
-            if (thumbnailData != null) {
+            // Event date badge — replaces media thumbnail when replying to an event
+            if (eventStartLocal != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                EventDateChip(local = eventStartLocal)
+            } else if (thumbnailData != null) {
+                // Thumbnail if visual media
                 Spacer(modifier = Modifier.width(8.dp))
                 HomebaseImage(
                     imageData = thumbnailData,
@@ -146,7 +166,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
-                    contentDescription = null,
+                    contentDescription = stringResource(MR.string.cd_reply_thumbnail),
                 )
             }
 

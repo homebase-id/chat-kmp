@@ -71,22 +71,59 @@ class LocalAttachmentContextStore {
         }
     }
 
-    fun get(messageId: Uuid, payloadKey: String): LocalAttachmentContext? =
-        _contexts.value[messageId]?.get(payloadKey)
+    fun get(messageId: Uuid, payloadKey: String): LocalAttachmentContext? {
+        val ctx = _contexts.value[messageId]?.get(payloadKey) ?: return null
+        if (!fileExists(ctx.localFilePath)) {
+            evictEntry(messageId, payloadKey)
+            return null
+        }
+        return ctx
+    }
 
-    fun getAll(messageId: Uuid): Map<String, LocalAttachmentContext> =
-        _contexts.value[messageId].orEmpty()
+    fun getAll(messageId: Uuid): Map<String, LocalAttachmentContext> {
+        val entries = _contexts.value[messageId] ?: return emptyMap()
+        val valid = entries.filterValues { fileExists(it.localFilePath) }
+        if (valid.size < entries.size) {
+            evictStaleEntries(messageId, entries, valid)
+        }
+        return valid
+    }
 
     fun hasAny(messageId: Uuid): Boolean =
-        _contexts.value[messageId]?.isNotEmpty() == true
+        _contexts.value[messageId]?.values?.any { fileExists(it.localFilePath) } == true
 
     fun observe(messageId: Uuid, payloadKey: String): Flow<LocalAttachmentContext?> =
-        _contexts.map { it[messageId]?.get(payloadKey) }.distinctUntilChanged()
+        _contexts.map { map ->
+            val ctx = map[messageId]?.get(payloadKey) ?: return@map null
+            if (!fileExists(ctx.localFilePath)) null else ctx
+        }.distinctUntilChanged()
 
     fun observeAll(messageId: Uuid): Flow<Map<String, LocalAttachmentContext>> =
-        _contexts.map { it[messageId].orEmpty() }.distinctUntilChanged()
+        _contexts.map { map ->
+            map[messageId]?.filterValues { fileExists(it.localFilePath) }.orEmpty()
+        }.distinctUntilChanged()
 
     fun remove(messageId: Uuid) {
         _contexts.update { it - messageId }
+    }
+
+    private fun evictEntry(messageId: Uuid, payloadKey: String) {
+        _contexts.update { current ->
+            val entries = current[messageId] ?: return@update current
+            val updated = entries - payloadKey
+            if (updated.isEmpty()) current - messageId else current + (messageId to updated)
+        }
+    }
+
+    private fun evictStaleEntries(
+        messageId: Uuid,
+        all: Map<String, LocalAttachmentContext>,
+        valid: Map<String, LocalAttachmentContext>,
+    ) {
+        if (valid.isEmpty()) {
+            _contexts.update { it - messageId }
+        } else if (valid.size < all.size) {
+            _contexts.update { it + (messageId to valid) }
+        }
     }
 }

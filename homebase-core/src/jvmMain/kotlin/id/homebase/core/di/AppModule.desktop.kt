@@ -8,6 +8,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.sync.database.JvmDatabaseSizeProbe
+import id.homebase.chat.dice.JvmShakeDetector
+import id.homebase.chat.dice.ShakeDetector
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -45,6 +47,7 @@ actual fun platformModule(): Module = module {
         httpClient = get(),
         platformInfo = get(),
     ) }
+    single<ShakeDetector> { JvmShakeDetector() }
     single(createdAtStart = true) {
         DesktopChatNotificationBridge(
             eventBus = get(),

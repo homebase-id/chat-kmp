@@ -6,8 +6,8 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.mapToMessageData
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
@@ -54,13 +54,13 @@ class DesktopChatNotificationBridge(
         }
         scope.launch {
             eventBus.events
-                .filterIsInstance<BackendEvent.DriveEvent.BatchReceived>()
+                .filterIsInstance<BackendEvent.DataEvent.BatchReceived>()
                 .filter { it.driveId == chatDriveId }
                 .collect { event -> handleBatch(event) }
         }
     }
 
-    private suspend fun handleBatch(event: BackendEvent.DriveEvent.BatchReceived) {
+    private suspend fun handleBatch(event: BackendEvent.DataEvent.BatchReceived) {
         val domain = try {
             credentialsManager.requireActiveDomain()
         } catch (e: Exception) {
@@ -74,7 +74,7 @@ class DesktopChatNotificationBridge(
         for (file in event.batchData) {
             if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) continue
             val message = try {
-                ChatMessageStream.mapToMessageData(file, credentialsManager)
+                mapToMessageData(file, credentialsManager)
             } catch (e: Exception) {
                 Logger.w(tag = "DesktopChatNotificationBridge") {
                     "Failed to map message: ${e.message}"

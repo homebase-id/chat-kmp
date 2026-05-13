@@ -314,7 +314,7 @@ class ChatMessageActionServiceTest {
     @Test
     fun deleteMessage_deleteForEveryone_drainsOutboxToHttpRequestWithRecipientsOnTheWire() = runTest {
         ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
-            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val service = fixture.build(scope = this)
             val peer = "frodo.test"
             val convoId = fixture.seedOneOnOneConversation(other = peer)
             val fileId = Uuid.random()
@@ -354,7 +354,7 @@ class ChatMessageActionServiceTest {
     @Test
     fun deleteMessage_deleteForMe_drainsOutboxToHttpRequestWithoutRecipientsOnTheWire() = runTest {
         ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
-            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val service = fixture.build(scope = this)
             val peer = "frodo.test"
             val convoId = fixture.seedOneOnOneConversation(other = peer)
             val fileId = Uuid.random()
@@ -473,6 +473,44 @@ class ChatMessageActionServiceTest {
             assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
             assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // requireFileId — single-row primary-key lookup, no QueryBatch.
+    // Was previously paying ~500ms latency on busy drives because it
+    // ran QueryBatch(noOfItems = 1000, NewestFirst) over the whole chat
+    // drive just to recover one fileId. The rewrite uses
+    // dbm.driveMainIndex.selectHomebaseFileByUnique, the same single-
+    // row lookup OptimisticWriter uses. These tests pin both branches.
+    // -------------------------------------------------------------------
+
+    @Test
+    fun requireFileId_returnsFileIdForSeededMessage() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val fileId = Uuid.random()
+            val messageId = fixture.seedDeletableMessage(
+                conversationId = convoId,
+                fileId = fileId,
+            )
+
+            assertEquals(fileId, service.requireFileId(messageId))
+        }
+    }
+
+    @Test
+    fun requireFileId_throws_whenMessageNotInDb() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+
+            val ex = kotlin.runCatching { service.requireFileId(Uuid.random()) }
+            assertTrue(ex.isFailure)
+            assertTrue(
+                ex.exceptionOrNull()?.message?.startsWith("invalid message id") == true,
+                "expected 'invalid message id ...' but was '${ex.exceptionOrNull()?.message}'",
+            )
         }
     }
 }

@@ -21,6 +21,8 @@ import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.upgrade.PendingUpgradeManager
+import id.homebase.core.upgrade.PendingUpgradeState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +42,7 @@ class AppViewModel(
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
+    private val pendingUpgradeManager: PendingUpgradeManager,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -52,6 +55,7 @@ class AppViewModel(
 
     private var credentialsJob: Job? = null
     private var listenForConnectionRequestsJob: Job? = null
+    private var upgradeCheckJob: Job? = null
 
     init {
         collectNotificationEvents()
@@ -62,6 +66,11 @@ class AppViewModel(
                     if (canceled) BackendEvent.PermissionsExtensionCanceled
                     else BackendEvent.PermissionsExtensionReturned
                 )
+            }
+        }
+        viewModelScope.launch {
+            pendingUpgradeManager.state.collect { upgradeState ->
+                _uiState.update { it.copy(pendingUpgrade = upgradeState) }
             }
         }
     }
@@ -79,6 +88,7 @@ class AppViewModel(
                 if (credentials != null) {
                     _uiState.update { it.copy(currentOdinId = credentials.domain) }
                     listenForConnectionRequests()
+                    checkPendingUpgrade()
                 } else {
                     listenForConnectionRequestsJob?.cancel()
                 }
@@ -131,6 +141,17 @@ class AppViewModel(
             val result = updateAppManager.checkForUpdate()
             _uiState.update { it.copy(updateAvailable = result.updateAvailable && result.canUpdate, updateAvailableVersion = result.versionName ?: "") }
         }
+    }
+
+    private fun checkPendingUpgrade() {
+        upgradeCheckJob?.cancel()
+        upgradeCheckJob = viewModelScope.launch {
+            pendingUpgradeManager.checkUpgrade()
+        }
+    }
+
+    fun dismissUpgradeDialog() {
+        pendingUpgradeManager.dismissDialog()
     }
 
     /** Routes an in-app banner tap through NotificationService's click handler. */
@@ -186,4 +207,5 @@ data class AppUiState(
     val inAppNotification: RichNotificationData? = null,
     val updateAvailable: Boolean = false,
     val updateAvailableVersion: String = "",
+    val pendingUpgrade: PendingUpgradeState = PendingUpgradeState.None,
 )

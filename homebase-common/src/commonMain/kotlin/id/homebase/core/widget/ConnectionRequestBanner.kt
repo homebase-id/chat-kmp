@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.resources.MR
+import id.homebase.resources.cd_navigate_forward
 import id.homebase.resources.connection_requests_banner
 import org.jetbrains.compose.resources.stringResource
 
@@ -42,7 +43,7 @@ fun ConnectionRequestHeaderBanner(
             color = ExtendedColors.OnRequestBanner
         )
         Spacer(modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = ExtendedColors.OnRequestBanner)
+        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(MR.string.cd_navigate_forward), tint = ExtendedColors.OnRequestBanner)
     }
 
 }

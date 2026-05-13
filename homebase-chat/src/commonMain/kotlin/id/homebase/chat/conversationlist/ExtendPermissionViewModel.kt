@@ -24,6 +24,7 @@ class ExtendPermissionViewModel(
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
     private val config: PermissionExtensionConfig,
+    private val autoCheck: Boolean = true,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
@@ -71,7 +72,9 @@ class ExtendPermissionViewModel(
     private var lastMissingResult: MissingPermissionsResult? = null
 
     init {
-        viewModelScope.launch { checkPermissions() }
+        if (autoCheck) {
+            viewModelScope.launch { checkPermissions() }
+        }
 
         viewModelScope.launch {
             eventBus.events

@@ -11,6 +11,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.DriveWebSocketUpsertWorker
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
@@ -22,6 +23,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -49,6 +51,17 @@ class OdinWebSocketClient(
     private val onDisconnected: () -> Unit = {},
     private val onConnectError: (Throwable) -> Unit = {},
 ) {
+    /**
+     * Monotonic id assigned at construction. Lets the AuthLifecycle log narrative match
+     * up "WS[N] created", "WS[N] start()", "WS[N] handshake successful", "WS[N] close()",
+     * "WS[N] disconnected" across a single OdinWebSocketClient instance — and notice when
+     * a stale instance from a previous session is being torn down.
+     */
+    val instanceId: Long = nextInstanceId.incrementAndGet()
+
+    init {
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] ctor (drives=${drives.size})" }
+    }
 
     private var reconnectDelayMs = 1_000L
     private val MAX_RECONNECT_DELAY_MS = 5_000L
@@ -63,6 +76,19 @@ class OdinWebSocketClient(
     }
 
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
+
+    // Per-drive WS upsert workers. Lazily created on the first file
+    // event for a drive (see [getOrCreateWorker]). Each worker
+    // batches incoming files into one DB transaction and emits a
+    // single [BackendEvent.DataEvent.BatchReceived] per drain;
+    // shape mirrors [DriveSync].
+    //
+    // Cleared in [disconnect]. Mount/unmount of drives is handled
+    // automatically because [AuthConnectionCoordinator.reconnectWebSocket]
+    // destroys the old [OdinWebSocketClient] and creates a fresh one
+    // with an empty map.
+    private val wsUpsertWorkers = mutableMapOf<Uuid, DriveWebSocketUpsertWorker>()
+    private val wsUpsertWorkersMutex = Mutex()
 
     private lateinit var sharedSecret: ByteArray
 
@@ -120,11 +146,27 @@ class OdinWebSocketClient(
     }
 
     fun start() {
-        if (connectionJob?.isActive == true) return
+        val active = connectionJob?.isActive == true
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] start() (jobActive=$active)" }
+        if (active) return
 
         connectionJob = scope.launch {
+            // Logged immediately on dispatch so we can tell from logs whether
+            // the connection loop ever actually ran. If "loop dispatched" never
+            // appears after a "start()" log line, the coroutine was cancelled
+            // before reaching its body (e.g. a refreshWsSubscription-driven
+            // close() racing with construction).
+            Logger.i(tag = "WebSocket") { "WS[$instanceId] connection loop dispatched" }
             while (true) {
-                eventBus.emit(BackendEvent.Connecting)
+                // tryEmit, not emit. The WS lifecycle is the source of truth for
+                // connection state (see [connectionState]); the bus emission is an
+                // informational mirror for collectors that care. A blocking emit
+                // here parks the entire WS connect on whatever the slowest
+                // unrelated subscriber is doing — which is what locked up the
+                // post-login sync when a singleton's eventBus collector got stuck
+                // mid-batch during the logout DB wipe. tryEmit drops the event
+                // (returns false) when the buffer is full rather than suspend.
+                eventBus.tryEmit(BackendEvent.Connecting)
 
                 try {
                     val connected = connectOnce()
@@ -138,12 +180,14 @@ class OdinWebSocketClient(
                     throw e
                 } catch (e: Exception) {
                     onConnectError(e)
-                    Logger.e(e) { "WebSocket connect failed ${e.message}" }
+                    Logger.e(throwable = e, tag = "WebSocket") {
+                        "WS[$instanceId] connect loop caught exception: ${e.message}"
+                    }
                 }
 
-                eventBus.emit(BackendEvent.ConnectionOffline)
+                eventBus.tryEmit(BackendEvent.ConnectionOffline)
 
-                Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
+                Logger.w(tag = "WebSocket") { "WS[$instanceId] disconnected, retrying in ${reconnectDelayMs}ms" }
 
                 // The sleep is launched as a child of the connection job so
                 // wakeForReconnect() can cancel just this delay (e.g. when the
@@ -187,17 +231,21 @@ class OdinWebSocketClient(
     private suspend fun connectOnce(): Boolean {
         val creds = credentialsManager.getActiveCredentials()
             ?: run {
-                Logger.w { "No active credentials, cannot connect WebSocket" }
+                Logger.w(tag = "WebSocket") { "WS[$instanceId] No active credentials, cannot connect" }
                 return false
             }
 
         val identity = creds.domain
         sharedSecret = creds.sharedSecret.unsafeBytes
 
+        // Per-drive WS upsert workers materialise lazily in
+        // [getOrCreateWorker] when a file event for that drive
+        // arrives — no need to predeclare which drives we expect.
+
         _connectionState.value = WebSocketState.Connecting
 
         val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
-        Logger.i { "Connecting to WebSocket at $wsUrl" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
 
         val appCookieName = "BX0900"
 
@@ -312,7 +360,10 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.inboxItemReceived -> {
-                handleProcessInbox(notification)
+                Logger.w(tag = "WebSocket") {
+                    "Received obsolete inboxItemReceived notification — server should auto-process on QueryBatch. data=${notification.data.take(200)}"
+                }
+                // handleProcessInbox(notification)  // disabled — server auto-processes on QueryBatch
             }
 
             ClientNotificationType.fileAdded -> {
@@ -439,94 +490,137 @@ class OdinWebSocketClient(
         }
     }
 
-    private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
-        val n =
-            OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
-                notification.data
-            )
+    // Disabled — server now auto-processes the inbox on QueryBatch, so the
+    // explicit per-message ack is no longer needed. Kept commented so it can
+    // be re-enabled if the server-side behaviour regresses.
+    //
+    // private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
+    //     val n =
+    //         OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
+    //             notification.data
+    //         )
+    //
+    //     // Reverts block #3 of commit 18483c4e. The WS push path bypasses
+    //     // QueryBatch in steady state, so the server's "auto-process inbox on
+    //     // QueryBatch" never fires for a recipient sitting in an already-loaded
+    //     // conversation — the inboxItemReceived notification arrives but no
+    //     // fileAdded follows, and the message body never makes it to the
+    //     // WebSocket. Send the explicit processInbox ack so the server moves
+    //     // the inbox entry onto the drive. Remove once the server-side
+    //     // auto-process behaviour is fixed.
+    //     notify(
+    //         command = "processInbox",
+    //         payload = ProcessInboxPayload(
+    //             targetDrive = n.targetDrive,
+    //             batchSize = 100
+    //         )
+    //     )
+    // }
 
-        // processInbox no longer needed — server auto-processes on QueryBatch.
-        // notify(
-        //     command = "processInbox",
-        //     payload = ProcessInboxPayload(
-        //         targetDrive = n.targetDrive,
-        //         batchSize = 100
-        //     )
-        // )
-    }
-
-    private suspend fun handleReactionEvent(
+/**
+     * Reaction add/remove notification — no-op for every drive.
+     *
+     * The server fires a parallel `statisticsChanged` notification
+     * carrying the updated file header (with the new
+     * `reactionPreview`); that notification lands in
+     * [handleFileEvent] → the per-drive pure-push worker, which
+     * writes the new header to DriveMainIndex. Calling syncDrive
+     * here would refetch the same data via HTTP. The per-user
+     * reaction details (who reacted with which emoji, used by the
+     * reaction-detail view) are fetched on-demand via
+     * `getReactions()` and don't ride on this WS event at all.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleReactionEvent(
         notification: ClientNotificationPayload,
-        isDeleted: Boolean
+        isDeleted: Boolean,
     ) {
-        val eventData = OdinSystemSerializer
-            .deserialize<ClientReactionNotification>(notification.data)
-        val driveId = eventData.fileId.driveId
-        driveSyncManager.syncDrive(driveId)
-
+        // intentional no-op — see KDoc
     }
 
-    private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
-        val file =
-            OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
+    /**
+     * All-reactions-cleared notification — no-op for every drive,
+     * same rationale as [handleReactionEvent]: the parallel
+     * `statisticsChanged` for the file rewrites `reactionPreview` to
+     * empty via the pure-push worker.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
+        // intentional no-op — see KDoc
+    }
 
-        try {
-            driveSyncManager.syncDrive(file.driveId)
-        } catch (e: Exception) {
-            Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
+    /**
+     * Get-or-create the WS upsert worker for [driveId]. Returns null
+     * when the client is closed or has no active credentials —
+     * caller falls through to [DriveSyncManager.syncDrive].
+     */
+    private suspend fun getOrCreateWorker(driveId: Uuid): DriveWebSocketUpsertWorker? {
+        if (closed) return null
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        return wsUpsertWorkersMutex.withLock {
+            wsUpsertWorkers[driveId] ?: DriveWebSocketUpsertWorker(
+                identityId = identityId,
+                driveId = driveId,
+                databaseManager = databaseManager,
+                eventBus = eventBus,
+                scope = scope,
+            ).also { wsUpsertWorkers[driveId] = it }
         }
     }
 
-
+    /**
+     * Dispatcher for `fileAdded` / `fileDeleted` / `fileModified` /
+     * `statisticsChanged` notifications, for any drive.
+     *
+     * If the WS payload carries a header, decrypt it and submit to
+     * the per-drive [DriveWebSocketUpsertWorker] — no HTTP
+     * round-trip. The worker batches bursts of incoming files into
+     * one DB transaction and emits a single
+     * `BatchReceived(source = WebSocket)` event.
+     *
+     * Falls back to [DriveSyncManager.syncDrive] when:
+     *  - the notification has no header (e.g. some
+     *    `statisticsChanged` variants),
+     *  - decrypt or upsert throws,
+     *  - we can't get/create a worker (closed, no credentials).
+     *
+     * Every fallback is logged at INFO so the rate is observable in
+     * production — a steady stream for any drive means the WS
+     * payload is missing headers somewhere we didn't expect.
+     */
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
         val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
         val driveId = fileNotification.targetDrive!!.alias
+        val header = fileNotification.header
 
+        if (header != null) {
+            val worker = getOrCreateWorker(driveId)
+            if (worker != null) {
+                try {
+                    val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
+                    worker.submit(file)
+                    return
+                } catch (e: Exception) {
+                    Logger.w(e) {
+                        "WSPush: pure-push path failed for drive=$driveId " +
+                            "(notificationType=${notification.notificationType}); " +
+                            "falling back to syncDrive: ${e.message}"
+                    }
+                    // fall through
+                }
+            }
+        }
+
+        Logger.i(tag = "WebSocket") {
+            "WSFileEvent: syncDrive($driveId) fallback — " +
+                "notificationType=${notification.notificationType} " +
+                "headerPresent=${header != null}"
+        }
         try {
             driveSyncManager.syncDrive(driveId)
         } catch (e: Exception) {
             Logger.e("handleFileEvent() probably used invalid driveId $driveId Exception:$e")
-        }
-    }
-
-
-    private suspend fun handleFileEvent_manual(notification: ClientNotificationPayload) {
-        val fileNotification =
-            OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
-
-        val header = fileNotification.header!!
-        val driveId = fileNotification.targetDrive!!.alias
-        val identityId = credentialsManager.getActiveCredentials()!!.getIdentityId()
-
-        val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
-        val lastModified = file.fileMetadata.updated
-
-        val batch = listOf(file)
-        try {
-            fileHeaderProcessor.baseUpsertEntryZapZap(
-                identityId = identityId,
-                driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
-        } catch (e: Exception) {
-            Logger.e("DB upsert failed for burst: ${e.message}")
-        }
-
-        eventBus.emit(
-            BackendEvent.DriveEvent.BatchReceived(
-                driveId = driveId,
-                totalCount = batch.size,
-                batchCount = batch.size,
-                latestModified = lastModified,
-                batchData = batch,
-                source = BackendEvent.SyncSource.WebSocket
-            )
-        )
-
-        Logger.i {
-            "Flushed ${batch.size} file events for drive $driveId"
         }
     }
 
@@ -562,12 +656,19 @@ class OdinWebSocketClient(
     }
 
     private suspend fun onHandshakeSuccess() {
-        Logger.i { "Device handshake successful" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] handshake successful" }
         handshakeDone = true
         pingSupervisor.notifySessionReconnected()
         pingSupervisor.start()
         onConnected()
         eventBus.emit(BackendEvent.ConnectionOnline)
+
+        // Catch-up after a (re)connect is handled by
+        // [AuthConnectionCoordinator]'s `onConnected` callback, which
+        // fires `driveSyncManager.syncAll()` on every handshake — see
+        // `AuthConnectionCoordinator.kt:179-202`. That covers all
+        // mounted drives, which is what we need now that per-event
+        // file notifications take the pure-push path for every drive.
     }
 
     /**
@@ -580,8 +681,17 @@ class OdinWebSocketClient(
         session = null
         connectionJob?.cancel()
         connectionJob = null
+        // Snapshot-then-clear is safe without acquiring [wsUpsertWorkersMutex]:
+        // [getOrCreateWorker] checks `closed` before allocating, so any
+        // concurrent call after `closed = true` returns null and never
+        // re-populates the map. Worst case is a worker created right
+        // before `closed = true` flipped — that one ends up in the
+        // snapshot and gets cancelled.
+        val workersSnapshot = wsUpsertWorkers.values.toList()
+        wsUpsertWorkers.clear()
+        workersSnapshot.forEach { it.cancel() }
         _connectionState.value = WebSocketState.Disconnected
-        Logger.i { "WebSocket disconnected" }
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] disconnected" }
     }
 
     /**
@@ -670,23 +780,31 @@ class OdinWebSocketClient(
      * Call this right after a successful handshake / reconnect.
      */
     suspend fun processAllInboxes() {
-        // processInbox no longer needed — server auto-processes on QueryBatch.
-        // for (drive in drives) {
-        //     notify(
-        //         command = "processInbox",
-        //         payload = ProcessInboxPayload(
-        //             targetDrive = drive,
-        //             batchSize = 100
-        //         )
-        //     )
-        // }
+        // Reverts block #2 of commit 18483c4e — see AuthConnectionCoordinator
+        // for the rationale. Called on every (re)connect to flush any inbox
+        // backlog accumulated while we were offline, before syncAll() runs.
+        for (drive in drives) {
+            notify(
+                command = "processInbox",
+                payload = ProcessInboxPayload(
+                    targetDrive = drive,
+                    batchSize = 100
+                )
+            )
+        }
     }
 
     /**
      * Close the client and release resources
      */
     fun close() {
+        Logger.i(tag = "WebSocket") { "WS[$instanceId] close()" }
         disconnect()
         client.close()
+    }
+
+    companion object {
+        // Process-lifetime counter for instanceId. Starts at 1 on first construction.
+        private val nextInstanceId = atomic(0L)
     }
 }

@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +39,7 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
 import id.homebase.resources.about_homebase
+import id.homebase.resources.dev_menu_title
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
@@ -121,7 +122,7 @@ fun HelpUi(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -244,7 +245,7 @@ fun HelpUi(
                     if (uiState.showDeveloperMenu) {
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         HelpClickableRow(
-                            label = "Developer menu",
+                            label = stringResource(MR.string.dev_menu_title),
                             onClick = { onAction(HelpUiAction.DeveloperMenu) }
                         )
                     }

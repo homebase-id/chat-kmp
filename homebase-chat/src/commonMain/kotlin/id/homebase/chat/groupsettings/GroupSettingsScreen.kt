@@ -18,16 +18,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyOff
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.Button
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
@@ -80,16 +87,42 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_admin_file_delivered
+import id.homebase.resources.chat_group_admin_file_loading
 import id.homebase.resources.chat_group_admin_file_problem
+import id.homebase.resources.chat_group_admin_peer_error
+import id.homebase.resources.chat_group_admin_peer_in_sync
+import id.homebase.resources.chat_group_admin_peer_loading
+import id.homebase.resources.chat_group_admin_peer_missing
+import id.homebase.resources.chat_group_admin_peer_stale
 import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.resources.chat_group_heal
-import id.homebase.resources.chat_group_heal_completed
-import id.homebase.resources.chat_group_heal_completed_nothing
+import id.homebase.resources.chat_group_heal_admin_resent
+import id.homebase.resources.chat_group_heal_already_in_sync
+import id.homebase.resources.chat_group_heal_main_resent
+import id.homebase.resources.chat_group_heal_progress_asking_cleanup_admin_file
+import id.homebase.resources.chat_group_heal_progress_asking_cleanup_group_file
+import id.homebase.resources.chat_group_heal_progress_sending_admin_file
+import id.homebase.resources.chat_group_heal_progress_sending_group_file
+import id.homebase.resources.chat_group_heal_progress_still_queued
+import id.homebase.resources.chat_group_heal_progress_subtitle_finished
+import id.homebase.resources.chat_group_heal_progress_subtitle_running
+import id.homebase.resources.chat_group_heal_progress_title
+import id.homebase.resources.chat_group_heal_request_sent
 import id.homebase.resources.chat_group_main_file_delivered
+import id.homebase.resources.chat_group_main_file_loading
 import id.homebase.resources.chat_group_main_file_problem
+import id.homebase.resources.chat_group_main_peer_error
+import id.homebase.resources.chat_group_main_peer_in_sync
+import id.homebase.resources.chat_group_main_peer_loading
+import id.homebase.resources.chat_group_main_peer_missing
+import id.homebase.resources.chat_group_main_peer_stale
+import id.homebase.resources.chat_group_member_sync_status
+import id.homebase.resources.chat_group_summary_all_ok
+import id.homebase.resources.chat_group_summary_problem
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
 import id.homebase.resources.chat_group_leave
 import id.homebase.resources.chat_group_leave_disclaimer
@@ -130,8 +163,7 @@ fun GroupSettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
-    val healCompletedMessage = stringResource(MR.string.chat_group_heal_completed)
-    val healCompletedNothingMessage = stringResource(MR.string.chat_group_heal_completed_nothing)
+    val healAlreadyInSyncMessage = stringResource(MR.string.chat_group_heal_already_in_sync)
 
     when (val event = uiState.uiEvent) {
         is GroupSettingsUiEvent.Back -> {
@@ -166,11 +198,39 @@ fun GroupSettingsScreen(
 
         is GroupSettingsUiEvent.HealCompleted -> {
             viewModel.eventConsumed()
-            val message = if (event.mainHealed || event.adminHealed) {
-                healCompletedMessage
-            } else {
-                healCompletedNothingMessage
+            val parts = buildList {
+                if (event.mainRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_main_resent,
+                            event.mainRecipientCount,
+                            event.mainRecipientCount,
+                        )
+                    )
+                }
+                if (event.adminRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_admin_resent,
+                            event.adminRecipientCount,
+                            event.adminRecipientCount,
+                        )
+                    )
+                }
+                if (event.healMessageRecipientCount > 0) {
+                    add(
+                        pluralStringResource(
+                            MR.plurals.chat_group_heal_request_sent,
+                            event.healMessageRecipientCount,
+                            event.healMessageRecipientCount,
+                        )
+                    )
+                }
             }
+            // Counts all zero ⇒ either every peer was already InSync or there
+            // were no peers to begin with; canHeal would have blocked the
+            // not-author case before the click reached us.
+            val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
             scope.launch { snackbarHostState.showSnackbar(message = message) }
         }
 
@@ -259,7 +319,7 @@ fun GroupSettingsUi(
                 navigationIcon = {
                     IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -284,7 +344,7 @@ fun GroupSettingsUi(
                 if (uiState.isLoading) {
                     LoadingListItem()
                 } else {
-                    ErrorInfoItem("No group could be loaded")
+                    ErrorInfoItem(stringResource(MR.string.error_no_group_loaded))
                 }
             }
             uiState.conversation?.let { conversation ->
@@ -383,6 +443,10 @@ fun GroupSettingsUi(
                             adminStatus = uiState.adminFileTransfer?.get(contact.odinId),
                             showMainColumn = uiState.mainFileTransfer != null,
                             showAdminColumn = uiState.adminFileTransfer != null,
+                            mainPeerExists = uiState.mainFileExists?.get(contact.odinId),
+                            adminPeerExists = uiState.adminFileExists?.get(contact.odinId),
+                            showMainPeerExistsColumn = uiState.mainFileExists != null,
+                            showAdminPeerExistsColumn = uiState.adminFileExists != null,
                         )
                     }
 
@@ -411,6 +475,10 @@ fun GroupSettingsUi(
                                 adminStatus = uiState.adminFileTransfer?.get(contact.odinId),
                                 showMainColumn = uiState.mainFileTransfer != null,
                                 showAdminColumn = uiState.adminFileTransfer != null,
+                                mainPeerExists = uiState.mainFileExists?.get(contact.odinId),
+                                adminPeerExists = uiState.adminFileExists?.get(contact.odinId),
+                                showMainPeerExistsColumn = uiState.mainFileExists != null,
+                                showAdminPeerExistsColumn = uiState.adminFileExists != null,
                             )
                         }
                     }
@@ -436,6 +504,16 @@ fun GroupSettingsUi(
                                 onUiAction(GroupSettingsUiAction.LeaveGroupClicked)
                             }
                         )
+                    }
+                    if (uiState.filesDiagnostic != null) {
+                        item {
+                            HorizontalDivider()
+                            GroupFilesDiagnosticBlock(
+                                diagnostic = uiState.filesDiagnostic,
+                                selfDomain = uiState.currentOdinId?.domainName,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -640,6 +718,17 @@ fun GroupSettingsSheets(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
+                        MemberSyncStatusSection(
+                            mainTransfer = uiState.mainFileTransfer?.get(contactInfo.odinId),
+                            adminTransfer = uiState.adminFileTransfer?.get(contactInfo.odinId),
+                            mainPeerExists = uiState.mainFileExists?.get(contactInfo.odinId),
+                            adminPeerExists = uiState.adminFileExists?.get(contactInfo.odinId),
+                            showMainColumn = uiState.mainFileTransfer != null,
+                            showAdminColumn = uiState.adminFileTransfer != null,
+                            showMainPeerExistsColumn = uiState.mainFileExists != null,
+                            showAdminPeerExistsColumn = uiState.adminFileExists != null,
+                        )
+
                         // While a server op is in flight for this contact, swap the
                         // action rows for an inline spinner. The op-tracking is
                         // managed in the VM (runMemberOp helper).
@@ -695,6 +784,150 @@ fun GroupSettingsSheets(
                 }
             }
         }
+
+        is GroupSettingsUiSheet.HealProgress -> {
+            val sheetState = rememberModalBottomSheetState()
+            ModalBottomSheet(
+                // Block dismiss until the heal call returns so the user can see
+                // every line transition. After [finished] flips true, the Close
+                // button (rendered below) is the explicit dismiss path.
+                onDismissRequest = { if (sheet.finished) onSheetClosed() },
+                sheetState = sheetState,
+            ) {
+                HealProgressSheetContent(
+                    items = sheet.items,
+                    finished = sheet.finished,
+                    onClose = { onSheetClosed() },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealProgressSheetContent(
+    items: List<HealProgressItem>,
+    finished: Boolean,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = stringResource(MR.string.chat_group_heal_progress_title),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(
+                if (finished) MR.string.chat_group_heal_progress_subtitle_finished
+                else MR.string.chat_group_heal_progress_subtitle_running
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (items.isEmpty()) {
+            Text(
+                text = stringResource(MR.string.chat_group_heal_already_in_sync),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else {
+            items.forEach { item ->
+                HealProgressRow(item)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onClose,
+            enabled = finished,
+            modifier = Modifier
+                .align(Alignment.End)
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(text = stringResource(MR.string.ok))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun HealProgressRow(item: HealProgressItem) {
+    val labelRes = when (item.kind) {
+        HealActionKind.GroupFile -> MR.string.chat_group_heal_progress_sending_group_file
+        HealActionKind.AdminFile -> MR.string.chat_group_heal_progress_sending_admin_file
+        HealActionKind.HealRequestGroupFile -> MR.string.chat_group_heal_progress_asking_cleanup_group_file
+        HealActionKind.HealRequestAdminFile -> MR.string.chat_group_heal_progress_asking_cleanup_admin_file
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (item.state) {
+                HealProgressState.Pending -> Icon(
+                    imageVector = Icons.Default.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.4f),
+                    modifier = Modifier.size(14.dp),
+                )
+                HealProgressState.InFlight -> CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 1.8.dp,
+                )
+                HealProgressState.Done -> Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                HealProgressState.Failed -> Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                HealProgressState.Skipped -> Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.4f),
+                    modifier = Modifier.size(14.dp),
+                )
+                HealProgressState.StillQueued -> Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.6f),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = when (item.state) {
+                HealProgressState.StillQueued -> stringResource(
+                    MR.string.chat_group_heal_progress_still_queued,
+                    item.peer.domainName,
+                )
+                else -> stringResource(labelRes, item.peer.domainName)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (item.state) {
+                HealProgressState.Skipped -> LocalContentColor.current.copy(alpha = 0.55f)
+                HealProgressState.Failed -> MaterialTheme.colorScheme.error
+                HealProgressState.StillQueued -> LocalContentColor.current.copy(alpha = 0.7f)
+                else -> LocalContentColor.current
+            },
+        )
     }
 }
 
@@ -716,6 +949,10 @@ private fun GroupParticipantRow(
     adminStatus: RecipientFileStatus?,
     showMainColumn: Boolean,
     showAdminColumn: Boolean,
+    mainPeerExists: MemberFileExistsStatus?,
+    adminPeerExists: MemberFileExistsStatus?,
+    showMainPeerExistsColumn: Boolean,
+    showAdminPeerExistsColumn: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -745,25 +982,20 @@ private fun GroupParticipantRow(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (showMainColumn || showAdminColumn) {
+                val anyIconColumn = showMainColumn || showAdminColumn ||
+                    showMainPeerExistsColumn || showAdminPeerExistsColumn
+                if (anyIconColumn) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    if (showMainColumn) {
-                        TransferStatusIcon(
-                            mainStatus,
-                            stringResource(MR.string.chat_group_main_file_delivered),
-                            stringResource(MR.string.chat_group_main_file_problem),
-                        )
-                    }
-                    if (showMainColumn && showAdminColumn) {
-                        Spacer(modifier = Modifier.width(2.dp))
-                    }
-                    if (showAdminColumn) {
-                        TransferStatusIcon(
-                            adminStatus,
-                            stringResource(MR.string.chat_group_admin_file_delivered),
-                            stringResource(MR.string.chat_group_admin_file_problem),
-                        )
-                    }
+                    GroupParticipantSummaryIcon(
+                        mainStatus = mainStatus,
+                        adminStatus = adminStatus,
+                        mainPeerExists = mainPeerExists,
+                        adminPeerExists = adminPeerExists,
+                        showMainColumn = showMainColumn,
+                        showAdminColumn = showAdminColumn,
+                        showMainPeerExistsColumn = showMainPeerExistsColumn,
+                        showAdminPeerExistsColumn = showAdminPeerExistsColumn,
+                    )
                 }
             }
             subTitle?.let {
@@ -809,6 +1041,279 @@ private fun TransferStatusIcon(
             modifier = Modifier.size(size)
         )
         null -> Spacer(modifier = Modifier.size(size))
+    }
+}
+
+@Composable
+private fun FileExistsStatusIcon(
+    status: MemberFileExistsStatus?,
+    inSyncDescription: String,
+    missingDescription: String,
+    staleDescription: String,
+    errorDescription: String,
+) {
+    val size = 12.dp
+    when (status) {
+        null, MemberFileExistsStatus.Loading -> CircularProgressIndicator(
+            modifier = Modifier.size(size),
+            strokeWidth = 1.5.dp,
+            color = LocalContentColor.current.copy(alpha = 0.55f),
+        )
+        is MemberFileExistsStatus.InSync -> Icon(
+            imageVector = Icons.Default.CloudDone,
+            contentDescription = inSyncDescription,
+            tint = LocalContentColor.current.copy(alpha = 0.55f),
+            modifier = Modifier.size(size),
+        )
+        MemberFileExistsStatus.Missing -> Icon(
+            imageVector = Icons.Default.CloudOff,
+            contentDescription = missingDescription,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(size),
+        )
+        is MemberFileExistsStatus.Stale -> Icon(
+            imageVector = Icons.Default.SyncProblem,
+            contentDescription = staleDescription,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(size),
+        )
+        MemberFileExistsStatus.Error -> Icon(
+            imageVector = Icons.Default.ErrorOutline,
+            contentDescription = errorDescription,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(size),
+        )
+    }
+}
+
+/**
+ * One consolidated status icon for a participant row — replaces the four
+ * 12dp icons (main transfer + admin transfer + main peer-exists + admin
+ * peer-exists) we used to render side-by-side.
+ *
+ * - **All present signals OK** (transfer Delivered, peer-exists InSync) →
+ *   green check.
+ * - **Any signal still resolving** (transfer history null entry, peer-exists
+ *   Loading) → spinner.
+ * - **Anything else** (Problem, Missing, Stale, Error) → red-dashed cloud
+ *   (`Icons.Default.CloudOff`), tinted with the error color.
+ *
+ * A column is "present" iff its `show…Column` flag is true (i.e. the caller
+ * is the author of that file and the relevant data has been loaded). Columns
+ * that aren't shown are excluded from the conjunction — a non-author still
+ * gets a green check on a peer's row when their *visible* signals are all OK,
+ * matching how the four-icon block hid those columns before.
+ *
+ * Tap the row → opens the member bottom sheet which still enumerates each
+ * underlying signal in plain text via [MemberSyncStatusSection].
+ */
+@Composable
+private fun GroupParticipantSummaryIcon(
+    mainStatus: RecipientFileStatus?,
+    adminStatus: RecipientFileStatus?,
+    mainPeerExists: MemberFileExistsStatus?,
+    adminPeerExists: MemberFileExistsStatus?,
+    showMainColumn: Boolean,
+    showAdminColumn: Boolean,
+    showMainPeerExistsColumn: Boolean,
+    showAdminPeerExistsColumn: Boolean,
+) {
+    val size = 16.dp
+
+    // Loading wins over OK/problem so we don't flash a red cloud while the
+    // peer-exists check is still in flight.
+    val anyLoading =
+        (showMainColumn && mainStatus == null) ||
+        (showAdminColumn && adminStatus == null) ||
+        (showMainPeerExistsColumn && mainPeerExists is MemberFileExistsStatus.Loading) ||
+        (showAdminPeerExistsColumn && adminPeerExists is MemberFileExistsStatus.Loading)
+
+    val allOk =
+        (!showMainColumn || mainStatus is RecipientFileStatus.Ok) &&
+        (!showAdminColumn || adminStatus is RecipientFileStatus.Ok) &&
+        (!showMainPeerExistsColumn || mainPeerExists is MemberFileExistsStatus.InSync) &&
+        (!showAdminPeerExistsColumn || adminPeerExists is MemberFileExistsStatus.InSync)
+
+    when {
+        anyLoading -> CircularProgressIndicator(
+            modifier = Modifier.size(size),
+            strokeWidth = 1.8.dp,
+            color = LocalContentColor.current.copy(alpha = 0.55f),
+        )
+        allOk -> Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = stringResource(MR.string.chat_group_summary_all_ok),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(size),
+        )
+        else -> Icon(
+            imageVector = Icons.Default.CloudOff,
+            contentDescription = stringResource(MR.string.chat_group_summary_problem),
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(size),
+        )
+    }
+}
+
+/**
+ * Plain-text legend for the four tiny icons next to a member's name in the
+ * participant list. Rendered inside the member bottom sheet so the user can
+ * read what each icon means rather than memorise them. Author-only — each
+ * row only appears when the matching cell-icon column is visible, so the
+ * sheet and the row icons can never disagree.
+ */
+@Composable
+private fun MemberSyncStatusSection(
+    mainTransfer: RecipientFileStatus?,
+    adminTransfer: RecipientFileStatus?,
+    mainPeerExists: MemberFileExistsStatus?,
+    adminPeerExists: MemberFileExistsStatus?,
+    showMainColumn: Boolean,
+    showAdminColumn: Boolean,
+    showMainPeerExistsColumn: Boolean,
+    showAdminPeerExistsColumn: Boolean,
+) {
+    val anyShown = showMainColumn || showAdminColumn ||
+        showMainPeerExistsColumn || showAdminPeerExistsColumn
+    if (!anyShown) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 16.dp)
+    ) {
+        Text(
+            text = stringResource(MR.string.chat_group_member_sync_status),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (showMainColumn) {
+            SyncStatusRow(
+                text = transferStatusText(
+                    status = mainTransfer,
+                    delivered = stringResource(MR.string.chat_group_main_file_delivered),
+                    problem = stringResource(MR.string.chat_group_main_file_problem),
+                    loading = stringResource(MR.string.chat_group_main_file_loading),
+                ),
+            ) {
+                TransferStatusIcon(
+                    status = mainTransfer,
+                    okDescription = "",
+                    problemDescription = "",
+                )
+            }
+        }
+        if (showMainPeerExistsColumn) {
+            SyncStatusRow(
+                text = peerExistsText(
+                    status = mainPeerExists,
+                    inSync = stringResource(MR.string.chat_group_main_peer_in_sync),
+                    missing = stringResource(MR.string.chat_group_main_peer_missing),
+                    stale = stringResource(MR.string.chat_group_main_peer_stale),
+                    error = stringResource(MR.string.chat_group_main_peer_error),
+                    loading = stringResource(MR.string.chat_group_main_peer_loading),
+                ),
+            ) {
+                FileExistsStatusIcon(
+                    status = mainPeerExists,
+                    inSyncDescription = "",
+                    missingDescription = "",
+                    staleDescription = "",
+                    errorDescription = "",
+                )
+            }
+        }
+        if (showAdminColumn) {
+            SyncStatusRow(
+                text = transferStatusText(
+                    status = adminTransfer,
+                    delivered = stringResource(MR.string.chat_group_admin_file_delivered),
+                    problem = stringResource(MR.string.chat_group_admin_file_problem),
+                    loading = stringResource(MR.string.chat_group_admin_file_loading),
+                ),
+            ) {
+                TransferStatusIcon(
+                    status = adminTransfer,
+                    okDescription = "",
+                    problemDescription = "",
+                )
+            }
+        }
+        if (showAdminPeerExistsColumn) {
+            SyncStatusRow(
+                text = peerExistsText(
+                    status = adminPeerExists,
+                    inSync = stringResource(MR.string.chat_group_admin_peer_in_sync),
+                    missing = stringResource(MR.string.chat_group_admin_peer_missing),
+                    stale = stringResource(MR.string.chat_group_admin_peer_stale),
+                    error = stringResource(MR.string.chat_group_admin_peer_error),
+                    loading = stringResource(MR.string.chat_group_admin_peer_loading),
+                ),
+            ) {
+                FileExistsStatusIcon(
+                    status = adminPeerExists,
+                    inSyncDescription = "",
+                    missingDescription = "",
+                    staleDescription = "",
+                    errorDescription = "",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun transferStatusText(
+    status: RecipientFileStatus?,
+    delivered: String,
+    problem: String,
+    loading: String,
+): String = when (status) {
+    null -> loading
+    RecipientFileStatus.Ok -> delivered
+    is RecipientFileStatus.Problem -> {
+        val detail = status.detailRes?.let { stringResource(it) }
+        if (detail != null) "$problem — $detail" else problem
+    }
+}
+
+private fun peerExistsText(
+    status: MemberFileExistsStatus?,
+    inSync: String,
+    missing: String,
+    stale: String,
+    error: String,
+    loading: String,
+): String = when (status) {
+    null, MemberFileExistsStatus.Loading -> loading
+    is MemberFileExistsStatus.InSync -> inSync
+    MemberFileExistsStatus.Missing -> missing
+    is MemberFileExistsStatus.Stale -> stale
+    MemberFileExistsStatus.Error -> error
+}
+
+@Composable
+private fun SyncStatusRow(text: String, icon: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            icon()
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 

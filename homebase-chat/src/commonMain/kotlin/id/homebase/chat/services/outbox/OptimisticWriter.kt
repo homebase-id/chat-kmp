@@ -32,6 +32,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
@@ -44,6 +46,19 @@ class OptimisticWriter(
 
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+
+    // Per-message lock guarding the read-modify-write inside writeReactionToggle.
+    // Without this, rapid taps on the bottom sheet have all five coroutines
+    // read the same starting state, each compute "remove my one", and last-
+    // writer-wins clobbers most of the removes. Per-(driveId, uniqueId) so
+    // toggles on different messages don't queue against each other.
+    private val reactionToggleLocks = mutableMapOf<Pair<Uuid, Uuid>, Mutex>()
+    private val reactionToggleLocksGuard = Mutex()
+
+    private suspend fun reactionLockFor(driveId: Uuid, uniqueId: Uuid): Mutex =
+        reactionToggleLocksGuard.withLock {
+            reactionToggleLocks.getOrPut(driveId to uniqueId) { Mutex() }
+        }
 
     suspend fun writeNewFile(
         driveId: Uuid,
@@ -112,13 +127,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = created,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
 
@@ -129,12 +140,12 @@ class OptimisticWriter(
     }
 
     /**
-     * Persist a local-only conversation-file placeholder for an orphaned
-     * conversation (one whose messages arrived but whose conversation file
-     * never synced down). Called by the post-sync reconciliation in
-     * [id.homebase.chat.services.convo.ConversationStream] after the chat
-     * drive emits [BackendEvent.DriveEvent.Stopped] with any placeholders
-     * still unresolved.
+     * Persist a local-only conversation-file placeholder for a conversation
+     * that needs to surface in the UI before (or instead of) a real server
+     * file. Live callers:
+     *   - [id.homebase.chat.services.convo.ConversationService.recoverConversation]:
+     *     explicit local recovery (e.g. orphan-branch fallback when a message
+     *     arrived for a conversation whose definition file never synced).
      *
      * Strictly local: no `outboxSync.tryEnqueue`, no server distribution,
      * no `isPendingSendTag`. The row exists only so the conversation
@@ -232,6 +243,100 @@ class OptimisticWriter(
         }
     }
 
+    /**
+     * Persist a local-only admin-file placeholder for a group whose admin file
+     * is missing or broken. Counterpart to [writeLocalOnlyConversationPlaceholder]
+     * for the group's admin file.
+     *
+     * Used by the receive-side heal handler when the incoming heal message
+     * carries `canonicalAdmins`. Strictly local: no outbox enqueue, no
+     * `isPendingSendTag`. The row exists so [getAdmins] can read the canonical
+     * admin set immediately, instead of falling back to `originalAuthor`.
+     *
+     * The placeholder uses the canonical [adminUniqueId] derived from the
+     * conversation id (`ChatProtocol.getAdminFileUniqueId`) so a future peer
+     * push of the real admin file replaces the placeholder by uniqueId.
+     *
+     * `versionTag = null` and `updated = ZeroTime` for the same reason as
+     * [writeLocalOnlyConversationPlaceholder]: any non-zero `modified` here
+     * would block the real file's upsert via DriveMainIndex.sq:68.
+     */
+    suspend fun writeLocalOnlyAdminPlaceholder(
+        driveId: Uuid,
+        conversationId: Uuid,
+        admins: List<OdinId>,
+    ) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val domain = credentials.domain
+        val created = UnixTimeUtc.now()
+        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+        val content = OdinSystemSerializer.serialize(
+            id.homebase.chat.services.convo.ConversationAdminInfo(admins = admins)
+        )
+
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = driveId,
+            serverFileIsEncrypted = true,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = KeyHeader.newRandom16(),
+            fileMetadata = FileMetadata(
+                appData = AppFileMetaData(
+                    uniqueId = adminUniqueId,
+                    tags = null,
+                    fileType = ChatProtocol.ConversationAdminFileType,
+                    dataType = 0,
+                    groupId = conversationId,
+                    userDate = null,
+                    content = content,
+                    previewThumbnail = null,
+                    archivalStatus = null,
+                ),
+                localAppData = LocalAppMetadata(
+                    tags = emptyList(),
+                ),
+                created = created,
+                updated = UnixTimeUtc.ZeroTime,
+                isEncrypted = true,
+                senderOdinId = domain,
+                originalAuthor = domain,
+                versionTag = null,
+                payloads = null,
+            ),
+            serverMetadata = ServerMetadata(
+                accessControlList = AccessControlList(
+                    requiredSecurityGroup = "Owner"
+                ),
+                allowDistribution = true,
+                fileSystemType = FileSystemType.Standard,
+                fileByteCount = 100,
+                originalRecipientCount = admins.size,
+                transferHistory = null,
+            ),
+            priority = 100,
+            fileByteCount = 100,
+        )
+
+        try {
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = listOf(file),
+                cursor = null,
+            )
+            Logger.i(tag = TAG) {
+                "writeLocalOnlyAdminPlaceholder: persisted adminUniqueId=$adminUniqueId " +
+                        "conversationId=$conversationId driveId=$driveId admins(${admins.size})=${admins.map { it.domainName }} fileId=${file.fileId}"
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "writeLocalOnlyAdminPlaceholder FAILED for adminUniqueId=$adminUniqueId conversationId=$conversationId"
+            }
+            throw e
+        }
+    }
+
     suspend fun writeUpdate(
         driveId: Uuid,
         keyHeader: KeyHeader,
@@ -299,13 +404,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
 
@@ -385,13 +486,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
@@ -415,13 +512,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = original.fileMetadata.updated,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
                 )
             )
         } catch (e: Exception) {
@@ -429,41 +522,61 @@ class OptimisticWriter(
         }
     }
 
-    /** Optimistically updates the reactionPreview on a message and emits BatchReceived.
-     *  Returns the original file for rollback, and the optimistic result type. */
+    /** Optimistically updates the reactionPreview AND localAppData.localReactions
+     *  on a message and emits BatchReceived. Returns the original file for
+     *  rollback, and the optimistic result type. */
     suspend fun writeReactionToggle(
         driveId: Uuid,
         uniqueId: Uuid,
         reactionJson: String,
-    ): Pair<ToggleReactionResultType, HomebaseFile?> {
+    ): Pair<ToggleReactionResultType, HomebaseFile?> = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return Pair(ToggleReactionResultType.None, null)
+        ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+
+        // isAdding is per-user, not per-aggregate: in groups, another user
+        // having reacted with the same emoji must not flip our toggle into a
+        // remove. localReactions is the per-user mirror; ChatMessageStream
+        // decodes it into MessageUiModel.ownReactions on every BatchReceived,
+        // so updating it here also closes the rapid-tap race against the cap.
+        val currentLocalReactions =
+            existingFile.fileMetadata.localAppData?.localReactions.orEmpty()
+        val isAdding = reactionJson !in currentLocalReactions
+        val updatedLocalReactions = if (isAdding) {
+            currentLocalReactions + reactionJson
+        } else {
+            currentLocalReactions.filterNot { it == reactionJson }
+        }
+
         val currentReactions =
             existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
-
         // The map key is server-assigned and may differ from reactionJson, so find by value.
         val existingKey = currentReactions.entries
             .firstOrNull { it.value.reactionContent == reactionJson }
             ?.key
         val existing = existingKey?.let { currentReactions[it] }
-        val isAdding = existing == null || existing.count == 0
 
         val updatedReactions = if (isAdding) {
-            currentReactions[reactionJson] = ReactionEntry(
-                key = reactionJson,
-                count = 1,
-                reactionContent = reactionJson
-            )
+            if (existing == null) {
+                currentReactions[reactionJson] = ReactionEntry(
+                    key = reactionJson,
+                    count = 1,
+                    reactionContent = reactionJson
+                )
+            } else {
+                currentReactions[existingKey] = existing.copy(count = existing.count + 1)
+            }
             currentReactions
         } else {
-            val newCount = existing.count - 1
-            if (newCount <= 0) currentReactions.remove(existingKey)
-            else currentReactions[existingKey] = existing.copy(count = newCount)
+            if (existing != null) {
+                val newCount = existing.count - 1
+                if (newCount <= 0) currentReactions.remove(existingKey)
+                else currentReactions[existingKey] = existing.copy(count = newCount)
+            }
             currentReactions
         }
 
@@ -473,7 +586,11 @@ class OptimisticWriter(
                 reactionPreview = (existingFile.fileMetadata.reactionPreview
                     ?: ReactionSummary()).copy(
                     reactions = updatedReactions
-                )
+                ),
+                localAppData = (existingFile.fileMetadata.localAppData
+                    ?: LocalAppMetadata()).copy(
+                    localReactions = updatedLocalReactions
+                ),
             )
         )
 
@@ -487,25 +604,21 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic reaction toggle failed for uniqueId=$uniqueId" }
-            return Pair(ToggleReactionResultType.None, null)
+            return@withLock Pair(ToggleReactionResultType.None, null)
         }
 
         val resultType = if (isAdding)
             ToggleReactionResultType.Added
         else
             ToggleReactionResultType.Deleted
-        return Pair(resultType, existingFile)
+        Pair(resultType, existingFile)
     }
 
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =
@@ -585,13 +698,9 @@ class OptimisticWriter(
                 cursor = null
             )
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
             Logger.d(tag = "MarkAsRead") {
@@ -647,13 +756,9 @@ class OptimisticWriter(
             )
 
             eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
+                BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {

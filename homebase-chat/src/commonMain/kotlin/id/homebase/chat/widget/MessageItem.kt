@@ -8,12 +8,17 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.dice.canBattle
 import id.homebase.chat.services.content.ActionPolicy
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlin.uuid.Uuid
 
@@ -25,16 +30,18 @@ fun MessageItem(
     currentOdinId: String,
     renderAuthorName: Boolean = false,
     isGroupConversation: Boolean = false,
+    clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedTransitionScope: SharedTransitionScope,
     onUiAction: (ConversationListUiAction) -> Unit,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    allDiceDescriptors: ImmutableList<DiceRollDescriptor> = persistentListOf(),
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
+    chainCap: Int? = null,
 ) {
-    // TODO: currentOdinId is "" - is that supposed to be the case??
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
     } catch (_: Exception) {
@@ -54,6 +61,14 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
         if (policy.allowReply) remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
+    // Battle is dice-roll-specific. Show only when the message is a valid dice
+    // roll AND the chain has room AND the current user isn't already in it.
+    val battleDescriptor = (message.messageContent as? MessageContent.DiceRoll)?.descriptor
+    val onBattle = if (battleDescriptor != null && battleDescriptor.isValid() &&
+        canBattle(battleDescriptor, odinId, allDiceDescriptors)
+    ) {
+        remember(message.id) { { onUiAction(ConversationListUiAction.BattleDiceRoll(message)) } }
+    } else null
     val onForward =
         if (policy.allowForward) remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } } else null
     val onShare =
@@ -64,8 +79,12 @@ fun MessageItem(
         if (policy.allowReactionDetails) remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } } else null
     val onDecryptFile =
         remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.DecryptFile(messageId = message.id, payloadKey = payload.key)) } }
+    // Tapping the inline reply-preview chip pinned above a bubble. We route
+    // through OpenReplyTarget so the handler can branch on content kind: an
+    // Event target opens the detail dialog directly; everything else falls
+    // through to ScrollToMessageId.
     val onClickMessageId =
-        remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.ScrollToMessageId(messageId)) } }
+        remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.OpenReplyTarget(messageId)) } }
     val onMediaClick = remember(message.id) {
         { payload: PayloadDescriptor ->
             onUiAction(
@@ -125,8 +144,11 @@ fun MessageItem(
                 message = message,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
+                currentOdinId = currentOdinId,
+                clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
+                onBattle = onBattle,
                 onForward = onForward,
                 onEdit = onEdit,
                 onShare = onShare,
@@ -144,6 +166,7 @@ fun MessageItem(
                 replyMessages = replyMessages,
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
+                chainCap = chainCap,
             )
         }
     } else { val onMarkAsRead =
@@ -158,9 +181,13 @@ fun MessageItem(
                 message = message,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
+                currentOdinId = currentOdinId,
                 renderAuthorName = renderAuthorName,
+                isGroupConversation = isGroupConversation,
+                clusterPosition = clusterPosition,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
+                onBattle = onBattle,
                 onForward = onForward,
                 onDelete = onDelete,
                 onMarkAsRead = onMarkAsRead,
@@ -178,6 +205,7 @@ fun MessageItem(
                 onReport = onReport,
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
+                chainCap = chainCap,
             )
         }
     }

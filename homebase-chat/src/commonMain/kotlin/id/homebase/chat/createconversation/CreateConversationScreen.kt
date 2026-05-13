@@ -16,9 +16,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.outlined.Circle
@@ -66,6 +66,8 @@ import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_search_result_empty
+import id.homebase.resources.cd_not_selected
+import id.homebase.resources.cd_selected
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
@@ -151,7 +153,7 @@ fun CreateConversationUi(
                 navigationIcon = {
                     IconButton(onClick = { onUiAction(CreateConversationUiAction.BackClicked) }) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -342,9 +344,9 @@ fun ContactItem(
         if (selectionMode) {
             val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
             if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
+                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = tint)
             } else {
-                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
+                Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = tint)
             }
         }
     }
@@ -408,9 +410,9 @@ fun GroupOrConversationItem(
         if (selectionMode) {
             val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
             if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
+                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = tint)
             } else {
-                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
+                Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = tint)
             }
         }
     }

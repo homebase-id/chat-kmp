@@ -81,6 +81,14 @@ jobs:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/release/homebase-id-app.aab
 
+      - name: Upload R8 mapping
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-mapping-${{ steps.version.outputs.VERSION_CODE }}
+          path: androidApp/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
+
       - name: Create Google Play Service Account JSON
         run: |
           echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
@@ -90,7 +98,6 @@ jobs:
 
   build-ios:
     runs-on: macos-15
-
     steps:
       - uses: actions/checkout@v5
 
@@ -109,7 +116,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
           restore-keys: |
             gradle-${{ runner.os }}-
 
@@ -117,12 +124,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('**/gradle.properties') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26"
+          xcode-version: "26.3"
 
       - name: Cache CocoaPods
         uses: actions/cache@v5
@@ -133,6 +142,13 @@ jobs:
           key: pods-${{ runner.os }}-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
             pods-${{ runner.os }}-
+
+      # DerivedData cache intentionally NOT used: restoring pre-signed
+      # `.framework` artifacts (FFmpegKit ships ~7 of them) collides with
+      # the new run's signing identity and `codesign`'s
+      # validate-then-replace path on a previously-signed nested framework
+      # can hang for hours on Apple Silicon runners (Xcode 26.x). Saves a
+      # few minutes on a hit, costs 5h of CI minutes on a miss — not worth it.
 
       - name: Set iOS version
         run: |
@@ -163,7 +179,16 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION_NAME" iosApp/iosApp/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION_CODE" iosApp/iosApp/Info.plist
 
+      - name: Inject CI build optimizations
+        run: |
+          cat >> iosApp/Configuration/Config.xcconfig << 'XCEOF'
+
+          // CI optimizations
+          COMPILER_INDEX_STORE_ENABLE = NO
+          XCEOF
+
       - name: Build iOS
+        timeout-minutes: 180
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj

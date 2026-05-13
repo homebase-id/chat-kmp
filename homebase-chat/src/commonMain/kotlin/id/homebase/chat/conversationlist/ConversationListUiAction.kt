@@ -109,13 +109,27 @@ sealed interface ConversationListUiAction {
 
     data object CloseFullScreenOverlay : ConversationListUiAction
 
+    /**
+     * Persist where the user is reading in this conversation. The anchor is
+     * the uniqueId of the topmost visible message (resolved by the pane from
+     * its [androidx.compose.foundation.lazy.LazyListState]); the offset is
+     * pixel offset within that anchor item. On next open we look the anchor
+     * up against the freshly-loaded message list to recover the index — that
+     * keeps the saved position meaningful even when new messages arrived
+     * between sessions or when paging eventually shifts indices on prepend.
+     *
+     * `anchorMessageId == null` means the pane couldn't resolve the visible
+     * window to a real message (empty list, all-non-message rows) and the VM
+     * should ignore the dispatch.
+     */
     data class SaveScrollPosition(
         val conversationId: Uuid,
-        val firstVisibleItemIndex: Int,
-        val firstVisibleItemScrollOffset: Int
+        val anchorMessageId: Uuid?,
+        val firstVisibleItemScrollOffset: Int,
     ) : ConversationListUiAction
 
     data object ClearScrollTrigger : ConversationListUiAction
+    data object ClearHighlightedMessage : ConversationListUiAction
 
     data class ShowConversationSettings(val conversation: ConversationUiModel) :
         ConversationListUiAction
@@ -133,6 +147,8 @@ sealed interface ConversationListUiAction {
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class BattleDiceRoll(val message: MessageUiModel) : ConversationListUiAction
+    data object CancelBattleDiceRoll : ConversationListUiAction
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
     data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
     data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
@@ -156,6 +172,32 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
+
+    /**
+     * User tapped the inline reply-preview chip pinned above a message bubble.
+     * The handler resolves the target via [ChatMessageStream.getMessage]
+     * (in-memory window first, single DB read on miss) and chooses what to
+     * surface: a typed-content target like an Event opens its detail dialog,
+     * everything else falls back to [ScrollToMessageId].
+     */
+    data class OpenReplyTarget(val messageId: Uuid) : ConversationListUiAction
+
+    /** Dismiss the host-level Event detail dialog opened from a reply target. */
+    data object DismissEventDetailFromReply : ConversationListUiAction
+
+    /** Fetch the next page of older messages into the visible window. */
+    data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
+
+    /** Fetch the next page of newer messages into the visible window. */
+    data class LoadNewerMessages(val conversationId: Uuid) : ConversationListUiAction
+
+    /**
+     * Reload the latest page from disk, replacing the loaded window. Dispatched
+     * by the scroll-to-bottom FAB when the user is deep in history
+     * (`hasNewerMessages = true`); a plain `animateScrollToItem(last)` would
+     * land at the bottom of the loaded window, not the latest message.
+     */
+    data class ScrollToLatest(val conversationId: Uuid) : ConversationListUiAction
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
     data object StopRecording : ConversationListUiAction

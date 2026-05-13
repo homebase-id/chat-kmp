@@ -361,10 +361,34 @@
     <string name="chat_group_heal">Reparér gruppe</string>
     <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
     <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
+    <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
+    <string name="chat_group_heal_progress_title">Reparerer gruppe</string>
+    <string name="chat_group_heal_progress_subtitle_running">Arbejder gennem den per-modtager plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
+    <string name="chat_group_heal_progress_still_queued">Stadig i kø til %1$s (serveren prøver igen)</string>
     <string name="chat_group_admin_file_delivered">Adminfil leveret</string>
     <string name="chat_group_admin_file_problem">Problem med levering af adminfil</string>
     <string name="chat_group_main_file_delivered">Gruppefil leveret</string>
     <string name="chat_group_main_file_problem">Problem med levering af gruppefil</string>
+    <string name="chat_group_main_peer_in_sync">Gruppefil synkroniseret hos modtager</string>
+    <string name="chat_group_main_peer_missing">Gruppefil endnu ikke hos modtager</string>
+    <string name="chat_group_main_peer_stale">Gruppefil ude af sync hos modtager</string>
+    <string name="chat_group_main_peer_error">Kunne ikke nå modtager for gruppefil</string>
+    <string name="chat_group_admin_peer_in_sync">Adminfil synkroniseret hos modtager</string>
+    <string name="chat_group_admin_peer_missing">Adminfil endnu ikke hos modtager</string>
+    <string name="chat_group_admin_peer_stale">Adminfil ude af sync hos modtager</string>
+    <string name="chat_group_admin_peer_error">Kunne ikke nå modtager for adminfil</string>
+    <string name="chat_group_main_file_loading">Tjekker levering af gruppefil…</string>
+    <string name="chat_group_admin_file_loading">Tjekker levering af adminfil…</string>
+    <string name="chat_group_main_peer_loading">Tjekker modtager for gruppefil…</string>
+    <string name="chat_group_admin_peer_loading">Tjekker modtager for adminfil…</string>
+    <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
+    <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
+    <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>
 
     <!-- 1:1 connection state banner -->
     <string name="chat_not_connected_description">Du er ikke forbundet.</string>
@@ -427,6 +451,39 @@
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
+
+    <!-- Dice attachment -->
+    <string name="chat_dice_share">Terninger</string>
+    <string name="chat_dice_composer_title">Slå terninger</string>
+    <string name="chat_dice_count_label">Antal terninger</string>
+    <string name="chat_dice_faces_label">Sider pr. terning</string>
+    <string name="chat_dice_face_label">d%1$d</string>
+    <string name="chat_dice_count_value">%1$dd</string>
+    <string name="chat_dice_decrement">Færre terninger</string>
+    <string name="chat_dice_increment">Flere terninger</string>
+    <string name="chat_dice_roll">Slå</string>
+    <string name="chat_dice_rolling">Slår…</string>
+    <string name="chat_dice_max_dice_warning">Op til %1$d terninger pr. slag.</string>
+    <string name="chat_dice_shake_hint">Eller ryst din telefon.</string>
+    <string name="chat_dice_face_content_description">d%1$d viser %2$d</string>
+    <string name="chat_dice_face_placeholder_content_description">d%1$d terning</string>
+    <string name="chat_dice_summary">Du slog %1$d (%2$s)</string>
+    <string name="chat_dice_summary_single">Du slog %1$d</string>
+    <string name="chat_dice_summary_other">%1$s slog %2$d (%3$s)</string>
+    <string name="chat_dice_summary_other_single">%1$s slog %2$d</string>
+    <string name="chat_dice_unparseable">Forhistorisk slag</string>
+    <string name="chat_dice_battle_action">Duel</string>
+    <string name="chat_dice_battle_title">Duel</string>
+    <string name="chat_dice_battle_target">Slå højere end %1$d for at vinde over %2$s</string>
+    <string name="chat_dice_battle_leader_self">Du fører med %1$d</string>
+    <string name="chat_dice_battle_leader_other">%1$s fører med %2$d</string>
+    <string name="chat_dice_battle_tie_self">%1$s er uafgjort med %2$d</string>
+    <string name="chat_dice_battle_tie_other">%1$s er uafgjort med %2$d</string>
+    <string name="chat_dice_battle_winner_self">Du vandt med %1$d</string>
+    <string name="chat_dice_battle_winner_other">%1$s vandt med %2$d</string>
+    <string name="chat_dice_battle_tie_winner_self">%1$s er uafgjort om sejren med %2$d</string>
+    <string name="chat_dice_battle_tie_winner_other">%1$s er uafgjort om sejren med %2$d</string>
+    <string name="chat_dice_battle_and">og</string>
 
     <string name="chat_message_attachment_gallery">Galleri</string>
     <string name="chat_message_attachment_file">Fil</string>

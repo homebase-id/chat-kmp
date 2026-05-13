@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -34,6 +34,14 @@ import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.ui.screens.help.HelpClickableRow
 import id.homebase.core.ui.screens.help.HelpSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.dev_menu_clear_data
+import id.homebase.resources.dev_menu_force_sync
+import id.homebase.resources.dev_menu_section_database
+import id.homebase.resources.dev_menu_section_misc
+import id.homebase.resources.dev_menu_section_sync
+import id.homebase.resources.dev_menu_section_testing
+import id.homebase.resources.dev_menu_test_notification
+import id.homebase.resources.dev_menu_title
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -89,11 +97,11 @@ fun DeveloperMenuUi(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Developer menu") },
+                title = { Text(stringResource(MR.string.dev_menu_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
@@ -112,7 +120,7 @@ fun DeveloperMenuUi(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            HelpSectionHeader(title = "Misc info")
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_misc))
             Text(
                 text = BuildConfig.APP_BUILD_TIME,
                 style = MaterialTheme.typography.bodyMedium,
@@ -121,11 +129,11 @@ fun DeveloperMenuUi(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Sync & Connection Section
-            HelpSectionHeader(title = "Sync & Connection")
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_sync))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     HelpClickableRow(
-                        label = "Force Sync All",
+                        label = stringResource(MR.string.dev_menu_force_sync),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.ForceSyncAll) }
                     )
@@ -134,11 +142,11 @@ fun DeveloperMenuUi(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Database Section
-            HelpSectionHeader(title = "Database & Storage")
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_database))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     HelpClickableRow(
-                        label = "Clear All Data",
+                        label = stringResource(MR.string.dev_menu_clear_data),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.ClearAllData) }
                     )
@@ -147,17 +155,16 @@ fun DeveloperMenuUi(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Testing Section
-            HelpSectionHeader(title = "Testing Tools")
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_testing))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     HelpClickableRow(
-                        label = "Test Rich Notification",
+                        label = stringResource(MR.string.dev_menu_test_notification),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.TestRichNotification) }
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(24.dp))
         }
     }

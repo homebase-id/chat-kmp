@@ -5,10 +5,13 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
+import id.homebase.chat.event.EventDescriptor
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
@@ -68,6 +71,7 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
     val searchResultMessageIds: List<Uuid> = emptyList(),
@@ -76,12 +80,48 @@ data class MessageListUiState(
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<ReactionDisplayItem>? = null,
+    val reactionDetailsMessageId: Uuid? = null,
     val isReactionsLoading: Boolean = false,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
+    val highlightedMessageId: Uuid? = null,
+    /** True if more messages exist before the loaded window's first message.
+     *  Drives the top loading-spinner row and the proximity hook's
+     *  loadOlder trigger. */
+    val hasOlderMessages: Boolean = false,
+    /** True if more messages exist after the loaded window's last message.
+     *  Set when the user opens around an anchor (centered window) or after
+     *  trim discards the newer slice; drives the bottom spinner, the FAB's
+     *  ScrollToLatest branch, and gates auto-follow on incoming messages. */
+    val hasNewerMessages: Boolean = false,
+    /** A loadOlder fetch is in flight; suppresses re-entry. */
+    val isLoadingOlder: Boolean = false,
+    /** A loadNewer fetch is in flight; suppresses re-entry. */
+    val isLoadingNewer: Boolean = false,
+    /** Set when the user taps a reply-preview that points at an Event message;
+     *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
+     *  this state. Null means no host-level event detail is open. */
+    val replyTargetEventDetail: ReplyTargetEventDetail? = null,
+)
+
+/**
+ * Snapshot of an Event message resolved from a reply-preview tap. Carries
+ * everything [id.homebase.chat.event.EventDetailDialog] needs without holding
+ * a reference to the live MessageUiModel — the dialog's RSVP roster fetches
+ * fresh reactions, and the counts are aggregated up-front so closing the
+ * dialog doesn't re-render the host.
+ */
+@Immutable
+data class ReplyTargetEventDetail(
+    val descriptor: EventDescriptor,
+    val messageId: Uuid,
+    val conversationId: Uuid,
+    val ownReactions: ImmutableList<String>,
+    val reactionSummary: ReactionSummary?,
+    val organizer: OdinId?,
 )
 
 @Immutable
@@ -91,6 +131,7 @@ data class PendingOutgoingMessage(
     val text: String,
     val attachmentCount: Int,
     val sentAt: Instant,
+    val replyPreview: ReplyPreview? = null,
 )
 
 sealed interface MessageListUiSheet {
@@ -142,13 +183,30 @@ sealed interface ConversationListContentModel {
     data class Header(val resource: StringResource) : ConversationListContentModel
 }
 
+enum class MessageClusterPosition {
+    ALONE,
+    START,
+    MIDDLE,
+    END,
+}
+
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data object Header : MessageListContentModel("header")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
     data class System(val text: String, val userDate: Instant, val index: Int) : MessageListContentModel("system-$index")
-    data class Message(val message: MessageUiModel) :
-        MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+    data class Message(
+        val message: MessageUiModel,
+        val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+
+    data object UnreadSeparator : MessageListContentModel("unread-separator")
+
+    /** Spinner row at the top of the list while older messages are loading. */
+    data object LoadingOlder : MessageListContentModel("loading-older")
+
+    /** Spinner row at the bottom of the list while newer messages are loading. */
+    data object LoadingNewer : MessageListContentModel("loading-newer")
 }
 
 @Immutable

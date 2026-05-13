@@ -18,15 +18,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -83,6 +84,10 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
+import id.homebase.resources.cd_open_externally
+import id.homebase.resources.settings_section_danger_zone
+import id.homebase.resources.settings_section_general
+import id.homebase.resources.vault_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -95,6 +100,7 @@ fun SettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
+    onNavigateToVaultSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -149,6 +155,7 @@ fun SettingsScreen(
             onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
+           onNavigateToVaultSettings = onNavigateToVaultSettings,
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp
         )
@@ -210,15 +217,21 @@ fun SettingsUi(
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
+    onNavigateToVaultSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
+            TopAppBar(title = {
+                Text(
+                    stringResource(MR.string.settings),
+                    modifier = Modifier.testTag("settingsTitle")
+                )
+            }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
-                        imageVector = Icons.Default.ChevronLeft,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(MR.string.menu_back)
                     )
                 }
@@ -265,6 +278,7 @@ fun SettingsUi(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsSectionHeader(stringResource(MR.string.settings_section_general))
             SettingsItemAction(
                 imageVector = Icons.Outlined.People,
                 text = stringResource(MR.string.settings_connections),
@@ -278,7 +292,7 @@ fun SettingsUi(
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_open_externally),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
@@ -298,6 +312,7 @@ fun SettingsUi(
                                 strokeWidth = 2.dp
                             )
                         }
+
                         NotificationVerificationStatus.OK -> {
                             Icon(
                                 imageVector = Icons.Outlined.CheckCircle,
@@ -306,6 +321,7 @@ fun SettingsUi(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+
                         NotificationVerificationStatus.ERROR -> {
                             Icon(
                                 imageVector = Icons.Outlined.Error,
@@ -326,7 +342,7 @@ fun SettingsUi(
                 trailingContent = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = null,
+                        contentDescription = stringResource(MR.string.cd_open_externally),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
@@ -354,23 +370,42 @@ fun SettingsUi(
                 onClick = onNavigateToHelp
             )
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Lock,
+                text = stringResource(MR.string.vault_settings_section),
+                onClick = onNavigateToVaultSettings,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsSectionHeader(stringResource(MR.string.settings_section_danger_zone))
             SettingsItemAction(
                 modifier = Modifier.testTag("deleteAccountButton"),
                 imageVector = Icons.Outlined.Delete,
                 text = stringResource(MR.string.settings_delete_account),
+                tint = MaterialTheme.colorScheme.error,
                 onClick = { onAction(SettingsUiAction.DeleteAccount) }
             )
             SettingsItemAction(
                 modifier = Modifier.testTag("logoutButton"),
                 imageVector = Icons.AutoMirrored.Outlined.Logout,
                 text = stringResource(MR.string.settings_logout),
+                tint = MaterialTheme.colorScheme.error,
                 onClick = { onAction(SettingsUiAction.LogoutClicked) }
             )
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+    )
 }
 
 @Preview
@@ -384,6 +419,7 @@ fun SettingsUiPreview() {
             onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
+            onNavigateToVaultSettings = {},
             onNavigateToStorage = {},
             onNavigateToHelp = {}
         )

@@ -73,6 +73,7 @@ import id.homebase.resources.connections_refresh
 import id.homebase.resources.connections_sent_timestamp
 import id.homebase.resources.connections_tab_incoming
 import id.homebase.resources.connections_tab_outgoing
+import id.homebase.resources.cd_navigate_forward
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_connections
 import org.jetbrains.compose.resources.stringResource
@@ -392,7 +393,7 @@ private fun ConnectionRequestRow(
         }
         Icon(
             imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
+            contentDescription = stringResource(MR.string.cd_navigate_forward),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )

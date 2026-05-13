@@ -162,7 +162,7 @@ class ConversationServiceRecoveryTest {
             val contentJson = file.fileMetadata.appData.content
             assertNotNull(contentJson, "placeholder content should be written")
             val content = OdinSystemSerializer.deserialize<ConversationAppDataJson>(contentJson)
-            val recipients = content.recipients?.filterNotNull()?.map { it.domainName } ?: emptyList()
+            val recipients = content.recipients.filterNotNull().map { it.domainName }
             assertTrue(
                 recipients.contains(alice),
                 "1:1 placeholder must list the sender (alice) as participant; got $recipients",

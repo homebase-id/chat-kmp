@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
@@ -66,6 +67,13 @@ import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
 import id.homebase.resources.MR
+import id.homebase.resources.cd_file_attachment
+import id.homebase.resources.cd_gallery_thumbnail
+import id.homebase.resources.cd_image_attachment
+import id.homebase.resources.cd_pause_video
+import id.homebase.resources.cd_play_video
+import id.homebase.resources.cd_send_to
+import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
@@ -89,6 +97,7 @@ fun FullScreenAttachmentEditor(
     onSaveFile: (file: AttachmentPendingFile) -> Unit,
     onAddFile: () -> Unit,
     onAddImage: () -> Unit,
+    onCameraClick: () -> Unit,
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
@@ -166,7 +175,7 @@ fun FullScreenAttachmentEditor(
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = null, Modifier.size(96.dp))
+                            Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment), Modifier.size(96.dp))
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(attachment.file.name)
                         }
@@ -175,7 +184,7 @@ fun FullScreenAttachmentEditor(
                         AsyncImage(
                             imageLoader = imageLoader,
                             model = attachment.file.toString(),
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_image_attachment),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp)),
@@ -224,7 +233,7 @@ fun FullScreenAttachmentEditor(
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = posterModel,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(MR.string.cd_video_thumbnail),
                                     modifier = Modifier.fillMaxWidth(),
                                     contentScale = ContentScale.Fit,
                                 )
@@ -238,7 +247,7 @@ fun FullScreenAttachmentEditor(
                             ) {
                                 Icon(
                                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(if (isPlaying) MR.string.cd_pause_video else MR.string.cd_play_video),
                                     tint = Color.White,
                                 )
                             }
@@ -248,7 +257,7 @@ fun FullScreenAttachmentEditor(
                         AsyncImage(
                             imageLoader = imageLoader,
                             model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
-                            contentDescription = null,
+                            contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp)),
@@ -280,7 +289,7 @@ fun FullScreenAttachmentEditor(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(MR.string.cd_send_to, data.conversationTitle))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = data.conversationTitle,
@@ -383,14 +392,14 @@ fun FullScreenAttachmentEditor(
                                     modifier = Modifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Default.UploadFile, contentDescription = null)
+                                    Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment))
                                 }
                             }
                             is AttachmentPendingFile.FileImage -> {
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = attachment.file.toString(),
-                                    contentDescription = null,
+                                    contentDescription = stringResource(MR.string.cd_image_attachment),
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
@@ -403,13 +412,13 @@ fun FullScreenAttachmentEditor(
                                     AsyncImage(
                                         imageLoader = imageLoader,
                                         model = attachment.thumbnailBytes ?: attachment.file.toString(),
-                                        contentDescription = null,
+                                        contentDescription = stringResource(MR.string.cd_video_thumbnail),
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
                                     Icon(
                                         Icons.Default.PlayCircle,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(MR.string.cd_play_video),
                                         tint = Color.White.copy(alpha = 0.85f)
                                     )
                                 }
@@ -418,7 +427,7 @@ fun FullScreenAttachmentEditor(
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
-                                    contentDescription = null,
+                                    contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
                                 )
@@ -446,6 +455,18 @@ fun FullScreenAttachmentEditor(
                         }
                     }
                 }
+            }
+            IconButton(
+                onClick = onCameraClick,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                )
             }
             IconButton(
                 onClick = if (isFileMode) onAddFile else onAddImage,

@@ -18,7 +18,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
 /**
- * Covers the `ChatMessageStream.mapToMessageData` path that populates
+ * Covers the `mapToMessageData` path that populates
  * `MessageUiModel.ownReactions` from `fileMetadata.localAppData.localReactions`.
  *
  * Three branches in the mapper construct a `MessageUiModel`
@@ -43,8 +43,9 @@ class ChatMessageStreamMapperTest {
     private val sampleLocalReactionsJson =
         """["{\"emoji\":\"❤️\"}", "{\"emoji\":\"🚀\"}"]"""
 
-    private val expectedOwnReactions =
-        listOf("""{"emoji":"❤️"}""", """{"emoji":"🚀"}""")
+    // Mapper decodes the JSON-encoded wire format into bare emoji strings, so the
+    // rest of the UI can compare against reactionPreview entries directly.
+    private val expectedOwnReactions = listOf("❤️", "🚀")
 
     /**
      * Builds a minimal chat-message HomebaseFile JSON.
@@ -127,7 +128,7 @@ class ChatMessageStreamMapperTest {
             localAppDataJson = """{"localReactions": $sampleLocalReactionsJson}"""
         )
 
-        val result = ChatMessageStream.mapToMessageData(header, cm)
+        val result = mapToMessageData(header, cm)
 
         assertNotNull(result)
         assertEquals(expectedOwnReactions, result.ownReactions.toList())
@@ -138,7 +139,7 @@ class ChatMessageStreamMapperTest {
         val cm = createTestCredentialsManager()
         val header = buildChatMessageHeader(localAppDataJson = null)
 
-        val result = ChatMessageStream.mapToMessageData(header, cm)
+        val result = mapToMessageData(header, cm)
 
         assertNotNull(result)
         assertTrue(result.ownReactions.isEmpty())
@@ -151,7 +152,7 @@ class ChatMessageStreamMapperTest {
             localAppDataJson = """{"localReactions": null}"""
         )
 
-        val result = ChatMessageStream.mapToMessageData(header, cm)
+        val result = mapToMessageData(header, cm)
 
         assertNotNull(result)
         assertTrue(result.ownReactions.isEmpty())
@@ -165,7 +166,7 @@ class ChatMessageStreamMapperTest {
             fileState = "deleted"
         )
 
-        val result = ChatMessageStream.mapToMessageData(header, cm)
+        val result = mapToMessageData(header, cm)
 
         assertNotNull(result)
         assertTrue(result.isDeleted)

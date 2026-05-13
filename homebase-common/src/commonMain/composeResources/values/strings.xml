@@ -101,6 +101,13 @@
     <string name="number_of_records">%1$s records</string>
     <string name="emoji_all">All・</string>
 
+    <!-- Pending upgrade -->
+    <string name="pending_upgrade_snackbar_message">Your identity requires a data upgrade</string>
+    <string name="pending_upgrade_snackbar_action">Upgrade</string>
+    <string name="pending_upgrade_title">Data upgrade required</string>
+    <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
+    <string name="pending_upgrade_confirm">Upgrade Now</string>
+
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>
     <string name="avatar_conversation">Conversation avatar</string>
@@ -431,9 +438,49 @@
     <string name="chat_group_main_file_problem">Group file delivery problem</string>
     <string name="chat_group_admin_file_delivered">Admin file delivered</string>
     <string name="chat_group_admin_file_problem">Admin file delivery problem</string>
+    <string name="chat_group_main_peer_in_sync">Group file in sync on peer</string>
+    <string name="chat_group_main_peer_missing">Group file not yet on peer</string>
+    <string name="chat_group_main_peer_stale">Group file version mismatch on peer</string>
+    <string name="chat_group_main_peer_error">Couldn\'t reach peer for group file</string>
+    <string name="chat_group_admin_peer_in_sync">Admin file in sync on peer</string>
+    <string name="chat_group_admin_peer_missing">Admin file not yet on peer</string>
+    <string name="chat_group_admin_peer_stale">Admin file version mismatch on peer</string>
+    <string name="chat_group_admin_peer_error">Couldn\'t reach peer for admin file</string>
+    <string name="chat_group_main_file_loading">Checking group file delivery…</string>
+    <string name="chat_group_admin_file_loading">Checking admin file delivery…</string>
+    <string name="chat_group_main_peer_loading">Checking peer for group file…</string>
+    <string name="chat_group_admin_peer_loading">Checking peer for admin file…</string>
+    <string name="chat_group_member_sync_status">Sync status</string>
+    <string name="chat_group_summary_all_ok">All in sync</string>
+    <string name="chat_group_summary_problem">Sync issue — tap for details</string>
     <string name="chat_group_heal">Heal group</string>
     <string name="chat_group_heal_completed">Re-distributing group files…</string>
     <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn't author the group files).</string>
+    <string name="chat_group_heal_already_in_sync">Group is already in sync on every peer</string>
+    <string name="chat_group_heal_progress_title">Healing group</string>
+    <string name="chat_group_heal_progress_subtitle_running">Working through the per-recipient plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Done. You can close this dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sending group file to %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sending admin file to %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Asking %1$s to clean up their group file</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Asking %1$s to clean up their admin file</string>
+    <string name="chat_group_heal_progress_still_queued">Still queued for %1$s (the server keeps retrying)</string>
+
+    <!-- Group-info file health diagnostic (footer at the bottom of group settings).
+         Each row reports the local-DB or own-server state of one of the two group
+         files (main + admin). Long-press the block to copy a support blob with
+         full UUIDs to the clipboard. -->
+    <string name="chat_group_files_diagnostic_title">Group files</string>
+    <string name="chat_group_files_diagnostic_db_group_label">DB-group:</string>
+    <string name="chat_group_files_diagnostic_db_admin_label">DB-admin:</string>
+    <string name="chat_group_files_diagnostic_server_group_label">Server-group:</string>
+    <string name="chat_group_files_diagnostic_server_admin_label">Server-admin:</string>
+    <!-- Args: 1=8-char uniqueId, 2=8-char versionTag, 3=originalAuthor domain -->
+    <string name="chat_group_files_diagnostic_present">exists · uid %1$s · v %2$s · author %3$s</string>
+    <!-- Arg: 1=8-char uniqueId -->
+    <string name="chat_group_files_diagnostic_placeholder">placeholder · uid %1$s</string>
+    <!-- Arg: 1=8-char uniqueId (the value the row would carry if it were present) -->
+    <string name="chat_group_files_diagnostic_absent">absent · uid %1$s expected</string>
 
     <!-- 1:1 connection state banner (shown in place of the message composer) -->
     <string name="chat_not_connected_description">You're not connected.</string>
@@ -458,6 +505,7 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_new_messages">New messages</string>
     <string name="chat_connection_invited">Invited</string>
     <string name="chat_connection_wants_to_connect">Wants to connect</string>
     <string name="chat_connection_invitation_sent">Invitation sent — waiting for them to accept</string>
@@ -521,6 +569,7 @@
     <string name="chat_event_use_current_location">Use current location</string>
     <string name="chat_event_open_in_maps">Open in maps</string>
     <string name="chat_event_join_meeting">Join meeting</string>
+    <string name="chat_event_copy_meeting_url">Copy meeting URL</string>
     <string name="chat_event_add_to_google_calendar">Add to Google Calendar</string>
     <string name="chat_event_download_ics">Download calendar file (.ics)</string>
     <string name="chat_event_rsvp_yes">Going</string>
@@ -530,11 +579,60 @@
     <string name="chat_event_live_now">Live now</string>
     <string name="chat_event_past">Past event</string>
     <string name="chat_event_rsvp_summary">%1$s going · %2$s no · %3$s maybe</string>
-    <string name="chat_event_unparseable">Event (unsupported format)</string>
+    <string name="chat_event_unparseable">Unable to display this event. Please update the app.</string>
     <string name="chat_event_send">Send event</string>
-    <string name="chat_event_your_time_in_zone">your time: %1$s %2$s</string>
+    <string name="chat_event_scheduled_in_zone">Scheduled: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
+    <string name="chat_event_organized_by">Organized by</string>
+    <string name="chat_event_tz_picker_title">Time zone</string>
+    <string name="chat_event_tz_picker_search">Search city or zone</string>
+    <string name="chat_event_tz_suggested">Suggested</string>
+    <string name="chat_event_tz_region_africa">Africa</string>
+    <string name="chat_event_tz_region_americas">Americas</string>
+    <string name="chat_event_tz_region_antarctica">Antarctica</string>
+    <string name="chat_event_tz_region_arctic">Arctic</string>
+    <string name="chat_event_tz_region_asia">Asia</string>
+    <string name="chat_event_tz_region_atlantic">Atlantic</string>
+    <string name="chat_event_tz_region_australia">Australia</string>
+    <string name="chat_event_tz_region_europe">Europe</string>
+    <string name="chat_event_tz_region_indian">Indian Ocean</string>
+    <string name="chat_event_tz_region_pacific">Pacific</string>
+
+    <!-- Dice attachment -->
+    <string name="chat_dice_share">Dice</string>
+    <string name="chat_dice_composer_title">Roll dice</string>
+    <string name="chat_dice_count_label">Number of dice</string>
+    <string name="chat_dice_faces_label">Faces per die</string>
+    <string name="chat_dice_face_label">d%1$d</string>
+    <string name="chat_dice_count_value">%1$dd</string>
+    <string name="chat_dice_decrement">Fewer dice</string>
+    <string name="chat_dice_increment">More dice</string>
+    <string name="chat_dice_roll">Roll</string>
+    <string name="chat_dice_rolling">Rolling…</string>
+    <string name="chat_dice_max_dice_warning">Up to %1$d dice per roll.</string>
+    <string name="chat_dice_shake_hint">Or just shake your phone.</string>
+    <string name="chat_dice_face_content_description">d%1$d showing %2$d</string>
+    <string name="chat_dice_face_placeholder_content_description">d%1$d die</string>
+    <string name="chat_dice_summary">You rolled %1$d (%2$s)</string>
+    <string name="chat_dice_summary_single">You rolled %1$d</string>
+    <string name="chat_dice_summary_other">%1$s rolled %2$d (%3$s)</string>
+    <string name="chat_dice_summary_other_single">%1$s rolled %2$d</string>
+    <string name="chat_dice_unparseable">Ancient roll</string>
+    <string name="chat_dice_battle_action">Duel</string>
+    <string name="chat_dice_battle_title">Duel</string>
+    <string name="chat_dice_battle_target">Roll higher than %1$d to beat %2$s</string>
+    <string name="chat_dice_battle_leader_self">You lead with %1$d</string>
+    <string name="chat_dice_battle_leader_other">%1$s leads with %2$d</string>
+    <string name="chat_dice_battle_tie_self">%1$s tie with %2$d</string>
+    <string name="chat_dice_battle_tie_other">%1$s tie with %2$d</string>
+    <string name="chat_dice_battle_winner_self">You won with %1$d</string>
+    <string name="chat_dice_battle_winner_other">%1$s won with %2$d</string>
+    <string name="chat_dice_battle_tie_winner_self">%1$s tied for the win with %2$d</string>
+    <string name="chat_dice_battle_tie_winner_other">%1$s tied for the win with %2$d</string>
+    <string name="chat_dice_battle_and">and</string>
+    <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
+    <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
@@ -555,6 +653,8 @@
     <string name="chat_message_emoji">Emoji</string>
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
+    <string name="chat_reactions_tap_to_remove">Tap to remove</string>
+    <string name="chat_reactions_limit_reached">You cannot add more emojis, remove one first before adding another.</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
@@ -581,6 +681,127 @@
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
 
+    <!-- Vault -->
+    <string name="vault_label">Vault</string>
+    <string name="vault_home_subtitle">Your secure document store</string>
+    <string name="vault_onboarding_title">Your personal document vault</string>
+    <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver\u2019s license, certificates, credit cards, or any other important documents.</string>
+    <string name="vault_onboarding_body_2">Your documents are zero-knowledge encrypted on your personal private Homebase cloud server. They are additionally protected by your device biometrics.</string>
+    <string name="vault_onboarding_setup">Set it up</string>
+    <string name="vault_onboarding_dismiss">Hide it away</string>
+    <string name="vault_permission_dialog_title">Extend Permissions</string>
+    <string name="vault_permission_dialog_text">To set up your Vault we need to extend permissions for secure storage and cloud sync.</string>
+    <string name="vault_permission_extend">Extend</string>
+    <string name="vault_permission_cancel">Cancel</string>
+    <string name="vault_welcome">Welcome to the vault</string>
+    <string name="vault_settings_section">Vault</string>
+    <string name="vault_settings_open">Open Vault</string>
+    <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
+    <string name="vault_settings_biometrics">Biometrics protection</string>
+    <string name="vault_biometric_prompt_title">Unlock Vault</string>
+    <string name="vault_biometric_prompt_subtitle">Authenticate to access your documents</string>
+    <string name="vault_empty_title">Your vault is empty</string>
+    <string name="vault_empty_subtitle">Store your private files securely.\nTap + to add your first file.</string>
+    <string name="vault_empty_add_prompt">Press + to add a section</string>
+    <string name="vault_empty_add_section">Add section</string>
+    <string name="vault_upload_preparing">Preparing…</string>
+    <string name="vault_upload_failed">Upload failed</string>
+    <string name="vault_upload_retry">Retry</string>
+    <string name="vault_delete_confirm_title">Delete file?</string>
+    <string name="vault_delete_confirm_message">\u201C%1$s\u201D will be permanently deleted.</string>
+    <string name="vault_delete_confirm_action">Delete</string>
+    <string name="vault_rename_title">Rename</string>
+    <string name="vault_rename_action">Rename</string>
+    <string name="vault_share">Share</string>
+    <string name="vault_toggle_view_mode">Toggle view mode</string>
+    <string name="vault_settings">Settings</string>
+    <string name="vault_add_file">Add file</string>
+    <string name="vault_more_options">More options</string>
+
+    <!-- Vault Sections -->
+    <string name="vault_section_passports">Passports</string>
+    <string name="vault_section_drivers_licenses">Driver\'s Licenses</string>
+    <string name="vault_section_health_cards">Health Cards</string>
+    <string name="vault_section_birth_certificates">Birth Certificates</string>
+    <string name="vault_section_credit_cards">Credit Cards</string>
+
+    <string name="vault_section_menu">Section options</string>
+    <string name="vault_section_move_up">Move Up</string>
+    <string name="vault_section_move_down">Move Down</string>
+    <string name="vault_section_rename">Rename Section</string>
+    <string name="vault_section_delete">Delete Section</string>
+    <string name="vault_section_delete_confirm_title">Delete %1$s?</string>
+    <string name="vault_section_delete_confirm_message">All entries in this section will be permanently deleted.</string>
+
+    <string name="vault_new_section_title">New Section</string>
+    <string name="vault_new_section_field_label">Title</string>
+    <string name="vault_new_section_add">Add</string>
+    <string name="vault_new_section_name_exists">A section with this name already exists</string>
+
+    <string name="vault_entry_add">Add</string>
+    <string name="vault_entry_new_title">New Entry</string>
+    <string name="vault_entry_name_label">Name</string>
+    <string name="vault_entry_move_to_section">Move to Section...</string>
+    <string name="vault_entry_delete">Delete Entry</string>
+    <string name="vault_entry_delete_confirm">Delete %1$s? This entry and all its images will be permanently deleted.</string>
+
+    <string name="vault_image_add">Add Image</string>
+    <string name="vault_image_take_photo">Take Photo</string>
+    <string name="vault_image_choose_gallery">Choose from Gallery</string>
+    <string name="vault_image_replace">Replace</string>
+    <string name="vault_image_delete">Delete Image</string>
+
+    <string name="vault_section_empty_hint">Tap + to add your first %1$s</string>
+
+    <!-- Vault Gallery -->
+    <string name="vault_gallery_page_counter">%1$d / %2$d</string>
+    <string name="vault_gallery_add_page">Add page</string>
+    <string name="vault_gallery_delete_page">Delete page</string>
+    <string name="vault_gallery_delete_page_confirm">Delete this page? This cannot be undone.</string>
+    <string name="vault_gallery_delete_last_page_confirm">This is the last page. Deleting it will remove the entire entry.</string>
+    <string name="vault_gallery_share_page">Share this page</string>
+    <string name="vault_gallery_save_page">Save to device</string>
+    <string name="vault_gallery_delete_file">Delete file</string>
+    <string name="vault_gallery_delete_all">Delete all</string>
+
+    <!-- Vault Notes -->
+    <string name="vault_notes_label">Notes</string>
+    <string name="vault_notes_placeholder">Add notes about this entry…</string>
+    <string name="vault_label_placeholder">Add label</string>
+    <string name="vault_notes_save">Save</string>
+    <string name="vault_notes_cancel">Cancel</string>
+
+    <!-- Vault Detail Panel -->
+    <string name="vault_detail_current_page">Current Page</string>
+    <string name="vault_detail_entry_summary">Entry Summary</string>
+    <string name="vault_detail_type">Type</string>
+    <string name="vault_detail_size">Size</string>
+    <string name="vault_detail_modified">Modified</string>
+    <string name="vault_detail_pages">Pages</string>
+    <string name="vault_detail_total_size">Total Size</string>
+    <string name="vault_detail_created">Created</string>
+
+    <!-- Vault Locked Screen -->
+    <string name="vault_locked_title">Vault is locked</string>
+    <string name="vault_locked_subtitle">Authenticate to access your documents</string>
+    <string name="vault_locked_unlock">Unlock</string>
+
+    <!-- Vault Errors -->
+    <string name="vault_error_create_section">Failed to create section</string>
+    <string name="vault_error_rename_section">Failed to rename section</string>
+    <string name="vault_error_delete_section">Failed to delete section</string>
+    <string name="vault_error_upload">Failed to upload %1$s</string>
+    <string name="vault_error_download">Failed to download file for sharing</string>
+    <string name="vault_error_rename_file">Failed to rename %1$s</string>
+    <string name="vault_error_delete_file">Failed to delete %1$s</string>
+    <string name="vault_error_append_pages">Failed to add pages</string>
+    <string name="vault_error_delete_page">Failed to delete page</string>
+    <string name="vault_error_save_notes">Failed to save notes</string>
+    <string name="vault_error_update_label">Failed to update label for %1$s</string>
+    <string name="vault_error_download_page">Failed to download page for sharing</string>
+    <string name="vault_error_outbox_upload">Upload failed</string>
+    <string name="vault_error_image_unavailable">Image could not be loaded</string>
+
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
     <string name="feed_loading">Loading feed…</string>
@@ -591,5 +812,76 @@
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>
+
+    <!-- Delivery status -->
+    <string name="message_sending">Sending</string>
+    <string name="message_read">Read</string>
+    <string name="message_delivered">Delivered</string>
+    <string name="message_sent">Sent</string>
+
+    <!-- Accessibility: content descriptions -->
+    <string name="cd_play_video">Play video</string>
+    <string name="cd_pause_video">Pause video</string>
+    <string name="cd_file_attachment">File attachment</string>
+    <string name="cd_image_attachment">Image attachment</string>
+    <string name="cd_video_thumbnail">Video thumbnail</string>
+    <string name="cd_video_frame">Video frame</string>
+    <string name="cd_gallery_thumbnail">Gallery thumbnail</string>
+    <string name="cd_send_to">Send to %1$s</string>
+    <string name="cd_upload_complete">Upload complete</string>
+    <string name="cd_location_pin">Location</string>
+    <string name="cd_link_preview_image">Link preview image</string>
+    <string name="cd_reply_thumbnail">Reply thumbnail</string>
+    <string name="cd_selected">Selected</string>
+    <string name="cd_not_selected">Not selected</string>
+    <string name="cd_open_externally">Open externally</string>
+    <string name="cd_navigate_forward">Navigate forward</string>
+    <string name="cd_group_avatar">Group</string>
+    <string name="cd_connection_succeeded">Connection succeeded</string>
+    <string name="cd_video_scrubber_frame">Video scrubber frame</string>
+
+    <!-- Settings section headers -->
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_danger_zone">Danger Zone</string>
+
+    <!-- Audio player -->
+    <string name="audio_pause">Pause</string>
+    <string name="audio_play">Play</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_feed">Feed</string>
+    <string name="nav_home">Home</string>
+
+    <!-- Developer menu -->
+    <string name="dev_menu_title">Developer menu</string>
+    <string name="dev_menu_section_misc">Misc info</string>
+    <string name="dev_menu_section_sync">Sync &amp; Connection</string>
+    <string name="dev_menu_section_database">Database &amp; Storage</string>
+    <string name="dev_menu_section_testing">Testing Tools</string>
+    <string name="dev_menu_force_sync">Force Sync All</string>
+    <string name="dev_menu_clear_data">Clear All Data</string>
+    <string name="dev_menu_test_notification">Test Rich Notification</string>
+
+    <!-- Defragmenter issue labels -->
+    <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>
+    <string name="defragmenter_issue_soft_delete_drift">Soft-delete drift</string>
+    <string name="defragmenter_issue_bad_header">Bad header blocks</string>
+    <string name="defragmenter_issue_unmappable_convo">Unmappable conversation</string>
+    <string name="defragmenter_issue_orphan_messages">Orphan messages</string>
+    <string name="defragmenter_issue_bad_message">Bad message blocks</string>
+
+    <!-- Storage warnings -->
+    <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
+    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil\'s default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+
+    <!-- Error states -->
+    <string name="error_no_group_loaded">No group could be loaded</string>
+    <string name="error_no_contact_loaded">No contact could be loaded</string>
+
+    <!-- File save snackbar -->
+    <string name="file_saved_to">Saved to %1$s</string>
+    <string name="file_save_failed">Failed to save: %1$s</string>
+    <string name="error_unknown">Unknown error</string>
 
 </resources>

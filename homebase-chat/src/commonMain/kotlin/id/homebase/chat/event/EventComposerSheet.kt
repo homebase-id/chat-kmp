@@ -23,7 +23,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +50,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.location.LocationResult
@@ -126,7 +124,6 @@ private fun EventComposerContent(
     onSent: () -> Unit,
 ) {
     val sender: ChatMessageSenderService = koinInject()
-    val ownerSession: OwnerSessionRepository = koinInject()
     val scope = rememberCoroutineScope()
 
     var title by remember { mutableStateOf("") }
@@ -201,9 +198,7 @@ private fun EventComposerContent(
                 val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
                 val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
                 val endUtcMs = if (hasEndTime) endDateTime.toInstant(tz).toEpochMilliseconds() else null
-                val authorOdinId = ownerSession.user.value?.odinId?.domainName ?: ""
                 val descriptor = EventDescriptor(
-                    eventId = Uuid.random().toString(),
                     title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
                     description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
                     startUtcMs = startUtcMs,
@@ -213,8 +208,6 @@ private fun EventComposerContent(
                     lat = locationLat,
                     lon = locationLon,
                     meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
-                    createdByOdinId = authorOdinId,
-                    createdAtUtcMs = Clock.System.now().toEpochMilliseconds(),
                 )
                 runCatching {
                     sender.sendNewTypedMessage(
@@ -296,7 +289,7 @@ private fun EventComposerContent(
 
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = timezone,
+                    value = friendlyZoneLabel(timezone),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(MR.string.chat_event_field_timezone)) },
@@ -307,21 +300,16 @@ private fun EventComposerContent(
                         .matchParentSize()
                         .clickable(onClick = { tzExpanded = true })
                 )
-                androidx.compose.material3.DropdownMenu(
-                    expanded = tzExpanded,
-                    onDismissRequest = { tzExpanded = false },
-                ) {
-                    val zones = remember { TimeZone.availableZoneIds.sorted() }
-                    zones.forEach { id ->
-                        DropdownMenuItem(
-                            text = { Text(id) },
-                            onClick = {
-                                timezone = id
-                                tzExpanded = false
-                            }
-                        )
-                    }
-                }
+            }
+            if (tzExpanded) {
+                TimezonePickerSheet(
+                    currentZoneId = timezone,
+                    onPick = { picked ->
+                        timezone = picked
+                        tzExpanded = false
+                    },
+                    onDismiss = { tzExpanded = false },
+                )
             }
 
             OutlinedTextField(

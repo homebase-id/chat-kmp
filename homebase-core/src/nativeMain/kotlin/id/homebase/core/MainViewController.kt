@@ -4,7 +4,6 @@ import androidx.compose.ui.window.ComposeUIViewController
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.LoggerConfig
@@ -19,7 +18,6 @@ import org.koin.core.context.startKoin
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -45,7 +43,11 @@ fun initializeApp() {
     if (appInitialized) return
     appInitialized = true
 
+    val startMark = kotlin.time.TimeSource.Monotonic.markNow()
+    Logger.i(tag = "TextRendering") { "initializeApp() started" }
+
     initKoin()
+    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 
     // Initialize file logging first
     try {
@@ -66,27 +68,12 @@ fun initializeApp() {
     // Set up crash handler
     setupIOSCrashHandler()
 
+    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
     runBlocking {
-        val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        try {
-            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
-        } catch (e: Exception) {
-            Logger.e("MainViewController", e, "Database init failed, resetting")
-            // Delete the corrupted/undecryptable database file
-            val fileManager = NSFileManager.defaultManager
-            val dbDir = "${NSHomeDirectory()}/databases"
-            fileManager.removeItemAtPath("$dbDir/odin-2.db", null)
-            fileManager.removeItemAtPath("$dbDir/odin-2.db-journal", null)
-            fileManager.removeItemAtPath("$dbDir/odin-2.db-wal", null)
-            fileManager.removeItemAtPath("$dbDir/odin-2.db-shm", null)
-
-            // Clear the stale encryption key and generate a fresh one
-            DatabaseKeyManager.clearKey()
-            val freshKey = DatabaseKeyManager.getOrGenerateKey()
-
-            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
-        }
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
     }
+    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
+    Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 
 @OptIn(ExperimentalForeignApi::class)

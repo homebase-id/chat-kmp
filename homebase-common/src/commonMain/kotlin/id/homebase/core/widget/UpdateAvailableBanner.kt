@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
+import id.homebase.resources.cd_navigate_forward
 import id.homebase.resources.update_available
 import org.jetbrains.compose.resources.stringResource
 
@@ -42,6 +43,6 @@ fun UpdateAvailableBanner(
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )
         Spacer(modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(MR.string.cd_navigate_forward), tint = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }

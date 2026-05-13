@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -72,73 +74,84 @@ fun MediaGallery(
 ) {
     if (payloads.isEmpty()) return
 
-    Box(modifier = modifier.width(Dimens.Album.totalWidth).clip(shape)) {
-        when (payloads.size) {
-            1 -> {
-                // Single item - delegate to MediaItem directly
-                MediaItem(
-                    payload = payloads[0],
-                    fileId = fileId,
-                    driveId = driveId,
-                    keyHeader = keyHeader,
-                    previewThumbnail = previewThumbnail
-                        ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
-                    modifier = Modifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight),
-                    imageSize = ImageSize.THUMB_LARGE,
-                    onClick = { onMediaClick?.invoke(payloads[0]) },
-                    onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
-                    messageId = messageId,
-                    isUploading = isUploading,
-                )
+    BoxWithConstraints(modifier = modifier.clip(shape)) {
+        // Signal-style breakpoints: scale album width with available space.
+        val albumWidth = when {
+            maxWidth >= 400.dp -> 300.dp
+            maxWidth >= 360.dp -> 252.dp
+            else -> Dimens.Album.totalWidth
+        }
+
+        Box(modifier = Modifier.width(albumWidth)) {
+            when (payloads.size) {
+                1 -> {
+                    MediaItem(
+                        payload = payloads[0],
+                        fileId = fileId,
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        previewThumbnail = previewThumbnail
+                            ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                        modifier = Modifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight),
+                        imageSize = ImageSize.THUMB_LARGE,
+                        onClick = { onMediaClick?.invoke(payloads[0]) },
+                        onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
+                        messageId = messageId,
+                        isUploading = isUploading,
+                    )
+                }
+
+                2 ->
+                    TwoImageLayout(
+                        albumWidth = albumWidth,
+                        payloads = payloads,
+                        fileId = fileId,
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        onMediaClick = onMediaClick,
+                        onMediaLongPress = onMediaLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        messageId = messageId,
+                        downloadingFiles = downloadingFiles,
+                        isUploading = isUploading,
+                    )
+
+                3 ->
+                    ThreeImageLayout(
+                        albumWidth = albumWidth,
+                        payloads = payloads,
+                        fileId = fileId,
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        onMediaClick = onMediaClick,
+                        onMediaLongPress = onMediaLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        messageId = messageId,
+                        downloadingFiles = downloadingFiles,
+                        isUploading = isUploading,
+                    )
+
+                else ->
+                    FourPlusImageLayout(
+                        albumWidth = albumWidth,
+                        payloads = payloads,
+                        fileId = fileId,
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        onMediaClick = onMediaClick,
+                        onMediaLongPress = onMediaLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        messageId = messageId,
+                        downloadingFiles = downloadingFiles,
+                        isUploading = isUploading,
+                    )
             }
-
-            2 ->
-                TwoImageLayout(
-                    payloads = payloads,
-                    fileId = fileId,
-                    driveId = driveId,
-                    keyHeader = keyHeader,
-                    onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = messageId,
-                    downloadingFiles = downloadingFiles,
-                    isUploading = isUploading,
-                )
-
-            3 ->
-                ThreeImageLayout(
-                    payloads = payloads,
-                    fileId = fileId,
-                    driveId = driveId,
-                    keyHeader = keyHeader,
-                    onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = messageId,
-                    downloadingFiles = downloadingFiles,
-                    isUploading = isUploading,
-                )
-
-            else ->
-                FourPlusImageLayout(
-                    payloads = payloads,
-                    fileId = fileId,
-                    driveId = driveId,
-                    keyHeader = keyHeader,
-                    onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = messageId,
-                    downloadingFiles = downloadingFiles,
-                    isUploading = isUploading,
-                )
         }
     }
 }
@@ -146,6 +159,7 @@ fun MediaGallery(
 /** Layout for 2 images: side by side with equal width. */
 @Composable
 private fun TwoImageLayout(
+    albumWidth: Dp,
     payloads: List<PayloadDescriptor>,
     fileId: Uuid,
     driveId: Uuid,
@@ -159,7 +173,7 @@ private fun TwoImageLayout(
     isUploading: Boolean,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(Dimens.Album.twoTotalHeight),
+        modifier = Modifier.fillMaxWidth().height(albumWidth / 2),
         horizontalArrangement = Arrangement.spacedBy(GALLERY_CELL_SPACING),
     ) {
         payloads.take(2).forEach { payload ->
@@ -187,6 +201,7 @@ private fun TwoImageLayout(
 /** Layout for 3 images: 2 on top side-by-side, 1 full width below. */
 @Composable
 private fun ThreeImageLayout(
+    albumWidth: Dp,
     payloads: List<PayloadDescriptor>,
     fileId: Uuid,
     driveId: Uuid,
@@ -199,13 +214,15 @@ private fun ThreeImageLayout(
     downloadingFiles: Set<String>,
     isUploading: Boolean,
 ) {
+    val rowHeight = (albumWidth * 2 / 3 - GALLERY_CELL_SPACING) / 2
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(GALLERY_CELL_SPACING),
     ) {
         // Top row: 2 images side by side
         Row(
-            modifier = Modifier.fillMaxWidth().height(Dimens.Album.threeCellSizeSmall),
+            modifier = Modifier.fillMaxWidth().height(rowHeight),
             horizontalArrangement = Arrangement.spacedBy(GALLERY_CELL_SPACING),
         ) {
             payloads.take(2).forEach { payload ->
@@ -236,7 +253,7 @@ private fun ThreeImageLayout(
             driveId = driveId,
             keyHeader = keyHeader,
             previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
-            modifier = Modifier.fillMaxWidth().height(Dimens.Album.threeCellSizeSmall),
+            modifier = Modifier.fillMaxWidth().height(rowHeight),
             imageSize = ImageSize.THUMB_MEDIUM,
             shape = RectangleShape,
             onClick = { onMediaClick?.invoke(payloads[2]) },
@@ -250,9 +267,10 @@ private fun ThreeImageLayout(
     }
 }
 
-/** Layout for 4+ images: 2×2 grid with overlay on 4th showing remaining count. */
+/** Layout for 4+ images: 2x2 grid with overlay on 4th showing remaining count. */
 @Composable
 private fun FourPlusImageLayout(
+    albumWidth: Dp,
     payloads: List<PayloadDescriptor>,
     fileId: Uuid,
     driveId: Uuid,
@@ -266,6 +284,7 @@ private fun FourPlusImageLayout(
     isUploading: Boolean,
 ) {
     val remainingCount = payloads.size - 4
+    val cellHeight = (albumWidth - GALLERY_CELL_SPACING) / 2
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -273,7 +292,7 @@ private fun FourPlusImageLayout(
     ) {
         // Top row: 2 images
         Row(
-            modifier = Modifier.fillMaxWidth().height(Dimens.Album.fourCellSize),
+            modifier = Modifier.fillMaxWidth().height(cellHeight),
             horizontalArrangement = Arrangement.spacedBy(GALLERY_CELL_SPACING),
         ) {
             payloads.take(2).forEach { payload ->
@@ -299,7 +318,7 @@ private fun FourPlusImageLayout(
 
         // Bottom row: 2 images, with overlay on 4th if more than 4
         Row(
-            modifier = Modifier.fillMaxWidth().height(Dimens.Album.fourCellSize),
+            modifier = Modifier.fillMaxWidth().height(cellHeight),
             horizontalArrangement = Arrangement.spacedBy(GALLERY_CELL_SPACING),
         ) {
             // Third image

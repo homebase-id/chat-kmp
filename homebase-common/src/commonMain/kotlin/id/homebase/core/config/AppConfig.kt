@@ -7,6 +7,7 @@ import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
+import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -72,6 +73,23 @@ val contactLabeledDrive =
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 
+// Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
+val vaultLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+//        type = Uuid.parse("00000000-0000-0000-0000-000000000001"), // Use this for Frodo or peter.parker.demo.rocks
+        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"),
+    ),
+    label = "Vault",
+)
+
+// Default vault sections — stable UUIDs so re-running onboarding is idempotent
+val vaultDefaultSections = listOf(
+    Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
+    Uuid.parse("0179aec4-b967-4fc9-a42c-5e9e140a4d0f") to "Driving Licenses",
+    Uuid.parse("625e53e1-c9b3-425a-bd82-5e9dcfc56852") to "Credit Cards",
+)
+
 // Backward-compatible aliases — all existing consumers remain unaffected
 val chatTargetDrive = chatLabeledDrive.drive
 val contactTargetDrive = contactLabeledDrive.drive
@@ -112,6 +130,16 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
         ),
 
         )
+
+val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = vaultLabeledDrive.drive.alias.toString(),
+        type = vaultLabeledDrive.drive.type.toString(),
+        name = vaultLabeledDrive.label,
+        description = "Drive to store your personal documents",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
 
 // Mandatory drives — always mounted; required for the chat app to function.
 // Chat and Contacts power messaging.
@@ -192,6 +220,16 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
         // needsAllConnected = true,
+        returnUrl = ::returnUrl
+    )
+}
+
+fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = vaultTargetDriveAccessRequest,
+        permissions = emptyList(),
         returnUrl = ::returnUrl
     )
 }

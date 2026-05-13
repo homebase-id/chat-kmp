@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +57,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
+import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 
@@ -113,6 +116,16 @@ fun ConversationItem(
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
+
+                if (enrichedData.conversation.isPinned) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = stringResource(MR.string.chat_search_result_pinned),
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
 
                 Text(
                     text = formatTimestamp(enrichedData.conversation.latestMessageTimestamp),
