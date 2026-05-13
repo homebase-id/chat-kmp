@@ -57,7 +57,7 @@ private fun LinkPreviewTextContent(
     description: String,
     domain: String,
     maxTitleLines: Int = 2,
-    maxDescriptionLines: Int = 2,
+    maxDescriptionLines: Int = 3,
 ) {
     if (title.isNotEmpty()) {
         Text(

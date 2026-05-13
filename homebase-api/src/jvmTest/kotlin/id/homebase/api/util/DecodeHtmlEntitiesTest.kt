@@ -49,35 +49,90 @@ class DecodeHtmlEntitiesTest {
     fun handles_emoji_surrogate_pair_from_numeric_entity() {
         assertEquals("😀", "&#128512;".decodeHtmlEntities())
     }
+}
+
+class SanitizePreviewTextTest {
 
     @Test
-    fun decodes_real_x_twitter_og_description() {
-        val raw = """Bjorn Lomborg on X: &quot;There is no energy transition
+    fun collapses_newlines_to_single_space() {
+        assertEquals(
+            "first second third",
+            "first\n\nsecond\n\n\nthird".sanitizePreviewText()
+        )
+    }
 
-We simply use more and more of everything
+    @Test
+    fun collapses_mixed_whitespace() {
+        assertEquals("a b c", "a \t\n b   c".sanitizePreviewText())
+    }
 
-— fossil fuels, nuclear, renewables, solar and wind
+    @Test
+    fun trims_leading_and_trailing_whitespace() {
+        assertEquals("hello", "  hello  ".sanitizePreviewText())
+    }
 
-&quot;Rather than replacing fossil fuels, renewables are adding to the overall energy mix&quot;
-Energy Institute Statistical Review 2025
+    @Test
+    fun inserts_space_before_quote_sandwiched_between_words() {
+        assertEquals(
+            "wind \"Rather than",
+            "wind\"Rather than".sanitizePreviewText()
+        )
+    }
 
-https://t.co/mS2nxOCFjW https://t.co/RfWM24m8GX&quot; / X"""
+    @Test
+    fun decodes_entities_and_spaces_quotes_together() {
+        assertEquals(
+            "wind \"Rather",
+            "wind&quot;Rather".sanitizePreviewText()
+        )
+    }
 
-        val decoded = raw.decodeHtmlEntities()
-        assertFalse(decoded.contains("&quot;"), "All &quot; entities should be decoded")
-        assertTrue(decoded.contains("\"There is no energy transition"))
-        assertTrue(decoded.contains("\"Rather than replacing fossil fuels"))
-        assertTrue(decoded.endsWith("\" / X"))
+    @Test
+    fun full_pipeline_real_x_twitter_og_description() {
+        val raw = "Bjorn Lomborg on X: &quot;There is no energy transition\n\n" +
+            "We simply use more and more of everything\n\n" +
+            "— fossil fuels, nuclear, renewables, solar and wind\n\n" +
+            "&quot;Rather than replacing fossil fuels, renewables are adding to the overall energy mix&quot;\n" +
+            "Energy Institute Statistical Review 2025\n\n" +
+            "https://t.co/mS2nxOCFjW https://t.co/RfWM24m8GX&quot; / X"
 
-        val collapsed = Regex("\\s+").replace(decoded, " ").trim()
-        assertFalse(collapsed.contains('\n'), "Newlines should be collapsed to spaces")
+        val result = raw.sanitizePreviewText()
+
+        assertFalse(result.contains("&quot;"), "HTML entities should be decoded")
+        assertFalse(result.contains('\n'), "Newlines should be collapsed")
         assertTrue(
-            collapsed.contains("transition We simply"),
-            "Words across paragraph breaks should be separated by a single space"
+            result.contains("transition We"),
+            "Words across paragraph breaks should have a space"
         )
         assertTrue(
-            collapsed.contains("wind \"Rather"),
-            "Words across paragraph breaks should be separated by a single space"
+            result.contains("wind \"Rather"),
+            "Quote should be spaced from preceding word"
         )
+    }
+
+    @Test
+    fun full_pipeline_no_newlines_server_stripped() {
+        val raw = "solar and wind" +
+            "&quot;Rather than replacing fossil fuels&quot; / X"
+
+        val result = raw.sanitizePreviewText()
+
+        assertTrue(
+            result.contains("wind \"Rather"),
+            "Quote jammed against word should get a space even without newlines"
+        )
+        assertFalse(result.contains("wind\""), "No quote should be jammed against a word")
+    }
+
+    @Test
+    fun preserves_already_clean_text() {
+        val clean = "Datalogisk Institut – Københavns Universitet"
+        assertEquals(clean, clean.sanitizePreviewText())
+    }
+
+    @Test
+    fun preserves_properly_spaced_quotes() {
+        val text = "He said \"hello\" to everyone"
+        assertEquals(text, text.sanitizePreviewText())
     }
 }

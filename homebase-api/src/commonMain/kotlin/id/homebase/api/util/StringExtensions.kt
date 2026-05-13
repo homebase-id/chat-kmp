@@ -43,6 +43,15 @@ fun String.decodeHtmlEntities(): String {
     }
 }
 
+private val whitespaceRun = Regex("\\s+")
+private val quoteBetweenWords = Regex("(\\w)([\"“”])(\\w)")
+
+fun String.sanitizePreviewText(): String =
+    decodeHtmlEntities()
+        .replace(quoteBetweenWords, "$1 $2$3")
+        .replace(whitespaceRun, " ")
+        .trim()
+
 // Truncate a string to maxVisibleCharacters (be sure UTF characters aren't chopped in the middle)
 fun String.truncateToCodePoints(maxVisibleCharacters: Int): String {
     if (maxVisibleCharacters <= 0) return ""
