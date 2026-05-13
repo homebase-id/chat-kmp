@@ -170,6 +170,9 @@ struct iOSApp: App {
 
         // Inject Crashlytics bridge into the Kotlin framework
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
+
+        // Register Metal layer nudge so Compose UI can trigger glyph atlas rebuilds
+        TextRenderingHelper.shared.register(nudger: MetalLayerNudger())
     }
     
     var body: some Scene {
