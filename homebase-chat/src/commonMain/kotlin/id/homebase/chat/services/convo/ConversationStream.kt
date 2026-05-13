@@ -186,6 +186,10 @@ class ConversationStream(
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
+                        Logger.i(tag = "WSDiag") {
+                            "ConversationStream: Stopped chatDrive totalCount=${event.totalCount} " +
+                                "willReload=${event.totalCount > 0}"
+                        }
                         // Silent-DriveSync contract: the chat-drive DriveSync just
                         // landed N files in DriveMainIndex with no per-batch
                         // BatchReceived emits. Reload the conversation list from DB
@@ -256,6 +260,10 @@ class ConversationStream(
                                     "${event.batchData.size} files " +
                                     "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})"
                         )
+                        Logger.i(tag = "WSDiag") {
+                            "ConversationStream: BatchReceived chatDrive rows=${event.batchData.size} " +
+                                "conversations=${conversationFiles.size} messages=${messageFiles.size} admins=${adminFiles.size}"
+                        }
 
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
