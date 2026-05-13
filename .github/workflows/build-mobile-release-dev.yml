@@ -180,11 +180,7 @@ jobs:
           XCEOF
 
       - name: Build iOS
-        # Bumped from 70 → 180 to match prod. The Kotlin/Native release
-        # link alone consumes ~75 min on a cold Gradle cache; with the
-        # old budget the job timed out before the codesign step we're
-        # here to test ever ran. 180 matches prod and leaves headroom.
-        timeout-minutes: 180
+        timeout-minutes: 70
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
