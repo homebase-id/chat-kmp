@@ -16,13 +16,12 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.*
@@ -53,7 +52,7 @@ class OutboxSync(
     scope: CoroutineScope? = null
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
-    private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = scope ?: CoroutineScope(SupervisorJob() + ioDispatcher)
     @kotlin.concurrent.Volatile
     private var isOnline = false
 
