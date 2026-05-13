@@ -320,7 +320,7 @@ suspend fun mapToMessageData(
     }
 }
 
-internal fun renderStatusMessage(
+internal suspend fun renderStatusMessage(
     author: OdinId?,
     status: StatusMessageData,
     currentUser: OdinId? = null
