@@ -1,5 +1,8 @@
 import UserNotifications
 import Intents
+#if canImport(HomebaseNotifKit)
+import HomebaseNotifKit
+#endif
 
 class NotificationService: UNNotificationServiceExtension {
 
@@ -233,6 +236,13 @@ class NotificationService: UNNotificationServiceExtension {
         appDisplayName: String
     ) -> String {
         if let message = unEncryptedMessage, !message.isEmpty {
+            // Privacy-aware short-circuit: typed messages (currently
+            // Events) send a sentinel token instead of the message
+            // content. The shared KMP formatter recognizes it and
+            // renders a body that never leaks the title.
+            if let formatted = tryFormatTypedEventBody(message) {
+                return formatted
+            }
             return message.replacingOccurrences(of: senderId, with: senderName)
         }
 
@@ -271,6 +281,52 @@ class NotificationService: UNNotificationServiceExtension {
         default:
             return "\(senderName) sent you a notification via \(appDisplayName)"
         }
+    }
+
+    /// Wire-format sentinel that the chat sender writes for Event
+    /// messages instead of the title — kept in sync with
+    /// `EVENT_NOTIF_SENTINEL` in homebase-notifshared.
+    private static let eventNotifSentinel = "__hb_event__|"
+
+    /// Bridges to the shared KMP formatter (HomebaseNotifKit). Returns
+    /// nil for non-event payloads (caller falls back to today's
+    /// behavior).
+    ///
+    /// **Xcode wiring required for the full body format ("Event in 1
+    /// hour"):** the NSE target needs `HomebaseNotifKit.framework`
+    /// added to "Link Binary With Libraries" in its build settings.
+    /// The iosApp's "Compile Kotlin Framework" Run Script already
+    /// builds the framework via Gradle
+    /// (`:homebase-notifshared:embedAndSignAppleFrameworkForXcode`),
+    /// but linking it into the NSE is a manual Xcode-UI step that
+    /// must be done on a Mac. Until that lands, the `#else` branch
+    /// here renders a Swift-side fallback that strips the sentinel
+    /// token and shows a generic body so iOS users never see the raw
+    /// `__hb_event__|<ms>` string in their notification.
+    private func tryFormatTypedEventBody(_ raw: String) -> String? {
+        #if canImport(HomebaseNotifKit)
+        return EventNotificationFormatterKt.tryFormatEventNotificationBodyNow(raw: raw)
+        #else
+        return fallbackEventBody(raw)
+        #endif
+    }
+
+    /// Last-resort body when HomebaseNotifKit isn't linked. Recognizes
+    /// the sentinel prefix and re-attaches a group suffix if present,
+    /// but doesn't try to compute relative time — that's the
+    /// framework's job. Shipped so iOS users get a usable notification
+    /// even before the framework linkage lands.
+    private func fallbackEventBody(_ raw: String) -> String? {
+        guard raw.hasPrefix(Self.eventNotifSentinel) else { return nil }
+        // Split off optional " in <groupName>" suffix. The body of the
+        // token (after the sentinel) is a numeric timestamp, so " in "
+        // can only appear as the group separator.
+        let afterSentinel = String(raw.dropFirst(Self.eventNotifSentinel.count))
+        if let inRange = afterSentinel.range(of: " in ") {
+            let groupName = String(afterSentinel[inRange.upperBound...])
+            return "Event in \(groupName)"
+        }
+        return "Event"
     }
 
     /// Extracts a display name from the sender's domain.
