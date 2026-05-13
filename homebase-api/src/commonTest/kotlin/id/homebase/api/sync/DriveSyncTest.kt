@@ -79,7 +79,7 @@ class DriveSyncTest {
             assertFalse(
                 emittedEvents.any {
                     it is BackendEvent.DriveEvent.Stopped &&
-                        it.result is BackendEvent.DriveResult.Failure
+                        it.result is BackendEvent.DriveResult.Aborted
                 },
                 "Must not emit Failure for a 403"
             )

@@ -21,13 +21,16 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.config.LabeledDrive
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /**
@@ -84,6 +87,9 @@ class DriveRegistry(
     private val stateMutex = Mutex()
     private var observerJob: Job? = null
 
+    private val bootstrapMutex = Mutex()
+    private var bootstrapInFlight: CompletableDeferred<List<LabeledDrive>>? = null
+
     /**
      * Alias-set of drives last surfaced to callers. The diff baseline for the observer.
      * Guarded by [stateMutex].
@@ -121,33 +127,71 @@ class DriveRegistry(
      * (so the WS subscribes to the full set on the first connect) and [start]'s
      * `initialBaseline` (so the observer doesn't fire spurious onMount when the
      * chat-drive sync later writes the same file into the local index).
+     *
+     * Concurrent callers (AuthConnectionCoordinator and VaultViewModel both fire
+     * `bootstrap()` on fresh login within ~100 ms) share a single in-flight result:
+     * the second caller awaits the first's deferred instead of issuing its own server
+     * round-trip. Once the in-flight call completes the deferred is cleared, so a
+     * subsequent call (e.g. after the local DB becomes populated) runs fresh.
      */
     suspend fun bootstrap(): List<LabeledDrive> {
-        Logger.i(tag = "DriveRegistry") { "bootstrap() begin" }
+        val (deferred, isLeader) = bootstrapMutex.withLock {
+            val existing = bootstrapInFlight
+            if (existing != null) {
+                existing to false
+            } else {
+                val fresh = CompletableDeferred<List<LabeledDrive>>()
+                bootstrapInFlight = fresh
+                fresh to true
+            }
+        }
+        if (!isLeader) {
+            Logger.i(tag = TAG) { "bootstrap() coalesced onto in-flight call — awaiting result" }
+            return deferred.await()
+        }
+        try {
+            val result = runBootstrap()
+            deferred.complete(result)
+            return result
+        } catch (t: Throwable) {
+            // Includes CancellationException — followers share the same fate.
+            deferred.completeExceptionally(t)
+            throw t
+        } finally {
+            withContext(NonCancellable) {
+                bootstrapMutex.withLock {
+                    if (bootstrapInFlight === deferred) bootstrapInFlight = null
+                }
+            }
+        }
+    }
+
+    private suspend fun runBootstrap(): List<LabeledDrive> {
+        Logger.i(tag = TAG) { "bootstrap() begin" }
         val local = loadDrives()
-        Logger.i(tag = "DriveRegistry") { "bootstrap local-DB returned ${local.size} drive(s)" }
+        Logger.i(tag = TAG) { "bootstrap local-DB returned ${local.size} drive(s)" }
         if (local.isNotEmpty()) {
-            Logger.i(tag = "DriveRegistry") { "bootstrap() end (local, ${local.size} drive(s))" }
+            Logger.i(tag = TAG) { "bootstrap() end (local, ${local.size} drive(s))" }
             return local
         }
         val chatDriveId = SystemDriveConstants.chatDrive.alias
-        Logger.i(tag = "DriveRegistry") { "bootstrap falling back to server fetch" }
+        Logger.i(tag = TAG) { "bootstrap falling back to server fetch" }
         val server = try {
             getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)
         } catch (e: CancellationException) {
             // Don't swallow cancellation — let the caller's scope tear down cleanly.
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "DriveRegistry", throwable = e) {
+            Logger.w(tag = TAG, throwable = e) {
                 "bootstrap server fetch failed — falling back to empty (observer will pick up after first sync)"
             }
             return emptyList()
         } ?: run {
-            Logger.i(tag = "DriveRegistry") { "bootstrap() end (server returned no registry file, 0 drives)" }
+            Logger.i(tag = TAG) { "bootstrap() end (server returned no registry file, 0 drives)" }
             return emptyList()
         }
         val parsed = parseRegistryContent(server)
-        Logger.i(tag = "DriveRegistry") { "bootstrap() end (server, ${parsed.size} drive(s))" }
+        Logger.i(tag = TAG) { "bootstrap() end (server, ${parsed.size} drive(s))" }
         return parsed
     }
 
@@ -219,12 +263,18 @@ class DriveRegistry(
                         if (event.driveId != chatDriveAlias) return@collect
                         // Silent-DriveSync contract: DriveSync runs landed N files
                         // in DriveMainIndex without per-batch events; the registry
-                        // file may be among them. Reconcile on Success to pick up
-                        // any cross-device drive add/remove. Gated on totalCount > 0
-                        // because totalCount=0 means the cursor was already at HEAD —
-                        // no files were upserted this round, so the registry file is
-                        // unchanged and the reconcile diff would be empty anyway.
-                        if (event.result is BackendEvent.DriveResult.Success && event.totalCount > 0) {
+                        // file may be among them. Reconcile picks up any cross-
+                        // device drive add/remove.
+                        //
+                        // Gate on totalCount > 0 ALONE (not on result == Success):
+                        // DriveSync writes each batch before the next starts, so
+                        // Stopped(Aborted, totalCount > 0) still means real rows
+                        // landed — possibly including the registry file. Reconcile
+                        // reads from DB and is idempotent against unchanged state,
+                        // so a spurious call when the registry didn't change is a
+                        // cheap no-op. totalCount == 0 means cursor at HEAD: no
+                        // DB change, nothing to reconcile against.
+                        if (event.totalCount > 0) {
                             reconcile(onMount, onUnmount)
                         }
                     }

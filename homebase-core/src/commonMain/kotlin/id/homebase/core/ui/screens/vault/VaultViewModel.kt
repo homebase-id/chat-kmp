@@ -202,6 +202,7 @@ class VaultViewModel(
             is VaultUiAction.UpdateNotes,
             is VaultUiAction.UpdateLabel,
             is VaultUiAction.SharePage,
+            is VaultUiAction.SavePage,
             is VaultUiAction.ShareFile,
             is VaultUiAction.RenameFile,
             is VaultUiAction.DeleteFile,
@@ -237,6 +238,7 @@ class VaultViewModel(
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
             is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
             is VaultUiAction.SharePage -> handleSharePage(action)
+            is VaultUiAction.SavePage -> handleSavePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
             is VaultUiAction.ShareFile -> handleShareFile(action)
             is VaultUiAction.RenameFile -> handleRenameFile(action)
@@ -556,6 +558,19 @@ class VaultViewModel(
                 val contentType = descriptor?.contentType ?: action.file.contentType
                 _events.tryEmit(
                     VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                )
+            } else {
+                _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+            }
+        }
+    }
+
+    private fun handleSavePage(action: VaultUiAction.SavePage) {
+        viewModelScope.launch {
+            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+            if (tempPath != null) {
+                _events.tryEmit(
+                    VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
                 )
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))

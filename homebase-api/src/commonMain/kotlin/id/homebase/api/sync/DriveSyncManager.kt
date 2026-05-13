@@ -62,9 +62,6 @@ class DriveSyncManager(
         .map { computeSyncState(it) }
         .stateIn(scope, SharingStarted.Eagerly, SyncState.Idle)
 
-    fun numberOfDrivesSyncing(): Int =
-        _driveStatuses.value.values.count { it.state is DriveState.Synchronizing }
-
     init {
         scope.launch {
             var previous: SyncState = SyncState.Idle
@@ -107,10 +104,10 @@ class DriveSyncManager(
                         }
                     }
                     is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
-                        is BackendEvent.DriveResult.Success -> updateState(event.driveId) {
+                        is BackendEvent.DriveResult.Completed -> updateState(event.driveId) {
                             it.copy(state = DriveState.Completed(totalCount = event.totalCount))
                         }
-                        is BackendEvent.DriveResult.Failure -> {
+                        is BackendEvent.DriveResult.Aborted -> {
                             updateState(event.driveId) {
                                 it.copy(state = DriveState.Failed(r.errorMessage))
                             }

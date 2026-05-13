@@ -497,10 +497,12 @@ class FooStream(
                     if (event.driveId == driveId) processBatch(event.batchData)
                 // Full reload at end of a DriveSync round, gated on totalCount > 0
                 // (a no-op reconnect catch-up adds nothing to the local index).
+                // Do NOT gate on result == Success: DriveSync writes each batch
+                // before the next starts, so Stopped(Aborted, totalCount > 0)
+                // still means real rows landed — and on PermissionDenied there
+                // is no next round, so waiting for a Success would hide them.
                 is BackendEvent.DriveEvent.Stopped ->
-                    if (event.driveId == driveId &&
-                        event.result is BackendEvent.DriveResult.Success &&
-                        event.totalCount > 0) loadAll()
+                    if (event.driveId == driveId && event.totalCount > 0) loadAll()
                 // Full reload: outbox confirmed, DB has authoritative state
                 is BackendEvent.OutboxEvent.ItemCompleted ->
                     if (event.driveId == driveId) loadAll()
