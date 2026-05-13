@@ -185,6 +185,23 @@ object ByteArrayUtil {
     }
 
     /**
+     * Synchronous variant of [reduceSha256Hash] using [HashUtil.sha256Sync].
+     * Use when a coroutine context isn't available — e.g. OdinId construction
+     * via KSerializer.deserialize.
+     */
+    fun reduceSha256HashSync(input: String): Uuid {
+        return Uuid.fromByteArray(reduceSha256HashSync(input.encodeToByteArray()))
+    }
+
+    /** Synchronous variant of [reduceSha256Hash]. See [reduceSha256HashSync] above. */
+    fun reduceSha256HashSync(input: ByteArray): ByteArray {
+        val bytes = HashUtil.sha256Sync(input)
+        val half = bytes.size / 2
+        val (part1, part2) = split2(bytes, half, half)
+        return equiByteArrayXor(part1, part2)
+    }
+
+    /**
      * Prints a byte array as a Kotlin array literal
      */
     fun printByteArray(bytes: ByteArray): String {

@@ -21,6 +21,18 @@ object HashUtil {
         return sha256Algo.hasher().hash(input)
     }
 
+    /**
+     * Synchronous SHA-256, pure-Kotlin (FIPS PUB 180-4 §6.2).
+     *
+     * The default [sha256] suspends because `cryptography-kotlin`'s WebCrypto
+     * backend on wasmJs is async-only. Synchronous identity hashing (OdinId
+     * construction, KSerializer.deserialize) cannot wait on that, so we ship a
+     * platform-agnostic implementation here. Inputs from those paths are tiny
+     * (a domain string → 32-byte digest) so performance is irrelevant. Verified
+     * bit-for-bit against [sha256] in [HashUtilTest].
+     */
+    fun sha256Sync(input: ByteArray): ByteArray = PureKotlinSha256.hash(input)
+
     /** Compute SHA-256 hash of a stream with optional nonce Returns hash and stream length */
     suspend fun streamSha256(
             inputStream: Source,

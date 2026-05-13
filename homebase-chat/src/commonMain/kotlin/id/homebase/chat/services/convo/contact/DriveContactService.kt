@@ -69,20 +69,35 @@ class DriveContactService(
     init {
         scope.launch {
             eventBus.events.collect { event ->
+                // Two refresh triggers, by design — after the silent-DriveSync (e7f46062)
+                // and pure-push chat-drive (736b4f07) refactors, contact rows land via two
+                // event classes and we must converge from both:
+                //
+                //   1) DriveEvent.Stopped(totalCount > 0): catch-up after a sync round
+                //      (cold-boot, reconnect). Gate on totalCount > 0 ALONE (not on
+                //      result == Success): DriveSync writes each batch to DriveMainIndex
+                //      before the next batch starts, so totalCount > 0 with Failure still
+                //      means real contact rows landed. totalCount == 0 means cursor at
+                //      HEAD: nothing to refresh.
+                //
+                //   2) DataEvent.BatchReceived: live pure-push WS upserts from
+                //      DriveWebSocketUpsertWorker (and in-process OptimisticWriter).
+                //      Without this branch, a contact arriving over the open WS (e.g.
+                //      a just-accepted connection request) lands in DriveMainIndex but
+                //      the _contacts StateFlow stays stale until next app restart.
+                //
+                // Both branches scope.launch { refresh() } — never call refresh() inline:
+                // QueryBatch hangs on partial connectivity, which would park the EventBus
+                // buffer and cascade into stalling the chat Send path.
                 if (event is BackendEvent.DriveEvent.Stopped &&
                     event.driveId == contactDrive &&
                     event.totalCount > 0
                 ) {
-                    // Never do blocking IO inside a SharedFlow collect body: refresh()
-                    // calls QueryBatch which hangs on partial connectivity, parking the
-                    // EventBus buffer and cascading to stall the chat Send path.
-                    //
-                    // Gate on totalCount > 0 ALONE (not on result == Success):
-                    // DriveSync writes each batch to DriveMainIndex before the next
-                    // batch starts, so totalCount > 0 with Failure still means real
-                    // contact rows landed — we want to surface them rather than
-                    // wait for the next round (which on PermissionDenied may never
-                    // come). totalCount == 0 means cursor at HEAD: nothing to refresh.
+                    scope.launch { refresh() }
+                } else if (event is BackendEvent.DataEvent.BatchReceived &&
+                    event.driveId == contactDrive &&
+                    event.batchData.isNotEmpty()
+                ) {
                     scope.launch { refresh() }
                 }
             }
