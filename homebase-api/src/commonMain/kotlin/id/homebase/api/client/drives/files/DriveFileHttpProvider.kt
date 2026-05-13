@@ -25,8 +25,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.statement.bodyAsChannel
-import okio.Path.Companion.toPath
-import okio.FileSystem
 import io.ktor.utils.io.readAvailable
 
 private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024): Flow<ByteArray> = flow {

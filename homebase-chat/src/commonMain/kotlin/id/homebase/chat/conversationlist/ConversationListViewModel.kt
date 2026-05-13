@@ -15,6 +15,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -59,7 +60,6 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -553,7 +553,7 @@ class ConversationListViewModel(
         // full ConversationStream.start() enrichment pipeline (or, on a
         // warm VM, for the next sync batch) — which is what made
         // notification taps feel like they were gated on the drive-sync
-        // spinner. Dispatchers.IO so the kick can't be queued behind
+        // spinner. ioDispatcher so the kick can't be queued behind
         // enrichAllConversationsWithUnreadCounts on Main.
         viewModelScope.launch {
             pendingNotificationTap.state.collect { tap ->
@@ -562,7 +562,7 @@ class ConversationListViewModel(
                 val alreadyLoaded = conversationStream.conversations.value.items
                     .any { it.id == convoId }
                 if (alreadyLoaded) return@collect
-                launch(Dispatchers.IO) {
+                launch(ioDispatcher) {
                     conversationStream.loadConversation(convoId)
                 }
             }
