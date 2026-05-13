@@ -3,11 +3,8 @@ package id.homebase.core.logging
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.io.RollingFileLogWriter
-import co.touchlab.kermit.io.RollingFileLogWriterConfig
 import co.touchlab.kermit.platformLogWriter
 import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 
 object LoggerConfig {
     private const val TAG = "LoggerConfig"
@@ -45,16 +42,18 @@ object LoggerConfig {
 
         // Add rolling file logger
         try {
-            val fileLogWriter = RollingFileLogWriter(
-                config =  RollingFileLogWriterConfig(
-                    logFilePath = logDirectory,
-                    logFileName = "homebase",
-                    rollOnSize = maxFileSize,
-                    maxLogFiles = maxFiles,
-                ),
+            val fileLogWriter = createFileLogWriter(
+                logDirectory = logDirectory,
+                fileName = "homebase",
+                rollOnSize = maxFileSize,
+                maxFiles = maxFiles,
             )
-            logWriters.add(fileLogWriter)
-            Logger.i(tag = TAG) { "File logging initialized at: $logDirectory" }
+            if (fileLogWriter != null) {
+                logWriters.add(fileLogWriter)
+                Logger.i(tag = TAG) { "File logging initialized at: $logDirectory" }
+            } else {
+                Logger.i(tag = TAG) { "File logging unavailable on this platform — console only" }
+            }
         } catch (e: Exception) {
             Logger.e(TAG, e, "Failed to initialize file logging")
         }
@@ -72,7 +71,7 @@ object LoggerConfig {
      * Returns true if every matching file was deleted, false otherwise.
      *
      * On Windows the active log file is held open with an exclusive lock by
-     * [RollingFileLogWriter], so we drop it from the Logger's writer list before
+     * the file log writer, so we drop it from the Logger's writer list before
      * attempting to delete; the file handle is released when the writer is GC'd.
      * Callers that care about the user-visible outcome (e.g. a "Clear log" button)
      * should use the return value rather than assume success.
@@ -84,14 +83,9 @@ object LoggerConfig {
         Logger.setLogWriters(listOf(platformLogWriter()))
         isInitialized = false
 
-        val deleted = try {
-            val files = SystemFileSystem.list(path)
-                .filter { it.name.startsWith("homebase") && it.name.endsWith(".log") }
-            files.forEach { SystemFileSystem.delete(it, mustExist = false) }
-            true
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Failed to delete log files in $path" }
-            false
+        val deleted = deleteHomebaseLogFiles(path)
+        if (!deleted) {
+            Logger.e(tag = TAG) { "Failed to delete log files in $path" }
         }
 
         // Restore file logging regardless of outcome — we don't want the rest of the
