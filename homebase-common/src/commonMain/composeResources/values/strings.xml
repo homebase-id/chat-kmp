@@ -626,6 +626,8 @@
     <string name="chat_dice_battle_tie_winner_self">%1$s tied for the win with %2$d</string>
     <string name="chat_dice_battle_tie_winner_other">%1$s tied for the win with %2$d</string>
     <string name="chat_dice_battle_and">and</string>
+    <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
+    <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 

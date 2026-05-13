@@ -262,6 +262,55 @@ class DiceBubbleLinesTest {
         assertEquals(1, computeBattleChainCap(rosterSize = 0))
     }
 
+    // ---- Open-ended d100: scored sums drive leader selection ----
+
+    @Test
+    fun oe_battle_uses_scored_sum_not_raw_face_sum_for_leader() {
+        // Raw d10 face sum of [10,10,9,8,10,2] = 49.
+        // OE scored sum = 100+98+2 = 200 (UP chain).
+        // Raw face sum of [4,7] = 11. OE scored sum = 47 (normal pair).
+        // Without scored sums alice (49 raw) would beat bob (11 raw); with
+        // them, bob's 47 < alice's 200, so alice still wins — but the
+        // headline `maxSum` must be 200 (scored), not 49 (raw).
+        val desc = oeBattle(
+            entry(self, listOf(10, 10, 9, 8, 10, 2)),
+            entry(sam, listOf(4, 7)),
+        )
+        val result = assertNotNull(
+            computeDiceBubbleLines(desc, selfOdinId, chainCap = 2).battleResult
+        )
+        assertEquals(200, result.maxSum)
+        assertTrue(result.leaders.single().isSelf)
+    }
+
+    @Test
+    fun oe_battle_negative_score_does_not_beat_positive() {
+        // Alice rolled a DOWN chain ending at -45. Sam rolled normal 47.
+        // Raw face sums: alice [10,2,4,7] = 23, sam [4,7] = 11 — alice
+        // would falsely win on raw sums. Scored: alice -45 vs sam 47 → sam wins.
+        val desc = oeBattle(
+            entry(self, listOf(10, 2, 4, 7)),
+            entry(sam, listOf(4, 7)),
+        )
+        val result = assertNotNull(
+            computeDiceBubbleLines(desc, selfOdinId, chainCap = 2).battleResult
+        )
+        assertEquals(47, result.maxSum)
+        assertEquals("sam", result.leaders.single().name)
+        assertEquals(false, result.isSelfAmong)
+    }
+
+    private fun oeBattle(vararg entries: ChainRoll): DiceRollDescriptor {
+        val withTimestamps = entries.mapIndexed { idx, e ->
+            e.copy(rolledAtUtcMs = 1_700_000_000_000L + idx)
+        }
+        return DiceRollDescriptor(
+            faces = 10,
+            mode = DiceRollMode.OpenEndedD100,
+            rolls = withTimestamps,
+        )
+    }
+
     // ---- helpers ----
 
     private fun entry(odinId: OdinId, results: List<Int>): ChainRoll = ChainRoll(
