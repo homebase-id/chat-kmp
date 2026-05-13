@@ -1,5 +1,48 @@
 package id.homebase.api.util
 
+private val htmlEntityPattern = Regex("&(#(\\d+)|#x([0-9a-fA-F]+)|(\\w+));")
+
+private val namedEntities = mapOf(
+    "amp" to '&', "lt" to '<', "gt" to '>', "quot" to '"', "apos" to '\'',
+    "nbsp" to ' ', "ndash" to '–', "mdash" to '—',
+    "lsquo" to '‘', "rsquo" to '’', "ldquo" to '“', "rdquo" to '”',
+    "bull" to '•', "hellip" to '…', "copy" to '©', "reg" to '®',
+    "trade" to '™', "euro" to '€', "pound" to '£', "yen" to '¥',
+)
+
+private fun codePointToString(cp: Int): String {
+    return if (cp <= 0xFFFF) {
+        Char(cp).toString()
+    } else {
+        val hi = Char(((cp - 0x10000) shr 10) + 0xD800)
+        val lo = Char(((cp - 0x10000) and 0x3FF) + 0xDC00)
+        "$hi$lo"
+    }
+}
+
+fun String.decodeHtmlEntities(): String {
+    if ('&' !in this) return this
+    return htmlEntityPattern.replace(this) { match ->
+        val decimal = match.groupValues[2]
+        val hex = match.groupValues[3]
+        val named = match.groupValues[4]
+        when {
+            decimal.isNotEmpty() -> {
+                val cp = decimal.toIntOrNull()
+                if (cp != null && cp in 1..0x10FFFF) codePointToString(cp)
+                else match.value
+            }
+            hex.isNotEmpty() -> {
+                val cp = hex.toIntOrNull(16)
+                if (cp != null && cp in 1..0x10FFFF) codePointToString(cp)
+                else match.value
+            }
+            named.isNotEmpty() -> namedEntities[named]?.toString() ?: match.value
+            else -> match.value
+        }
+    }
+}
+
 // Truncate a string to maxVisibleCharacters (be sure UTF characters aren't chopped in the middle)
 fun String.truncateToCodePoints(maxVisibleCharacters: Int): String {
     if (maxVisibleCharacters <= 0) return ""
