@@ -1,6 +1,5 @@
 package id.homebase.core.localization
 
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.ResourceEnvironment
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getSystemResourceEnvironment
@@ -15,22 +14,16 @@ object TranslationUtil {
         resourceEnvironment = getSystemResourceEnvironment()
     }
 
-    fun getString(resource: StringResource): String {
-        return runBlocking {
-            org.jetbrains.compose.resources.getString(
-                environment = resourceEnvironment,
-                resource = resource,
-            )
-        }
-    }
+    suspend fun getString(resource: StringResource): String =
+        org.jetbrains.compose.resources.getString(
+            environment = resourceEnvironment,
+            resource = resource,
+        )
 
-    fun getString(resource: StringResource, vararg formatArgs: Any): String {
-        return runBlocking {
-            org.jetbrains.compose.resources.getString(
-                environment = resourceEnvironment,
-                resource = resource,
-                *formatArgs
-            )
-        }
-    }
+    suspend fun getString(resource: StringResource, vararg formatArgs: Any): String =
+        org.jetbrains.compose.resources.getString(
+            environment = resourceEnvironment,
+            resource = resource,
+            *formatArgs,
+        )
 }

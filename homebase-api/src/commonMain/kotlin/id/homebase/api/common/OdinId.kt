@@ -3,8 +3,8 @@ package id.homebase.api.common
 import kotlin.uuid.Uuid
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.runBlocking
 import id.homebase.api.crypto.ByteArrayUtil.reduceSha256Hash
+import id.homebase.api.crypto.ByteArrayUtil.reduceSha256HashSync
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -112,12 +112,12 @@ class OdinId public constructor(
         internal fun cachedHash(identifier: String): Uuid {
             val key = AsciiDomainName(identifier).domainName
             synchronized(hashLock) { hashCache[key] }?.let { return it }
-            val hash = runBlocking { calculateHash(key) }
+            val hash = reduceSha256HashSync(key)
             return synchronized(hashLock) { hashCache.getOrPut(key) { hash } }
         }
 
         /** Deterministic hash of any `AsciiDomainName`. */
-        suspend fun toHashId(domainName: AsciiDomainName): Uuid = calculateHash(domainName.domainName)
+        suspend fun toHashId(domainName: AsciiDomainName): Uuid = reduceSha256Hash(domainName.domainName)
 
         /** Creates an `OdinId` from UTF-8 bytes (the bytes are interpreted as the domain string). */
         fun fromByteArray(id: ByteArray): OdinId = OdinId(id.decodeToString())
@@ -130,11 +130,6 @@ class OdinId public constructor(
             if (odinId.isNullOrBlank())
                 throw IllegalArgumentException("Domain cannot be null or blank")
             AsciiDomainNameValidator.assertValidDomain(odinId)
-        }
-
-        // Matches the original C# behavior: SHA-256 → reduced to 16 bytes → Guid/Uuid
-        private suspend fun calculateHash(normalizedDomain: String): Uuid {
-            return reduceSha256Hash(normalizedDomain)
         }
     }
 }
