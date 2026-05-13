@@ -4,7 +4,7 @@ private val htmlEntityPattern = Regex("&(#(\\d+)|#x([0-9a-fA-F]+)|(\\w+));")
 
 private val namedEntities = mapOf(
     "amp" to '&', "lt" to '<', "gt" to '>', "quot" to '"', "apos" to '\'',
-    "nbsp" to ' ', "ndash" to '–', "mdash" to '—',
+    "nbsp" to ' ', "ndash" to '–', "mdash" to '—',
     "lsquo" to '‘', "rsquo" to '’', "ldquo" to '“', "rdquo" to '”',
     "bull" to '•', "hellip" to '…', "copy" to '©', "reg" to '®',
     "trade" to '™', "euro" to '€', "pound" to '£', "yen" to '¥',
