@@ -319,9 +319,6 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
-        Logger.i(tag = "WSDiag") {
-            "WS recv type=${notification.notificationType} dataLen=${notification.data.length}"
-        }
         notificationBufferMutex.withLock {
             notificationBuffer += notification
         }
@@ -596,11 +593,6 @@ class OdinWebSocketClient(
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
         val driveId = fileNotification.targetDrive!!.alias
         val header = fileNotification.header
-
-        Logger.i(tag = "WSDiag") {
-            "WS file event type=${notification.notificationType} drive=$driveId " +
-                "headerPresent=${header != null} fileId=${header?.fileId}"
-        }
 
         if (header != null) {
             val worker = getOrCreateWorker(driveId)
