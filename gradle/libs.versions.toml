@@ -132,6 +132,7 @@ sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-ex
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+sqldelight-web-worker-driver = { module = "app.cash.sqldelight:web-worker-driver", version.ref = "sqldelight" }
 sqlite-jdbc-crypt = { module = "io.github.willena:sqlite-jdbc", version.ref = "sqlite-jdbc-crypt" }
 sqldelight-sqlite338-dialect = { module = "app.cash.sqldelight:sqlite-3-38-dialect", version.ref = "sqldelight" }
 android-database-sqlcipher = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
