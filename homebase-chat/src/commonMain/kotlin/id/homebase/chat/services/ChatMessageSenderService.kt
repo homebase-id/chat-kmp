@@ -184,7 +184,10 @@ class ChatMessageSenderService(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
         content = id.homebase.chat.services.content.MessageContentParser.serialize(content),
-        notificationText = content.displayLabel,
+        // notificationLabel is the privacy-aware wire value (defaults to
+        // displayLabel; Event overrides it to a sentinel + start time so
+        // the title never leaves the sender). See MessageContent.kt.
+        notificationText = content.notificationLabel,
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = null,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),

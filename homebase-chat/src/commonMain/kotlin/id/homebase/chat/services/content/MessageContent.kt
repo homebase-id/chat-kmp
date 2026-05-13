@@ -2,6 +2,7 @@ package id.homebase.chat.services.content
 
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
+import id.homebase.notifshared.EVENT_NOTIF_SENTINEL
 
 /**
  * Typed rich-content riding on the message header (parsed from `dataType` +
@@ -24,12 +25,29 @@ sealed interface MessageContent {
     val actions: ActionPolicy get() = ActionPolicy.StructuredOneShot
 
     /**
-     * Short human-readable label used everywhere the chat needs a fallback
-     * "what was this message?": push notifications, conversation-list previews,
-     * search index, the sender's `notificationText`. Each kind contributes its
-     * own concise summary (event title, poll question, etc.). Never blank.
+     * Short human-readable label for **local UI only** — chat-list preview,
+     * search index, and the sender's optimistic-write preview. May contain
+     * the full content (event title, poll question, etc.); never blank.
+     *
+     * Do NOT use this as the over-the-wire push-notification body — that
+     * leaks content to the recipient's push provider. Use [notificationLabel]
+     * for the wire path.
      */
     val displayLabel: String
+
+    /**
+     * Privacy-aware label that travels over the wire as the push
+     * `unEncryptedMessage` (see [id.homebase.chat.services.ChatMessageSenderService]).
+     * Defaults to [displayLabel] for kinds where there's no leak to worry
+     * about (text/media — the recipient's notification reads it anyway).
+     *
+     * Subtypes that carry sensitive content (e.g. [Event.descriptor] title)
+     * override this to emit only the bare minimum the recipient needs to
+     * render a usable notification — for events, that's a sentinel-prefixed
+     * start timestamp so the recipient can compute "in 1 hour" locally
+     * without ever seeing the title.
+     */
+    val notificationLabel: String get() = displayLabel
 
     /**
      * A scheduled event with optional location, meeting URL, and RSVP via reactions.
@@ -49,6 +67,16 @@ sealed interface MessageContent {
             allowReactionDetails = false, // RSVP rollup is the dialog's roster
         )
         override val displayLabel: String get() = descriptor?.title ?: UNPARSEABLE_EVENT_LABEL
+
+        // Wire label: sentinel + start time. Title stays local — the
+        // recipient's NotificationBodyFormer parses the token and renders
+        // "Event in 1 hour" / "Event on Thu, May 14" from its own clock.
+        // For unparseable descriptors (no start time to send), fall back
+        // to the generic English label rather than emitting a sentinel
+        // with a zero timestamp.
+        override val notificationLabel: String
+            get() = descriptor?.let { "$EVENT_NOTIF_SENTINEL${it.startUtcMs}" }
+                ?: UNPARSEABLE_EVENT_LABEL
     }
 
     /**
