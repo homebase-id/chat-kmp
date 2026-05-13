@@ -120,6 +120,16 @@ kotlin {
             implementation(libs.sqldelight.native.driver)
         }
 
+        // Uncomment in step 10 of the WASM pre-flight plan, paired with the
+        // `wasmJs { browser() }` block above. ktor-client-js provides the
+        // browser engine (fetch/WebSocket); WebWorkerDriver runs sql.js
+        // (SQLite-compiled-to-WASM) inside a Web Worker — see
+        // `DatabaseDriverFactory.web.kt` for the constructor shape.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//            implementation(libs.sqldelight.web.worker.driver)
+//        }
+
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {

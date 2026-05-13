@@ -479,6 +479,8 @@
     <string name="chat_dice_battle_tie_winner_self">%1$s er uafgjort om sejren med %2$d</string>
     <string name="chat_dice_battle_tie_winner_other">%1$s er uafgjort om sejren med %2$d</string>
     <string name="chat_dice_battle_and">og</string>
+    <string name="chat_dice_mode_oe_label">1d100OE (åbent)</string>
+    <string name="chat_dice_mode_oe_hint">2d10 læses som procent. 96+ ruller op igen, 04- ruller ned igen.</string>
 
     <string name="chat_message_attachment_gallery">Galleri</string>
     <string name="chat_message_attachment_file">Fil</string>
