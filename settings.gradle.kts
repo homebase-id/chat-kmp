@@ -39,6 +39,7 @@ include(":homebase-core")
 include(":homebase-auth")
 include(":homebase-chat")
 include(":homebase-api")
+include(":homebase-notifshared")
 include(":image-editor-core")
 include(":image-editor-ui")
 

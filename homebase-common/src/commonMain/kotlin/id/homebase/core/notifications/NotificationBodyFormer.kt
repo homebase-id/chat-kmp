@@ -13,6 +13,9 @@ import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.config.OWNER_FOLLOWER_TYPE_ID
 import id.homebase.core.config.OWNER_INTRODUCTION_ACCEPTED_TYPE_ID
 import id.homebase.core.config.OWNER_INTRODUCTION_RECEIVED_TYPE_ID
+import id.homebase.notifshared.tryFormatEventNotificationBody
+import kotlin.time.Clock
+import kotlinx.datetime.TimeZone
 
 /**
  * Formats the notification body text based on the notification payload type. Port of the TypeScript
@@ -25,9 +28,18 @@ object NotificationBodyFormer {
     ): String {
         val sender = senderName ?: payload.senderId
 
-        // If there's an unencrypted message, use it directly
+        // If there's an unencrypted message, use it directly — unless it's
+        // a typed-message sentinel token, in which case we render a
+        // privacy-safe body from the structured payload (e.g. Event sends
+        // only "__hb_event__|<startUtcMs>" so the title never leaks).
         payload.options.unEncryptedMessage?.let { message ->
             if (message.isNotBlank()) {
+                val eventBody = tryFormatEventNotificationBody(
+                    raw = message,
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                    viewerTz = TimeZone.currentSystemDefault(),
+                )
+                if (eventBody != null) return eventBody
                 return message.replace(payload.senderId, sender)
             }
         }

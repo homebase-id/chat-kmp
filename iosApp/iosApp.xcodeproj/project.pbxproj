@@ -90,6 +90,10 @@
 		43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavdevice.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavdevice.xcframework"; sourceTree = "<group>"; };
 		43296FB52F3A0C08000B3AFE /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswresample.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswresample.xcframework"; sourceTree = "<group>"; };
 		4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		43958A6D2FB46E1C00D226CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		43958A6E2FB46E1C00D226CE /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		43958A6F2FB46E1C00D226CE /* NotificationServiceExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationServiceExtension.entitlements; sourceTree = "<group>"; };
+		43958A702FB46E1C00D226CE /* NotificationServiceExtensionDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationServiceExtensionDebug.entitlements; sourceTree = "<group>"; };
 		43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationServiceExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		43CFC1D12F741EF200628241 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		E036487443061F6060AA1439 /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -200,6 +204,7 @@
 		43296FAD2F3A0C08000B3AFE /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				43958A712FB46E1C00D226CE /* NotificationServiceExtension */,
 				43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */,
 				43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */,
 				43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */,
@@ -210,6 +215,17 @@
 				43296FB32F3A0C08000B3AFE /* libswscale.xcframework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		43958A712FB46E1C00D226CE /* NotificationServiceExtension */ = {
+			isa = PBXGroup;
+			children = (
+				43958A6D2FB46E1C00D226CE /* Info.plist */,
+				43958A6E2FB46E1C00D226CE /* NotificationService.swift */,
+				43958A6F2FB46E1C00D226CE /* NotificationServiceExtension.entitlements */,
+				43958A702FB46E1C00D226CE /* NotificationServiceExtensionDebug.entitlements */,
+			);
+			path = NotificationServiceExtension;
 			sourceTree = "<group>";
 		};
 		C518C3BA997C48BC7763149C = {
@@ -391,7 +407,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode :homebase-notifshared:embedAndSignAppleFrameworkForXcode\n";
 		};
 		F08E00712F8CEA1F006FE86B /* Upload Crashlytics DSYM files */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -483,6 +499,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = NotificationServiceExtension;
@@ -494,6 +511,13 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsqlite3",
+					"-lz",
+					"-lbz2",
+					"-liconv",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.NotificationServiceExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -515,6 +539,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = NotificationServiceExtension;
@@ -526,6 +551,13 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsqlite3",
+					"-lz",
+					"-lbz2",
+					"-liconv",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.NotificationServiceExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -547,6 +579,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = NotificationServiceExtension;
@@ -558,6 +591,13 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsqlite3",
+					"-lz",
+					"-lbz2",
+					"-liconv",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.NotificationServiceExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
