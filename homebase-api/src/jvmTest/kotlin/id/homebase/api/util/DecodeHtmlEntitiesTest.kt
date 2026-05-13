@@ -68,5 +68,16 @@ https://t.co/mS2nxOCFjW https://t.co/RfWM24m8GX&quot; / X"""
         assertTrue(decoded.contains("\"There is no energy transition"))
         assertTrue(decoded.contains("\"Rather than replacing fossil fuels"))
         assertTrue(decoded.endsWith("\" / X"))
+
+        val collapsed = Regex("\\s+").replace(decoded, " ").trim()
+        assertFalse(collapsed.contains('\n'), "Newlines should be collapsed to spaces")
+        assertTrue(
+            collapsed.contains("transition We simply"),
+            "Words across paragraph breaks should be separated by a single space"
+        )
+        assertTrue(
+            collapsed.contains("wind \"Rather"),
+            "Words across paragraph breaks should be separated by a single space"
+        )
     }
 }

@@ -41,9 +41,16 @@ class LinkPreviewProvider(
     companion object {
         private const val MAX_FIELD_LENGTH = 300
 
+        private val whitespaceRun = Regex("\\s+")
+
+        private fun String.collapseWhitespace(): String =
+            whitespaceRun.replace(this, " ")
+
         private fun LinkPreview.sanitize(): LinkPreview {
-            val cleanTitle = title.decodeHtmlEntities().trim().truncateToCodePoints(MAX_FIELD_LENGTH)
-            val cleanDesc = description.decodeHtmlEntities().trim().truncateToCodePoints(MAX_FIELD_LENGTH)
+            val cleanTitle = title.decodeHtmlEntities().collapseWhitespace().trim()
+                .truncateToCodePoints(MAX_FIELD_LENGTH)
+            val cleanDesc = description.decodeHtmlEntities().collapseWhitespace().trim()
+                .truncateToCodePoints(MAX_FIELD_LENGTH)
             return copy(
                 title = cleanTitle,
                 description = if (cleanDesc.equals(cleanTitle, ignoreCase = true)) "" else cleanDesc,
