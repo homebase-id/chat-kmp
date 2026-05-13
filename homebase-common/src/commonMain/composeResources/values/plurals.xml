@@ -4,4 +4,16 @@
         <item quantity="one">%1$d member</item>
         <item quantity="other">%1$d members</item>
     </plurals>
+    <plurals name="chat_group_heal_main_resent">
+        <item quantity="one">Resent group file to %1$d peer</item>
+        <item quantity="other">Resent group file to %1$d peers</item>
+    </plurals>
+    <plurals name="chat_group_heal_admin_resent">
+        <item quantity="one">Resent admin file to %1$d peer</item>
+        <item quantity="other">Resent admin file to %1$d peers</item>
+    </plurals>
+    <plurals name="chat_group_heal_request_sent">
+        <item quantity="one">Asked %1$d peer to clean up their copy</item>
+        <item quantity="other">Asked %1$d peers to clean up their copies</item>
+    </plurals>
 </resources>

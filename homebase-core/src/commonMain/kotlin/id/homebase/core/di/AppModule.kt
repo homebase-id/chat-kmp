@@ -42,6 +42,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.GroupHealConversationOps
+import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
@@ -267,8 +269,9 @@ val appModule = module {
                 // endregion
 
                 // region Heal group: incoming GroupHealRequested status
+                val groupHealService = get<GroupHealService>()
                 conversationStream.onIncomingHealRequest = { status, sender, messageFile ->
-                    conversationService.handleIncomingHealRequest(status, sender, messageFile)
+                    groupHealService.handleIncomingHealRequest(status, sender, messageFile)
                 }
                 // endregion
 
@@ -301,6 +304,8 @@ val appModule = module {
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
+    single<GroupHealConversationOps> { get<ConversationService>() }
+    singleOf(::GroupHealService)
     // One-shot bus for post-create introduction preflight: CreateConversationGroupViewModel
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.

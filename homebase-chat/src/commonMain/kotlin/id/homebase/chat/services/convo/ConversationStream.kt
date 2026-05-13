@@ -104,8 +104,7 @@ class ConversationStream(
      * does not affect message-list dispatch.
      *
      * The status-message [HomebaseFile] is passed through so the handler can
-     * read/write its `localAppData.tags` and short-circuit on
-     * [ChatProtocol.HealAppliedTag] (per-message idempotency gate).
+     * self-destruct it (soft-delete + hard-delete) once cleanup runs.
      */
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
@@ -1184,13 +1183,16 @@ class ConversationStream(
 
     override suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId>
+        additionalRecipients: List<OdinId>,
+        recipientOverride: List<OdinId>?,
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val conversation = getConversationById(conversationId) ?: return listOf()
+        val base = recipientOverride
+            ?: getConversationById(conversationId)?.participants
+            ?: return listOf()
         val recipients =
-            (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
+            (base + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 
