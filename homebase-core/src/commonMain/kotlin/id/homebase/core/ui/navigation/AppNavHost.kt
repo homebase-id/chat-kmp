@@ -293,6 +293,7 @@ fun AppNavHost(
                     if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
                         navController.selectConversationOnChatList(id)
                     }
+                    TextRenderingHelper.nudge()
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
