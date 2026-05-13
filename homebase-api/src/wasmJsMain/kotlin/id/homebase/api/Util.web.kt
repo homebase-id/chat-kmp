@@ -1,12 +1,15 @@
 package id.homebase.api
 
-actual fun getPlatform(): Platform {
-    TODO("Not yet implemented")
+private object WebPlatform : Platform {
+    override val name: PlatformType = PlatformType.JS
 }
 
-actual fun isAndroid(): Boolean {
-    TODO("Not yet implemented")
-}
+actual fun getPlatform(): Platform = WebPlatform
+
+actual fun isAndroid(): Boolean = false
+
+actual fun isIos(): Boolean = false
 
 actual fun showMessage(title: String, message: String) {
+    // No-op for now; a later step can wire this to window.alert or a snackbar.
 }
