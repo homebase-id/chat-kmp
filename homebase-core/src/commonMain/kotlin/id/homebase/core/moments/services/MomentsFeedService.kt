@@ -66,11 +66,9 @@ class MomentsFeedService(
 
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DriveEvent || event.driveId != drive) return@collect
+                if (event !is BackendEvent.DataEvent || event.driveId != drive) return@collect
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {}
-                    is BackendEvent.DriveEvent.Stopped -> {}
-                    is BackendEvent.DriveEvent.BatchReceived ->
+                    is BackendEvent.DataEvent.BatchReceived ->
                         processIncrementalBatch(event.batchData)
                 }
             }

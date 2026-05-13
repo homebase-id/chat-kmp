@@ -84,8 +84,8 @@ class MomentCommentsService(
         }
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DriveEvent || event.driveId != drive) return@collect
-                if (event !is BackendEvent.DriveEvent.BatchReceived) return@collect
+                if (event !is BackendEvent.DataEvent || event.driveId != drive) return@collect
+                if (event !is BackendEvent.DataEvent.BatchReceived) return@collect
                 processIncrementalBatch(event.batchData)
             }
         }
