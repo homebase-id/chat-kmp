@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Remembers the user's last dice-roll selection so the composer reopens with the
- * same `count` and `faces` they last rolled. Stored in the encrypted local
+ * same `count`/`faces`/`mode` they last rolled. Stored in the encrypted local
  * key/value store via [DatabaseManager.keyValue].
  *
  * UUID namespace `0a03xx` (Vault reserved `0a01xx`, next add-on `0a02xx`).
@@ -23,7 +23,10 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
     private val _lastCount = MutableStateFlow(readInt(LAST_COUNT_KEY, default = DEFAULT_COUNT))
     val lastCount: StateFlow<Int> = _lastCount.asStateFlow()
 
-    suspend fun setLast(count: Int, faces: Int) {
+    private val _lastMode = MutableStateFlow(readMode())
+    val lastMode: StateFlow<DiceRollMode> = _lastMode.asStateFlow()
+
+    suspend fun setLast(count: Int, faces: Int, mode: DiceRollMode = DiceRollMode.Standard) {
         if (_lastCount.value != count) {
             keyValue.upsertValue(LAST_COUNT_KEY, encodeInt(count))
             _lastCount.value = count
@@ -31,6 +34,10 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
         if (_lastFaces.value != faces) {
             keyValue.upsertValue(LAST_FACES_KEY, encodeInt(faces))
             _lastFaces.value = faces
+        }
+        if (_lastMode.value != mode) {
+            keyValue.upsertValue(LAST_MODE_KEY, encodeMode(mode))
+            _lastMode.value = mode
         }
     }
 
@@ -52,10 +59,30 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
         value.toByte(),
     )
 
+    private fun readMode(): DiceRollMode {
+        val bytes: ByteArray = runCatching {
+            keyValue.selectByKey(LAST_MODE_KEY)?.data_
+        }.getOrNull() ?: return DEFAULT_MODE
+        if (bytes.isEmpty()) return DEFAULT_MODE
+        return when (bytes[0].toInt()) {
+            1 -> DiceRollMode.OpenEndedD100
+            else -> DiceRollMode.Standard
+        }
+    }
+
+    private fun encodeMode(mode: DiceRollMode): ByteArray = byteArrayOf(
+        when (mode) {
+            DiceRollMode.Standard -> 0
+            DiceRollMode.OpenEndedD100 -> 1
+        },
+    )
+
     companion object {
         const val DEFAULT_FACES = 6
         const val DEFAULT_COUNT = 1
+        val DEFAULT_MODE = DiceRollMode.Standard
         val LAST_FACES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0301")
         val LAST_COUNT_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0302")
+        val LAST_MODE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
     }
 }
