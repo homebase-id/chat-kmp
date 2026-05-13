@@ -145,9 +145,6 @@ class DriveWebSocketUpsertWorker(
             Logger.i(tag = "WSPush") {
                 "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed (emitting BatchReceived)"
             }
-            Logger.i(tag = "WSDiag") {
-                "WSPush upsert drive=$driveId rows=${batch.size}"
-            }
 
             eventBus.emit(
                 BackendEvent.DataEvent.BatchReceived(
