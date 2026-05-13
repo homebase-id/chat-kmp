@@ -90,18 +90,24 @@ import id.homebase.resources.cancel
 import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
-import id.homebase.resources.chat_group_admin_file_delivered
-import id.homebase.resources.chat_group_admin_file_loading
-import id.homebase.resources.chat_group_admin_file_problem
 import id.homebase.resources.chat_group_admin_peer_error
-import id.homebase.resources.chat_group_admin_peer_in_sync
 import id.homebase.resources.chat_group_admin_peer_loading
 import id.homebase.resources.chat_group_admin_peer_missing
-import id.homebase.resources.chat_group_admin_peer_stale
+import id.homebase.resources.chat_group_admin_peer_mine
+import id.homebase.resources.chat_group_admin_peer_other_author
 import id.homebase.resources.chat_group_choose_new_admin
+import id.homebase.api.client.connections.IntroductionPreflightStatus
 import id.homebase.resources.chat_group_heal
 import id.homebase.resources.chat_group_heal_admin_resent
+import id.homebase.resources.chat_introduce_preflight_reason_not_configured
+import id.homebase.resources.chat_introduce_preflight_reason_not_connected
+import id.homebase.resources.chat_introduce_preflight_reason_not_permitted
+import id.homebase.resources.chat_introduce_preflight_reason_rejected
+import id.homebase.resources.chat_introduce_preflight_reason_requires_upgrade
+import id.homebase.resources.chat_introduce_preflight_reason_unknown
+import id.homebase.resources.chat_introduce_preflight_reason_unreachable
 import id.homebase.resources.chat_group_heal_already_in_sync
+import id.homebase.resources.chat_group_heal_checking_peers
 import id.homebase.resources.chat_group_heal_main_resent
 import id.homebase.resources.chat_group_heal_progress_asking_cleanup_admin_file
 import id.homebase.resources.chat_group_heal_progress_asking_cleanup_group_file
@@ -112,14 +118,11 @@ import id.homebase.resources.chat_group_heal_progress_subtitle_finished
 import id.homebase.resources.chat_group_heal_progress_subtitle_running
 import id.homebase.resources.chat_group_heal_progress_title
 import id.homebase.resources.chat_group_heal_request_sent
-import id.homebase.resources.chat_group_main_file_delivered
-import id.homebase.resources.chat_group_main_file_loading
-import id.homebase.resources.chat_group_main_file_problem
 import id.homebase.resources.chat_group_main_peer_error
-import id.homebase.resources.chat_group_main_peer_in_sync
 import id.homebase.resources.chat_group_main_peer_loading
 import id.homebase.resources.chat_group_main_peer_missing
-import id.homebase.resources.chat_group_main_peer_stale
+import id.homebase.resources.chat_group_main_peer_mine
+import id.homebase.resources.chat_group_main_peer_other_author
 import id.homebase.resources.chat_group_member_sync_status
 import id.homebase.resources.chat_group_summary_all_ok
 import id.homebase.resources.chat_group_summary_problem
@@ -227,9 +230,9 @@ fun GroupSettingsScreen(
                     )
                 }
             }
-            // Counts all zero ⇒ either every peer was already InSync or there
-            // were no peers to begin with; canHeal would have blocked the
-            // not-author case before the click reached us.
+            // Counts all zero ⇒ either every peer was already PresentAuthoredByMe
+            // or there were no peers to begin with; canHeal would have blocked
+            // the not-author case before the click reached us.
             val message = if (parts.isNotEmpty()) parts.joinToString(" · ") else healAlreadyInSyncMessage
             scope.launch { snackbarHostState.showSnackbar(message = message) }
         }
@@ -426,6 +429,7 @@ fun GroupSettingsUi(
                         }
 
                     items(connectedContacts, key = { it.odinId.domainName }) { contact ->
+                        val preflight = uiState.introductionPreflight?.get(contact.odinId)
                         GroupParticipantRow(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
@@ -447,6 +451,7 @@ fun GroupSettingsUi(
                             adminPeerExists = uiState.adminFileExists?.get(contact.odinId),
                             showMainPeerExistsColumn = uiState.mainFileExists != null,
                             showAdminPeerExistsColumn = uiState.adminFileExists != null,
+                            errorText = introductionPreflightInlineLabel(preflight, contact.name),
                         )
                     }
 
@@ -459,6 +464,7 @@ fun GroupSettingsUi(
                             )
                         }
                         items(notConnectedContacts, key = { it.odinId.domainName }) { contact ->
+                            val preflight = uiState.introductionPreflight?.get(contact.odinId)
                             GroupParticipantRow(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
@@ -479,6 +485,7 @@ fun GroupSettingsUi(
                                 adminPeerExists = uiState.adminFileExists?.get(contact.odinId),
                                 showMainPeerExistsColumn = uiState.mainFileExists != null,
                                 showAdminPeerExistsColumn = uiState.adminFileExists != null,
+                                errorText = introductionPreflightInlineLabel(preflight, contact.name),
                             )
                         }
                     }
@@ -719,12 +726,8 @@ fun GroupSettingsSheets(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
                         MemberSyncStatusSection(
-                            mainTransfer = uiState.mainFileTransfer?.get(contactInfo.odinId),
-                            adminTransfer = uiState.adminFileTransfer?.get(contactInfo.odinId),
                             mainPeerExists = uiState.mainFileExists?.get(contactInfo.odinId),
                             adminPeerExists = uiState.adminFileExists?.get(contactInfo.odinId),
-                            showMainColumn = uiState.mainFileTransfer != null,
-                            showAdminColumn = uiState.adminFileTransfer != null,
                             showMainPeerExistsColumn = uiState.mainFileExists != null,
                             showAdminPeerExistsColumn = uiState.adminFileExists != null,
                         )
@@ -832,8 +835,17 @@ private fun HealProgressSheetContent(
         )
         Spacer(modifier = Modifier.height(16.dp))
         if (items.isEmpty()) {
+            // Two distinct empty states:
+            //  - !finished → we're still probing peers (retryErrorPeersIfAny is
+            //    in flight before the plan is built); rows haven't been seeded yet.
+            //  - finished → heal completed with zero actions; either everyone is
+            //    PresentAuthoredByMe or remaining peers were unreachable. The
+            //    "already in sync" wording is honest for the common case.
             Text(
-                text = stringResource(MR.string.chat_group_heal_already_in_sync),
+                text = stringResource(
+                    if (finished) MR.string.chat_group_heal_already_in_sync
+                    else MR.string.chat_group_heal_checking_peers
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
@@ -953,6 +965,11 @@ private fun GroupParticipantRow(
     adminPeerExists: MemberFileExistsStatus?,
     showMainPeerExistsColumn: Boolean,
     showAdminPeerExistsColumn: Boolean,
+    /** Optional one-line reason rendered in error color under [subTitle]. Source
+     *  of truth = [introductionPreflightInlineLabel]. Null = no extra line.
+     *  Independent of the summary icon — preflight problems are not file-sync
+     *  problems and the cloud icon must not turn red for them. */
+    errorText: String? = null,
 ) {
     Row(
         modifier = Modifier
@@ -1007,6 +1024,16 @@ private fun GroupParticipantRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            errorText?.let {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = errorText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         annotation?.let {
             Text(
@@ -1044,13 +1071,21 @@ private fun TransferStatusIcon(
     }
 }
 
+/**
+ * 12dp status icon for a single peer's file-exists outcome. Reused by the
+ * per-member status section and (next) by the overall-group summary row.
+ *
+ * Tints:
+ *  - `PresentAuthoredByMe` → neutral (in-sync; nothing to do).
+ *  - `Missing` / `PresentAuthoredByOther` → tertiary cloud (both need a
+ *    heal action, just different ones — Missing wants a push; ByOther
+ *    wants a heal-request first).
+ *  - `Error` → error tint.
+ */
 @Composable
 private fun FileExistsStatusIcon(
     status: MemberFileExistsStatus?,
-    inSyncDescription: String,
-    missingDescription: String,
-    staleDescription: String,
-    errorDescription: String,
+    contentDescription: String,
 ) {
     val size = 12.dp
     when (status) {
@@ -1059,27 +1094,27 @@ private fun FileExistsStatusIcon(
             strokeWidth = 1.5.dp,
             color = LocalContentColor.current.copy(alpha = 0.55f),
         )
-        is MemberFileExistsStatus.InSync -> Icon(
+        is MemberFileExistsStatus.PresentAuthoredByMe -> Icon(
             imageVector = Icons.Default.CloudDone,
-            contentDescription = inSyncDescription,
+            contentDescription = contentDescription,
             tint = LocalContentColor.current.copy(alpha = 0.55f),
             modifier = Modifier.size(size),
         )
         MemberFileExistsStatus.Missing -> Icon(
             imageVector = Icons.Default.CloudOff,
-            contentDescription = missingDescription,
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.tertiary,
             modifier = Modifier.size(size),
         )
-        is MemberFileExistsStatus.Stale -> Icon(
+        MemberFileExistsStatus.PresentAuthoredByOther -> Icon(
             imageVector = Icons.Default.SyncProblem,
-            contentDescription = staleDescription,
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.tertiary,
             modifier = Modifier.size(size),
         )
         MemberFileExistsStatus.Error -> Icon(
             imageVector = Icons.Default.ErrorOutline,
-            contentDescription = errorDescription,
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(size),
         )
@@ -1091,12 +1126,12 @@ private fun FileExistsStatusIcon(
  * 12dp icons (main transfer + admin transfer + main peer-exists + admin
  * peer-exists) we used to render side-by-side.
  *
- * - **All present signals OK** (transfer Delivered, peer-exists InSync) →
- *   green check.
+ * - **All present signals OK** (transfer Delivered, peer-exists
+ *   PresentAuthoredByMe) → green check.
  * - **Any signal still resolving** (transfer history null entry, peer-exists
  *   Loading) → spinner.
- * - **Anything else** (Problem, Missing, Stale, Error) → red-dashed cloud
- *   (`Icons.Default.CloudOff`), tinted with the error color.
+ * - **Anything else** (Problem, Missing, PresentAuthoredByOther, Error) →
+ *   red-dashed cloud (`Icons.Default.CloudOff`), tinted with the error color.
  *
  * A column is "present" iff its `show…Column` flag is true (i.e. the caller
  * is the author of that file and the relevant data has been loaded). Columns
@@ -1131,8 +1166,8 @@ private fun GroupParticipantSummaryIcon(
     val allOk =
         (!showMainColumn || mainStatus is RecipientFileStatus.Ok) &&
         (!showAdminColumn || adminStatus is RecipientFileStatus.Ok) &&
-        (!showMainPeerExistsColumn || mainPeerExists is MemberFileExistsStatus.InSync) &&
-        (!showAdminPeerExistsColumn || adminPeerExists is MemberFileExistsStatus.InSync)
+        (!showMainPeerExistsColumn || mainPeerExists?.isInSync() == true) &&
+        (!showAdminPeerExistsColumn || adminPeerExists?.isInSync() == true)
 
     when {
         anyLoading -> CircularProgressIndicator(
@@ -1156,26 +1191,23 @@ private fun GroupParticipantSummaryIcon(
 }
 
 /**
- * Plain-text legend for the four tiny icons next to a member's name in the
- * participant list. Rendered inside the member bottom sheet so the user can
- * read what each icon means rather than memorise them. Author-only — each
- * row only appears when the matching cell-icon column is visible, so the
- * sheet and the row icons can never disagree.
+ * Plain-text legend for the file-exists icons. One row per visible
+ * peer-exists column ("Group file…" + "Admin file…"). Rendered inside the
+ * member bottom sheet so the user can read what each icon means rather
+ * than memorise them.
+ *
+ * The same per-file row is reused for the overall-group summary header
+ * via [PeerFileExistsStatusRow] — that's why the row composable is its
+ * own building block.
  */
 @Composable
 private fun MemberSyncStatusSection(
-    mainTransfer: RecipientFileStatus?,
-    adminTransfer: RecipientFileStatus?,
     mainPeerExists: MemberFileExistsStatus?,
     adminPeerExists: MemberFileExistsStatus?,
-    showMainColumn: Boolean,
-    showAdminColumn: Boolean,
     showMainPeerExistsColumn: Boolean,
     showAdminPeerExistsColumn: Boolean,
 ) {
-    val anyShown = showMainColumn || showAdminColumn ||
-        showMainPeerExistsColumn || showAdminPeerExistsColumn
-    if (!anyShown) return
+    if (!showMainPeerExistsColumn && !showAdminPeerExistsColumn) return
 
     Column(
         modifier = Modifier
@@ -1190,109 +1222,85 @@ private fun MemberSyncStatusSection(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (showMainColumn) {
-            SyncStatusRow(
-                text = transferStatusText(
-                    status = mainTransfer,
-                    delivered = stringResource(MR.string.chat_group_main_file_delivered),
-                    problem = stringResource(MR.string.chat_group_main_file_problem),
-                    loading = stringResource(MR.string.chat_group_main_file_loading),
-                ),
-            ) {
-                TransferStatusIcon(
-                    status = mainTransfer,
-                    okDescription = "",
-                    problemDescription = "",
-                )
-            }
-        }
         if (showMainPeerExistsColumn) {
-            SyncStatusRow(
-                text = peerExistsText(
-                    status = mainPeerExists,
-                    inSync = stringResource(MR.string.chat_group_main_peer_in_sync),
-                    missing = stringResource(MR.string.chat_group_main_peer_missing),
-                    stale = stringResource(MR.string.chat_group_main_peer_stale),
-                    error = stringResource(MR.string.chat_group_main_peer_error),
-                    loading = stringResource(MR.string.chat_group_main_peer_loading),
-                ),
-            ) {
-                FileExistsStatusIcon(
-                    status = mainPeerExists,
-                    inSyncDescription = "",
-                    missingDescription = "",
-                    staleDescription = "",
-                    errorDescription = "",
-                )
-            }
-        }
-        if (showAdminColumn) {
-            SyncStatusRow(
-                text = transferStatusText(
-                    status = adminTransfer,
-                    delivered = stringResource(MR.string.chat_group_admin_file_delivered),
-                    problem = stringResource(MR.string.chat_group_admin_file_problem),
-                    loading = stringResource(MR.string.chat_group_admin_file_loading),
-                ),
-            ) {
-                TransferStatusIcon(
-                    status = adminTransfer,
-                    okDescription = "",
-                    problemDescription = "",
-                )
-            }
+            PeerFileExistsStatusRow(status = mainPeerExists, forAdminFile = false)
         }
         if (showAdminPeerExistsColumn) {
-            SyncStatusRow(
-                text = peerExistsText(
-                    status = adminPeerExists,
-                    inSync = stringResource(MR.string.chat_group_admin_peer_in_sync),
-                    missing = stringResource(MR.string.chat_group_admin_peer_missing),
-                    stale = stringResource(MR.string.chat_group_admin_peer_stale),
-                    error = stringResource(MR.string.chat_group_admin_peer_error),
-                    loading = stringResource(MR.string.chat_group_admin_peer_loading),
-                ),
-            ) {
-                FileExistsStatusIcon(
-                    status = adminPeerExists,
-                    inSyncDescription = "",
-                    missingDescription = "",
-                    staleDescription = "",
-                    errorDescription = "",
-                )
-            }
+            PeerFileExistsStatusRow(status = adminPeerExists, forAdminFile = true)
         }
     }
 }
 
+/**
+ * One status line + icon for a single (file, peer-outcome) pair. The
+ * `forAdminFile` flag picks the main-vs-admin string variant; everything
+ * else (icon mapping, label mapping) keys off [status] alone. Reused by
+ * the per-member sheet and the upcoming overall-summary row, so the two
+ * surfaces always disagree if they disagree about the input — never about
+ * the rendering of it.
+ */
 @Composable
-private fun transferStatusText(
-    status: RecipientFileStatus?,
-    delivered: String,
-    problem: String,
-    loading: String,
-): String = when (status) {
-    null -> loading
-    RecipientFileStatus.Ok -> delivered
-    is RecipientFileStatus.Problem -> {
-        val detail = status.detailRes?.let { stringResource(it) }
-        if (detail != null) "$problem — $detail" else problem
+private fun PeerFileExistsStatusRow(
+    status: MemberFileExistsStatus?,
+    forAdminFile: Boolean,
+) {
+    val text = peerFileExistsLabel(status, forAdminFile)
+    SyncStatusRow(text = text) {
+        FileExistsStatusIcon(status = status, contentDescription = text)
     }
 }
 
-private fun peerExistsText(
+/**
+ * The single source of truth for the per-status label. Pure function on
+ * `(status, forAdminFile)`; reused by [PeerFileExistsStatusRow] and (next)
+ * by the overall-group summary row. Anything that needs a human-readable
+ * label for a [MemberFileExistsStatus] should go through here.
+ */
+@Composable
+internal fun peerFileExistsLabel(
     status: MemberFileExistsStatus?,
-    inSync: String,
-    missing: String,
-    stale: String,
-    error: String,
-    loading: String,
-): String = when (status) {
-    null, MemberFileExistsStatus.Loading -> loading
-    is MemberFileExistsStatus.InSync -> inSync
-    MemberFileExistsStatus.Missing -> missing
-    is MemberFileExistsStatus.Stale -> stale
-    MemberFileExistsStatus.Error -> error
+    forAdminFile: Boolean,
+): String {
+    val key = when (status) {
+        null, MemberFileExistsStatus.Loading -> if (forAdminFile)
+            MR.string.chat_group_admin_peer_loading else MR.string.chat_group_main_peer_loading
+        MemberFileExistsStatus.Missing -> if (forAdminFile)
+            MR.string.chat_group_admin_peer_missing else MR.string.chat_group_main_peer_missing
+        is MemberFileExistsStatus.PresentAuthoredByMe -> if (forAdminFile)
+            MR.string.chat_group_admin_peer_mine else MR.string.chat_group_main_peer_mine
+        MemberFileExistsStatus.PresentAuthoredByOther -> if (forAdminFile)
+            MR.string.chat_group_admin_peer_other_author else MR.string.chat_group_main_peer_other_author
+        MemberFileExistsStatus.Error -> if (forAdminFile)
+            MR.string.chat_group_admin_peer_error else MR.string.chat_group_main_peer_error
+    }
+    return stringResource(key)
+}
+
+/**
+ * Inline per-row label for a member's introduction-preflight status. Returns
+ * null for `Ready` and for `null` (not yet loaded) so callers can no-op
+ * cleanly. The non-Ready branches reuse the *same* strings the create-group
+ * preflight dialog renders, so the two surfaces stay in lockstep.
+ *
+ * Mapped from `IntroductionPreflightStatus` — see
+ * `homebase-api/.../IntroductionPreflightStatus.kt`.
+ */
+@Composable
+internal fun introductionPreflightInlineLabel(
+    status: IntroductionPreflightStatus?,
+    peerName: String,
+): String? {
+    val key = when (status) {
+        null, IntroductionPreflightStatus.Ready -> return null
+        IntroductionPreflightStatus.NotConnected -> MR.string.chat_introduce_preflight_reason_not_connected
+        IntroductionPreflightStatus.RecipientNotConfigured -> MR.string.chat_introduce_preflight_reason_not_configured
+        IntroductionPreflightStatus.RecipientRequiresUpgrade -> MR.string.chat_introduce_preflight_reason_requires_upgrade
+        IntroductionPreflightStatus.IntroductionsNotPermitted -> MR.string.chat_introduce_preflight_reason_not_permitted
+        IntroductionPreflightStatus.RecipientRejected -> MR.string.chat_introduce_preflight_reason_rejected
+        IntroductionPreflightStatus.Unreachable -> MR.string.chat_introduce_preflight_reason_unreachable
+        IntroductionPreflightStatus.UnknownError -> MR.string.chat_introduce_preflight_reason_unknown
+    }
+    return stringResource(key, peerName)
 }
 
 @Composable

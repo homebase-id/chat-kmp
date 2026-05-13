@@ -232,16 +232,34 @@ class GroupSettingsViewModel(
                 val conversation = uiState.value.conversation ?: return
                 if (uiState.value.isHealing) return
                 if (!uiState.value.canHeal) return
-                val plan = buildHealPlan(uiState.value)
-                val initialItems = buildInitialProgressItems(plan)
+                // Open the sheet immediately so the user sees that something
+                // is happening; rows get filled in after the retry-on-Error
+                // step settles below.
                 _uiState.update {
                     it.copy(
                         isHealing = true,
-                        uiSheet = GroupSettingsUiSheet.HealProgress(initialItems, finished = false),
+                        uiSheet = GroupSettingsUiSheet.HealProgress(emptyList(), finished = false),
                     )
                 }
                 viewModelScope.launch {
                     try {
+                        // Retry any peers currently classified as Error before
+                        // building the plan. Error means "we couldn't reach the
+                        // peer's exists endpoint last time"; without this retry,
+                        // those peers show as red in the overview but Heal would
+                        // do nothing for them (they fall outside both Missing
+                        // and PresentAuthoredByOther). One retry per click — if
+                        // they're still Error after, they stay excluded and
+                        // we'll surface that in the snackbar below.
+                        retryErrorPeersIfAny(conversation, reason = "heal-click")
+                        val plan = buildHealPlan(uiState.value)
+                        val initialItems = buildInitialProgressItems(plan)
+                        _uiState.update { state ->
+                            val sheet = state.uiSheet
+                            if (sheet is GroupSettingsUiSheet.HealProgress) {
+                                state.copy(uiSheet = sheet.copy(items = initialItems))
+                            } else state
+                        }
                         Logger.i("GroupSettings: heal requested for ${conversation.id} plan=$plan")
                         logTransferSnapshot("BEFORE heal", conversation.id, uiState.value)
                         val result = groupHealService.healGroupDistribution(
@@ -267,10 +285,10 @@ class GroupSettingsViewModel(
                         // flag only flips once watching is over.
                         pollHealDeliveryOutcomes(result)
                         // Re-load transfer history immediately. Skip the trailing
-                        // peer-exists recheck — the heal just bumped our local
-                        // vt; every peer is technically Stale until transit
-                        // lands, and running the probe now would paint everyone
-                        // red. Schedule a delayed recheck instead.
+                        // peer-exists recheck — peer transit hasn't completed
+                        // yet, so probing now would mis-classify peers that
+                        // are about to flip to PresentAuthoredByMe. Schedule
+                        // a delayed recheck instead.
                         loadTransferHistory(conversation, recheckPeerExists = false)
                         logTransferSnapshot("AFTER heal", conversation.id, uiState.value)
                         scheduleDelayedPeerExistsRecheck(conversation)
@@ -385,6 +403,9 @@ class GroupSettingsViewModel(
 
                 if (conversation.isGroupConversation && !conversation.isLegacyGroup) {
                     loadTransferHistory(conversation)
+                    // Sibling probe — independent of file-state, so kicked off
+                    // in parallel rather than chained.
+                    launch { loadIntroductionPreflight(conversation, reason = "screen-open") }
                 }
             } catch (e: Exception) {
                 Logger.e("Failed to load conversation", e)
@@ -404,10 +425,11 @@ class GroupSettingsViewModel(
         conversation: ConversationUiModel,
         /**
          * When false, the trailing [loadPeerFileExists] is skipped. The heal
-         * completion path uses this to avoid the "everyone instantly shows
-         * Stale" flash that happens because the heal bumps our local vt and
-         * the recheck races transit. The heal handler schedules its own
-         * delayed recheck via [scheduleDelayedPeerExistsRecheck] instead.
+         * completion path uses this to avoid running the peer-exists probe
+         * before transit has actually landed — too early and peers that are
+         * about to flip to PresentAuthoredByMe still look Missing. The heal
+         * handler schedules its own delayed recheck via
+         * [scheduleDelayedPeerExistsRecheck] instead.
          */
         recheckPeerExists: Boolean = true,
     ) {
@@ -514,7 +536,8 @@ class GroupSettingsViewModel(
      * endpoint. Fired once at screen-load (off the back of [loadTransferHistory]).
      *
      * Author-only — only the file's original author gets a meaningful versionTag
-     * back from the server, which is what lets us tell InSync apart from Stale.
+     * back from the server, which is what tells PresentAuthoredByMe apart
+     * from PresentAuthoredByOther.
      * For non-authors the column is hidden, matching the existing transfer-history
      * gate in [fetchTransferIfAuthor].
      *
@@ -549,14 +572,11 @@ class GroupSettingsViewModel(
         val drive = chatTargetDrive.alias
         val mainUid = conversation.id
         val adminUid = ChatProtocol.getAdminFileUniqueId(conversation.id)
-        val mainLocalVersion = mainFile?.fileMetadata?.versionTag
-        val adminLocalVersion = adminFile?.fileMetadata?.versionTag
 
         Logger.i(tag = "HealAudit") {
             "loadPeerFileExists($reason): START conversationId=${conversation.id} " +
                 "recipients=${recipients.map { it.domainName }} " +
-                "mainAuthored=$mainAuthored mainLocalVersion=$mainLocalVersion " +
-                "adminAuthored=$adminAuthored adminLocalVersion=$adminLocalVersion"
+                "mainAuthored=$mainAuthored adminAuthored=$adminAuthored"
         }
 
         // Seed visible columns with Loading for every recipient so the UI shows
@@ -578,10 +598,10 @@ class GroupSettingsViewModel(
             if (mainAuthored) {
                 viewModelScope.launch {
                     val status = gate.withPermit {
-                        queryPeerFileExists("main", recipient, drive, mainUid, mainLocalVersion)
+                        queryPeerFileExists("main", recipient, drive, mainUid)
                     }
                     Logger.i(tag = "HealAudit") {
-                        "loadPeerFileExists($reason): main result peer=${recipient.domainName} → ${renderExistsStatus(status, mainLocalVersion)}"
+                        "loadPeerFileExists($reason): main result peer=${recipient.domainName} → ${renderExistsStatus(status)}"
                     }
                     _uiState.update { s ->
                         s.copy(mainFileExists = s.mainFileExists?.plus(recipient to status))
@@ -591,10 +611,10 @@ class GroupSettingsViewModel(
             if (adminAuthored) {
                 viewModelScope.launch {
                     val status = gate.withPermit {
-                        queryPeerFileExists("admin", recipient, drive, adminUid, adminLocalVersion)
+                        queryPeerFileExists("admin", recipient, drive, adminUid)
                     }
                     Logger.i(tag = "HealAudit") {
-                        "loadPeerFileExists($reason): admin result peer=${recipient.domainName} → ${renderExistsStatus(status, adminLocalVersion)}"
+                        "loadPeerFileExists($reason): admin result peer=${recipient.domainName} → ${renderExistsStatus(status)}"
                     }
                     _uiState.update { s ->
                         s.copy(adminFileExists = s.adminFileExists?.plus(recipient to status))
@@ -604,12 +624,79 @@ class GroupSettingsViewModel(
         }
     }
 
-    private fun renderExistsStatus(status: MemberFileExistsStatus, ourVersion: Uuid?): String = when (status) {
+    private fun renderExistsStatus(status: MemberFileExistsStatus): String = when (status) {
         MemberFileExistsStatus.Loading -> "Loading"
         MemberFileExistsStatus.Missing -> "Missing"
-        is MemberFileExistsStatus.InSync -> "InSync(version=${status.versionTag})"
-        is MemberFileExistsStatus.Stale -> "Stale(peerVersion=${status.peerVersionTag}, ourVersion=$ourVersion)"
+        is MemberFileExistsStatus.PresentAuthoredByMe -> "PresentAuthoredByMe(version=${status.versionTag})"
+        MemberFileExistsStatus.PresentAuthoredByOther -> "PresentAuthoredByOther"
         MemberFileExistsStatus.Error -> "Error"
+    }
+
+    /**
+     * Re-run [queryPeerFileExists] for every (file, peer) currently classified
+     * as [MemberFileExistsStatus.Error]. Synchronous-ish — awaits all retries
+     * before returning so [buildHealPlan] sees the fresh classifications. Peers
+     * still Error after the retry stay Error (still excluded from the heal
+     * plan); peers that flipped to Missing / PresentAuthoredByMe / By­Other
+     * get picked up by the plan builder naturally.
+     *
+     * No-op when there are no Error entries.
+     */
+    private suspend fun retryErrorPeersIfAny(
+        conversation: ConversationUiModel,
+        reason: String,
+    ) {
+        val state = uiState.value
+        val mainErrorPeers = state.mainFileExists?.filterValues { it is MemberFileExistsStatus.Error }?.keys.orEmpty()
+        val adminErrorPeers = state.adminFileExists?.filterValues { it is MemberFileExistsStatus.Error }?.keys.orEmpty()
+        if (mainErrorPeers.isEmpty() && adminErrorPeers.isEmpty()) {
+            Logger.d(tag = "HealAudit") { "retryErrorPeersIfAny($reason): no Error peers — skipping" }
+            return
+        }
+        Logger.i(tag = "HealAudit") {
+            "retryErrorPeersIfAny($reason): retrying main=${mainErrorPeers.map { it.domainName }} " +
+                "admin=${adminErrorPeers.map { it.domainName }}"
+        }
+        val drive = chatTargetDrive.alias
+        val mainUid = conversation.id
+        val adminUid = ChatProtocol.getAdminFileUniqueId(conversation.id)
+        // Flip the targeted entries back to Loading so the UI shows spinners
+        // (matches the initial-probe behavior in loadPeerFileExists).
+        _uiState.update { s ->
+            s.copy(
+                mainFileExists = s.mainFileExists?.mapValues { (peer, st) ->
+                    if (peer in mainErrorPeers) MemberFileExistsStatus.Loading else st
+                },
+                adminFileExists = s.adminFileExists?.mapValues { (peer, st) ->
+                    if (peer in adminErrorPeers) MemberFileExistsStatus.Loading else st
+                },
+            )
+        }
+        coroutineScope {
+            val mainJobs = mainErrorPeers.map { peer ->
+                async {
+                    val status = queryPeerFileExists("main", peer, drive, mainUid)
+                    Logger.i(tag = "HealAudit") {
+                        "retryErrorPeersIfAny($reason): main peer=${peer.domainName} → ${renderExistsStatus(status)}"
+                    }
+                    _uiState.update { s ->
+                        s.copy(mainFileExists = s.mainFileExists?.plus(peer to status))
+                    }
+                }
+            }
+            val adminJobs = adminErrorPeers.map { peer ->
+                async {
+                    val status = queryPeerFileExists("admin", peer, drive, adminUid)
+                    Logger.i(tag = "HealAudit") {
+                        "retryErrorPeersIfAny($reason): admin peer=${peer.domainName} → ${renderExistsStatus(status)}"
+                    }
+                    _uiState.update { s ->
+                        s.copy(adminFileExists = s.adminFileExists?.plus(peer to status))
+                    }
+                }
+            }
+            (mainJobs + adminJobs).awaitAll()
+        }
     }
 
     private suspend fun queryPeerFileExists(
@@ -617,21 +704,47 @@ class GroupSettingsViewModel(
         peer: OdinId,
         drive: Uuid,
         uniqueId: Uuid,
-        localVersionTag: Uuid?,
     ): MemberFileExistsStatus = try {
-        val resp = peerDriveQueryProvider.fileExistsByUniqueId(peer, drive, uniqueId)
-        val peerVersion = resp.versionTag
-        when {
-            !resp.exists -> MemberFileExistsStatus.Missing
-            peerVersion != null && peerVersion == localVersionTag ->
-                MemberFileExistsStatus.InSync(peerVersion)
-            else -> MemberFileExistsStatus.Stale(peerVersion)
-        }
+        peerDriveQueryProvider.fileExistsByUniqueId(peer, drive, uniqueId).toMemberFileExistsStatus()
     } catch (e: Exception) {
         Logger.w(throwable = e, tag = "HealAudit") {
             "queryPeerFileExists: fileExists($label, peer=${peer.domainName}, drive=$drive, uid=$uniqueId) failed"
         }
         MemberFileExistsStatus.Error
+    }
+
+    /**
+     * Reuses the same introduction-preflight RPC the create-group flow runs
+     * after creating a conversation, surfacing the result per-peer in the
+     * overview so members that aren't in working order (NotConnected,
+     * RecipientNotConfigured, IntroductionsNotPermitted, Unreachable, etc.)
+     * show a one-line reason next to their name.
+     *
+     * Best-effort: a null result from [ConversationService.previewIntroduceEveryone]
+     * (RPC failure) leaves the map at null and the UI keeps its pre-load look.
+     * Not author-gated — every member of the group can ask whether each of the
+     * others is reachable from us.
+     */
+    private suspend fun loadIntroductionPreflight(
+        conversation: ConversationUiModel,
+        reason: String,
+    ) {
+        Logger.i(tag = "Preflight") {
+            "loadIntroductionPreflight($reason): START conversationId=${conversation.id}"
+        }
+        val result = conversationService.previewIntroduceEveryone(conversation.id)
+        if (result == null) {
+            Logger.w(tag = "Preflight") {
+                "loadIntroductionPreflight($reason): RPC returned null — leaving preflight map unset"
+            }
+            return
+        }
+        val map = result.recipients.associate { it.recipient to it.status }
+        Logger.i(tag = "Preflight") {
+            "loadIntroductionPreflight($reason): conversationId=${conversation.id} allReady=${result.allReady} " +
+                "entries=${map.entries.map { "${it.key.domainName}→${it.value}" }}"
+        }
+        _uiState.update { it.copy(introductionPreflight = map) }
     }
 
     private fun isAuthor(file: HomebaseFile, currentUser: OdinId): Boolean {
@@ -723,8 +836,8 @@ class GroupSettingsViewModel(
      * currently-loaded [MemberFileExistsStatus] maps.
      *
      * - For each file, peers reported `Missing` go into the resend set; peers
-     *   reported `Stale` go into the heal-message set; `InSync` peers are
-     *   excluded entirely.
+     *   reported `PresentAuthoredByOther` go into the heal-message set;
+     *   `PresentAuthoredByMe` peers are excluded entirely (already in sync).
      * - `Error` peers are filtered out — they get skipped this round (we don't
      *   know whether resending or heal-messaging them is safe).
      * - The Heal button is gated on `canHeal`, which already blocks while any
@@ -733,46 +846,22 @@ class GroupSettingsViewModel(
      *   the map exists but yields zero usable peers (all-Error), the plan's
      *   per-file slot becomes `null` — the service then falls back to its
      *   legacy "redistribute to every participant" behavior for that file.
-     *
-     * The heal-message slot is null only when neither file gave us any usable
-     * signal at all; otherwise it's the (possibly empty) union of Stale peers
-     * across both files. Empty means "skip the message — no Stale peers need
-     * cleanup", non-empty means "address it to exactly this set".
      */
     private fun buildHealPlan(state: GroupSettingsUiState): HealPlan {
-        // KNOWN ARCHITECTURAL LIMITATION — read before touching this logic:
-        //
-        // Heal redistribution goes through ConversationService.updateConversationInternal
-        // which rewrites the file server-side and bumps its versionTag. The
-        // upgrade-from-pre-bump-vt update is then transited to recipients.
-        //
-        // What the server's peer transit actually does (per Michael, owner of
-        // the protocol): if the peer's existing file versionTag doesn't match
-        // the incoming update's expected vt, the peer-side apply REJECTS the
-        // push. So a "resend to previously-InSync peer" doesn't actually fix
-        // them — their server-side vt stays at the pre-bump value forever,
-        // they're now Stale relative to our new vt with no remediation path.
-        //
-        // This means heal as currently implemented CANNOT recover previously-
-        // InSync peers when our vt bumps. The only honest move is to:
-        //   - Resend to peers we CAN heal: Missing peers (create branch on
-        //     peer's server) and peers who just cleaned up to vt=null via
-        //     the heal-message.
-        //   - Send heal-message to anyone non-InSync so they cleanup first;
-        //     subsequent peer push lands on their now-empty drive.
-        //
-        // Peers that look InSync right now WILL desync the moment we press
-        // Heal. There's no client-side fix for this — it needs either a
-        // server endpoint that ships an existing file to a peer without
-        // rewriting the local copy, or the ability to specify the new vt
-        // client-side so the heal-message can announce the post-bump vt
-        // (forcing all peers to cleanup). Both are out of scope here;
-        // tracked for another pass.
-        //
-        // For the current cycle, the most honest plan is: resend only to
-        // peers who can actually accept the push (Missing peers), and let
-        // previously-InSync peers be picked up on the NEXT heal cycle after
-        // a future event has re-classified them as Stale.
+        // Note on the underlying transit protocol: heal redistribution
+        // goes through ConversationService.updateConversationInternal,
+        // which rewrites the file server-side and bumps its versionTag.
+        // Peer transit will REJECT a push whose expected-vt doesn't
+        // match the peer's current vt — so we only address peers we can
+        // actually heal in this cycle:
+        //   - Missing peers: a fresh create lands cleanly.
+        //   - PresentAuthoredByOther peers: heal-request makes them drop
+        //     the third-party copy, after which they're Missing on the
+        //     next cycle and we can push.
+        // PresentAuthoredByMe peers are excluded — they're already in
+        // sync as far as authorship goes, even if their vt has drifted
+        // from ours. (Pure vt-drift recovery for already-authored copies
+        // remains an open protocol problem; out of scope here.)
         val conversation = state.conversation ?: return HealPlan(null, null, null, null)
         val self = state.currentOdinId
         val recipients = conversation.participants.filter { it != self }.distinct()
@@ -780,13 +869,15 @@ class GroupSettingsViewModel(
         val mainAuthored = state.mainFileExists != null
         val adminAuthored = state.adminFileExists != null
 
-        // Heal-message goes to every non-InSync peer (Missing/Stale/Error).
-        // Cleanup leaves them at vt=null, ready to receive the resend as a
-        // fresh create. InSync peers are excluded — sending them the heal-
-        // message would be a no-op anyway (their vt matches canonical).
-        fun nonInSync(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
+        // Heal-message goes only to peers holding a third-party copy
+        // (PresentAuthoredByOther). They need to drop that copy before we
+        // can push ours; on the next heal cycle they'll re-poll as Missing
+        // and pick up the resend. Missing peers don't need a heal-request
+        // (nothing to drop); PresentAuthoredByMe peers are already in sync;
+        // Error peers we skip this round.
+        fun authoredByOtherOnly(map: Map<OdinId, MemberFileExistsStatus>?): List<OdinId> =
             map?.entries.orEmpty()
-                .filter { it.value !is MemberFileExistsStatus.InSync }
+                .filter { it.value is MemberFileExistsStatus.PresentAuthoredByOther }
                 .map { it.key }
 
         // Resend goes only to peers the server's peer transit will actually
@@ -812,8 +903,8 @@ class GroupSettingsViewModel(
         return HealPlan(
             resendMainTo = if (mainAuthored) missingOnly(state.mainFileExists) else null,
             resendAdminTo = if (adminAuthored) missingOnly(state.adminFileExists) else null,
-            healMessageMainTo = if (mainAuthored) nonInSync(state.mainFileExists) else null,
-            healMessageAdminTo = if (adminAuthored) nonInSync(state.adminFileExists) else null,
+            healMessageMainTo = if (mainAuthored) authoredByOtherOnly(state.mainFileExists) else null,
+            healMessageAdminTo = if (adminAuthored) authoredByOtherOnly(state.adminFileExists) else null,
         )
     }
 
@@ -827,24 +918,24 @@ class GroupSettingsViewModel(
      * request), then group-file resends, then admin-file resends. Within each
      * group rows are sorted by peer domain for stable display.
      *
-     * A null per-file slot in the plan means "no per-recipient signal — fall
-     * back to all-recipients legacy behavior". We still surface those rows
-     * (one per peer in the conversation's participant list, minus self) so
-     * the user sees what the heal is actually doing.
+     * A null per-file slot in the plan means "caller is not the author of that
+     * file" — the service will skip the corresponding action, so we generate
+     * zero rows to match. (The legacy `plan = null` broadcast path is a
+     * service-internal fallback for callers without a per-recipient signal;
+     * the VM never takes it because [buildHealPlan] always supplies a plan.)
      */
     private fun buildInitialProgressItems(plan: HealPlan): List<HealProgressItem> {
-        val conversation = uiState.value.conversation ?: return emptyList()
-        val self = uiState.value.currentOdinId
-        val fallback = conversation.participants.filter { it != self }.distinct()
+        if (uiState.value.conversation == null) return emptyList()
 
-        val mainResend = (plan.resendMainTo ?: fallback).sortedBy { it.domainName }
-        val adminResend = (plan.resendAdminTo ?: fallback).sortedBy { it.domainName }
-        // Split heal-request by which file is stale so a peer with both stale
-        // gets two rows ("clean up group file" + "clean up admin file"). The
-        // single underlying status message resolves both rows simultaneously
-        // when applyHealPhase fires HealMessageSent for the union.
-        val healMain = (plan.healMessageMainTo ?: fallback).sortedBy { it.domainName }
-        val healAdmin = (plan.healMessageAdminTo ?: fallback).sortedBy { it.domainName }
+        val mainResend = plan.resendMainTo.orEmpty().sortedBy { it.domainName }
+        val adminResend = plan.resendAdminTo.orEmpty().sortedBy { it.domainName }
+        // Split heal-request by which file the peer is PresentAuthoredByOther
+        // for, so a peer holding a third-party copy of both files gets two
+        // rows ("clean up group file" + "clean up admin file"). The single
+        // underlying status message resolves both rows simultaneously when
+        // applyHealPhase fires HealMessageSent for the union.
+        val healMain = plan.healMessageMainTo.orEmpty().sortedBy { it.domainName }
+        val healAdmin = plan.healMessageAdminTo.orEmpty().sortedBy { it.domainName }
 
         return buildList {
             healMain.forEach { add(HealProgressItem("healMain-${it.domainName}", HealActionKind.HealRequestGroupFile, it, HealProgressState.Pending)) }
@@ -1078,13 +1169,14 @@ class GroupSettingsViewModel(
      * Schedule a peer-exists recheck a few seconds after a heal completes.
      * Heal redistribution server-side rewrites the file and hands us back a
      * new versionTag; transit then ships the new copy to each recipient async.
-     * If we re-poll peer-exists immediately, every peer still has the OLD
-     * versionTag → all classified as Stale → red flash everywhere.
+     * If we re-poll peer-exists immediately, peers we just heal-requested
+     * may still hold their soon-to-be-dropped copy, and Missing peers may
+     * not yet have the new push — both produce mid-transit states.
      *
      * Waiting [POST_HEAL_RECHECK_DELAY_MS] gives transit time to land for
-     * peers on healthy networks. Peers whose servers are slow or offline will
-     * still show Stale/Missing afterwards — that's an accurate state, not the
-     * versionTag race.
+     * peers on healthy networks. Peers whose servers are slow or offline
+     * will still show whatever they actually hold afterwards — that's an
+     * accurate state, not the transit race.
      */
     private fun scheduleDelayedPeerExistsRecheck(conversation: ConversationUiModel) {
         viewModelScope.launch {
