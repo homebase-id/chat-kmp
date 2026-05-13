@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,9 +29,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import okio.ByteString.Companion.encodeUtf8
-import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 
 /**
  * Disk-backed, encrypted cache for authenticated drive file bytes. Wraps
@@ -78,7 +77,7 @@ class DriveFileProviderCached(
     private val delegate: DriveFileHttpProvider =
             DriveFileHttpProvider(httpClient, credentialsManager)
 
-    private val fileSystem = FileSystem.SYSTEM
+    private val fileSystem = systemFileSystem
     private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val payloadSemaphore = Semaphore(1)

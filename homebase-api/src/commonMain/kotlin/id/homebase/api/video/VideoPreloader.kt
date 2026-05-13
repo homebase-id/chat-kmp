@@ -2,21 +2,20 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import kotlin.uuid.Uuid
 
 class VideoPreloader(
     private val driveFileProvider: VideoPrefetchDriveAccess,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
-    private val fileSystem = FileSystem.SYSTEM
+    private val fileSystem = systemFileSystem
     private val mutexMap = mutableMapOf<String, Mutex>()
     private val progressMap = mutableMapOf<String, MutableStateFlow<Float>>()
     private val mapLock = Mutex()

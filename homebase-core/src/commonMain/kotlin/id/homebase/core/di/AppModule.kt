@@ -4,13 +4,12 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
-import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -158,7 +157,7 @@ val appModule = module {
     single {
         val imageLoader: ImageLoader = get()
         val fileOps: FileOperationsProvider = get()
-        val fileSystem = FileSystem.SYSTEM
+        val fileSystem = systemFileSystem
         val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
             driveSyncManager = get(),

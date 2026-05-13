@@ -9,6 +9,7 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.sync.DriveRegistry
@@ -20,10 +21,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import kotlin.uuid.Uuid
 
 class StorageSettingsViewModel(
@@ -38,7 +37,7 @@ class StorageSettingsViewModel(
     private val driveRegistry: DriveRegistry,
 ) : ViewModel() {
 
-    private val fileSystem = FileSystem.SYSTEM
+    private val fileSystem = systemFileSystem
 
     private val _uiState = MutableStateFlow(StorageSettingsUiState())
     val uiState: StateFlow<StorageSettingsUiState> = _uiState.asStateFlow()
