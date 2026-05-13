@@ -71,6 +71,36 @@ class LinkPreviewPayloadBuilderTest {
         assertEquals(null, descriptor.imageWidth)
         assertEquals(null, descriptor.imageHeight)
     }
+
+    @Test
+    fun build_truncatesTitleAndDescription_whenDescriptorExceedsByteLimit() = runTest {
+        val longText = "A".repeat(800)
+        val preview = LinkPreview(
+            title = longText,
+            url = "https://example.com",
+            description = longText,
+            imageUrl = null,
+            imageHeight = null,
+            imageWidth = null,
+        )
+        val fakeFileOps = RecordingFileOperationsProvider()
+
+        val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
+        val descriptorJson = bundle.payloads.single().descriptorContent
+        assertNotNull(descriptorJson)
+        val descriptor = OdinSystemSerializer
+            .deserialize<List<LinkPreviewDescriptor>>(descriptorJson)
+            .single()
+
+        assertTrue(
+            descriptor.title.length <= 100,
+            "Title should be truncated when descriptor overflows"
+        )
+        assertTrue(
+            descriptor.description.length <= 100,
+            "Description should be truncated when descriptor overflows"
+        )
+    }
 }
 
 /**
