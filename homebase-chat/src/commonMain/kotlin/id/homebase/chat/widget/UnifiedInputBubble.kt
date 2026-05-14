@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,9 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.getOdinIdColor
@@ -52,9 +53,11 @@ fun UnifiedInputBubble(
     content: @Composable () -> Unit,
 ) {
     Row(
-        modifier = modifier,
+        modifier = modifier
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
+        // Left FAB: Cancel — only in edit mode
         if (editExistingMode) {
             IconButton(
                 onClick = onCancelEdit,
@@ -62,7 +65,9 @@ fun UnifiedInputBubble(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
-                modifier = Modifier.testTag("cancel_fab"),
+                modifier = Modifier
+                    .size(40.dp)
+                    .testTag("cancel_fab"),
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
@@ -72,14 +77,16 @@ fun UnifiedInputBubble(
             Spacer(modifier = Modifier.width(8.dp))
         }
 
+        // Bubble surface — 20dp radius matching Signal
         Surface(
             modifier = Modifier
                 .weight(1f)
                 .animateContentSize(),
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             Column {
+                // Reply preview (conditional)
                 if (replyToMessage != null) {
                     val resolvedAccent = if (accentColor == Color.Unspecified) {
                         val odinColor = getOdinIdColor(
@@ -97,6 +104,7 @@ fun UnifiedInputBubble(
                     )
                 }
 
+                // Edit message label
                 if (editExistingMode) {
                     Row(
                         modifier = Modifier
@@ -119,10 +127,12 @@ fun UnifiedInputBubble(
                     }
                 }
 
+                // Input content slot
                 content()
             }
         }
 
+        // Right FAB — hidden during recording
         if (!isRecordingActive) {
             Spacer(modifier = Modifier.width(8.dp))
             when {
@@ -133,6 +143,7 @@ fun UnifiedInputBubble(
                         contentDescription = stringResource(MR.string.chat_send_message_button),
                         enabled = !isSendingMessage,
                         testTag = "confirm_fab",
+                        modifier = Modifier.size(40.dp),
                     )
                 }
                 showSendButton -> {
@@ -142,6 +153,7 @@ fun UnifiedInputBubble(
                         contentDescription = stringResource(MR.string.chat_send_message_button),
                         enabled = !isSendingMessage,
                         testTag = "send_fab",
+                        modifier = Modifier.size(40.dp),
                     )
                 }
                 else -> {
@@ -150,6 +162,7 @@ fun UnifiedInputBubble(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.chat_message_attachment_options),
                         testTag = "attachment_fab",
+                        modifier = Modifier.size(40.dp),
                     )
                 }
             }

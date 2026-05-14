@@ -531,7 +531,11 @@ fun MessageTextFieldCompact(
     )
 
     val micButtonSize by animateDpAsState(
-        targetValue = if (isMicrophonePressed) 72.dp else 56.dp,
+        targetValue = if (isMicrophonePressed) {
+            if (showActionButtons) 72.dp else 56.dp
+        } else {
+            if (showActionButtons) 56.dp else 40.dp
+        },
         animationSpec = tween(durationMillis = 1000),
         label = "micButtonSize"
     )
@@ -732,20 +736,25 @@ fun MessageTextFieldCompact(
                                     }
                                 }
                             },
-                            shape = if (editExistingMode)
+                            shape = if (!showActionButtons)
+                                RoundedCornerShape(0.dp)
+                            else if (editExistingMode)
                                 RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
                             else if (showRecordingButton)
                                 RoundedCornerShape(bottomStart = 12.dp, topStart = 12.dp)
                             else
                                 RoundedCornerShape(12.dp),
                             colors = RichTextEditorDefaults.richTextEditorColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                containerColor = if (!showActionButtons)
+                                    Color.Transparent
+                                else
+                                    MaterialTheme.colorScheme.surfaceContainerHighest,
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
                                 disabledIndicatorColor = Color.Transparent,
                             ),
                             minLines = 1,
-                            maxLines = if (editExistingMode) 10 else 3,
+                            maxLines = if (editExistingMode) 10 else 5,
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Sentences,
                                 imeAction = ImeAction.Default
@@ -760,12 +769,13 @@ fun MessageTextFieldCompact(
                                     .size(micButtonSize)
                                     .testTag("mic_button")
                                     .clip(
-                                        if (isMicrophonePressed) CircleShape else RoundedCornerShape(
+                                        if (isMicrophonePressed || !showActionButtons) CircleShape
+                                        else RoundedCornerShape(
                                             bottomEnd = 12.dp,
                                             topEnd = 12.dp
                                         )
                                     )
-                                    .background(micButtonColor)
+                                    .background(if (!showActionButtons) Color.Transparent else micButtonColor)
                                     .pointerInput(Unit) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown()
@@ -877,6 +887,7 @@ fun MessageTextFieldCompact(
                             imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                             contentDescription = stringResource(MR.string.chat_send_message_button),
                             testTag = if (editExistingMode) "confirm_fab" else "send_fab",
+                            modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
                 } else if (!editExistingMode) {
@@ -885,6 +896,7 @@ fun MessageTextFieldCompact(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.chat_message_attachment_options),
                         testTag = "attachment_fab",
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
             }
@@ -963,6 +975,7 @@ fun BlueBackgroundIconButton(
     contentDescription: String?,
     enabled: Boolean = true,
     testTag: String = "",
+    modifier: Modifier = Modifier,
 ) {
     IconButton(
         onClick = onClick,
@@ -971,8 +984,7 @@ fun BlueBackgroundIconButton(
             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
             contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
         ),
-        modifier = Modifier
-            .padding(bottom = 4.dp)
+        modifier = modifier
             .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
     ) {
         Icon(
