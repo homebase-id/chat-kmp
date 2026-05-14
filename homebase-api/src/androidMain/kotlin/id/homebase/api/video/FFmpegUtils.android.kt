@@ -382,6 +382,9 @@ actual object FFmpegUtils {
 
             val session = FFmpegKit.executeWithArguments(args.toTypedArray())
             if (ReturnCode.isSuccess(session.returnCode)) {
+                // Segmentation done — FFmpeg has consumed the key material. Delete it now
+                // so the plaintext AES key doesn't linger in the cache dir (see #7).
+                deleteHlsKeyMaterial(outputDir.absolutePath)
                 Pair(playlistPath, segmentPath)
             } else {
                 Log.e(TAG, "Segment+Encrypt failed: ${session.failStackTrace}")

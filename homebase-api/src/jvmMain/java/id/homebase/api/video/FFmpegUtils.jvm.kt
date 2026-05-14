@@ -245,12 +245,17 @@ actual object FFmpegUtils {
                 iv = keyHeader.iv
             )
 
-            segmentInternal(
+            val result = segmentInternal(
                 inputPath = inputPath,
                 outputDir = outputDir,
                 keyInfoFile = keyInfoFile,
                 onProgress = onProgress
             )
+            // Segmentation done — FFmpeg has consumed the key material. Delete it now
+            // so the plaintext AES key doesn't linger in the temp dir (see #7).
+            // segmentInternal throws on failure, so reaching here means success.
+            deleteHlsKeyMaterial(outputDir.absolutePath)
+            result
         }
 
     private suspend fun segmentInternal(

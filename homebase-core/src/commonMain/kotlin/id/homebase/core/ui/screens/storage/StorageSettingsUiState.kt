@@ -16,6 +16,12 @@ data class StorageSettingsUiState(
     // caches" to delete it) or a regression that reintroduced Coil's default
     // disk cache somewhere. Rendered as a red warning row.
     val orphanCoilDiskBytes: Long = 0L,
+    // Aggregate size of every top-level cache-directory entry the app does not
+    // track or cap — FFmpeg scratch (hls_*, compressed_*, ffmpeg-segmented-*),
+    // decrypted downloads, share temp files, the legacy hbvid_preload dir, etc.
+    // See CacheAudit. Surfaced so the gap between this and the tracked caches is
+    // visible without adb. Excludes the separately-shown orphanCoilDiskBytes.
+    val otherCacheBytes: Long = 0L,
     val isLoading: Boolean = true,
     val isClearing: Boolean = false,
     val uiEvent: StorageSettingsUiEvent? = null,

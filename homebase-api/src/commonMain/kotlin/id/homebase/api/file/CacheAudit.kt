@@ -1,0 +1,160 @@
+package id.homebase.api.file
+
+import co.touchlab.kermit.Logger
+import okio.FileSystem
+import okio.Path.Companion.toPath
+
+/**
+ * Read-only inventory of the app cache directory
+ * ([FileOperationsProvider.getCacheDirectory]).
+ *
+ * Motivation: Android's system "Cache" figure — which is exactly
+ * `context.cacheDir` — was observed at ~4 GB while the app's Storage Settings
+ * screen accounted for only ~710 MB. The gap is scratch files written straight
+ * into the cache directory that the app neither tracks, caps, nor evicts:
+ * FFmpeg segment/compress output, `hls_*` dirs created on every video send,
+ * decrypted downloads, share temp files, the legacy `hbvid_preload` dir, and so
+ * on. [CacheAudit] enumerates the *top-level* entries of the cache directory and
+ * classifies each as "known" (one of the four capped Coil `DiskCache`
+ * directories) or "untracked", so the breakdown is visible both in logs and in
+ * the Storage Settings UI.
+ *
+ * This is diagnostics only — it never deletes anything.
+ */
+object CacheAudit {
+
+    /**
+     * The cache-directory entries the app tracks and caps via Coil's `DiskCache`
+     * (LRU-evicted). Everything else under the cache directory is untracked
+     * scratch. Keep in sync with the directory names in `DriveFileProviderCached`
+     * and `PublicProfileProviderCached`.
+     */
+    val KNOWN_CACHE_DIRS: Set<String> = setOf(
+        "homebase-payloads-v2",
+        "homebase-thumbs-v2",
+        "homebase-public-profiles-v2",
+        "homebase-public-images-v2",
+    )
+
+    /** A single top-level entry of the cache directory. */
+    data class Entry(
+        val name: String,
+        val isDirectory: Boolean,
+        val sizeBytes: Long,
+        /** True when [name] is one of [KNOWN_CACHE_DIRS]. */
+        val known: Boolean,
+        /** Best-guess human-readable origin, for the log line. Diagnostic only. */
+        val label: String,
+    )
+
+    data class Report(
+        val cacheDirPath: String,
+        /** All top-level entries, sorted largest-first. */
+        val entries: List<Entry>,
+        val knownBytes: Long,
+        val untrackedBytes: Long,
+        val totalBytes: Long,
+    )
+
+    /**
+     * Enumerate the immediate children of [cacheDirPath], recursively sizing
+     * each. Never throws — a missing cache directory yields an empty report, and
+     * a per-entry failure is logged and skipped.
+     */
+    fun audit(cacheDirPath: String, fileSystem: FileSystem = systemFileSystem): Report {
+        val dir = cacheDirPath.toPath()
+        if (!fileSystem.exists(dir)) {
+            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L)
+        }
+
+        val children = try {
+            fileSystem.list(dir)
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "cannot list cache dir $cacheDirPath" }
+            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L)
+        }
+
+        val entries = ArrayList<Entry>(children.size)
+        for (child in children) {
+            try {
+                val meta = fileSystem.metadata(child)
+                val isDir = meta.isDirectory
+                val size = if (isDir) fileSystem.directorySizeBytes(child) else (meta.size ?: 0L)
+                val name = child.name
+                entries.add(
+                    Entry(
+                        name = name,
+                        isDirectory = isDir,
+                        sizeBytes = size,
+                        known = name in KNOWN_CACHE_DIRS,
+                        label = classify(name),
+                    )
+                )
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "cannot size cache entry ${child.name}" }
+            }
+        }
+        entries.sortByDescending { it.sizeBytes }
+
+        var known = 0L
+        var untracked = 0L
+        for (e in entries) {
+            if (e.known) known += e.sizeBytes else untracked += e.sizeBytes
+        }
+        return Report(
+            cacheDirPath = cacheDirPath,
+            entries = entries,
+            knownBytes = known,
+            untrackedBytes = untracked,
+            totalBytes = known + untracked,
+        )
+    }
+
+    /** Emit [report] to the log under tag [TAG]. */
+    fun logReport(report: Report) {
+        Logger.i(tag = TAG) {
+            "cacheDir=${report.cacheDirPath} total=${report.totalBytes} " +
+                "known=${report.knownBytes} untracked=${report.untrackedBytes} " +
+                "entries=${report.entries.size}"
+        }
+        for (e in report.entries) {
+            val line = "  ${e.name}${if (e.isDirectory) "/" else ""} — ${e.sizeBytes} bytes " +
+                "[${if (e.known) "tracked" else "untracked"}: ${e.label}]"
+            // Untracked entries over the threshold are the ones worth chasing —
+            // log them at WARN so they stand out in an `adb logcat` capture.
+            if (!e.known && e.sizeBytes >= LOUD_THRESHOLD_BYTES) {
+                Logger.w(tag = TAG) { line }
+            } else {
+                Logger.i(tag = TAG) { line }
+            }
+        }
+    }
+
+    /**
+     * Best-guess origin of a cache entry from its name, for the log line only.
+     * This is a *labelling* table, never a deletion list — anything not matched
+     * is reported as "unknown" and still counted as untracked.
+     */
+    private fun classify(name: String): String = when {
+        name in KNOWN_CACHE_DIRS -> "tracked Coil disk cache"
+        name == "hbvid_preload" -> "legacy video preload dir"
+        name == "coil3_disk_cache" -> "orphan Coil disk cache"
+        name == "homebase-payloads" || name == "homebase-thumbs" ||
+            name == "homebase-public-profiles" || name == "homebase-public-images" ->
+            "legacy kache dir (pre-v2)"
+        name.startsWith("hls_") -> "FFmpeg HLS segment dir (video send)"
+        name.startsWith("compressed_") -> "FFmpeg compressed video"
+        name.startsWith("ffmpeg-segmented-") -> "FFmpeg segment output"
+        name.startsWith("input_hlsdl_") -> "HLS download intermediate"
+        name.startsWith("hlsdl_") -> "HLS download output"
+        name.startsWith("input_") -> "FFmpeg input cache"
+        name.startsWith("thumb0001-") -> "FFmpeg thumbnail"
+        name.startsWith("share_") || name.startsWith("resolved_") -> "share temp file"
+        else -> "unknown"
+    }
+
+    private const val TAG = "CacheAudit"
+
+    /** Untracked entries at or above this size are logged at WARN. */
+    private const val LOUD_THRESHOLD_BYTES = 50L * 1024L * 1024L
+}

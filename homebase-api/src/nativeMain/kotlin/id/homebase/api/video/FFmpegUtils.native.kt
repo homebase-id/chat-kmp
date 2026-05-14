@@ -297,6 +297,9 @@ actual object FFmpegUtils {
                 val result = bridge.executeFFmpeg(command)
 
                 if (result.isSuccess) {
+                    // Segmentation done — FFmpeg has consumed the key material. Delete it now
+                    // so the plaintext AES key doesn't linger in the cache dir (see #7).
+                    deleteHlsKeyMaterial(outputDir)
                     Pair(indexPath, segmentPath)
                 } else {
                     println("Docs: Error segment+encrypt video: ${result.failStackTrace}")
