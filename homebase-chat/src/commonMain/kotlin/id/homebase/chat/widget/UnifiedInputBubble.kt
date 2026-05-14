@@ -55,7 +55,8 @@ fun UnifiedInputBubble(
     Row(
         modifier = modifier
             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.Bottom,
+        verticalAlignment = if (editExistingMode || replyToMessage != null)
+            Alignment.Bottom else Alignment.CenterVertically,
     ) {
         // Left FAB: Cancel — only in edit mode
         if (editExistingMode) {

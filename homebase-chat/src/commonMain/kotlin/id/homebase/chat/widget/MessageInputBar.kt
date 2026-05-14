@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -292,8 +291,10 @@ fun MessageInputBar(
             )
         } else {
             MessageTextFieldCompact(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
+                modifier = Modifier.fillMaxWidth().then(
+                    if (showActionButtons) Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    else Modifier
+                ),
                 focusRequester = focusRequester,
                 state = textFieldState,
                 editExistingMode = editExistingMode,
@@ -598,7 +599,7 @@ fun MessageTextFieldCompact(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
             // Left area: text field (normal) or recording progress (while recording).
