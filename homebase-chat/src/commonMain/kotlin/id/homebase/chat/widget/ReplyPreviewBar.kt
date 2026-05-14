@@ -20,8 +20,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
@@ -53,7 +55,12 @@ import kotlin.io.encoding.Base64
  * @param modifier Modifier for the composable.
  */
 @Composable
-fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun ReplyPreviewBar(
+    message: MessageUiModel,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+) {
     val currentOdinId = LocalCurrentOdinId.current
     // Filter out non-media payloads (default payload key and payload descriptor keys)
     val mediaPayloads = remember(message.payloads) {
@@ -108,9 +115,11 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("reply_preview_bar"),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
     ) {
         Row(
             modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
@@ -129,7 +138,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                     ),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -171,7 +180,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
             }
 
             // Close button — always on the far right
-            IconButton(onClick = onDismiss) {
+            IconButton(onClick = onDismiss, modifier = Modifier.testTag("reply_dismiss")) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(MR.string.cancel_reply),

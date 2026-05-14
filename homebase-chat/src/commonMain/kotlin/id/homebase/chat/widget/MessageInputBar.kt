@@ -88,6 +88,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -147,6 +148,9 @@ fun MessageInputBar(
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     isSendingMessage: Boolean = false,
+    showActionButtons: Boolean = true,
+    onSendStateChanged: ((isSendable: Boolean) -> Unit)? = null,
+    onRecordingStateChanged: ((isRecording: Boolean) -> Unit)? = null,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
     onFocused: () -> Unit,
@@ -308,6 +312,9 @@ fun MessageInputBar(
                 onRecordingHelp = onRecordingHelp,
                 onPasteImage = onPasteImage,
                 isSendingMessage = isSendingMessage,
+                showActionButtons = showActionButtons,
+                onSendStateChanged = onSendStateChanged,
+                onRecordingStateChanged = onRecordingStateChanged,
                 onSendMessage = { sendMessage() },
                 onCancelEdit = onCancelEdit
             )
@@ -487,6 +494,9 @@ fun MessageTextFieldCompact(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onFocused: () -> Unit = {},
     isSendingMessage: Boolean = false,
+    showActionButtons: Boolean = true,
+    onSendStateChanged: ((isSendable: Boolean) -> Unit)? = null,
+    onRecordingStateChanged: ((isRecording: Boolean) -> Unit)? = null,
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
@@ -506,6 +516,13 @@ fun MessageTextFieldCompact(
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showSendButton) {
+        onSendStateChanged?.invoke(showSendButton)
+    }
+    LaunchedEffect(isRecordingActive) {
+        onRecordingStateChanged?.invoke(isRecordingActive)
+    }
 
     val recordAudioPermissionState = rememberRecordAudioPermissionState(
         onPermissionGranted = {
@@ -557,21 +574,14 @@ fun MessageTextFieldCompact(
         modifier = modifier
     ) {
         if (!isRecordingActive) {
-            Spacer(modifier = Modifier.height(8.dp))
-//            AnimatedVisibility(
-//                visible = isKeyboardFocused,
-//                enter = slideInVertically { it },
-//                exit = slideOutVertically { it },
-//            ) {
-            RichTextEditorButtons(
-                modifier = Modifier.fillMaxWidth(),
-                state = state,
-                enabled = isKeyboardFocused,
-            )
-//            }
-//            if (!isKeyboardFocused) {
-//                Spacer(modifier = Modifier.height(48.dp))
-//            }
+            if (isDesktopOrWeb()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                RichTextEditorButtons(
+                    modifier = Modifier.fillMaxWidth(),
+                    state = state,
+                    enabled = isKeyboardFocused,
+                )
+            }
             payloadRenderers.forEach { att ->
                 PayloadRendererRow(
                     attachment = att,
@@ -591,7 +601,7 @@ fun MessageTextFieldCompact(
             // button on the right, which keeps its pointerInput alive throughout the gesture.
             Box(modifier = Modifier.weight(1f)) {
                 Column {
-                    if (editExistingMode) {
+                    if (editExistingMode && showActionButtons) {
                         MessageEditMessageInfo(
                             showingEmojiSheet = showingEmojiSheet,
                             showExtraButtons = true,
@@ -672,7 +682,10 @@ fun MessageTextFieldCompact(
                             trailingIcon = if (editExistingMode) null else {
                                 {
                                     if (state.annotatedString.isNotBlank()) {
-                                        IconButton(onClick = onAddAttachmentClick) {
+                                        IconButton(
+                                            onClick = onAddAttachmentClick,
+                                            modifier = Modifier.testTag("inline_attach_button"),
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Default.Add,
                                                 contentDescription = stringResource(MR.string.chat_message_attachment_options)
@@ -681,7 +694,10 @@ fun MessageTextFieldCompact(
                                     } else if (isMobile()) {
                                         var showCameraMenu by remember { mutableStateOf(false) }
                                         Box {
-                                            IconButton(onClick = { showCameraMenu = true }) {
+                                            IconButton(
+                                                onClick = { showCameraMenu = true },
+                                                modifier = Modifier.testTag("camera_button"),
+                                            ) {
                                                 Icon(
                                                     imageVector = Icons.Default.PhotoCamera,
                                                     contentDescription = stringResource(MR.string.chat_message_camera)
@@ -742,6 +758,7 @@ fun MessageTextFieldCompact(
                             Box(
                                 modifier = Modifier
                                     .size(micButtonSize)
+                                    .testTag("mic_button")
                                     .clip(
                                         if (isMicrophonePressed) CircleShape else RoundedCornerShape(
                                             bottomEnd = 12.dp,
@@ -830,40 +847,46 @@ fun MessageTextFieldCompact(
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-            if (isRecordingActive) {
-                Spacer(modifier = Modifier.width(56.dp))
-            } else if (showSendButton) {
-                Column {
-                    if (editExistingMode) {
-                        IconButton(
-                            onClick = onCancelEdit,
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                contentColor = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = stringResource(MR.string.cancel),
-                            )
+            if (showActionButtons) {
+                Spacer(modifier = Modifier.width(8.dp))
+                if (isRecordingActive) {
+                    Spacer(modifier = Modifier.width(56.dp))
+                } else if (showSendButton) {
+                    Column {
+                        if (editExistingMode) {
+                            IconButton(
+                                onClick = onCancelEdit,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                modifier = Modifier
+                                    .padding(bottom = 4.dp)
+                                    .testTag("cancel_fab")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(MR.string.cancel),
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        BlueBackgroundIconButton(
+                            onClick = onSendMessage,
+                            enabled = !isSendingMessage,
+                            imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(MR.string.chat_send_message_button),
+                            testTag = if (editExistingMode) "confirm_fab" else "send_fab",
+                        )
                     }
+                } else if (!editExistingMode) {
                     BlueBackgroundIconButton(
-                        onClick = onSendMessage,
-                        enabled = !isSendingMessage,
-                        imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                        onClick = onAddAttachmentClick,
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.chat_message_attachment_options),
+                        testTag = "attachment_fab",
                     )
                 }
-            } else if (!editExistingMode) {
-                BlueBackgroundIconButton(
-                    onClick = onAddAttachmentClick,
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(MR.string.chat_message_attachment_options)
-                )
             }
         }
     }
@@ -939,6 +962,7 @@ fun BlueBackgroundIconButton(
     imageVector: ImageVector,
     contentDescription: String?,
     enabled: Boolean = true,
+    testTag: String = "",
 ) {
     IconButton(
         onClick = onClick,
@@ -947,7 +971,9 @@ fun BlueBackgroundIconButton(
             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
             contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
         ),
-        modifier = Modifier.padding(bottom = 4.dp)
+        modifier = Modifier
+            .padding(bottom = 4.dp)
+            .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
     ) {
         Icon(
             imageVector = imageVector,
