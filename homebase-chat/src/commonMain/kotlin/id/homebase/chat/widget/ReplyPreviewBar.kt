@@ -141,7 +141,8 @@ fun ReplyPreviewBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(QuoteCardShape)
-                .background(Color.White.copy(alpha = quoteCardAlpha)),
+                .background(Color.White.copy(alpha = quoteCardAlpha))
+                .padding(end = 28.dp),
         ) {
             Box(
                 modifier = Modifier

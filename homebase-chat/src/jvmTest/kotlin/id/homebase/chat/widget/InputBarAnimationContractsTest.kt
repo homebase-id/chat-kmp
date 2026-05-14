@@ -148,11 +148,11 @@ class InputBarAnimationContractsTest {
         assertFalse(shouldShowDesktopRteButtons(isRecordingActive = false, isDesktop = false))
     }
 
-    // ── Animation duration constant ──
+    // ── Animation duration constant (uses production SIGNAL_TRANSITION_MS) ──
 
     @Test
     fun signalTransitionDuration_is150ms() {
-        assertEquals(150, SIGNAL_TRANSITION_DURATION_MS)
+        assertEquals(150, SIGNAL_TRANSITION_MS)
     }
 
     // ── Quote card background alpha — resolves per theme (Signal signal_colorTransparent3) ──
