@@ -8,7 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -113,8 +113,9 @@ fun UnifiedInputBubble(
                         val odinColor = getOdinIdColor(
                             replyToMessage.originalAuthor?.domainName ?: "",
                         )
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                         val resolvedAccent =
-                            if (isSystemInDarkTheme()) odinColor.darkTheme else odinColor.lightTheme
+                            if (isDark) odinColor.darkTheme else odinColor.lightTheme
                         ReplyPreviewBar(
                             message = replyToMessage,
                             onDismiss = onDismissReply,
@@ -181,10 +182,6 @@ fun UnifiedInputBubble(
                     BubbleFabAction.Send -> "send_fab"
                     BubbleFabAction.Attach -> "attachment_fab"
                 }
-                val fabDescription = when (fabAction) {
-                    BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
-                    else -> stringResource(MR.string.chat_send_message_button)
-                }
                 IconButton(
                     onClick = fabClick,
                     enabled = fabEnabled,
@@ -207,7 +204,10 @@ fun UnifiedInputBubble(
                                 BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
                                 BubbleFabAction.Attach -> Icons.Default.Add
                             },
-                            contentDescription = fabDescription,
+                            contentDescription = when (action) {
+                                BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                                else -> stringResource(MR.string.chat_send_message_button)
+                            },
                         )
                     }
                 }

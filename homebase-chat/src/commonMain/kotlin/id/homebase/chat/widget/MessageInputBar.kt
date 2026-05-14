@@ -907,7 +907,7 @@ fun MessageTextFieldCompact(
                                         contentDescription = stringResource(MR.string.cancel),
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                         val fabClick = if (standaloneFab == StandaloneFabAction.Attach)
@@ -920,10 +920,6 @@ fun MessageTextFieldCompact(
                             StandaloneFabAction.Confirm -> "confirm_fab"
                             StandaloneFabAction.Send -> "send_fab"
                             StandaloneFabAction.Attach -> "attachment_fab"
-                        }
-                        val fabDescription = when (standaloneFab) {
-                            StandaloneFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
-                            else -> stringResource(MR.string.chat_send_message_button)
                         }
                         IconButton(
                             onClick = fabClick,
@@ -947,7 +943,10 @@ fun MessageTextFieldCompact(
                                         StandaloneFabAction.Send -> Icons.AutoMirrored.Filled.Send
                                         StandaloneFabAction.Attach -> Icons.Default.Add
                                     },
-                                    contentDescription = fabDescription,
+                                    contentDescription = when (action) {
+                                        StandaloneFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                                        else -> stringResource(MR.string.chat_send_message_button)
+                                    },
                                 )
                             }
                         }

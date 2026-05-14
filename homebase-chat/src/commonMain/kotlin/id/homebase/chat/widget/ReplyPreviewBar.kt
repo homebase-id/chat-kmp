@@ -1,7 +1,6 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -29,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.testTag
@@ -127,8 +127,9 @@ fun ReplyPreviewBar(
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
 
-    // Signal's signal_colorTransparent3: white overlay at different alphas per theme.
-    val quoteCardAlpha = if (isSystemInDarkTheme()) 0.10f else 0.50f
+    // Signal's signal_colorTransparent3: white overlay, heavier in light theme.
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val quoteCardAlpha = if (isDark) 0.10f else 0.50f
 
     Box(
         modifier = modifier
