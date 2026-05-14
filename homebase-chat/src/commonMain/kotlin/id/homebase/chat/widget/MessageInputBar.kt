@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -532,16 +533,16 @@ fun MessageTextFieldCompact(
 
     val micButtonSize by animateDpAsState(
         targetValue = if (isMicrophonePressed) {
-            if (showActionButtons) 72.dp else 56.dp
+            if (showActionButtons) 72.dp else 48.dp
         } else {
             if (showActionButtons) 56.dp else 40.dp
         },
-        animationSpec = tween(durationMillis = 1000),
+        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
         label = "micButtonSize"
     )
     val micButtonColor by animateColorAsState(
         targetValue = if (isMicrophonePressed) Color.Red else MaterialTheme.colorScheme.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = 1000),
+        animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
         label = "micButtonColor"
     )
 
@@ -597,7 +598,7 @@ fun MessageTextFieldCompact(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             // Left area: text field (normal) or recording progress (while recording).

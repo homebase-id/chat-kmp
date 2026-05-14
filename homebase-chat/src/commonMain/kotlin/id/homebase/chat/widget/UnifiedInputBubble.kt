@@ -62,8 +62,8 @@ fun UnifiedInputBubble(
             IconButton(
                 onClick = onCancelEdit,
                 colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    containerColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.surface,
                 ),
                 modifier = Modifier
                     .size(40.dp)
