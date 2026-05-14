@@ -1,7 +1,12 @@
 package id.homebase.api.video
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.safeDeleteRecursively
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -103,6 +108,96 @@ class FFmpegUtilsCompressTrimIntegrationTest {
             }
         } finally {
             File(fixturePath).delete()
+        }
+    }
+
+    /**
+     * End-to-end check of HLS segment-and-encrypt: the output is genuinely
+     * AES-128 encrypted, and the plaintext key material FFmpeg needed on disk
+     * during segmentation is deleted afterwards (issue #7).
+     */
+    @Test
+    fun segmentAndEncrypt_producesEncryptedHls_andDeletesKeyMaterial() = runTest {
+        assumeTrue(
+            "FFmpeg binaries not bundled in this test classpath",
+            FFmpegBinaryManager.isAvailable(),
+        )
+
+        val fixturePath = VideoTestHelper.copyToTempFile("sample.mp4")
+        try {
+            val result = FFmpegUtils.segmentAndEncryptVideo(
+                inputPath = fixturePath,
+                keyHeader = KeyHeader.newRandom16(),
+                onProgress = null,
+            )
+            assertNotNull(result, "segmentAndEncryptVideo must produce an HLS playlist + segment")
+            val (playlistPath, segmentPath) = result
+            val outputDir = File(playlistPath).parentFile!!
+
+            try {
+                // The encrypted segment + playlist exist...
+                assertTrue(File(playlistPath).exists(), "index.m3u8 must exist")
+                assertTrue(File(segmentPath).exists(), "index.ts must exist")
+
+                // ...the playlist proves the segment really was AES-128 encrypted, so the
+                // key-cleanup assertion below can't "pass" by silently skipping encryption...
+                val playlist = File(playlistPath).readText()
+                assertTrue(
+                    playlist.contains("#EXT-X-KEY") && playlist.contains("METHOD=AES-128"),
+                    "playlist must declare AES-128 encryption, was:\n$playlist",
+                )
+
+                // ...and the plaintext key material FFmpeg needed during segmentation is
+                // gone — it must not linger in the cache dir (issue #7).
+                assertFalse(File(outputDir, "enc.key").exists(), "enc.key must be deleted after segmentation")
+                assertFalse(File(outputDir, "keyinfo.txt").exists(), "keyinfo.txt must be deleted after segmentation")
+            } finally {
+                safeDeleteRecursively(outputDir.parent, outputDir.name)
+            }
+        } finally {
+            File(fixturePath).delete()
+        }
+    }
+
+    /**
+     * A failed segmentation must not leak its `hls_<uuid>/` working directory
+     * into the cache dir (issue #5).
+     */
+    @Test
+    fun segmentAndEncrypt_failedInput_leavesNoOutputDirBehind() = runTest {
+        assumeTrue(
+            "FFmpeg binaries not bundled in this test classpath",
+            FFmpegBinaryManager.isAvailable(),
+        )
+
+        // Garbage bytes with a video extension — FFmpeg cannot possibly segment this.
+        val corrupt = File.createTempFile("corrupt_", ".mp4")
+        corrupt.writeBytes(ByteArray(2048) { it.toByte() })
+
+        val tmpDir = File(System.getProperty("java.io.tmpdir"))
+        fun hlsDirNames(): Set<String> =
+            (tmpDir.listFiles { f -> f.isDirectory && f.name.startsWith("hls_") } ?: emptyArray())
+                .map { it.name }
+                .toSet()
+        val before = hlsDirNames()
+
+        try {
+            assertFailsWith<VideoSegmentException> {
+                FFmpegUtils.segmentAndEncryptVideo(
+                    inputPath = corrupt.absolutePath,
+                    keyHeader = KeyHeader.newRandom16(),
+                    onProgress = null,
+                )
+            }
+            // The hls_<uuid>/ dir created for the failed run must be cleaned up,
+            // not leaked into the cache dir (issue #5).
+            assertEquals(
+                before,
+                hlsDirNames(),
+                "a failed segmentation must not leave an hls_<uuid>/ directory behind",
+            )
+        } finally {
+            corrupt.delete()
         }
     }
 }
