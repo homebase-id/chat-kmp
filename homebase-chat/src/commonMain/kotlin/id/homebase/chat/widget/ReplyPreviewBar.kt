@@ -162,12 +162,13 @@ fun ReplyPreviewBar(
                         resolvedDisplayName = message.displayName,
                         youLabel = stringResource(MR.string.you),
                     ),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(modifier = Modifier.height(1.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     contentLabel?.icon?.let { icon ->
                         Icon(
