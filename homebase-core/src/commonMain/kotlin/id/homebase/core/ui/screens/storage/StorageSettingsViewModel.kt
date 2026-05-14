@@ -11,6 +11,7 @@ import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.directorySizeBytes
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
@@ -199,10 +200,7 @@ class StorageSettingsViewModel(
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }
             runCatching { imageLoader.memoryCache?.clear() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "coil memory clear failed" } }
-            runCatching {
-                val orphan = "${fileOperationsProvider.getCacheDirectory()}/coil3_disk_cache".toPath()
-                if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
-            }.onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "orphan coil disk clear failed" } }
+            safeDeleteRecursively(fileOperationsProvider.getCacheDirectory(), "coil3_disk_cache")
             _uiState.update { it.copy(isClearing = false, uiEvent = StorageSettingsUiEvent.CachesCleared) }
             load()
         }

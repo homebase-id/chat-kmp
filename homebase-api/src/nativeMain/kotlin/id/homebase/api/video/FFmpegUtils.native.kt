@@ -157,7 +157,13 @@ actual object FFmpegUtils {
                     val fallbackCommand =
                             "-y ${trimPre}-i \"$inputPath\" ${trimMid}-c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
                     val fallbackResult = bridge.executeFFmpeg(fallbackCommand)
-                    if (fallbackResult.isSuccess) outputPath else null
+                    if (fallbackResult.isSuccess) {
+                        outputPath
+                    } else {
+                        // Both encoders failed — delete the partial/empty output (see #5).
+                        deleteFailedFfmpegOutput(outputPath)
+                        null
+                    }
                 }
             }
 
@@ -225,6 +231,8 @@ actual object FFmpegUtils {
                     Pair(indexPath, segmentPath)
                 } else {
                     println("Docs: Error segmenting video: ${result.failStackTrace}")
+                    // Delete the leftover hls_<uuid>/ dir (see #5).
+                    deleteFailedFfmpegOutput(outputDir)
                     null
                 }
             }
@@ -303,6 +311,8 @@ actual object FFmpegUtils {
                     Pair(indexPath, segmentPath)
                 } else {
                     println("Docs: Error segment+encrypt video: ${result.failStackTrace}")
+                    // Delete the whole hls_<uuid>/ dir — partial segments + key material (see #5).
+                    deleteFailedFfmpegOutput(outputDir)
                     null
                 }
             }

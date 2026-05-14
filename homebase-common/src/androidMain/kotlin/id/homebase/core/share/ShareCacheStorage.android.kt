@@ -1,6 +1,7 @@
 package id.homebase.core.share
 
 import android.content.Context
+import id.homebase.api.file.safeDeleteRecursively
 import java.io.File
 
 /**
@@ -38,9 +39,7 @@ actual class ShareCacheStorage(private val context: Context) {
     actual fun clearSharedContent() {
         File(cacheDir, SHARED_CONTENT_FILE).delete()
         // Clean up any shared media files
-        File(cacheDir, SHARED_FILES_SUBDIR).let { dir ->
-            if (dir.exists()) dir.deleteRecursively()
-        }
+        safeDeleteRecursively(cacheDir.absolutePath, SHARED_FILES_SUBDIR)
     }
 
     actual fun getSharedFilesDirectory(): String {

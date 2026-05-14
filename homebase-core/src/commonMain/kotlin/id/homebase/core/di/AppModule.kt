@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 
@@ -157,7 +158,6 @@ val appModule = module {
     single {
         val imageLoader: ImageLoader = get()
         val fileOps: FileOperationsProvider = get()
-        val fileSystem = systemFileSystem
         val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
             driveSyncManager = get(),
@@ -172,14 +172,7 @@ val appModule = module {
                             "coil memory cache clear failed on logout"
                         }
                     }
-                runCatching {
-                    val orphan = "${fileOps.getCacheDirectory()}/coil3_disk_cache".toPath()
-                    if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
-                }.onFailure {
-                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
-                        "orphan coil disk cache delete failed on logout"
-                    }
-                }
+                safeDeleteRecursively(fileOps.getCacheDirectory(), "coil3_disk_cache")
                 pendingUpgradeManager.reset()
             },
         )

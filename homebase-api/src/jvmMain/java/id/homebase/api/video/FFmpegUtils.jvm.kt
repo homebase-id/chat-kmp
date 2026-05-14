@@ -149,6 +149,8 @@ actual object FFmpegUtils {
             if (result.exitCode == 0 && File(outputPath).exists()) {
                 outputPath
             } else {
+                // FFmpeg failed — delete the partial/empty output (see #5).
+                deleteFailedFfmpegOutput(outputPath)
                 null
             }
         }
@@ -211,11 +213,18 @@ actual object FFmpegUtils {
                 "hls_${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
-            segmentInternal(
-                inputPath = inputPath,
-                outputDir = outputDir,
-                onProgress = onProgress
-            )
+            try {
+                segmentInternal(
+                    inputPath = inputPath,
+                    outputDir = outputDir,
+                    onProgress = onProgress
+                )
+            } catch (e: Throwable) {
+                // segmentInternal throws on FFmpeg failure — delete the leftover
+                // hls_<uuid>/ dir before the exception propagates (see #5).
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
+                throw e
+            }
         }
 
     actual suspend fun segmentAndEncryptVideo(
@@ -239,23 +248,30 @@ actual object FFmpegUtils {
                 "hls_${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
-            val keyInfoFile = generateHlsKeyInfoFile(
-                outputDir = outputDir,
-                aesKey = keyHeader.aesKey.unsafeBytes,
-                iv = keyHeader.iv
-            )
+            try {
+                val keyInfoFile = generateHlsKeyInfoFile(
+                    outputDir = outputDir,
+                    aesKey = keyHeader.aesKey.unsafeBytes,
+                    iv = keyHeader.iv
+                )
 
-            val result = segmentInternal(
-                inputPath = inputPath,
-                outputDir = outputDir,
-                keyInfoFile = keyInfoFile,
-                onProgress = onProgress
-            )
-            // Segmentation done — FFmpeg has consumed the key material. Delete it now
-            // so the plaintext AES key doesn't linger in the temp dir (see #7).
-            // segmentInternal throws on failure, so reaching here means success.
-            deleteHlsKeyMaterial(outputDir.absolutePath)
-            result
+                val result = segmentInternal(
+                    inputPath = inputPath,
+                    outputDir = outputDir,
+                    keyInfoFile = keyInfoFile,
+                    onProgress = onProgress
+                )
+                // Segmentation done — FFmpeg has consumed the key material. Delete it now
+                // so the plaintext AES key doesn't linger in the temp dir (see #7).
+                // segmentInternal throws on failure, so reaching here means success.
+                deleteHlsKeyMaterial(outputDir.absolutePath)
+                result
+            } catch (e: Throwable) {
+                // segmentInternal throws on FFmpeg failure — delete the leftover
+                // hls_<uuid>/ dir (key material included) before rethrowing (see #5).
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
+                throw e
+            }
         }
 
     private suspend fun segmentInternal(

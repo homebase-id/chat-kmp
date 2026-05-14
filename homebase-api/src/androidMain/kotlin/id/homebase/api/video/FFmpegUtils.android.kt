@@ -205,6 +205,8 @@ actual object FFmpegUtils {
                 return@withContext outputPath
             } else {
                 Log.e(TAG, "Compression failed: ${swSession.failStackTrace}")
+                // Both encoders failed — delete the partial/empty output (see #5).
+                deleteFailedFfmpegOutput(outputPath)
                 return@withContext null
             }
         }
@@ -305,6 +307,9 @@ actual object FFmpegUtils {
                 return@withContext Pair(playlistPath, segmentPath)
             } else {
                 Log.e(TAG, "Segmentation failed: ${session.failStackTrace}")
+                // Delete the partial playlist + segment left behind (see #5).
+                deleteFailedFfmpegOutput(playlistPath)
+                deleteFailedFfmpegOutput(playlistPath.replace(".m3u8", ".ts"))
                 return@withContext null
             }
         }
@@ -388,6 +393,8 @@ actual object FFmpegUtils {
                 Pair(playlistPath, segmentPath)
             } else {
                 Log.e(TAG, "Segment+Encrypt failed: ${session.failStackTrace}")
+                // Delete the whole hls_<uuid>/ dir — partial segments + key material (see #5).
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
                 null
             }
         }
