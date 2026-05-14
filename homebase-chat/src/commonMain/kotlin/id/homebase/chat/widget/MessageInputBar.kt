@@ -532,10 +532,10 @@ fun MessageTextFieldCompact(
     )
 
     val micButtonSize by animateDpAsState(
-        targetValue = if (isMicrophonePressed) {
-            if (showActionButtons) 72.dp else 48.dp
+        targetValue = if (showActionButtons) {
+            if (isMicrophonePressed) 72.dp else 56.dp
         } else {
-            if (showActionButtons) 56.dp else 40.dp
+            40.dp
         },
         animationSpec = tween(durationMillis = if (showActionButtons) 1000 else 300),
         label = "micButtonSize"
@@ -593,7 +593,7 @@ fun MessageTextFieldCompact(
                     onCancel = { onCancelAttachment(att.id) },
                 )
             }
-        } else {
+        } else if (showActionButtons) {
             Spacer(modifier = Modifier.height(16.dp))
         }
 
