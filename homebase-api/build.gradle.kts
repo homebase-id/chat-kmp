@@ -40,7 +40,6 @@ kotlin {
         }
     }
 
-    // REMOVED so we could support FileKache
 //    @OptIn(ExperimentalWasmDsl::class)
 //    wasmJs {
 //        browser()
@@ -91,8 +90,6 @@ kotlin {
             implementation(libs.filekit.dialogs.compose)
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.immutableCollections)
-            implementation(libs.kache)
-            implementation(libs.kache.file)
             implementation(libs.coil3)
             implementation(libs.okio)
         }
