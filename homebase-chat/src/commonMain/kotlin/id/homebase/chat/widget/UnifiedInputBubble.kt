@@ -24,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,7 +48,6 @@ fun UnifiedInputBubble(
     onCancelEdit: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     modifier: Modifier = Modifier,
-    accentColor: Color = Color.Unspecified,
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -89,14 +87,11 @@ fun UnifiedInputBubble(
             Column {
                 // Reply preview (conditional)
                 if (replyToMessage != null) {
-                    val resolvedAccent = if (accentColor == Color.Unspecified) {
-                        val odinColor = getOdinIdColor(
-                            replyToMessage.originalAuthor?.domainName ?: "",
-                        )
+                    val odinColor = getOdinIdColor(
+                        replyToMessage.originalAuthor?.domainName ?: "",
+                    )
+                    val resolvedAccent =
                         if (isSystemInDarkTheme()) odinColor.darkTheme else odinColor.lightTheme
-                    } else {
-                        accentColor
-                    }
                     ReplyPreviewBar(
                         message = replyToMessage,
                         onDismiss = onDismissReply,

@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -12,13 +13,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.Role
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -119,28 +121,24 @@ fun ReplyPreviewBar(
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .testTag("reply_preview_bar"),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .background(accentColor, RoundedCornerShape(2.dp)),
-        )
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                val isYou = currentOdinId.isNotEmpty() &&
-                    message.originalAuthor?.domainName == currentOdinId
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(accentColor, RoundedCornerShape(2.dp)),
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            ) {
                 Text(
                     text = resolveReplyAuthorName(
                         authorOdinId = message.originalAuthor?.domainName ?: "",
@@ -148,7 +146,7 @@ fun ReplyPreviewBar(
                         resolvedDisplayName = message.displayName,
                         youLabel = stringResource(MR.string.you),
                     ),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
                     maxLines = 1,
@@ -159,45 +157,55 @@ fun ReplyPreviewBar(
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
                         text = previewText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
 
-            // Event date badge — replaces media thumbnail when replying to an event
             if (eventStartLocal != null) {
-                Spacer(modifier = Modifier.width(8.dp))
                 EventDateChip(local = eventStartLocal)
-            } else if (thumbnailData != null) {
-                // Thumbnail if visual media
                 Spacer(modifier = Modifier.width(8.dp))
+            } else if (thumbnailData != null) {
                 HomebaseImage(
                     imageData = thumbnailData,
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .size(60.dp)
+                        .clip(RoundedCornerShape(10.dp)),
                     contentScale = ContentScale.Crop,
                     contentDescription = stringResource(MR.string.cd_reply_thumbnail),
                 )
             }
+        }
 
-            // Close button — always on the far right
-            IconButton(onClick = onDismiss, modifier = Modifier.testTag("reply_dismiss")) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(MR.string.cancel_reply),
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 4.dp, end = 4.dp)
+                .size(28.dp)
+                .background(
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    CircleShape,
                 )
-            }
+                .clickable(role = Role.Button, onClick = onDismiss)
+                .testTag("reply_dismiss"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(MR.string.cancel_reply),
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.surface,
+            )
         }
     }
 }
