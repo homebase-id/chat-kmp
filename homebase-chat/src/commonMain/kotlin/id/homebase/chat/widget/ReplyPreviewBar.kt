@@ -1,7 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -18,9 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.semantics.Role
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -50,6 +51,11 @@ import id.homebase.resources.cd_reply_thumbnail
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
+
+private val QuoteCardShape = RoundedCornerShape(
+    topStart = 18.dp, topEnd = 18.dp,
+    bottomStart = 10.dp, bottomEnd = 10.dp,
+)
 
 /**
  * Signal-style reply preview bar displayed above the message input.
@@ -121,13 +127,21 @@ fun ReplyPreviewBar(
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
 
+    // Signal's signal_colorTransparent3: white overlay at different alphas per theme.
+    val quoteCardAlpha = if (isSystemInDarkTheme()) 0.10f else 0.50f
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .testTag("reply_preview_bar"),
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(QuoteCardShape)
+                .background(Color.White.copy(alpha = quoteCardAlpha)),
+        ) {
             Box(
                 modifier = Modifier
                     .width(4.dp)
@@ -187,25 +201,31 @@ fun ReplyPreviewBar(
             }
         }
 
-        Box(
+        IconButton(
+            onClick = onDismiss,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 4.dp, end = 4.dp)
-                .size(28.dp)
-                .background(
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    CircleShape,
-                )
-                .clickable(role = Role.Button, onClick = onDismiss)
                 .testTag("reply_dismiss"),
-            contentAlignment = Alignment.Center,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Transparent,
+            ),
         ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = stringResource(MR.string.cancel_reply),
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.surface,
-            )
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                        CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.cancel_reply),
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

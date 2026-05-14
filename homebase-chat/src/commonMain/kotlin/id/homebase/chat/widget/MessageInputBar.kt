@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -7,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -134,6 +137,8 @@ import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
+
+private enum class StandaloneFabAction { Confirm, Send, Attach }
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -579,22 +584,29 @@ fun MessageTextFieldCompact(
     Column(
         modifier = modifier
     ) {
-        if (!isRecordingActive) {
-            if (isDesktopOrWeb()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                RichTextEditorButtons(
-                    modifier = Modifier.fillMaxWidth(),
-                    state = state,
-                    enabled = isKeyboardFocused,
-                )
+        AnimatedVisibility(
+            visible = !isRecordingActive,
+            enter = signalFadeIn,
+            exit = signalFadeOut,
+        ) {
+            Column {
+                if (isDesktopOrWeb()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    RichTextEditorButtons(
+                        modifier = Modifier.fillMaxWidth(),
+                        state = state,
+                        enabled = isKeyboardFocused,
+                    )
+                }
+                payloadRenderers.forEach { att ->
+                    PayloadRendererRow(
+                        attachment = att,
+                        onCancel = { onCancelAttachment(att.id) },
+                    )
+                }
             }
-            payloadRenderers.forEach { att ->
-                PayloadRendererRow(
-                    attachment = att,
-                    onCancel = { onCancelAttachment(att.id) },
-                )
-            }
-        } else if (showActionButtons) {
+        }
+        if (isRecordingActive && showActionButtons) {
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -849,6 +861,9 @@ fun MessageTextFieldCompact(
 
                 // Recording progress overlay – covers only the text field Box so the
                 // mic button on the right stays fully accessible to pointer events.
+                // Must be instant (no animation): matchParentSize() requires BoxScope,
+                // and the overlay must appear immediately to block text field input
+                // during the active pointer gesture.
                 if (isRecordingActive) {
                     RecordingInProgress(
                         recordingSeconds,
@@ -861,45 +876,82 @@ fun MessageTextFieldCompact(
 
             if (showActionButtons) {
                 Spacer(modifier = Modifier.width(8.dp))
+
                 if (isRecordingActive) {
                     Spacer(modifier = Modifier.width(56.dp))
-                } else if (showSendButton) {
+                } else {
+                    val standaloneFab = when {
+                        editExistingMode -> StandaloneFabAction.Confirm
+                        showSendButton -> StandaloneFabAction.Send
+                        else -> StandaloneFabAction.Attach
+                    }
                     Column {
-                        if (editExistingMode) {
-                            IconButton(
-                                onClick = onCancelEdit,
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                ),
-                                modifier = Modifier
-                                    .padding(bottom = 4.dp)
-                                    .testTag("cancel_fab")
-                            ) {
+                        AnimatedVisibility(
+                            visible = editExistingMode,
+                            enter = signalFadeIn,
+                            exit = signalFadeOut,
+                        ) {
+                            Column {
+                                IconButton(
+                                    onClick = onCancelEdit,
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        contentColor = MaterialTheme.colorScheme.onSurface,
+                                    ),
+                                    modifier = Modifier
+                                        .padding(bottom = 4.dp)
+                                        .testTag("cancel_fab")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(MR.string.cancel),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                        }
+                        val fabClick = if (standaloneFab == StandaloneFabAction.Attach)
+                            onAddAttachmentClick else onSendMessage
+                        val fabEnabled = when (standaloneFab) {
+                            StandaloneFabAction.Attach -> true
+                            else -> !isSendingMessage
+                        }
+                        val fabTestTag = when (standaloneFab) {
+                            StandaloneFabAction.Confirm -> "confirm_fab"
+                            StandaloneFabAction.Send -> "send_fab"
+                            StandaloneFabAction.Attach -> "attachment_fab"
+                        }
+                        val fabDescription = when (standaloneFab) {
+                            StandaloneFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                            else -> stringResource(MR.string.chat_send_message_button)
+                        }
+                        IconButton(
+                            onClick = fabClick,
+                            enabled = fabEnabled,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                            ),
+                            modifier = Modifier
+                                .padding(bottom = 4.dp)
+                                .testTag(fabTestTag),
+                        ) {
+                            AnimatedContent(
+                                targetState = standaloneFab,
+                                transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                                label = "standalone_fab_icon_toggle",
+                            ) { action ->
                                 Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(MR.string.cancel),
+                                    imageVector = when (action) {
+                                        StandaloneFabAction.Confirm -> Icons.Filled.Check
+                                        StandaloneFabAction.Send -> Icons.AutoMirrored.Filled.Send
+                                        StandaloneFabAction.Attach -> Icons.Default.Add
+                                    },
+                                    contentDescription = fabDescription,
                                 )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
                         }
-                        BlueBackgroundIconButton(
-                            onClick = onSendMessage,
-                            enabled = !isSendingMessage,
-                            imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(MR.string.chat_send_message_button),
-                            testTag = if (editExistingMode) "confirm_fab" else "send_fab",
-                            modifier = Modifier.padding(bottom = 4.dp),
-                        )
                     }
-                } else if (!editExistingMode) {
-                    BlueBackgroundIconButton(
-                        onClick = onAddAttachmentClick,
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.chat_message_attachment_options),
-                        testTag = "attachment_fab",
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
                 }
             }
         }

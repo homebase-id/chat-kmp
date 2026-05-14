@@ -186,7 +186,11 @@ class UnifiedInputBubbleContractsTest {
 
 // ── Pure functions extracted from composable logic for testability ──
 
+const val SIGNAL_TRANSITION_DURATION_MS = 150
+
 enum class RightFabState { CONFIRM, SEND, ADD, HIDDEN }
+
+enum class StandaloneFabState { CONFIRM, SEND, ATTACH, RECORDING_SPACER }
 
 fun resolveFabAlignment(
     editExistingMode: Boolean,
@@ -205,6 +209,32 @@ fun resolveRightFabState(
     else -> RightFabState.ADD
 }
 
+fun resolveStandaloneFabState(
+    editExistingMode: Boolean,
+    showSendButton: Boolean,
+    isRecordingActive: Boolean,
+): StandaloneFabState = when {
+    isRecordingActive -> StandaloneFabState.RECORDING_SPACER
+    editExistingMode -> StandaloneFabState.CONFIRM
+    showSendButton -> StandaloneFabState.SEND
+    else -> StandaloneFabState.ATTACH
+}
+
+fun shouldShowCancelFab(editExistingMode: Boolean): Boolean = editExistingMode
+
+fun shouldShowReplyPreview(hasReply: Boolean): Boolean = hasReply
+
+fun shouldShowEditLabel(editExistingMode: Boolean): Boolean = editExistingMode
+
+fun shouldShowRightFabArea(isRecordingActive: Boolean): Boolean = !isRecordingActive
+
+fun shouldShowPayloadRenderers(isRecordingActive: Boolean): Boolean = !isRecordingActive
+
+fun shouldShowRecordingOverlay(isRecordingActive: Boolean): Boolean = isRecordingActive
+
+fun shouldShowDesktopRteButtons(isRecordingActive: Boolean, isDesktop: Boolean): Boolean =
+    isDesktop && !isRecordingActive
+
 fun shouldApplyStandalonePadding(showActionButtons: Boolean): Boolean = showActionButtons
 
 fun resolveMicSizeDp(
@@ -220,3 +250,8 @@ fun shouldShowRecordingSpacer(
     isRecordingActive: Boolean,
     showActionButtons: Boolean,
 ): Boolean = isRecordingActive && showActionButtons
+
+// ── Quote card background overlay (Signal signal_colorTransparent3) ──
+
+fun resolveQuoteCardAlpha(isDarkTheme: Boolean): Float =
+    if (isDarkTheme) 0.10f else 0.50f

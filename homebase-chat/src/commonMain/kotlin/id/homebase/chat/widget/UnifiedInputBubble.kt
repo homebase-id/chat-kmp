@@ -1,6 +1,13 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +35,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -35,6 +43,8 @@ import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_send_message_button
 import org.jetbrains.compose.resources.stringResource
+
+private enum class BubbleFabAction { Confirm, Send, Attach }
 
 @Composable
 fun UnifiedInputBubble(
@@ -57,51 +67,69 @@ fun UnifiedInputBubble(
             Alignment.Bottom else Alignment.CenterVertically,
     ) {
         // Left FAB: Cancel — only in edit mode
-        if (editExistingMode) {
-            IconButton(
-                onClick = onCancelEdit,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.surface,
-                ),
-                modifier = Modifier
-                    .size(40.dp)
-                    .testTag("cancel_fab"),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(MR.string.cancel),
-                )
+        AnimatedVisibility(
+            visible = editExistingMode,
+            enter = signalExpandHorizontally,
+            exit = signalShrinkHorizontally,
+        ) {
+            Row {
+                IconButton(
+                    onClick = onCancelEdit,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("cancel_fab"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(MR.string.cancel),
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
             }
-            Spacer(modifier = Modifier.width(8.dp))
         }
 
         // Bubble surface — 20dp radius matching Signal
         Surface(
             modifier = Modifier
                 .weight(1f)
-                .animateContentSize(),
+                .animateContentSize(
+                    animationSpec = tween(SIGNAL_TRANSITION_MS, easing = FastOutSlowInEasing),
+                ),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             Column {
-                // Reply preview (conditional)
-                if (replyToMessage != null) {
-                    val odinColor = getOdinIdColor(
-                        replyToMessage.originalAuthor?.domainName ?: "",
-                    )
-                    val resolvedAccent =
-                        if (isSystemInDarkTheme()) odinColor.darkTheme else odinColor.lightTheme
-                    ReplyPreviewBar(
-                        message = replyToMessage,
-                        onDismiss = onDismissReply,
-                        modifier = Modifier.padding(6.dp),
-                        accentColor = resolvedAccent,
-                    )
+                // Reply preview — height reveal matching Signal's ValueAnimator
+                AnimatedVisibility(
+                    visible = replyToMessage != null,
+                    enter = expandVertically(tween(SIGNAL_TRANSITION_MS)),
+                    exit = shrinkVertically(tween(SIGNAL_TRANSITION_MS)),
+                ) {
+                    if (replyToMessage != null) {
+                        val odinColor = getOdinIdColor(
+                            replyToMessage.originalAuthor?.domainName ?: "",
+                        )
+                        val resolvedAccent =
+                            if (isSystemInDarkTheme()) odinColor.darkTheme else odinColor.lightTheme
+                        ReplyPreviewBar(
+                            message = replyToMessage,
+                            onDismiss = onDismissReply,
+                            modifier = Modifier.padding(6.dp),
+                            accentColor = resolvedAccent,
+                        )
+                    }
                 }
 
                 // Edit message label
-                if (editExistingMode) {
+                AnimatedVisibility(
+                    visible = editExistingMode,
+                    enter = signalFadeIn,
+                    exit = signalFadeOut,
+                ) {
                     Row(
                         modifier = Modifier
                             .padding(start = 12.dp, top = 8.dp, end = 12.dp)
@@ -128,38 +156,60 @@ fun UnifiedInputBubble(
             }
         }
 
-        // Right FAB — hidden during recording
-        if (!isRecordingActive) {
-            Spacer(modifier = Modifier.width(8.dp))
-            when {
-                editExistingMode -> {
-                    BlueBackgroundIconButton(
-                        onClick = onSendMessage,
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
-                        enabled = !isSendingMessage,
-                        testTag = "confirm_fab",
-                        modifier = Modifier.size(40.dp),
-                    )
+        // Right FAB — fades out during recording, cross-fades between icons
+        AnimatedVisibility(
+            visible = !isRecordingActive,
+            enter = signalFadeIn,
+            exit = signalFadeOut,
+        ) {
+            Row {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                val fabAction = when {
+                    editExistingMode -> BubbleFabAction.Confirm
+                    showSendButton -> BubbleFabAction.Send
+                    else -> BubbleFabAction.Attach
                 }
-                showSendButton -> {
-                    BlueBackgroundIconButton(
-                        onClick = onSendMessage,
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
-                        enabled = !isSendingMessage,
-                        testTag = "send_fab",
-                        modifier = Modifier.size(40.dp),
-                    )
+                val fabClick = if (fabAction == BubbleFabAction.Attach)
+                    onAddAttachmentClick else onSendMessage
+                val fabEnabled = when (fabAction) {
+                    BubbleFabAction.Attach -> true
+                    else -> !isSendingMessage
                 }
-                else -> {
-                    BlueBackgroundIconButton(
-                        onClick = onAddAttachmentClick,
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.chat_message_attachment_options),
-                        testTag = "attachment_fab",
-                        modifier = Modifier.size(40.dp),
-                    )
+                val fabTestTag = when (fabAction) {
+                    BubbleFabAction.Confirm -> "confirm_fab"
+                    BubbleFabAction.Send -> "send_fab"
+                    BubbleFabAction.Attach -> "attachment_fab"
+                }
+                val fabDescription = when (fabAction) {
+                    BubbleFabAction.Attach -> stringResource(MR.string.chat_message_attachment_options)
+                    else -> stringResource(MR.string.chat_send_message_button)
+                }
+                IconButton(
+                    onClick = fabClick,
+                    enabled = fabEnabled,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    ),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag(fabTestTag),
+                ) {
+                    AnimatedContent(
+                        targetState = fabAction,
+                        transitionSpec = { signalToggleIn togetherWith signalToggleOut },
+                        label = "fab_icon_toggle",
+                    ) { action ->
+                        Icon(
+                            imageVector = when (action) {
+                                BubbleFabAction.Confirm -> Icons.Filled.Check
+                                BubbleFabAction.Send -> Icons.AutoMirrored.Filled.Send
+                                BubbleFabAction.Attach -> Icons.Default.Add
+                            },
+                            contentDescription = fabDescription,
+                        )
+                    }
                 }
             }
         }
