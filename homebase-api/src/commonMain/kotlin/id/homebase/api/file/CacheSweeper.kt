@@ -39,7 +39,8 @@ object CacheSweeper {
             "sweepUntracked: cacheDir=${report.cacheDirPath} " +
                 "totalEntries=${report.entries.size} " +
                 "deleting=${report.untrackedBytes} bytes (untracked) " +
-                "keeping=${report.knownBytes} bytes (tracked Coil caches + android system)"
+                "keepingTracked=${report.knownBytes} bytes (Coil caches) " +
+                "keepingAndroidSystem=${report.androidSystemBytes} bytes (sacred)"
         }
         val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.UNTRACKED), report.cacheDirPath, fileSystem)
@@ -52,10 +53,14 @@ object CacheSweeper {
      * kept (see [CacheAudit.ANDROID_SYSTEM_DIRS]).
      */
     fun sweepAll(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
+        // sweepAll deletes tracked too, but Android system dirs stay sacred —
+        // so the truthful "deleting" total is everything except androidSystem.
+        val deleting = report.untrackedBytes + report.knownBytes
         Logger.i(tag = TAG) {
             "sweepAll: cacheDir=${report.cacheDirPath} " +
                 "totalEntries=${report.entries.size} " +
-                "deleting=${report.totalBytes} bytes (incl. tracked Coil caches)"
+                "deleting=$deleting bytes (untracked + tracked Coil caches) " +
+                "keepingAndroidSystem=${report.androidSystemBytes} bytes (sacred)"
         }
         val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.ALL), report.cacheDirPath, fileSystem)

@@ -69,8 +69,16 @@ object CacheAudit {
         val cacheDirPath: String,
         /** All top-level entries, sorted largest-first. */
         val entries: List<Entry>,
+        /** Bytes in tracked Coil `-v2` caches ([KNOWN_CACHE_DIRS]). */
         val knownBytes: Long,
+        /**
+         * Bytes in entries that are neither tracked Coil caches nor
+         * [ANDROID_SYSTEM_DIRS]. Sweeper-eligible — this is what
+         * `sweepUntracked` actually deletes.
+         */
         val untrackedBytes: Long,
+        /** Bytes in [ANDROID_SYSTEM_DIRS] (sacred — never swept). */
+        val androidSystemBytes: Long,
         val totalBytes: Long,
     )
 
@@ -82,14 +90,14 @@ object CacheAudit {
     fun audit(cacheDirPath: String, fileSystem: FileSystem = systemFileSystem): Report {
         val dir = cacheDirPath.toPath()
         if (!fileSystem.exists(dir)) {
-            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L)
+            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L, 0L)
         }
 
         val children = try {
             fileSystem.list(dir)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "cannot list cache dir $cacheDirPath" }
-            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L)
+            return Report(cacheDirPath, emptyList(), 0L, 0L, 0L, 0L)
         }
 
         val entries = ArrayList<Entry>(children.size)
@@ -117,15 +125,25 @@ object CacheAudit {
 
         var known = 0L
         var untracked = 0L
+        var androidSystem = 0L
         for (e in entries) {
-            if (e.known) known += e.sizeBytes else untracked += e.sizeBytes
+            // Three disjoint buckets — androidSystem entries must NOT spill into
+            // `untracked`, otherwise the sweeper logs "deleting=N (untracked)"
+            // for bytes it will actually KEEP and the post-sweep "freed=0" line
+            // looks like a delete failure.
+            when {
+                e.androidSystem -> androidSystem += e.sizeBytes
+                e.known -> known += e.sizeBytes
+                else -> untracked += e.sizeBytes
+            }
         }
         return Report(
             cacheDirPath = cacheDirPath,
             entries = entries,
             knownBytes = known,
             untrackedBytes = untracked,
-            totalBytes = known + untracked,
+            androidSystemBytes = androidSystem,
+            totalBytes = known + untracked + androidSystem,
         )
     }
 
@@ -134,6 +152,7 @@ object CacheAudit {
         Logger.i(tag = TAG) {
             "cacheDir=${report.cacheDirPath} total=${report.totalBytes} " +
                 "known=${report.knownBytes} untracked=${report.untrackedBytes} " +
+                "androidSystem=${report.androidSystemBytes} " +
                 "entries=${report.entries.size}"
         }
         for (e in report.entries) {

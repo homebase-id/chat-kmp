@@ -33,6 +33,7 @@ class CacheAuditTest {
 
         assertEquals(300L, report.knownBytes)
         assertEquals(550L, report.untrackedBytes)
+        assertEquals(0L, report.androidSystemBytes)
         assertEquals(850L, report.totalBytes)
         assertEquals(3, report.entries.size)
         // sorted largest-first
@@ -114,5 +115,28 @@ class CacheAuditTest {
             assertFalse(entry.known, "$name must not be classified as a tracked Coil cache")
             assertTrue(entry.label.isNotBlank(), "$name needs a descriptive label")
         }
+    }
+
+    @Test
+    fun audit_androidSystemBytes_areBucketedSeparately_notLumpedIntoUntracked() {
+        // Real-device regression: when only sacred dirs lived alongside the
+        // tracked Coil caches, the audit lumped WebView/Crash Reports/etc. into
+        // `untrackedBytes`. The sweeper then logged "deleting=N bytes (untracked)"
+        // for entries it would actually KEEP, and the post-sweep "freed=0 bytes"
+        // line looked like a delete failure. Three disjoint buckets — each entry
+        // counted in exactly one — keep the headline numbers honest.
+        val fs = FakeFileSystem()
+        fs.createDirectories(cacheDir)
+        fs.writeFile("/cache/homebase-payloads-v2/x", 100)         // tracked Coil
+        fs.writeFile("/cache/WebView/cookies.bin", 200)            // android system
+        fs.writeFile("/cache/Crash Reports/r.json", 50)            // android system
+        fs.writeFile("/cache/hls_orphan/index.ts", 400)            // untracked
+
+        val report = CacheAudit.audit(cacheDir.toString(), fs)
+
+        assertEquals(100L, report.knownBytes, "tracked Coil bucket")
+        assertEquals(400L, report.untrackedBytes, "untracked bucket — must NOT include WebView/Crash Reports")
+        assertEquals(250L, report.androidSystemBytes, "android system bucket")
+        assertEquals(750L, report.totalBytes, "total = known + untracked + androidSystem")
     }
 }
