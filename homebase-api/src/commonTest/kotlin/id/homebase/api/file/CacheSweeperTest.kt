@@ -9,12 +9,17 @@ import kotlin.test.assertTrue
 
 class CacheSweeperTest {
 
-    private fun entry(name: String, known: Boolean = false): CacheAudit.Entry =
+    private fun entry(
+        name: String,
+        known: Boolean = false,
+        androidSystem: Boolean = false,
+    ): CacheAudit.Entry =
         CacheAudit.Entry(
             name = name,
             isDirectory = true,
             sizeBytes = 100L,
             known = known,
+            androidSystem = androidSystem,
             label = "test",
         )
 
@@ -52,6 +57,25 @@ class CacheSweeperTest {
             SweepAction.ORPHAN_COIL_DELETE,
             decide(entry(ORPHAN_COIL_DIR_NAME), SweepMode.ALL),
         )
+    }
+
+    @Test
+    fun androidSystemDirs_areAlwaysKept_regardlessOfMode() {
+        // Sacred set: WebView/, oat_primary/, data/, Crash Reports/. Even on
+        // logout (full sweep), we don't touch them — they're owned by the
+        // Android platform / WebView / Crashlytics, not the chat app.
+        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports")) {
+            assertEquals(
+                SweepAction.KEEP,
+                decide(entry(name, androidSystem = true), SweepMode.UNTRACKED),
+                "$name must be KEPT in untracked sweep",
+            )
+            assertEquals(
+                SweepAction.KEEP,
+                decide(entry(name, androidSystem = true), SweepMode.ALL),
+                "$name must be KEPT in full sweep too",
+            )
+        }
     }
 
     @Test

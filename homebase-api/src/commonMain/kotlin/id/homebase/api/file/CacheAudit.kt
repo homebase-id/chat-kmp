@@ -36,6 +36,22 @@ object CacheAudit {
         "homebase-public-images-v2",
     )
 
+    /**
+     * Top-level entries Android places inside our `cacheDir` that are owned by
+     * the platform / WebView / a crash reporter — not by us. Wiping any of
+     * these is destructive: nukes in-app browser cookies + storage, forces a
+     * slow ART recompile of WebView native libs, or loses pending crash
+     * reports. The CacheSweeper KEEPS these regardless of mode (even on
+     * logout / "Clear caches"). The user-facing way to clear browser state is
+     * `WebView.clearCache()`, not deleting files under it.
+     */
+    val ANDROID_SYSTEM_DIRS: Set<String> = setOf(
+        "WebView",
+        "oat_primary",
+        "data",
+        "Crash Reports",
+    )
+
     /** A single top-level entry of the cache directory. */
     data class Entry(
         val name: String,
@@ -43,6 +59,8 @@ object CacheAudit {
         val sizeBytes: Long,
         /** True when [name] is one of [KNOWN_CACHE_DIRS]. */
         val known: Boolean,
+        /** True when [name] is one of [ANDROID_SYSTEM_DIRS] — the sacred set. */
+        val androidSystem: Boolean = false,
         /** Best-guess human-readable origin, for the log line. Diagnostic only. */
         val label: String,
     )
@@ -87,6 +105,7 @@ object CacheAudit {
                         isDirectory = isDir,
                         sizeBytes = size,
                         known = name in KNOWN_CACHE_DIRS,
+                        androidSystem = name in ANDROID_SYSTEM_DIRS,
                         label = classify(name),
                     )
                 )
@@ -118,11 +137,18 @@ object CacheAudit {
                 "entries=${report.entries.size}"
         }
         for (e in report.entries) {
+            val origin = when {
+                e.androidSystem -> "android system"
+                e.known -> "tracked"
+                else -> "untracked"
+            }
             val line = "  ${e.name}${if (e.isDirectory) "/" else ""} — ${e.sizeBytes} bytes " +
-                "[${if (e.known) "tracked" else "untracked"}: ${e.label}]"
+                "[$origin: ${e.label}]"
             // Untracked entries over the threshold are the ones worth chasing —
             // log them at WARN so they stand out in an `adb logcat` capture.
-            if (!e.known && e.sizeBytes >= LOUD_THRESHOLD_BYTES) {
+            // Tracked Coil caches and Android system dirs are never WARN-worthy
+            // here: we don't (and won't) sweep them.
+            if (!e.known && !e.androidSystem && e.sizeBytes >= LOUD_THRESHOLD_BYTES) {
                 Logger.w(tag = TAG) { line }
             } else {
                 Logger.i(tag = TAG) { line }
@@ -137,6 +163,10 @@ object CacheAudit {
      */
     private fun classify(name: String): String = when {
         name in KNOWN_CACHE_DIRS -> "tracked Coil disk cache"
+        name == "WebView" -> "Android system: WebView (cookies/storage) — sacred"
+        name == "oat_primary" -> "Android system: WebView ART/OAT cache — sacred"
+        name == "data" -> "Android system: WebView data — sacred"
+        name == "Crash Reports" -> "Android system: crash reporter — sacred"
         name == "hbvid_preload" -> "legacy video preload dir"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
         name == "homebase-payloads" || name == "homebase-thumbs" ||

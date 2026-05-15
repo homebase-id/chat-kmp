@@ -89,4 +89,30 @@ class CacheAuditTest {
         val fs = FakeFileSystem()
         assertEquals(0L, fs.directorySizeBytes("/cache/does-not-exist".toPath()))
     }
+
+    @Test
+    fun audit_flagsAndroidSystemDirs_andLabelsThem() {
+        // These four directories live under the app's cacheDir on Android but
+        // are managed by the Android platform / WebView / Crashlytics — never
+        // by us. The audit must mark them so the CacheSweeper can KEEP them
+        // regardless of sweep mode (even on logout / "Clear caches"). Wiping
+        // them would, in order: nuke in-app browser cookies + storage (WebView,
+        // data), force a slow ART re-compile of WebView native libs
+        // (oat_primary), and lose pending crash reports (Crash Reports).
+        val fs = FakeFileSystem()
+        fs.createDirectories(cacheDir)
+        fs.writeFile("/cache/WebView/cookies.bin", 100)
+        fs.writeFile("/cache/oat_primary/some.oat", 100)
+        fs.writeFile("/cache/data/x.bin", 100)
+        fs.writeFile("/cache/Crash Reports/report.json", 100)
+
+        val report = CacheAudit.audit(cacheDir.toString(), fs)
+
+        for (name in listOf("WebView", "oat_primary", "data", "Crash Reports")) {
+            val entry = report.entries.single { it.name == name }
+            assertTrue(entry.androidSystem, "$name must be flagged as Android system")
+            assertFalse(entry.known, "$name must not be classified as a tracked Coil cache")
+            assertTrue(entry.label.isNotBlank(), "$name needs a descriptive label")
+        }
+    }
 }

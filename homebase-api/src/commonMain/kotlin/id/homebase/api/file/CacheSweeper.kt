@@ -86,6 +86,11 @@ internal enum class SweepAction { KEEP, DELETE, ORPHAN_COIL_DELETE }
  * unit-tested without log-capturing.
  */
 internal fun decide(entry: CacheAudit.Entry, mode: SweepMode): SweepAction = when {
+    // Sacred set: WebView/, oat_primary/, data/, Crash Reports/. Owned by the
+    // Android platform / WebView / Crashlytics — wiping them nukes browser
+    // cookies, forces a slow ART recompile, or loses pending crash reports.
+    // Wins over every other rule — including the full "logout" sweep.
+    entry.androidSystem -> SweepAction.KEEP
     entry.name == ORPHAN_COIL_DIR_NAME -> SweepAction.ORPHAN_COIL_DELETE
     !entry.known -> SweepAction.DELETE
     mode == SweepMode.ALL -> SweepAction.DELETE
