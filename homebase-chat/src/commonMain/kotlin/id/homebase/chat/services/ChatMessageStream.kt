@@ -3,6 +3,7 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -411,6 +412,7 @@ class ChatMessageStream(
                 sortOrder = sortOrder,
                 sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
+                fileStateAnyOf = listOf(FileState.Active.value),
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                 groupIdAnyOf = listOf(conversationId)
             )

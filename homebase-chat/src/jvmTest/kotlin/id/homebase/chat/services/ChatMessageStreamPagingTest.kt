@@ -5,6 +5,7 @@ package id.homebase.chat.services
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -107,6 +108,7 @@ class ChatMessageStreamPagingTest {
             sortOrder = sortOrder,
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
+            fileStateAnyOf = listOf(FileState.Active.value),
             filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
             groupIdAnyOf = listOf(conversationId),
         )
@@ -127,6 +129,7 @@ class ChatMessageStreamPagingTest {
         uniqueId: Uuid = Uuid.random(),
         content: String = "msg-${uniqueId.toString().take(8)}",
         author: String = testDomain,
+        fileState: String = "active",
     ): Uuid {
         val fileId = Uuid.random()
         val messageContent =
@@ -136,7 +139,7 @@ class ChatMessageStreamPagingTest {
         val jsonHeader = """{
             "fileId": "$fileId",
             "driveId": "$chatDriveId",
-            "fileState": "active",
+            "fileState": "$fileState",
             "fileSystemType": "standard",
             "serverFileIsEncrypted": false,
             "keyHeader": {
@@ -197,6 +200,43 @@ class ChatMessageStreamPagingTest {
     }
 
     // ---------- tests ----------
+
+    /**
+     * Regression: with the SQL-side `fileStateAnyOf = [Active]` filter wired
+     * into `fetchMessages` (and mirrored in [fetchPage]), soft-deleted rows
+     * must never reach the UI. Seeds an interleaved mix of active and
+     * deleted messages and asserts only the actives come back, with the
+     * deleted uniqueIds completely absent from the result set.
+     */
+    @Test
+    fun fetchMessages_excludesSoftDeletedRows() = runTest {
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+
+        val activeIds = mutableListOf<Uuid>()
+        val deletedIds = mutableListOf<Uuid>()
+        // Interleave active and deleted rows so a sort-order bug couldn't
+        // accidentally clip the deleted ones off the bottom of the page.
+        for (i in 0 until 10) {
+            val state = if (i % 2 == 0) "active" else "deleted"
+            val id = seedMessage(
+                conversationId = conversationId,
+                userDateMs = baseTime + i * 1000L,
+                fileState = state,
+            )
+            if (state == "active") activeIds += id else deletedIds += id
+        }
+
+        val (page, hasMore, _) = fetchPage(conversationId, limit = 50)
+
+        assertEquals(activeIds.size, page.size, "only active rows must surface")
+        assertEquals(activeIds.toSet(), page.map { it.id }.toSet(), "exactly the active ids")
+        assertTrue(
+            page.map { it.id }.none { it in deletedIds },
+            "no deleted id may appear in the page",
+        )
+        assertFalse(hasMore, "10 actives fit within limit=50; hasMore must be false")
+    }
 
     @Test
     fun forwardCursorTraversal_returnsAllMessagesInOrder_withoutDuplicates() = runTest {
