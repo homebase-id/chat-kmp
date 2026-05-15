@@ -11,5 +11,6 @@ class FakeFileOperationsProvider : FileOperationsProvider {
     override fun deleteTempFile(path: String): Boolean = false
     override fun getFileSize(path: String): Long = 0L
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = throw UnsupportedOperationException()
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = throw UnsupportedOperationException()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = throw UnsupportedOperationException()
 }

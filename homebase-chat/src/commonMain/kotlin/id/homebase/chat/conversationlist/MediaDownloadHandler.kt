@@ -74,8 +74,12 @@ internal class MediaDownloadHandler(
                         "jpeg" -> "jpg"
                         else -> extension
                     }
-                    val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                        bytes, "share_", ".$extension"
+                    // Cleartext copy of an end-to-end-encrypted Homebase
+                    // payload — sequestered into the share_outbound subdir so
+                    // the cold-start + foreground sweepers can reap it as a
+                    // single unit, bounding its on-disk lifetime.
+                    val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
+                        bytes, ".$extension"
                     )
                     sendEvent(ShareFile(tempPath))
                 } else {

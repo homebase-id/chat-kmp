@@ -12,6 +12,7 @@ import id.homebase.api.ActivityProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
@@ -102,33 +103,90 @@ actual object VideoThumbnailExtractor {
 
         val context = ActivityProvider.requireActivity().applicationContext
         val isContentUri = filePath.startsWith("content://") || filePath.startsWith("content:")
+        if (!isContentUri && !File(filePath).exists()) return@channelFlow
 
-        // Open one MMR; it's safe to call getFrameAtTime sequentially on a single instance,
-        // and the underlying decode is bottlenecked by the codec anyway. Parallel MMRs
-        // tend to fight over the HW decoder pool.
+        val source: VideoThumbnailsMediaCodec.Source = if (isContentUri) {
+            VideoThumbnailsMediaCodec.Source.ContentUri(context, filePath.toUri())
+        } else {
+            VideoThumbnailsMediaCodec.Source.Path(filePath)
+        }
+
+        // Even spacing over [0, duration], biased to mid-step so the first frame isn't always
+        // at t=0 (which is sometimes a black/blank frame on captured videos). MediaCodec gives
+        // us PTS in microseconds on the BufferInfo, but we report wall-clock millis tied to the
+        // requested slot — that's what VideoTrimScrubber displays.
+        val step = durationMs.toDouble() / frameCount
+        fun timeForIndex(i: Int): Long = (step * (i + 0.5)).toLong().coerceIn(0L, durationMs - 1)
+
+        // Tier 1: MediaCodec single-pass. Cancellation via channel close → cb returns false.
+        var emitted = 0
+        var lastFailure: Throwable? = null
+        VideoThumbnailsMediaCodec.extract(
+            source = source,
+            count = frameCount,
+            targetHeightPx = targetHeightPx,
+            callback = object : VideoThumbnailsMediaCodec.Callback {
+                override fun onFrame(index: Int, presentationTimeMs: Long, bitmap: Bitmap): Boolean {
+                    if (!isActive) return false
+                    val jpeg = bitmap.toJpegBytes(STRIP_JPEG_QUALITY)
+                    bitmap.recycle()
+                    val ok = trySend(IndexedFrame(index, timeForIndex(index), jpeg)).isSuccess
+                    if (ok) emitted++
+                    return ok && isActive
+                }
+
+                override fun onFailed(t: Throwable) {
+                    lastFailure = t
+                }
+            },
+        )
+
+        if (emitted >= frameCount || !isActive) return@channelFlow
+
+        // Tier 2: MediaMetadataRetriever fallback. Triggered when MediaCodec produced nothing
+        // (codec refused the stream / threw) or stopped short. Skip any indices we already
+        // emitted on tier 1 so the scrubber doesn't see duplicates.
+        if (lastFailure != null) {
+            Log.w(TAG, "MediaCodec path failed; falling back to MMR for $filePath", lastFailure)
+        } else if (emitted in 1 until frameCount) {
+            Log.w(TAG, "MediaCodec path produced only $emitted/$frameCount frames; filling gaps via MMR")
+        }
+        extractStripViaMmr(
+            context = context,
+            filePath = filePath,
+            isContentUri = isContentUri,
+            durationMs = durationMs,
+            frameCount = frameCount,
+            targetHeightPx = targetHeightPx,
+            startFromIndex = emitted,
+        )
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun ProducerScope<IndexedFrame>.extractStripViaMmr(
+        context: Context,
+        filePath: String,
+        isContentUri: Boolean,
+        durationMs: Long,
+        frameCount: Int,
+        targetHeightPx: Int,
+        startFromIndex: Int,
+    ) {
         val retriever = MediaMetadataRetriever()
         try {
             if (isContentUri) {
                 retriever.setDataSource(context, filePath.toUri())
             } else {
-                if (!File(filePath).exists()) return@channelFlow
                 retriever.setDataSource(filePath)
             }
 
-            // Spread N samples evenly across [0, duration], biased to start at half-step
-            // so the first frame isn't always at t=0 (which is sometimes the black/blank
-            // frame on captured videos).
             val step = durationMs.toDouble() / frameCount
-            for (i in 0 until frameCount) {
+            for (i in startFromIndex until frameCount) {
                 if (!isActive) break
                 val targetMs = (step * (i + 0.5)).toLong().coerceIn(0L, durationMs - 1)
                 val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     retriever.getScaledFrameAtTime(
                         targetMs * 1000L,
                         MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        // width = -1 isn't supported; pass an aspect-preserving width by
-                        // first measuring (cheap header read), or just pass a wide enough
-                        // bounding width so getScaledFrameAtTime can scale to fit.
                         targetHeightPx * 4,
                         targetHeightPx,
                     )
@@ -152,13 +210,13 @@ actual object VideoThumbnailExtractor {
                     bitmap.recycle()
                     trySend(IndexedFrame(i, targetMs, jpeg))
                 } else {
-                    Log.d(TAG, "strip frame $i @${targetMs}ms — null")
+                    Log.d(TAG, "MMR strip frame $i @${targetMs}ms — null")
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "extractThumbnailStrip failed for $filePath", e)
+            Log.w(TAG, "MMR fallback failed for $filePath", e)
         } finally {
             retriever.runCatching { release() }
         }
-    }.flowOn(Dispatchers.IO)
+    }
 }

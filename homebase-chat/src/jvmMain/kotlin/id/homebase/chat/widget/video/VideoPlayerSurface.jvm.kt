@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import com.sun.net.httpserver.HttpServer
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
@@ -97,7 +98,9 @@ actual fun VideoPlayerSurface(
     DisposableEffect(data) {
         onDispose {
             httpServer?.stop(0)
-            tempDir?.deleteRecursively()
+            tempDir?.let { dir ->
+                dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
+            }
         }
     }
 

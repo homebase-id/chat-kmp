@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,8 +121,8 @@ class DriveFileProviderCached(
         // the construction thread so an upgrade-day delete of a populated
         // 500 MB dir cannot block whatever path instantiates this class.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-payloads".toPath()) }
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-thumbs".toPath()) }
+            safeDeleteRecursively(directory, "homebase-payloads")
+            safeDeleteRecursively(directory, "homebase-thumbs")
         }
     }
 
@@ -500,8 +501,6 @@ class DriveFileProviderCached(
                     .joinToString(":")
 
     suspend fun clearCaches() {
-        val preloadDir = "$directory/hbvid_preload".toPath()
-
         // Coil's DiskCache.clear() is documented as thread-safe; it serialises
         // internally against in-flight readers/writers.
         try {
@@ -513,12 +512,6 @@ class DriveFileProviderCached(
             thumbDiskCache.clear()
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
-        }
-
-        try {
-            fileSystem.deleteRecursively(preloadDir)
-        } catch (e: Exception) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hbvid_preload dir delete failed" }
         }
 
         notFoundCache = emptySet()

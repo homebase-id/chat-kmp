@@ -68,6 +68,7 @@ import id.homebase.resources.storage_defragment_button
 import id.homebase.resources.storage_drive_count_format
 import id.homebase.resources.storage_drives_header
 import id.homebase.resources.storage_drives_none
+import id.homebase.resources.storage_other_cache_files
 import id.homebase.resources.storage_other_header
 import id.homebase.resources.storage_total_cache_format
 import org.jetbrains.compose.resources.StringResource
@@ -224,10 +225,17 @@ fun StorageSettingsUi(
             SectionHeader(title = stringResource(MR.string.storage_other_header))
 
             Card(modifier = Modifier.fillMaxWidth()) {
-                SimpleSizeRow(
-                    label = stringResource(MR.string.storage_database),
-                    sizeBytes = uiState.databaseSizeBytes,
-                )
+                Column {
+                    SimpleSizeRow(
+                        label = stringResource(MR.string.storage_database),
+                        sizeBytes = uiState.databaseSizeBytes,
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    SimpleSizeRow(
+                        label = stringResource(MR.string.storage_other_cache_files),
+                        sizeBytes = uiState.otherCacheBytes,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

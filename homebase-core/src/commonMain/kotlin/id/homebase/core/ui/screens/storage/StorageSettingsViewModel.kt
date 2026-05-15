@@ -8,7 +8,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.file.CacheAudit
+import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.directorySizeBytes
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
@@ -21,7 +24,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.uuid.Uuid
 
@@ -101,6 +103,18 @@ class StorageSettingsViewModel(
                 probeOrphanCoilDiskCache()
             }
 
+            // Everything in the cache directory the app neither tracks nor caps.
+            // The orphan Coil dir is part of that untracked total but gets its
+            // own red warning row, so subtract it here to avoid double-counting.
+            val otherCacheBytes = withContext(Dispatchers.Default) {
+                runCatching {
+                    CacheAudit.audit(fileOperationsProvider.getCacheDirectory()).untrackedBytes
+                }.getOrElse {
+                    Logger.w(tag = "StorageSettings", throwable = it) { "cache audit failed" }
+                    0L
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     caches = caches,
@@ -109,6 +123,7 @@ class StorageSettingsViewModel(
                     totalCacheBytes = total,
                     databaseSizeBytes = dbSize,
                     orphanCoilDiskBytes = orphanCoilBytes,
+                    otherCacheBytes = (otherCacheBytes - orphanCoilBytes).coerceAtLeast(0L),
                     isLoading = false,
                 )
             }
@@ -128,7 +143,7 @@ class StorageSettingsViewModel(
         return runCatching {
             val path = "${fileOperationsProvider.getCacheDirectory()}/coil3_disk_cache".toPath()
             if (!fileSystem.exists(path)) return@runCatching 0L
-            val total = directorySizeBytes(path)
+            val total = fileSystem.directorySizeBytes(path)
             if (total > 0L) {
                 Logger.e(tag = "StorageSettings") {
                     "orphan coil3_disk_cache detected: $total bytes at $path — " +
@@ -140,15 +155,6 @@ class StorageSettingsViewModel(
             Logger.w(tag = "StorageSettings", throwable = it) { "orphan coil disk probe failed" }
             0L
         }
-    }
-
-    private fun directorySizeBytes(dir: Path): Long {
-        var total = 0L
-        for (child in fileSystem.list(dir)) {
-            val meta = fileSystem.metadata(child)
-            total += if (meta.isDirectory) directorySizeBytes(child) else (meta.size ?: 0L)
-        }
-        return total
     }
 
     private suspend fun loadDriveRows(): List<DriveRowState> {
@@ -194,10 +200,15 @@ class StorageSettingsViewModel(
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }
             runCatching { imageLoader.memoryCache?.clear() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "coil memory clear failed" } }
+            // CacheSweeper absorbs the role of "delete orphan coil3_disk_cache" + adds
+            // diagnostic logging for any other untracked entries — replaces the
+            // standalone safeDeleteRecursively("coil3_disk_cache") line that used to
+            // live here.
             runCatching {
-                val orphan = "${fileOperationsProvider.getCacheDirectory()}/coil3_disk_cache".toPath()
-                if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
-            }.onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "orphan coil disk clear failed" } }
+                CacheSweeper.sweepUntracked(CacheAudit.audit(fileOperationsProvider.getCacheDirectory()))
+            }.onFailure {
+                Logger.w(tag = "StorageSettings", throwable = it) { "post-clear cache sweep failed" }
+            }
             _uiState.update { it.copy(isClearing = false, uiEvent = StorageSettingsUiEvent.CachesCleared) }
             load()
         }

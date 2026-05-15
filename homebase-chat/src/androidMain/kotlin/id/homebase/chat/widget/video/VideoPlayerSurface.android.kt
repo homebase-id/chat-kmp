@@ -34,6 +34,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
@@ -74,7 +75,9 @@ actual fun VideoPlayerSurface(
     DisposableEffect(data) {
         onDispose {
             exoPlayer?.release()
-            tempDir?.deleteRecursively()
+            tempDir?.let { dir ->
+                dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
+            }
         }
     }
 

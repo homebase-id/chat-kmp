@@ -6,6 +6,7 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -100,8 +101,8 @@ class PublicProfileProviderCached(
         // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
         // directories — see DriveFileProviderCached.init for rationale.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-profiles".toPath()) }
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-images".toPath()) }
+            safeDeleteRecursively(directory, "homebase-public-profiles")
+            safeDeleteRecursively(directory, "homebase-public-images")
         }
     }
 

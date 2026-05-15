@@ -42,12 +42,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -167,13 +169,13 @@ private fun DiceRollComposerContent(
             // Tumble animation: cycle through random faces, then settle. For
             // OE we tumble the initial 2-die pair only; the trailing chain (if
             // any) pops in when rolling completes.
-            val frames = TUMBLE_FRAMES
-            for (frame in 0 until frames) {
-                for (i in 0 until count) {
-                    displayValues[i] = Random.nextInt(1, faces + 1)
-                }
-                delay(TUMBLE_FRAME_MS)
-            }
+            runTumble(
+                frames = TUMBLE_FRAMES,
+                count = count,
+                faces = faces,
+                displayValues = displayValues,
+                frameDelayMs = TUMBLE_FRAME_MS,
+            )
             // Grow the preview list to fit the full OE chain before stamping
             // in the final faces.
             while (displayValues.size < finalResults.size) displayValues.add(null)
@@ -221,12 +223,18 @@ private fun DiceRollComposerContent(
     }
 
     // Subscribe to shake events while the composer is open (when available).
+    // The collect lambda lives for the lifetime of this composition, so it
+    // would otherwise capture the *first* composition's `doRoll` — whose
+    // `count` snapshot can disagree with `displayValues.size` once the user
+    // toggles OE / changes the count. `rememberUpdatedState` re-binds on
+    // every recomposition so a shake always invokes the current `doRoll`.
+    val currentDoRoll by rememberUpdatedState(doRoll)
     LaunchedEffect(shakeDetector.isAvailable) {
         if (!shakeDetector.isAvailable) return@LaunchedEffect
         shakeDetector.events().collect { event ->
             shakeSamples = event.accelSamples
             shakeTriggered = true
-            doRoll()
+            currentDoRoll()
         }
     }
 
@@ -492,6 +500,7 @@ private fun OpenEndedToggle(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = enabled,
+                modifier = Modifier.testTag(DICE_OE_TOGGLE_TAG),
             )
         }
         if (checked) {
@@ -504,8 +513,34 @@ private fun OpenEndedToggle(
     }
 }
 
+internal const val DICE_OE_TOGGLE_TAG = "dice_oe_toggle"
+
 private const val TUMBLE_FRAMES = 6
 private const val TUMBLE_FRAME_MS = 80L
+
+/**
+ * Tumble animation inner loop, extracted so it can be unit-tested. The upper
+ * bound is clamped against `displayValues.size` because the list can be
+ * resized mid-flight by `LaunchedEffect(count, faces)` if the user toggles
+ * mode while a stale `doRoll` (captured pre-toggle) is still running — see
+ * the `rememberUpdatedState(doRoll)` note above.
+ */
+internal suspend fun runTumble(
+    frames: Int,
+    count: Int,
+    faces: Int,
+    displayValues: SnapshotStateList<Int?>,
+    frameDelayMs: Long,
+    randomFace: (Int) -> Int = { faceCount -> Random.nextInt(1, faceCount + 1) },
+) {
+    for (frame in 0 until frames) {
+        val limit = minOf(count, displayValues.size)
+        for (i in 0 until limit) {
+            displayValues[i] = randomFace(faces)
+        }
+        delay(frameDelayMs)
+    }
+}
 
 private fun coerceFaces(value: Int): Int =
     if (value in DiceRollDescriptor.ALLOWED_FACES) value else DiceRollPreferences.DEFAULT_FACES
