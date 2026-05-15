@@ -9,9 +9,9 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.file.CacheAudit
+import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.directorySizeBytes
-import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
@@ -200,7 +200,15 @@ class StorageSettingsViewModel(
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }
             runCatching { imageLoader.memoryCache?.clear() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "coil memory clear failed" } }
-            safeDeleteRecursively(fileOperationsProvider.getCacheDirectory(), "coil3_disk_cache")
+            // CacheSweeper absorbs the role of "delete orphan coil3_disk_cache" + adds
+            // diagnostic logging for any other untracked entries — replaces the
+            // standalone safeDeleteRecursively("coil3_disk_cache") line that used to
+            // live here.
+            runCatching {
+                CacheSweeper.sweepUntracked(CacheAudit.audit(fileOperationsProvider.getCacheDirectory()))
+            }.onFailure {
+                Logger.w(tag = "StorageSettings", throwable = it) { "post-clear cache sweep failed" }
+            }
             _uiState.update { it.copy(isClearing = false, uiEvent = StorageSettingsUiEvent.CachesCleared) }
             load()
         }

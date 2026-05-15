@@ -23,7 +23,12 @@ class StartupCacheAudit(fileOperationsProvider: FileOperationsProvider) {
         val cacheDir = fileOperationsProvider.getCacheDirectory()
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             runCatching {
-                CacheAudit.logReport(CacheAudit.audit(cacheDir))
+                val report = CacheAudit.audit(cacheDir)
+                CacheAudit.logReport(report)
+                // Dry-run sweep: logs what the future startup sweep WOULD delete.
+                // Once on-device logs confirm the targets, this flips from log to
+                // real safeDeleteRecursively. See CacheSweeper.
+                CacheSweeper.sweepUntracked(report)
             }.onFailure {
                 Logger.w(tag = "CacheAudit", throwable = it) { "startup cache audit failed" }
             }

@@ -3,8 +3,9 @@ package id.homebase.core.di
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
+import id.homebase.api.file.CacheAudit
+import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 
@@ -166,13 +167,23 @@ val appModule = module {
             driveFileProviderCached = get(),
             publicProfileProviderCached = get(),
             clearPlatformCaches = {
+                // Logout sweep. In dry-run for the broader cleanup; the orphan
+                // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
+                // the role the standalone safeDeleteRecursively("coil3_disk_cache") line
+                // used to play here.
+                runCatching {
+                    CacheSweeper.sweepAll(CacheAudit.audit(fileOps.getCacheDirectory()))
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "logout cache sweep failed"
+                    }
+                }
                 runCatching { imageLoader.memoryCache?.clear() }
                     .onFailure {
                         Logger.w(tag = "YouAuthFlowManager", throwable = it) {
                             "coil memory cache clear failed on logout"
                         }
                     }
-                safeDeleteRecursively(fileOps.getCacheDirectory(), "coil3_disk_cache")
                 pendingUpgradeManager.reset()
             },
         )
