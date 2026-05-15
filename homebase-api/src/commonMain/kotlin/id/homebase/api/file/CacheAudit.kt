@@ -179,7 +179,12 @@ object CacheAudit {
         name.startsWith("hlsdl_") -> "HLS download output"
         name.startsWith("input_") -> "FFmpeg input cache"
         name.startsWith("thumb0001-") -> "FFmpeg thumbnail"
-        name.startsWith("share_") || name.startsWith("resolved_") -> "share temp file"
+        name == SHARE_OUTBOUND_DIR_NAME ->
+            "share-OUT decrypted Homebase payload (security: sequestered + reaped)"
+        name.startsWith("share_") ->
+            "share-OUT decrypted Homebase payload (security: legacy, top-level)"
+        name.startsWith("resolved_") ->
+            "share-IN / picker temp (plaintext input from gallery or sharing app)"
         else -> "unknown"
     }
 

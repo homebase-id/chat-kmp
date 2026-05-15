@@ -120,6 +120,25 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    override suspend fun writeBytesToShareOutboundFile(
+        bytes: ByteArray,
+        suffix: String,
+    ): String {
+        val cacheDir = getCacheDirectory().trimEnd('/')
+        val dir = "$cacheDir/$SHARE_OUTBOUND_DIR_NAME"
+        val fm = NSFileManager.defaultManager
+        if (!fm.fileExistsAtPath(dir)) {
+            fm.createDirectoryAtPath(dir, true, null, null)
+        }
+        val filePath = "$dir/share_${NSUUID().UUIDString}$suffix"
+        val data = bytes.usePinned { pinned ->
+            NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+        }
+        data.writeToFile(filePath, atomically = true)
+        return filePath
+    }
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>

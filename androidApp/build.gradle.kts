@@ -156,6 +156,7 @@ dependencies {
     implementation(libs.kermit)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.sharetarget)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
 

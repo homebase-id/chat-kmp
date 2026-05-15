@@ -272,6 +272,7 @@ private class SenderNoopFileOperationsProvider : FileOperationsProvider {
     override fun getCacheDirectory(): String = uniqueCacheDir
     override fun getFileSize(path: String) = nope()
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = nope()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()
 }
 

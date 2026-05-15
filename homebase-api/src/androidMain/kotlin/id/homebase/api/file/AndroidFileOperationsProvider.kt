@@ -122,6 +122,15 @@ class AndroidFileOperationsProvider(
         file.path
     }
 
+    override suspend fun writeBytesToShareOutboundFile(
+        bytes: ByteArray, suffix: String
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, SHARE_OUTBOUND_DIR_NAME).apply { mkdirs() }
+        val file = File.createTempFile("share_", suffix, dir)
+        file.writeBytes(bytes)
+        file.path
+    }
+
     override suspend fun resolveToFilePath(path: String): String {
         if (!path.startsWith("content://") && !path.startsWith("content:")) return path
         return withContext(Dispatchers.IO) {
