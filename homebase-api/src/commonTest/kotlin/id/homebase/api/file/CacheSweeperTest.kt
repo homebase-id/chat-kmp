@@ -122,6 +122,30 @@ class CacheSweeperTest {
     }
 
     @Test
+    fun sweep_actuallyReclaimsBytes_measuredAfterDelete() {
+        // Smoke test for the post-sweep re-measurement: the sweep must
+        // actually shrink the cache directory's footprint, not just
+        // declare what it intended to delete.
+        val fs = FakeFileSystem()
+        val cacheDir = "/data/data/id.homebase.test/cache"
+        fs.createDirectories(cacheDir.toPath())
+        fs.createDirectories("$cacheDir/hls_orphan".toPath())
+        fs.write("$cacheDir/hls_orphan/big.ts".toPath()) { write(ByteArray(10_000)) }
+        fs.write("$cacheDir/resolved_x.mp4".toPath()) { write(ByteArray(20_000)) }
+        fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
+        fs.write("$cacheDir/homebase-payloads-v2/keep.bin".toPath()) { write(ByteArray(1_000)) }
+
+        val before = fs.directorySizeBytes(cacheDir.toPath())
+        assertEquals(31_000L, before)
+
+        val report = CacheAudit.audit(cacheDir, fs)
+        CacheSweeper.sweepUntracked(report, fs)
+
+        val after = fs.directorySizeBytes(cacheDir.toPath())
+        assertEquals(1_000L, after, "only the tracked Coil cache (1KB) should remain")
+    }
+
+    @Test
     fun sweepAll_deletesEverythingExceptAndroidSystem() {
         val fs = FakeFileSystem()
         val cacheDir = "/data/data/id.homebase.test/cache"

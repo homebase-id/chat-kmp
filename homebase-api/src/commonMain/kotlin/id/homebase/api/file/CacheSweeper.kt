@@ -2,6 +2,7 @@ package id.homebase.api.file
 
 import co.touchlab.kermit.Logger
 import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Decides what to delete from the app cache directory.
@@ -40,7 +41,9 @@ object CacheSweeper {
                 "deleting=${report.untrackedBytes} bytes (untracked) " +
                 "keeping=${report.knownBytes} bytes (tracked Coil caches + android system)"
         }
+        val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.UNTRACKED), report.cacheDirPath, fileSystem)
+        logCompletion("sweepUntracked", report.cacheDirPath, before, fileSystem)
     }
 
     /**
@@ -54,7 +57,37 @@ object CacheSweeper {
                 "totalEntries=${report.entries.size} " +
                 "deleting=${report.totalBytes} bytes (incl. tracked Coil caches)"
         }
+        val before = report.totalBytes
         for (e in report.entries) act(e, decide(e, SweepMode.ALL), report.cacheDirPath, fileSystem)
+        logCompletion("sweepAll", report.cacheDirPath, before, fileSystem)
+    }
+
+    /**
+     * Re-measure cacheDir and log a before/after/reclaimed line. Without this
+     * the sweep is opaque on real devices: the up-front "deleting=N bytes"
+     * is intent, not outcome — a delete failure (permissions, race with another
+     * writer) leaves a silent gap. The after-measurement also picks up bytes
+     * freed inside KEPT entries (e.g. Coil DiskCache LRU eviction triggered
+     * during the same sweep window).
+     */
+    private fun logCompletion(label: String, cacheDirPath: String, before: Long, fileSystem: FileSystem) {
+        val after = runCatching { fileSystem.directorySizeBytes(cacheDirPath.toPath()) }
+            .getOrElse {
+                Logger.w(tag = TAG, throwable = it) { "$label: post-measure failed" }
+                return
+            }
+        val reclaimed = before - after
+        Logger.i(tag = TAG) {
+            "$label: complete — before=$before after=$after reclaimed=$reclaimed bytes " +
+                "(${humanMB(before)} → ${humanMB(after)}, freed ${humanMB(reclaimed)})"
+        }
+    }
+
+    private fun humanMB(bytes: Long): String {
+        val mb = bytes.toDouble() / (1024.0 * 1024.0)
+        // One decimal is plenty — log scanners want approximate magnitude, not precision.
+        val rounded = (mb * 10).toLong() / 10.0
+        return "${rounded}MB"
     }
 
     private fun act(e: CacheAudit.Entry, action: SweepAction, baseDir: String, fileSystem: FileSystem) {
