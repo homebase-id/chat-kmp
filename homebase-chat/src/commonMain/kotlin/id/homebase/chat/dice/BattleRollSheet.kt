@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
@@ -59,11 +60,9 @@ import id.homebase.resources.chat_dice_roll
 import id.homebase.resources.chat_dice_rolling
 import id.homebase.resources.chat_dice_shake_hint
 import id.homebase.resources.menu_back
-import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -152,12 +151,13 @@ private fun BattleRollSheetContent(
             roll(count = initialCount, faces = faces, shakeSamples = seed)
         }
         scope.launch {
-            for (frame in 0 until TUMBLE_FRAMES) {
-                for (i in 0 until initialCount) {
-                    displayValues[i] = Random.nextInt(1, faces + 1)
-                }
-                delay(TUMBLE_FRAME_MS)
-            }
+            runTumble(
+                frames = TUMBLE_FRAMES,
+                count = initialCount,
+                faces = faces,
+                displayValues = displayValues,
+                frameDelayMs = TUMBLE_FRAME_MS,
+            )
             while (displayValues.size < finalResults.size) displayValues.add(null)
             for (i in finalResults.indices) displayValues[i] = finalResults[i]
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -196,12 +196,17 @@ private fun BattleRollSheetContent(
         }
     }
 
+    // See note in DiceRollComposerSheet — without rememberUpdatedState, the
+    // long-running collect captures the first composition's `doRoll`, whose
+    // `initialCount` snapshot can disagree with `displayValues.size` after a
+    // chainDescriptors update re-keys `displayValues`.
+    val currentDoRoll by rememberUpdatedState(doRoll)
     LaunchedEffect(shakeDetector.isAvailable) {
         if (!shakeDetector.isAvailable) return@LaunchedEffect
         shakeDetector.events().collect { event ->
             shakeSamples = event.accelSamples
             shakeTriggered = true
-            doRoll()
+            currentDoRoll()
         }
     }
 

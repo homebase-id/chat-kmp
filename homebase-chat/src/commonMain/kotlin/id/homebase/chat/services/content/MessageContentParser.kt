@@ -65,7 +65,20 @@ object MessageContentParser {
         if (descriptor.isValid()) {
             MessageContent.DiceRoll(descriptor)
         } else {
-            Logger.w(tag = TAG) { "DiceRoll descriptor failed validation; faces=${descriptor.faces} chainSize=${descriptor.rolls.size}" }
+            // Include mode + first chain entry's results.size + sample so the
+            // log says *why* validation failed, not just "it failed". Without
+            // this the build-1420 mode=OE + faces=4 stale-closure bug was
+            // indistinguishable from any other invalid descriptor.
+            val first = descriptor.rolls.firstOrNull()
+            val sample = first?.results?.take(4)?.joinToString(",") ?: "(none)"
+            Logger.w(tag = TAG) {
+                "DiceRoll descriptor failed validation; " +
+                    "faces=${descriptor.faces} " +
+                    "mode=${descriptor.mode} " +
+                    "chainSize=${descriptor.rolls.size} " +
+                    "firstResultsSize=${first?.results?.size ?: 0} " +
+                    "firstResultsSample=[$sample]"
+            }
             MessageContent.DiceRoll(descriptor = null)
         }
     } catch (e: Exception) {
