@@ -73,6 +73,7 @@ class PublicProfileProviderCachedTest {
                 override fun deleteTempFile(path: String) = false
                 override fun getFileSize(path: String) = 0L
                 override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("not used in tests")
+                override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used in tests")
                 override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used in tests")
             }
         )

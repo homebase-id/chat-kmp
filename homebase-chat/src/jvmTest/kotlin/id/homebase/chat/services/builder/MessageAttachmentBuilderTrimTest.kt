@@ -29,6 +29,9 @@ class MessageAttachmentBuilderTrimTest {
         override suspend fun writeBytesToTempFile(
             bytes: ByteArray, prefix: String, suffix: String,
         ): String = fail("writeBytesToTempFile")
+        override suspend fun writeBytesToShareOutboundFile(
+            bytes: ByteArray, suffix: String,
+        ): String = fail("writeBytesToShareOutboundFile")
         override suspend fun writeStream(path: String, data: Flow<ByteArray>) =
             fail<Unit>("writeStream")
         private fun <T> fail(name: String): T =

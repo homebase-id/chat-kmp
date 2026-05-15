@@ -1,5 +1,6 @@
 package id.homebase.core.share
 
+import id.homebase.api.file.safeDeleteRecursively
 import java.io.File
 
 /**
@@ -39,7 +40,7 @@ actual class ShareCacheStorage {
 
     actual fun clearSharedContent() {
         File(cacheDir, "shared_content.json").delete()
-        File(cacheDir, "shared_files").let { if (it.exists()) it.deleteRecursively() }
+        safeDeleteRecursively(cacheDir.absolutePath, "shared_files")
     }
 
     actual fun getSharedFilesDirectory(): String {

@@ -27,6 +27,7 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -436,11 +437,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     }
 
     private fun cleanupTempFiles() {
-        try {
-            File(cacheDir, "share_temp").deleteRecursively()
-        } catch (_: Exception) {
-            // Ignore cleanup errors
-        }
+        safeDeleteRecursively(cacheDir.absolutePath, "share_temp")
     }
 
     private fun extractDirectShareConversationId(): String? {

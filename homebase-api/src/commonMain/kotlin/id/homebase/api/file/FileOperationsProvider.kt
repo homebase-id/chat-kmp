@@ -43,6 +43,22 @@ interface FileOperationsProvider {
         suffix: String
     ): String
 
+    /**
+     * Write [bytes] to a sequestered subdirectory `<cacheDir>/share_outbound/`
+     * (see [SHARE_OUTBOUND_DIR_NAME]) using a `share_<random>$suffix` filename
+     * and return the absolute path. Used **only** by the chat "Share to other
+     * app" flow, which decrypts a Homebase payload and hands the resulting
+     * cleartext file to `Intent.ACTION_SEND` via Android `FileProvider`.
+     *
+     * The subdir lets [sweepShareOutbound] reap every cleartext share temp
+     * as a single unit on cold start and on app foreground — bounding the
+     * on-disk lifetime of decrypted Homebase content.
+     */
+    suspend fun writeBytesToShareOutboundFile(
+        bytes: ByteArray,
+        suffix: String,
+    ): String
+
     suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>

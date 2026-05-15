@@ -124,6 +124,9 @@ private class RecordingFileOperationsProvider : FileOperationsProvider {
         return path
     }
 
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
+        error("not used in this test — share-outbound is for chat ShareMedia only")
+
     // Unused by LinkPreviewPayloadBuilder; throw so any future drift is loud.
     override fun openFileInput(path: String): InputProvider = error("not used in this test")
     override suspend fun readFileBytes(path: String): ByteArray = error("not used in this test")
