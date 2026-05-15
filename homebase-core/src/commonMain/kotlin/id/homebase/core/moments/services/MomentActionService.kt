@@ -2,6 +2,7 @@ package id.homebase.core.moments.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -11,6 +12,7 @@ import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
@@ -46,6 +48,7 @@ class MomentActionService(
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
     private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
 ) {
     companion object {
         private const val TAG = "MomentActionService"
@@ -60,70 +63,74 @@ class MomentActionService(
      * moment's full audience minus self.
      */
     suspend fun toggleReactionOnMoment(momentId: Uuid, emoji: String): ToggleReactionResult =
-        toggleReactionInternal(targetUniqueId = momentId, parentMomentId = momentId, emoji = emoji)
+        toggleReactionInternal(targetUniqueId = momentId, emoji = emoji) { original ->
+            original.fileMetadata.appData.uniqueId ?: momentId
+        }
 
     /**
      * Toggle the current user's reaction on a comment. The parent moment is
-     * resolved via the comment file's `groupId`; recipients are the parent
-     * moment's full audience minus self (so reactions follow the same
-     * audience as the comment thread itself).
+     * read from the comment file's `groupId` (already on the local row the
+     * optimistic write touched); recipients are the parent moment's full
+     * audience minus self (so reactions follow the same audience as the
+     * comment thread itself).
      */
-    suspend fun toggleReactionOnComment(commentId: Uuid, emoji: String): ToggleReactionResult {
-        val comment = driveFileProvider.getFileHeaderByUid(drive, commentId)
-            ?: return ToggleReactionResult(resultType = ToggleReactionResultType.None)
-        val parentMomentId = comment.fileMetadata.appData.groupId
-            ?: return ToggleReactionResult(resultType = ToggleReactionResultType.None)
-        return toggleReactionInternal(
-            targetUniqueId = commentId,
-            parentMomentId = parentMomentId,
-            emoji = emoji,
-        )
-    }
+    suspend fun toggleReactionOnComment(commentId: Uuid, emoji: String): ToggleReactionResult =
+        toggleReactionInternal(targetUniqueId = commentId, emoji = emoji) { original ->
+            original.fileMetadata.appData.groupId
+        }
 
     /**
      * Shared toggle implementation: optimistic write on the target file's
-     * `reactionPreview`, enqueue a [ToggleReactionOutboxRequest], roll back
-     * the optimistic write on enqueue failure. Mirrors
-     * `ChatMessageActionService.toggleReaction`.
+     * `reactionPreview` first (so the UI updates instantly via the
+     * `BatchReceived` event the writer emits), then resolve the parent
+     * moment id and recipients from the local DB, enqueue a
+     * [ToggleReactionOutboxRequest], roll back the optimistic write on
+     * failure. Mirrors `ChatMessageActionService.toggleReaction` — both the
+     * old upfront `getFileHeaderByUid(target)` and the old `resolveAudience`
+     * variant that called `getFileHeaderByUid(moment)` were network round-
+     * trips that gated the optimistic UI update; the chat path moved them
+     * out of the hot path for the same reason.
+     *
+     * `parentMomentFor` extracts the parent moment id from the *original*
+     * (pre-toggle) file returned by the optimistic writer: for a moment
+     * that's the uniqueId itself, for a comment that's `appData.groupId`.
      */
     private suspend fun toggleReactionInternal(
         targetUniqueId: Uuid,
-        parentMomentId: Uuid,
         emoji: String,
+        parentMomentFor: (original: HomebaseFile) -> Uuid?,
     ): ToggleReactionResult {
         if (!isValidEmoji(emoji)) {
             return ToggleReactionResult(resultType = ToggleReactionResultType.None)
         }
 
-        val target = driveFileProvider.getFileHeaderByUid(drive, targetUniqueId)
-            ?: return ToggleReactionResult(resultType = ToggleReactionResultType.None)
-
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        val recipients = resolveAudience(parentMomentId)
 
         val (resultType, original) = optimisticWriter.writeReactionToggle(
             drive,
             targetUniqueId,
             reactionJson,
         )
+        if (original == null) return ToggleReactionResult(resultType = resultType)
 
         try {
+            val parentMomentId = parentMomentFor(original)
+                ?: throw IllegalStateException("missing parent moment for $targetUniqueId")
+            val recipients = resolveAudienceLocal(parentMomentId)
             val enqueued = outboxSync.tryEnqueue(
                 request = ToggleReactionOutboxRequest(
                     driveId = drive,
-                    fileId = target.fileId,
+                    fileId = original.fileId,
                     reaction = reactionJson,
                     recipients = recipients,
                 ),
             )
-            if (!enqueued && original != null) {
+            if (!enqueued) {
                 optimisticWriter.rollbackWrite(drive, original)
             }
         } catch (t: Throwable) {
             Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            if (original != null) {
-                runCatching { optimisticWriter.rollbackWrite(drive, original) }
-            }
+            runCatching { optimisticWriter.rollbackWrite(drive, original) }
         }
 
         return ToggleReactionResult(resultType = resultType)
@@ -156,13 +163,17 @@ class MomentActionService(
         !input.isNullOrBlank() && input.length <= 8
 
     /**
-     * Duplicated from `MomentsPostSenderService.resolveCommentRecipients` (per
-     * the "duplicate for now" call). Lift to a shared `MomentAudienceResolver`
-     * when the next caller shows up.
+     * Local-DB variant of audience resolution. The previous version called
+     * `driveFileProvider.getFileHeaderByUid` (a server GET) — fine for
+     * correctness but a network round-trip we don't want gating the reaction
+     * outbox enqueue. The moment header is already in DriveMainIndex by the
+     * time the user can see/tap a reaction chip, so we read it from there.
      */
-    private suspend fun resolveAudience(momentId: Uuid): List<OdinId> {
-        val moment = driveFileProvider.getFileHeaderByUid(drive, momentId)
-            ?: throw IllegalArgumentException("moment not found: $momentId")
+    private suspend fun resolveAudienceLocal(momentId: Uuid): List<OdinId> {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val moment = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), drive, momentId,
+        ) ?: throw IllegalArgumentException("moment not found locally: $momentId")
 
         val momentContent = moment.fileMetadata.appData.content?.let { raw ->
             runCatching {
@@ -170,9 +181,7 @@ class MomentActionService(
             }.getOrNull()
         } ?: throw IllegalStateException("moment $momentId content unreadable")
 
-        val self = credentialsManager.getActiveCredentials()?.domain
-            ?: throw IllegalStateException("no active credentials")
-
+        val self = credentials.domain
         val audience = buildSet {
             moment.fileMetadata.senderOdinId?.let { add(it) }
             addAll(momentContent.recipients)
