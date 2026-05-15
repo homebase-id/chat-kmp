@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -210,6 +211,19 @@ class OutboxSync(
                         e
                     )
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
+
+                    // Drop branch: the upload exhausted retries or hit a permanent
+                    // error, so the row is gone with nothing else to clean up its
+                    // HLS scratch dir. Reach into the serialized request, pull out
+                    // the payloads, and let cleanupHlsScratch reclaim any
+                    // hls_<uuid>/ parent. Wrapped in runCatching — cleanup failure
+                    // must never affect the drop semantics.
+                    runCatching {
+                        cleanupHlsScratchForDroppedRow(outboxRecord)
+                    }.onFailure {
+                        Logger.w("OutboxSync: hls scratch cleanup failed for dropped uniqueId=${outboxRecord.uniqueId}", it)
+                    }
+
                     eventBus.emit(
                         BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
@@ -551,6 +565,25 @@ class OutboxSync(
 
         return false
 
+    }
+
+    /**
+     * Decode the dropped row's serialized request just enough to find the
+     * payload list, then sweep any `hls_<uuid>/` scratch dir each payload
+     * sits in. Only `UploadNewFile` and `UpdateFile` carry payloads — the
+     * other upload types return null/empty payload lists and the helper
+     * silently no-ops.
+     */
+    private fun cleanupHlsScratchForDroppedRow(outboxRecord: Outbox) {
+        val json = outboxRecord.json.decodeToString()
+        val payloads = when (outboxRecord.uploadType) {
+            DriveOutboxUploader.UploadNewFile ->
+                OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
+            DriveOutboxUploader.UpdateFile ->
+                OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
+            else -> null
+        }
+        cleanupHlsScratch(payloads)
     }
 
     suspend fun clearCheckout(timeoutMs: Long = 10_000) {
