@@ -1,6 +1,6 @@
 import kotlin.uuid.Uuid;
 
-CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 4
+CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 5
    rowId INTEGER PRIMARY KEY AUTOINCREMENT,
    identityId BLOB AS Uuid NOT NULL,
    driveId BLOB AS Uuid NOT NULL,
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 4
    fileType INTEGER NOT NULL,
    dataType INTEGER NOT NULL,
    archivalStatus INTEGER NOT NULL,
+   fileState INTEGER NOT NULL,
    historyStatus INTEGER NOT NULL,
    userDate INTEGER NOT NULL,
    created INTEGER NOT NULL,
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 4
 CREATE INDEX IF NOT EXISTS Idx0DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,created,rowId);
 CREATE INDEX IF NOT EXISTS Idx1DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,modified,rowId);
 CREATE INDEX IF NOT EXISTS Idx2DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,userDate,rowId);
-CREATE INDEX IF NOT EXISTS Idx3DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,groupId,fileType,userDate DESC,rowId);
+CREATE INDEX IF NOT EXISTS Idx3DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,fileState,groupId,fileType,userDate DESC,rowId);
 -- Other DriveMainIndex INDEX is created in ChatReadCount.sq
 
 -- Upsert a record
@@ -40,12 +41,12 @@ INSERT INTO DriveMainIndex (
    groupId,
    senderId,
    originalAuthor,
-   fileType,dataType,archivalStatus,historyStatus,
+   fileType,dataType,archivalStatus,fileState,historyStatus,
    userDate,created,modified,
    fileSystemType, jsonHeader)
 VALUES (?,
    ?,?,?,?,?,
-   ?,?,?,?,?,?,?,
+   ?,?,?,?,?,?,?,?,
    ?,?,?,?)
 
 -- Prefer uniqueId when it is supplied (first clause never fires for NULL)
@@ -59,6 +60,7 @@ SET
     fileType         = excluded.fileType,
     dataType         = excluded.dataType,
     archivalStatus   = excluded.archivalStatus,
+    fileState        = excluded.fileState,
     historyStatus    = excluded.historyStatus,
     userDate         = excluded.userDate,
     created          = excluded.created,
@@ -77,6 +79,7 @@ SET uniqueId        = excluded.uniqueId,
     fileType        = excluded.fileType,
     dataType        = excluded.dataType,
     archivalStatus  = excluded.archivalStatus,
+    fileState       = excluded.fileState,
     historyStatus   = excluded.historyStatus,
     userDate        = excluded.userDate,
     created         = excluded.created,

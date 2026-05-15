@@ -75,7 +75,7 @@ class DatabaseManager(
 
     companion object {
         private const val DATABASE_VERSION =
-            1  // Increase to wipe the database and rebuild all tables
+            5  // Increase to wipe the database and rebuild all tables
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
