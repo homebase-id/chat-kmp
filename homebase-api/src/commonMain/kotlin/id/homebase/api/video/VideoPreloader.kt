@@ -2,7 +2,6 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.file.safeDeleteRecursively
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -132,10 +131,5 @@ class VideoPreloader(
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
         mutex.withLock {}  // wait for any in-progress download to finish
         return null
-    }
-
-    /** Deletes any legacy pre-decrypted files written by older builds. */
-    fun clearCache() {
-        safeDeleteRecursively(fileOperationsProvider.getCacheDirectory(), "hbvid_preload")
     }
 }
