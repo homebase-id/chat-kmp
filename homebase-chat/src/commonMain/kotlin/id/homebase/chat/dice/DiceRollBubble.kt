@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_dice_battle_and
@@ -98,33 +99,69 @@ fun DiceRollBubble(
     val faceInset = 4.dp
 
     // Don't fillMaxWidth on the Column or FlowRow — the parent wrapper aligns
-    // sent messages to the end and received to the start.
+    // sent messages to the end and received to the start. Inside the column we
+    // do center on the cross-axis so the sender / battle-result text sits
+    // centered below the dice.
     Column(
         modifier = modifier.padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (value in latest.results) {
-                // Crit border is a d20 thing — natural 20 / natural 1 are the
-                // only rolls that "matter" outside their numeric value.
-                val isCrit = descriptor.faces == 20 && (value == 20 || value == 1)
-                val cellModifier = Modifier
-                    .size(cellSize)
-                    .let {
-                        if (isCrit) it
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(2.dp, critColor, RoundedCornerShape(12.dp))
-                        else it
+        if (descriptor.mode == DiceRollMode.OpenEndedD100) {
+            // One row per percentile pair. A chain of high or low rolls stacks
+            // vertically (matching the user's "newline if it keeps rolling"
+            // suggestion). Dice scale to the same large/compact rule as
+            // standard rolls so the first-pair bubble matches a regular d10.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                var i = 0
+                while (i < latest.results.size - 1) {
+                    val tens = latest.results[i]
+                    val ones = latest.results[i + 1]
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(modifier = Modifier.size(cellSize), contentAlignment = Alignment.Center) {
+                            PercentileTensFaceImage(
+                                value = tens,
+                                modifier = Modifier.size(cellSize - faceInset * 2),
+                            )
+                        }
+                        Box(modifier = Modifier.size(cellSize), contentAlignment = Alignment.Center) {
+                            DiceFaceImage(
+                                faces = 10,
+                                value = ones,
+                                modifier = Modifier.size(cellSize - faceInset * 2),
+                            )
+                        }
                     }
-                Box(modifier = cellModifier, contentAlignment = Alignment.Center) {
-                    DiceFaceImage(
-                        faces = descriptor.faces,
-                        value = value,
-                        modifier = Modifier.size(cellSize - faceInset * 2),
-                    )
+                    i += 2
+                }
+            }
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for (value in latest.results) {
+                    // Crit border is a d20 thing — natural 20 / natural 1 are the
+                    // only rolls that "matter" outside their numeric value.
+                    val isCrit = descriptor.faces == 20 && (value == 20 || value == 1)
+                    val cellModifier = Modifier
+                        .size(cellSize)
+                        .let {
+                            if (isCrit) it
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(2.dp, critColor, RoundedCornerShape(12.dp))
+                            else it
+                        }
+                    Box(modifier = cellModifier, contentAlignment = Alignment.Center) {
+                        DiceFaceImage(
+                            faces = descriptor.faces,
+                            value = value,
+                            modifier = Modifier.size(cellSize - faceInset * 2),
+                        )
+                    }
                 }
             }
         }
@@ -144,10 +181,11 @@ fun DiceRollBubble(
                 Spacer(Modifier.width(6.dp))
             }
             Text(
-                text = senderLineText(lines),
+                text = senderLineText(descriptor, lines),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = contentColor,
+                textAlign = TextAlign.Center,
             )
         }
 
@@ -158,21 +196,31 @@ fun DiceRollBubble(
                 text = battleResultText(result),
                 style = MaterialTheme.typography.bodyMedium,
                 color = contentColor,
+                textAlign = TextAlign.Center,
             )
         }
     }
 }
 
 @Composable
-private fun senderLineText(lines: DiceBubbleLines): String {
-    val multiDie = lines.senderResults.size > 1
-    val detail = lines.senderResults.joinToString("+")
+private fun senderLineText(descriptor: DiceRollDescriptor, lines: DiceBubbleLines): String {
+    val isOe = descriptor.mode == DiceRollMode.OpenEndedD100
+    val showDetail: Boolean
+    val detail: String
+    if (isOe) {
+        val pairs = percentilePairs(lines.senderResults)
+        showDetail = pairs.size > 1
+        detail = formatOeDetail(pairs)
+    } else {
+        showDetail = lines.senderResults.size > 1
+        detail = lines.senderResults.joinToString("+")
+    }
     return when {
-        lines.senderIsSelf && multiDie ->
+        lines.senderIsSelf && showDetail ->
             stringResource(MR.string.chat_dice_summary, lines.senderSum, detail)
         lines.senderIsSelf ->
             stringResource(MR.string.chat_dice_summary_single, lines.senderSum)
-        multiDie ->
+        showDetail ->
             stringResource(
                 MR.string.chat_dice_summary_other,
                 lines.senderName,
@@ -187,6 +235,21 @@ private fun senderLineText(lines: DiceBubbleLines): String {
             )
     }
 }
+
+/** Format an OE chain's pair values for the sender line: "100+98+2" or "3−2−50". */
+private fun formatOeDetail(pairs: List<Int>): String {
+    if (pairs.isEmpty()) return ""
+    val first = pairs.first()
+    val sep = if (first <= 4) "−" else "+"
+    return buildString {
+        append(first)
+        for (i in 1 until pairs.size) {
+            append(sep)
+            append(pairs[i])
+        }
+    }
+}
+
 
 @Composable
 private fun battleResultText(result: BattleResult): String {

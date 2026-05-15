@@ -40,7 +40,6 @@ kotlin {
         }
     }
 
-    // REMOVED so we could support FileKache
 //    @OptIn(ExperimentalWasmDsl::class)
 //    wasmJs {
 //        browser()
@@ -91,8 +90,6 @@ kotlin {
             implementation(libs.filekit.dialogs.compose)
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.immutableCollections)
-            implementation(libs.kache)
-            implementation(libs.kache.file)
             implementation(libs.coil3)
             implementation(libs.okio)
         }
@@ -100,6 +97,7 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
+            implementation(libs.okio.fakefilesystem)
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
@@ -119,6 +117,16 @@ kotlin {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
         }
+
+        // Uncomment in step 10 of the WASM pre-flight plan, paired with the
+        // `wasmJs { browser() }` block above. ktor-client-js provides the
+        // browser engine (fetch/WebSocket); WebWorkerDriver runs sql.js
+        // (SQLite-compiled-to-WASM) inside a Web Worker — see
+        // `DatabaseDriverFactory.web.kt` for the constructor shape.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//            implementation(libs.sqldelight.web.worker.driver)
+//        }
 
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)

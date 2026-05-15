@@ -147,6 +147,15 @@ class VideoPayloadProcessor(
         val durationMs = FFmpegUtils.getDurationMs(compressedPath)
         val codec = detectVideoCodec(finalVideoPath)
 
+        // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already
+        // been re-encoded into either the HLS segment (segmented path) or the
+        // encrypted payload (non-segmented path), and metadata has been read.
+        // Skip when compressVideo fell back to the input path (no compression
+        // happened — compressedPath IS payload.filePath, owned by the caller).
+        if (compressedPath != payload.filePath) {
+            fileOperationsProvider.deleteTempFile(compressedPath)
+        }
+
         val playlistContent =
             if (isSegmented && playlistPath != null) {
                 fileOperationsProvider.readFileBytes(playlistPath).decodeToString()

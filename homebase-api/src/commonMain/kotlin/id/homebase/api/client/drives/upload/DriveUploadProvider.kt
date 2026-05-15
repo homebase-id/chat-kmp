@@ -559,5 +559,12 @@ class DriveUploadProvider(
                 Logger.w(tag = TAG) { "Temp file could not be deleted (best-effort): $path" }
             }
         }
+
+        // The per-file loop above only kills the single payload file (e.g. the
+        // HLS `index.ts`). For HLS sends we also want the parent `hls_<uuid>/`
+        // dir gone — otherwise `index.m3u8` and any FFmpeg `.tmp` leftovers
+        // accumulate (the cache leak chased in #6). cleanupHlsScratch is a
+        // no-op for non-HLS payloads.
+        cleanupHlsScratch(payloads)
     }
 }

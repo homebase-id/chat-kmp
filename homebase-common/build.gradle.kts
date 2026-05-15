@@ -69,6 +69,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":homebase-api"))
+            api(project(":homebase-notifshared"))
 
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
@@ -93,7 +94,6 @@ kotlin {
             api(libs.coil3.network)
             api(libs.coil3.svg)
             implementation(libs.kermit)
-            implementation(libs.kermit.io)
             api(libs.filekit.core)
             api(libs.koin.core)
             api(libs.koin.compose)
@@ -118,9 +118,11 @@ kotlin {
             implementation(libs.accompanist.permissions)
             implementation(libs.firebase.crashlytics)
             api(libs.coil3.video)
+            implementation(libs.kermit.io)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.kermit.io)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -129,7 +131,14 @@ kotlin {
             implementation(libs.nucleus.notification.windows)
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
+            implementation(libs.kermit.io)
         }
+        // Uncomment in step 10 of the WASM pre-flight plan, paired with
+        // `wasmJs { browser() }`. ktor-client-js provides the browser
+        // engine (fetch/WebSocket) for the wasmJs target.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//        }
     }
 
     targets.all {

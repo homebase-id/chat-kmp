@@ -1303,15 +1303,20 @@ class ConversationService(
         val postFile = getConversationHomebaseFile(conversationId)
         val postVersionTag = postFile?.fileMetadata?.versionTag
         val postArchivalStatus = postFile?.fileMetadata?.appData?.archivalStatus
-        audit.post("file: versionTag=$postVersionTag (pre=$preVersionTag) archivalStatus=$postArchivalStatus")
-        if (archivalStatus != null) {
+        audit.post("file: versionTag=$postVersionTag (pre=$preVersionTag) archivalStatus=$postArchivalStatus applyOptimisticContentLocally=$applyOptimisticContentLocally")
+        // Only audit the local-archivalStatus apply when the caller opted into an
+        // optimistic local write. For opt-out callers (delete, some group-member adds)
+        // the local file is intentionally not rewritten — the change is queued in the
+        // outbox and shows up after the server round-trips. A divergence here is the
+        // documented contract (see comment block at the optimisticWriter.writeUpdate
+        // call above), not a bug.
+        if (archivalStatus != null && applyOptimisticContentLocally) {
             audit.check("postArchivalStatusApplied", postArchivalStatus == archivalStatus,
-                "file.archivalStatus is $postArchivalStatus, expected $archivalStatus — optimistic write of archivalStatus did not apply (note: the optimistic file-update commented out at lines ~935-939 may be the cause)")
+                "file.archivalStatus is $postArchivalStatus, expected $archivalStatus — applyOptimisticContentLocally=true but the optimistic write did not apply locally")
         }
         // PARTICIPANT-LIST TRACE — read the file's CURRENT participants after the update.
-        // If this differs from `participants` (the value passed in), the optimistic write
-        // didn't apply yet (the request is still in the outbox; participants will sync
-        // back eventually) OR the local file index hasn't been refreshed.
+        // Only flag a mismatch as a warning when the caller opted in to apply locally;
+        // otherwise the local file is expected to lag until the outbox round-trips.
         runCatching {
             val postContent = postFile?.fileMetadata?.appData?.content?.let {
                 OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
@@ -1321,15 +1326,13 @@ class ConversationService(
                 "updateConversationInternal POST_READBACK for $conversationId: " +
                     "file.recipients.size=${postRecipients.size} " +
                     "domains=[${postRecipients.joinToString(",") { it.domainName }}] " +
-                    "(intended new size=${participants.size})"
+                    "(intended new size=${participants.size}, applyOptimisticContentLocally=$applyOptimisticContentLocally)"
             }
-            if (postRecipients.toSet() != participants.toSet()) {
+            if (applyOptimisticContentLocally && postRecipients.toSet() != participants.toSet()) {
                 Logger.w(tag = "ParticipantsAudit") {
                     "updateConversationInternal POST_READBACK MISMATCH: file shows ${postRecipients.size} recipients, " +
-                        "intended ${participants.size}. The local optimistic write did NOT apply — " +
-                        "the change is queued in the outbox but won't be visible to readers until the server " +
-                        "round-trips back. Note: the writer at lines ~935-939 (optimisticWriter.writeUpdate) is " +
-                        "commented out. This may be the root cause of 'group members missing right after creation'."
+                        "intended ${participants.size}. applyOptimisticContentLocally=true but the local optimistic " +
+                        "write did not apply — bug in optimisticWriter.writeUpdate path."
                 }
             }
         }.onFailure { e ->
@@ -1821,29 +1824,42 @@ class ConversationService(
             }
 
         // ---- DEBUG instrumentation: POST verification ----
+        //
+        // The previous version of this block raised FAIL on several checks that turned out
+        // to be expected behavior, not bugs. Diagnosis on a working repro:
+        //
+        //  - file.archivalStatus stays None and versionTag is unchanged after STEP 2.
+        //    That's because deleteConversation calls updateConversationInternal WITHOUT
+        //    applyOptimisticContentLocally=true, by design (delete is a "purely server-side"
+        //    change per the comment at the optimisticWriter.writeUpdate gate). The local file
+        //    is rewritten only when the outbox round-trips back.
+        //
+        //  - The UI hides the conversation immediately via a parallel path:
+        //    ConversationLifecycleHandler calls conversationStream.onConversationDeleted(id)
+        //    right after deleteConversation returns. That adds the id to ConversationStream's
+        //    session-scoped `deletedIds` set and removes the row from _conversations.value.
+        //    So the user-visible list is correct, even though getConversation(id) here still
+        //    returns ConversationState.Active (it reads the DB file directly, bypassing the
+        //    deletedIds filter that the UI subscribes to).
+        //
+        //  - The "outbox grew by 1, expected ≥2" check assumes STEP 1's DeleteFilesByGroupId
+        //    and STEP 2's UpdateFileByUniqueId persist as separate rows. In 1:1 conversations
+        //    (where conversationId == groupId) the second outbox row's replaceEnqueue removes
+        //    the first, leaving delta=1. This is the documented dedup contract.
+        //
+        // Below we record the post-state for forensic traces but do not flag any of these
+        // documented-behaviors as BUG?.
         val postFile = getConversationHomebaseFile(conversationId)
         val postArchivalStatus = postFile?.fileMetadata?.appData?.archivalStatus
         val postVersionTag = postFile?.fileMetadata?.versionTag
-        audit.post("file: exists=${postFile != null} archivalStatus=$postArchivalStatus (expected=Removed) versionTag=$postVersionTag (pre=$preVersionTag, expected changed)")
-        audit.check("postArchivalStatus", postArchivalStatus == ArchivalStatus.Removed,
-            "file.archivalStatus is $postArchivalStatus (expected Removed) — STEP 2 returned without throwing but optimistic write did not apply")
-        if (preFile == null) {
-            // record as not-applicable
-        } else {
-            audit.check("postVersionTagChanged", preVersionTag != null && postVersionTag != null && preVersionTag != postVersionTag,
-                "versionTag did not change (pre=$preVersionTag, post=$postVersionTag) — update was a no-op or never reached the file index")
-        }
-        val postConvo = runCatching { getConversation(conversationId) }.getOrNull()
-        audit.post("convo (UI model): state=${postConvo?.conversationState}")
-        audit.check("postUiState",
-            postConvo == null || postConvo.conversationState == ConversationState.Removed || postConvo.conversationState == ConversationState.Deleted,
-            "UI state is ${postConvo?.conversationState} (expected Removed/Deleted/null) — Delete button will appear as a no-op to the user")
+        audit.post("file: exists=${postFile != null} archivalStatus=$postArchivalStatus versionTag=$postVersionTag (pre=$preVersionTag)")
+        audit.info("local file archivalStatus/versionTag updates after outbox round-trip; UI hiding is done by ConversationStream.onConversationDeleted in the caller")
         val outboxAfter = dbm.outbox.count()
         val outboxDelta = outboxAfter - outboxBefore
         val messagesAfter = runCatching { QueryBatch(identityId).queryBatchAsync(dbm = dbm, driveId = chatDrive, noOfItems = 10_000, groupIdAnyOf = listOf(conversationId)).records.size }.getOrElse { -1 }
-        audit.post("counts: outboxRows=$outboxAfter (delta=$outboxDelta, expected ≥+2) messagesWithGroupId=$messagesAfter (delta=${messagesAfter - messagesBefore}, expected unchanged until outbox processes)")
-        audit.check("postOutboxDelta", outboxDelta >= 2,
-            "outbox grew by $outboxDelta rows, expected ≥2 (one DeleteFilesByGroupId + one UpdateFile) — one enqueue silently dropped (UNIQUE collision)")
+        audit.post("counts: outboxRows=$outboxAfter (delta=$outboxDelta) messagesWithGroupId=$messagesAfter (delta=${messagesAfter - messagesBefore}, expected unchanged until outbox processes)")
+        audit.check("postOutboxDelta", outboxDelta >= 1,
+            "outbox did not grow at all — both STEP 1 (DeleteFilesByGroupId) and STEP 2 (UpdateFile) silently failed to enqueue")
         audit.finish()
         // ---- end DEBUG ----
     }

@@ -1,7 +1,9 @@
 package id.homebase.chat.groupsettings
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.connections.IntroductionPreflightStatus
 import id.homebase.api.client.drives.files.TransferStatus
+import id.homebase.api.client.peer.FileExistsOnPeerResponse
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
@@ -28,6 +30,14 @@ data class GroupSettingsUiState(
     val mainFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
     /** Same as [mainFileExists], for the admin file. */
     val adminFileExists: Map<OdinId, MemberFileExistsStatus>? = null,
+    /** Per-recipient outcome of the introduction-preflight RPC — "is this peer
+     *  currently in working order from a connectivity / configuration / permission
+     *  standpoint?". null = not yet loaded (or RPC failed best-effort). Populated
+     *  by [GroupSettingsViewModel.loadIntroductionPreflight] via
+     *  [ConversationService.previewIntroduceEveryone]. Shares the same enum the
+     *  create-group preflight dialog uses, so the per-peer reason strings stay
+     *  in sync between the two surfaces. */
+    val introductionPreflight: Map<OdinId, IntroductionPreflightStatus>? = null,
     val isHealing: Boolean = false,
     /** Members with an in-flight server op (make/remove admin, remove from group). The
      *  member-action sheet swaps its action rows for a spinner while the OdinId is
@@ -74,9 +84,25 @@ sealed interface RecipientFileStatus {
 }
 
 /**
- * Per-member result of asking the user's own server "does this peer hold
- * this group file right now, and at what versionTag?". Populated by
- * [GroupSettingsViewModel.loadPeerFileExists] via [PeerDriveQueryProvider].
+ * Per-member outcome of asking the user's own server "does this peer hold
+ * this group file right now?" via the V2 fileExists endpoint. Populated
+ * by [GroupSettingsViewModel.loadPeerFileExists] via [PeerDriveQueryProvider].
+ *
+ * The endpoint returns `{exists: Bool, versionTag: Uuid?}`. The peer fills
+ * `versionTag` only when the caller is the file's originalAuthor; otherwise
+ * it comes back null. That yields exactly three terminal outcomes for a peer:
+ *
+ *   1. `Missing`               — peer has no copy (we can push a fresh one).
+ *   2. `PresentAuthoredByMe`   — peer has it, we authored it. The vt is the
+ *                                peer's current vt (informational only — we
+ *                                no longer compare it to ours; see commit
+ *                                history for the dropped Stale state).
+ *   3. `PresentAuthoredByOther` — peer has it but someone else authored it.
+ *                                The peer must drop this third-party copy
+ *                                via the heal-request path before we can
+ *                                push ours.
+ *
+ * Plus `Loading` and `Error` lifecycle states.
  *
  * Distinct from [RecipientFileStatus], which only reflects our local
  * outbox/transfer-history (i.e. whether *our* last send was acked). This
@@ -87,20 +113,56 @@ sealed interface MemberFileExistsStatus {
     /** Call in flight. */
     data object Loading : MemberFileExistsStatus
 
-    /** Peer reports no copy. A fresh send is safe — no heal path needed. */
+    /** Peer reports no copy. A fresh send is safe. */
     data object Missing : MemberFileExistsStatus
 
-    /** Peer holds the file and its versionTag matches ours. Safe to overwrite. */
-    data class InSync(val versionTag: Uuid) : MemberFileExistsStatus
+    /** Peer holds the file and we are the originalAuthor (peer's server
+     *  returned a versionTag, which it only does for the file's author). */
+    data class PresentAuthoredByMe(val versionTag: Uuid) : MemberFileExistsStatus
 
-    /** Peer holds a copy whose versionTag differs from (or is unknown to) us.
-     *  Heal-request path required to converge. */
-    data class Stale(val peerVersionTag: Uuid?) : MemberFileExistsStatus
+    /** Peer holds the file but someone else authored it (peer's server
+     *  withheld the versionTag because we're not the author). The peer must
+     *  drop this third-party copy via the heal-request path. */
+    data object PresentAuthoredByOther : MemberFileExistsStatus
 
     /** RPC failed (unauthorized, network, peer unreachable). Throwable is
      *  logged at the call site, not retained in state. */
     data object Error : MemberFileExistsStatus
 }
+
+/**
+ * Pure-data classifier — the single source of truth for mapping the raw
+ * peer response onto the three terminal outcomes plus `Error`. Reused by
+ * the per-member sheet rows and the upcoming overall-summary row so the
+ * two never disagree.
+ */
+fun FileExistsOnPeerResponse.toMemberFileExistsStatus(): MemberFileExistsStatus {
+    if (!exists) return MemberFileExistsStatus.Missing
+    val vt = versionTag
+    return if (vt != null) MemberFileExistsStatus.PresentAuthoredByMe(vt)
+    else MemberFileExistsStatus.PresentAuthoredByOther
+}
+
+/**
+ * The single source of truth for "does this peer's copy of the file need
+ * a heal action?". Used by both the per-member sheet (indirectly, via its
+ * 3-way icon split) and the overview-row traffic-light collapse, so the
+ * two surfaces can never disagree about whether a row should look green
+ * or "needs attention".r
+ *
+ *  - `PresentAuthoredByMe`     → in sync (true)
+ *  - `Missing`                 → needs a fresh push       (false)
+ *  - `PresentAuthoredByOther`  → needs a heal-request     (false)
+ *  - `Error`                   → unknown; treated as not-in-sync (false)
+ *  - `Loading`                 → unknown; treated as not-in-sync (false)
+ *
+ * Callers that want to distinguish Loading from "actually needs heal"
+ * should branch on `Loading` separately before calling this. (The
+ * overview-row icon does that — it renders a spinner for Loading
+ * regardless of this function's verdict.)
+ */
+fun MemberFileExistsStatus.isInSync(): Boolean =
+    this is MemberFileExistsStatus.PresentAuthoredByMe
 
 /**
  * Local-DB state of one of the two group files (main conversation file or

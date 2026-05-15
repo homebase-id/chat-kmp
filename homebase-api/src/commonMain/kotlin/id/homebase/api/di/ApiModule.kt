@@ -25,6 +25,7 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+import id.homebase.api.file.StartupCacheAudit
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
@@ -95,4 +96,9 @@ val apiModule = module {
     singleOf(::LocationPreviewProvider)
 
     single { EventBus() }
+
+    // Eager startup task: logs a one-shot breakdown of the cache directory so an
+    // `adb logcat -s CacheAudit:*` capture shows where disk usage is going. The
+    // audit work runs off the main thread (see StartupCacheAudit). Diagnostics only.
+    single(createdAtStart = true) { StartupCacheAudit(get()) }
 }

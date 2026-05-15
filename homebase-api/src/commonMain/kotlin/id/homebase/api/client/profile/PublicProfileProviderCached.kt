@@ -6,6 +6,8 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.safeDeleteRecursively
+import id.homebase.api.file.systemFileSystem
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
@@ -20,10 +22,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.encodeUtf8
-import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import kotlin.time.Clock
 
 /**
@@ -68,7 +68,7 @@ class PublicProfileProviderCached(
     private val serializer = OdinSystemSerializer
     private val clock = Clock.System
 
-    private val fileSystem = FileSystem.SYSTEM
+    private val fileSystem = systemFileSystem
     private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val lock = Mutex()
@@ -101,8 +101,8 @@ class PublicProfileProviderCached(
         // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
         // directories — see DriveFileProviderCached.init for rationale.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-profiles".toPath()) }
-            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-images".toPath()) }
+            safeDeleteRecursively(directory, "homebase-public-profiles")
+            safeDeleteRecursively(directory, "homebase-public-images")
         }
     }
 

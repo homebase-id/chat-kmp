@@ -71,6 +71,36 @@ class LinkPreviewPayloadBuilderTest {
         assertEquals(null, descriptor.imageWidth)
         assertEquals(null, descriptor.imageHeight)
     }
+
+    @Test
+    fun build_truncatesTitleAndDescription_whenDescriptorExceedsByteLimit() = runTest {
+        val longText = "A".repeat(800)
+        val preview = LinkPreview(
+            title = longText,
+            url = "https://example.com",
+            description = longText,
+            imageUrl = null,
+            imageHeight = null,
+            imageWidth = null,
+        )
+        val fakeFileOps = RecordingFileOperationsProvider()
+
+        val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
+        val descriptorJson = bundle.payloads.single().descriptorContent
+        assertNotNull(descriptorJson)
+        val descriptor = OdinSystemSerializer
+            .deserialize<List<LinkPreviewDescriptor>>(descriptorJson)
+            .single()
+
+        assertTrue(
+            descriptor.title.length <= 100,
+            "Title should be truncated when descriptor overflows"
+        )
+        assertTrue(
+            descriptor.description.length <= 100,
+            "Description should be truncated when descriptor overflows"
+        )
+    }
 }
 
 /**
@@ -93,6 +123,9 @@ private class RecordingFileOperationsProvider : FileOperationsProvider {
         writes[path] = bytes
         return path
     }
+
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
+        error("not used in this test — share-outbound is for chat ShareMedia only")
 
     // Unused by LinkPreviewPayloadBuilder; throw so any future drift is loud.
     override fun openFileInput(path: String): InputProvider = error("not used in this test")

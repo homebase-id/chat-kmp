@@ -179,8 +179,24 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
 
+      - name: Strip existing FFmpegKit signatures
+        run: |
+          cd homebase-api/libs/ffmpegkit-bundled.xcframework
+          for xcf in *.xcframework; do
+            for arch in "$xcf"/*; do
+              if [ -d "$arch" ]; then
+                for framework in "$arch"/*.framework; do
+                  if [ -d "$framework" ]; then
+                    echo "Stripping signature from $framework"
+                    codesign --remove-signature "$framework" 2>/dev/null || true
+                  fi
+                done
+              fi
+            done
+          done
+
       - name: Build iOS
-        timeout-minutes: 70
+        timeout-minutes: 120
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj

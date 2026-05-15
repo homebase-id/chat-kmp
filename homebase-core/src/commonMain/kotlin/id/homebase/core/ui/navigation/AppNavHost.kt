@@ -64,6 +64,7 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
 import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
+import id.homebase.core.TextRenderingHelper
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.permissions.PermissionStatus
@@ -314,6 +315,7 @@ fun AppNavHost(
                     if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
                         navController.selectConversationOnChatList(id)
                     }
+                    TextRenderingHelper.nudge()
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
@@ -364,6 +366,7 @@ fun AppNavHost(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
+                                TextRenderingHelper.nudge()
                                 when {
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
@@ -397,6 +400,7 @@ fun AppNavHost(
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
+                                    TextRenderingHelper.nudge()
                                     when {
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()

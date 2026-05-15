@@ -63,13 +63,13 @@ internal fun computeDiceBubbleLines(
     val senderIsSelf = currentOdinId.isNotBlank() && latestDomain == currentOdinId
 
     val battleResult = if (descriptor.isBattle) {
-        val maxSum = descriptor.rolls.maxOf { it.sum }
+        val maxSum = descriptor.rolls.maxOf { descriptor.scoredSumOf(it) }
         // Distinct by domainName, preserving the order of first appearance so
         // a tie reads in the same order rolls were taken.
         val seen = mutableSetOf<String>()
         val leaders = mutableListOf<LeaderEntry>()
         for (roll in descriptor.rolls) {
-            if (roll.sum != maxSum) continue
+            if (descriptor.scoredSumOf(roll) != maxSum) continue
             val domain = roll.odinId.domainName
             if (!seen.add(domain)) continue
             val isSelf = currentOdinId.isNotBlank() && domain == currentOdinId
@@ -89,7 +89,7 @@ internal fun computeDiceBubbleLines(
     return DiceBubbleLines(
         senderIsSelf = senderIsSelf,
         senderName = if (senderIsSelf) "" else hostPortionOf(latestDomain),
-        senderSum = latest.sum,
+        senderSum = descriptor.scoredSumOf(latest),
         senderResults = latest.results,
         battleResult = battleResult,
     )

@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextRange
@@ -197,6 +198,16 @@ private fun ComposeRequestSheetContent(
                 )
             )
         }
+        val recipientFocusRequester = remember { FocusRequester() }
+        // Auto-focus the recipient field on sheet open so the user can start typing
+        // immediately (and the soft keyboard pops on mobile). Only when no recipient
+        // was prefilled — if the sheet was opened with OpenDialogWithRecipient, the
+        // recipient is already known and stealing focus to it would be annoying.
+        LaunchedEffect(Unit) {
+            if (recipient.isEmpty()) {
+                recipientFocusRequester.requestFocus()
+            }
+        }
         HomebaseIdField(
             value = fieldValue,
             onValueChange = { incoming ->
@@ -209,6 +220,7 @@ private fun ComposeRequestSheetContent(
             placeholder = { Text(stringResource(MR.string.connections_recipient_placeholder)) },
             isError = isError,
             enabled = !isSending,
+            focusRequester = recipientFocusRequester,
             imeAction = ImeAction.Next,
         )
 
