@@ -514,8 +514,6 @@ class DriveFileProviderCached(
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
 
-        safeDeleteRecursively(directory, "hbvid_preload")
-
         notFoundCache = emptySet()
     }
 
