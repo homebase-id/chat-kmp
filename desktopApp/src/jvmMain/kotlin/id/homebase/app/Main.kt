@@ -72,9 +72,11 @@ fun main() {
 
     // Set up crash handler
     setupCrashHandler()
+    StartupLogger.checkpoint("main() entered, file logger online")
 
     // Initialize Koin first
     startKoin { modules(allModules) }
+    StartupLogger.checkpoint("Koin DI graph built")
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
@@ -110,6 +112,7 @@ fun main() {
     val userPreferences = koin.get<UserPreferences>()
 
     runBlocking { applyStoredLocale(userPreferences) }
+    StartupLogger.checkpoint("locale applied")
 
     val minWidth = 480
     val minHeight = 400
@@ -120,7 +123,9 @@ fun main() {
     }
 
     application {
+        remember { StartupLogger.checkpoint("Compose application{} entered") }
         val viewModel = koin.get<DesktopViewModel>()
+        remember { StartupLogger.checkpoint("DesktopViewModel resolved") }
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
