@@ -6,71 +6,71 @@ import okio.FileSystem
 /**
  * Decides what to delete from the app cache directory.
  *
- * **Currently DRY-RUN ONLY** — every "delete" is replaced with a `WOULD DELETE`
- * log line; nothing is actually removed. The intent is to ship this, capture
- * real-device adb logs (`adb logcat -s CacheSweeper:*`), confirm the sweeper
- * targets the right entries — *then* flip the WOULD-DELETE lines to real
- * [safeDeleteRecursively] calls.
+ * Two entry points:
+ * - [sweepUntracked] — startup reclaim: deletes every entry that isn't one of
+ *   the four `-v2` Coil DiskCache directories nor an Android system dir. Eats
+ *   the cache backlog (FFmpeg scratch, share temps, leftover pickers, ...).
+ * - [sweepAll] — logout reclaim: also deletes the `-v2` caches.
  *
- * Two entry points mirror the future real sweep:
- * - [sweepUntracked] — startup reclaim: would delete every entry that isn't one
- *   of the four `-v2` Coil DiskCache directories. Eats the ~4 GB backlog.
- * - [sweepAll] — logout reclaim: would *also* delete the `-v2` caches (the live
- *   DiskCache journal interaction is the nuance to resolve before going live).
+ * Sacred set ([CacheAudit.ANDROID_SYSTEM_DIRS]: `WebView/`, `oat_primary/`,
+ * `data/`, `Crash Reports/`) is always kept — see [decide]. Wiping them would
+ * nuke browser cookies, force a slow ART recompile of WebView native libs, or
+ * lose pending crash reports.
  *
- * Special case: if `coil3_disk_cache` is found, it is logged at **ERROR** — its
- * mere existence means something bypassed our configured ImageLoader. This
- * absorbs the role currently scattered across `AppModule`'s logout lambda, the
- * Storage screen's "Clear caches" button, and `probeOrphanCoilDiskCache`.
+ * Special case: if `coil3_disk_cache` is found it is logged at **ERROR** and
+ * deleted — its mere existence means something bypassed our configured
+ * ImageLoader. This absorbs the role previously scattered across `AppModule`'s
+ * logout lambda, the Storage screen's "Clear caches" button, and
+ * `probeOrphanCoilDiskCache`.
+ *
+ * The shape of the sweep was validated in dry-run mode against an on-device
+ * cache audit before this real-delete flip; see commit history.
  */
 object CacheSweeper {
 
     /**
-     * Startup-reclaim sweep — would delete everything in [report] that isn't one
-     * of [CacheAudit.KNOWN_CACHE_DIRS]. Log-only for now, with one exception:
-     * an orphan `coil3_disk_cache` is *actually* deleted (see [act]).
+     * Startup-reclaim sweep — deletes everything in [report] that isn't a
+     * tracked Coil cache or an Android system dir. Best-effort; per-entry
+     * failures are logged by [safeDeleteRecursively] and don't stop the sweep.
      */
     fun sweepUntracked(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
         Logger.i(tag = TAG) {
-            "DRY-RUN sweepUntracked: cacheDir=${report.cacheDirPath} " +
+            "sweepUntracked: cacheDir=${report.cacheDirPath} " +
                 "totalEntries=${report.entries.size} " +
-                "wouldDelete=${report.untrackedBytes} bytes (untracked) " +
-                "wouldKeep=${report.knownBytes} bytes (tracked Coil caches)"
+                "deleting=${report.untrackedBytes} bytes (untracked) " +
+                "keeping=${report.knownBytes} bytes (tracked Coil caches + android system)"
         }
         for (e in report.entries) act(e, decide(e, SweepMode.UNTRACKED), report.cacheDirPath, fileSystem)
     }
 
     /**
-     * Full sweep (e.g. logout) — would delete everything in [report], including
-     * the tracked `-v2` Coil DiskCache directories. Log-only for now, with one
-     * exception: an orphan `coil3_disk_cache` is *actually* deleted (see [act]).
+     * Full sweep (e.g. logout) — deletes everything in [report], including the
+     * tracked `-v2` Coil DiskCache directories. Android system dirs are still
+     * kept (see [CacheAudit.ANDROID_SYSTEM_DIRS]).
      */
     fun sweepAll(report: CacheAudit.Report, fileSystem: FileSystem = systemFileSystem) {
         Logger.i(tag = TAG) {
-            "DRY-RUN sweepAll: cacheDir=${report.cacheDirPath} " +
+            "sweepAll: cacheDir=${report.cacheDirPath} " +
                 "totalEntries=${report.entries.size} " +
-                "wouldDelete=${report.totalBytes} bytes (incl. tracked Coil caches)"
+                "deleting=${report.totalBytes} bytes (incl. tracked Coil caches)"
         }
         for (e in report.entries) act(e, decide(e, SweepMode.ALL), report.cacheDirPath, fileSystem)
     }
 
     private fun act(e: CacheAudit.Entry, action: SweepAction, baseDir: String, fileSystem: FileSystem) {
-        val verb = when (action) {
-            SweepAction.KEEP -> "WOULD KEEP  "
-            SweepAction.DELETE, SweepAction.ORPHAN_COIL_DELETE -> "WOULD DELETE"
-        }
-        val line = "$verb ${e.name}${if (e.isDirectory) "/" else ""} — ${e.sizeBytes} bytes [${e.label}]"
+        val line = "${e.name}${if (e.isDirectory) "/" else ""} — ${e.sizeBytes} bytes [${e.label}]"
         when (action) {
             SweepAction.ORPHAN_COIL_DELETE -> {
-                // The one case we actually delete during the dry-run period: orphan-coil is
-                // safe (no live DiskCache state behind it), expected to be absent, and
-                // "always delete on sight" is the existing scattered behavior we're absorbing.
-                // This lets the rogue safeDeleteRecursively("coil3_disk_cache") lines retire.
-                Logger.e(tag = TAG) { "ORPHAN COIL DISK CACHE DETECTED — $line (deleting now)" }
+                // Orphan coil dir means something bypassed our configured ImageLoader
+                // (we set .diskCache(null)). Logged loudly so the regression is visible.
+                Logger.e(tag = TAG) { "ORPHAN COIL DISK CACHE DETECTED — deleting $line" }
                 safeDeleteRecursively(baseDir, e.name, fileSystem)
             }
-            SweepAction.DELETE -> Logger.w(tag = TAG) { line }
-            SweepAction.KEEP -> Logger.i(tag = TAG) { line }
+            SweepAction.DELETE -> {
+                Logger.i(tag = TAG) { "deleting $line" }
+                safeDeleteRecursively(baseDir, e.name, fileSystem)
+            }
+            SweepAction.KEEP -> Logger.i(tag = TAG) { "keeping  $line" }
         }
     }
 

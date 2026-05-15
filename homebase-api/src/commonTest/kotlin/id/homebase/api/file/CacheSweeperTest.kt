@@ -79,34 +79,64 @@ class CacheSweeperTest {
     }
 
     @Test
-    fun sweep_actuallyDeletes_coil3DiskCache_evenInDryRunMode() {
-        // Pinned exception to dry-run: the orphan-coil dir is the one case the sweeper
-        // actually deletes now (it absorbs the role of the retired rogue
-        // safeDeleteRecursively("coil3_disk_cache") lines). Everything else stays log-only
-        // until on-device adb confirms the targets are right.
+    fun sweepUntracked_deletes_untrackedEntries_keeps_trackedAndAndroidSystem() {
         val fs = FakeFileSystem()
         val cacheDir = "/data/data/id.homebase.test/cache"
         fs.createDirectories(cacheDir.toPath())
+        // Untracked: should be reaped.
         fs.createDirectories("$cacheDir/coil3_disk_cache".toPath())
         fs.write("$cacheDir/coil3_disk_cache/some.bin".toPath()) { write(ByteArray(8)) }
-        fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
         fs.createDirectories("$cacheDir/hls_abc".toPath())
         fs.write("$cacheDir/hls_abc/index.ts".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/resolved_99.jpeg".toPath()) { write(ByteArray(8)) }
+        // Tracked Coil cache: kept in untracked sweep.
+        fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
+        fs.write("$cacheDir/homebase-payloads-v2/x.bin".toPath()) { write(ByteArray(8)) }
+        // Android system dir: sacred — kept regardless of sweep mode.
+        fs.createDirectories("$cacheDir/WebView".toPath())
+        fs.write("$cacheDir/WebView/cookies.bin".toPath()) { write(ByteArray(8)) }
 
         val report = CacheAudit.audit(cacheDir, fs)
         CacheSweeper.sweepUntracked(report, fs)
 
         assertFalse(
             fs.exists("$cacheDir/coil3_disk_cache".toPath()),
-            "orphan coil3_disk_cache must be actually deleted, not just logged",
+            "orphan coil3_disk_cache must be deleted",
         )
-        assertTrue(
+        assertFalse(
             fs.exists("$cacheDir/hls_abc".toPath()),
-            "non-orphan untracked entries stay on disk during dry-run (log only)",
+            "untracked dir must be deleted",
+        )
+        assertFalse(
+            fs.exists("$cacheDir/resolved_99.jpeg".toPath()),
+            "untracked file must be deleted",
         )
         assertTrue(
             fs.exists("$cacheDir/homebase-payloads-v2".toPath()),
-            "tracked Coil cache dirs are kept",
+            "tracked Coil cache dir kept in untracked sweep",
         )
+        assertTrue(
+            fs.exists("$cacheDir/WebView".toPath()),
+            "Android system dir is sacred, must survive any sweep",
+        )
+    }
+
+    @Test
+    fun sweepAll_deletesEverythingExceptAndroidSystem() {
+        val fs = FakeFileSystem()
+        val cacheDir = "/data/data/id.homebase.test/cache"
+        fs.createDirectories(cacheDir.toPath())
+        fs.createDirectories("$cacheDir/homebase-payloads-v2".toPath())
+        fs.write("$cacheDir/homebase-payloads-v2/x.bin".toPath()) { write(ByteArray(8)) }
+        fs.write("$cacheDir/resolved_99.jpeg".toPath()) { write(ByteArray(8)) }
+        fs.createDirectories("$cacheDir/WebView".toPath())
+        fs.write("$cacheDir/WebView/cookies.bin".toPath()) { write(ByteArray(8)) }
+
+        val report = CacheAudit.audit(cacheDir, fs)
+        CacheSweeper.sweepAll(report, fs)
+
+        assertFalse(fs.exists("$cacheDir/homebase-payloads-v2".toPath()), "logout sweep deletes tracked too")
+        assertFalse(fs.exists("$cacheDir/resolved_99.jpeg".toPath()), "logout sweep deletes untracked too")
+        assertTrue(fs.exists("$cacheDir/WebView".toPath()), "logout sweep still keeps Android system dirs")
     }
 }
