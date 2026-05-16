@@ -7,7 +7,29 @@ import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+
+/**
+ * One-shot signal that the local DB was just wiped because the on-disk schema
+ * version was older than [DatabaseManager.DATABASE_VERSION]. The UI consumes this
+ * (see `AppNavHost`) to show a snackbar so the user understands why their data
+ * appears to have vanished while DriveSync repopulates it from the server.
+ *
+ * Only emitted from [DatabaseManager.initialize] — the logout-driven wipe in
+ * `DriveSyncManager.clearStorage` calls `wipeAndRecreate` directly and is NOT
+ * an "upgrade".
+ *
+ * Sticky: stays in [JustUpgraded] until [DatabaseManager.markUpgradeConsumed]
+ * is called, so a consumer that subscribes after the synchronous wipe finished
+ * still sees the signal.
+ */
+sealed interface DatabaseUpgradeState {
+    data object Idle : DatabaseUpgradeState
+    data class JustUpgraded(val fromVersion: Int) : DatabaseUpgradeState
+}
 
 // Adapters as top-level constants (stateless, shared)
 private val appNotificationsAdapter = AppNotifications.Adapter(
@@ -79,6 +101,23 @@ class DatabaseManager(
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
+        // Companion-scoped so consumers (AppNavHost) can observe an upgrade even when
+        // they subscribe *after* initialize() finished. The state is sticky until
+        // markUpgradeConsumed() is called explicitly.
+        private val _databaseUpgradeState =
+            MutableStateFlow<DatabaseUpgradeState>(DatabaseUpgradeState.Idle)
+        val databaseUpgradeState: StateFlow<DatabaseUpgradeState> =
+            _databaseUpgradeState.asStateFlow()
+
+        /**
+         * Called by the UI once it has shown the upgrade snackbar so the sticky
+         * [DatabaseUpgradeState.JustUpgraded] is cleared. Without this, recomposition
+         * would keep re-firing the snackbar effect.
+         */
+        fun markUpgradeConsumed() {
+            _databaseUpgradeState.value = DatabaseUpgradeState.Idle
+        }
+
         // Single source of truth for every table in OdinDatabase. If a new table is
         // added to the schema, add it here or wipeAndRecreate() will silently skip it
         // on logout — exactly the class of bug that leaks Outbox rows across sessions.
@@ -104,6 +143,8 @@ class DatabaseManager(
                 Logger.withTag("DatabaseManager")
                     .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
                 instance.wipeAndRecreate()
+                _databaseUpgradeState.value =
+                    DatabaseUpgradeState.JustUpgraded(fromVersion = version.toInt())
             }
         }
 
