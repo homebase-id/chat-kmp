@@ -438,60 +438,6 @@ class QueryBatch(
         return QueryBatchResult(result, moreRows, refCursor)
     }
 
-    /**
-     * Legacy query for modified items - should be removed eventually
-     */
-    suspend fun queryModifiedAsync(
-        dbm: DatabaseManager,
-        driveId: Uuid,
-        noOfItems: Int,
-        cursorString: String? = null,
-        stopAtModifiedUnixTimeSeconds: TimeRowCursor? = null,
-        fileSystemType: Int? = null,
-        requiredSecurityGroup: IntRange? = null,
-        globalTransitIdAnyOf: List<Uuid>? = null,
-        filetypesAnyOf: List<Int>? = null,
-        datatypesAnyOf: List<Int>? = null,
-        senderIdAnyOf: List<String>? = null,
-        groupIdAnyOf: List<Uuid>? = null,
-        uniqueIdAnyOf: List<Uuid>? = null,
-        archivalStatusAnyOf: List<Int>? = null,
-        userDateSpan: UnixTimeUtcRange? = null,
-        aclAnyOf: List<Uuid>? = null,
-        tagsAnyOf: List<Uuid>? = null,
-        tagsAllOf: List<Uuid>? = null,
-        localTagsAnyOf: List<Uuid>? = null,
-        localTagsAllOf: List<Uuid>? = null
-    ): QueryModifiedResult {
-
-        val cursor = if (cursorString != null) {
-            TimeRowCursor.fromJson(cursorString)
-        } else {
-            TimeRowCursor(UnixTimeUtc(0), 0L)
-        }
-
-        val queryCursor = QueryBatchCursor(
-            paging = cursor.copy(row = cursor.row ?: 0L),
-            stop = stopAtModifiedUnixTimeSeconds
-        )
-
-        val (records, hasMoreRows, updatedCursor) = queryBatchAsync(
-            dbm,
-            driveId, noOfItems, queryCursor, QueryBatchSortOrder.OldestFirst,
-            QueryBatchSortField.OnlyModifiedDate, fileSystemType, FileStateFilter.All,
-            globalTransitIdAnyOf, filetypesAnyOf,
-            datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
-            archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
-            tagsAllOf, localTagsAnyOf, localTagsAllOf
-        )
-
-        return QueryModifiedResult(
-            records = records,
-            hasMoreRows = hasMoreRows,
-            cursor = updatedCursor.paging?.toJson() ?: ""
-        )
-    }
-
     // Helper functions
 
     private fun intList(list: List<Int>): String {
@@ -541,10 +487,3 @@ data class QueryBatchResult(
     val hasMoreRows: Boolean,
     val cursor: QueryBatchCursor
 )
-
-data class QueryModifiedResult(
-    val records: List<HomebaseFile>,
-    val hasMoreRows: Boolean,
-    val cursor: String
-)
-

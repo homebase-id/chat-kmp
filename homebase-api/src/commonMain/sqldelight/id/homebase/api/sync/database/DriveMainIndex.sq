@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 5
    fileType INTEGER NOT NULL,
    dataType INTEGER NOT NULL,
    archivalStatus INTEGER NOT NULL,
+   -- Canonical soft-delete marker (FileState.{Active=1,Deleted=0}); see
+   -- HomebaseFile.isSoftDeleted() which OR-checks this against archivalStatus.
    fileState INTEGER NOT NULL,
    historyStatus INTEGER NOT NULL,
    userDate INTEGER NOT NULL,
