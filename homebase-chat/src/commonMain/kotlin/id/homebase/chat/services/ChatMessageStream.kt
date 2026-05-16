@@ -3,6 +3,7 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -401,6 +402,15 @@ class ChatMessageStream(
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
+        // Note-to-self skips soft-deleted rows at SQL: a "you deleted your own
+        // message" tombstone has no value and dropping them at the index level
+        // is the perf win this PR was after. Regular conversations keep
+        // tombstones (chat convention — peer-deleted messages render as a
+        // "Deleted File" placeholder via MessageMapper's deleted-file branch).
+        val fileStateFilter =
+            if (conversationId == ChatProtocol.ConversationWithYourselfId) FileStateFilter.Active
+            else FileStateFilter.All
+
         val queryStart = TimeSource.Monotonic.markNow()
         val result =
             queryBatch.queryBatchAsync(
@@ -411,6 +421,7 @@ class ChatMessageStream(
                 sortOrder = sortOrder,
                 sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
+                fileState = fileStateFilter,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                 groupIdAnyOf = listOf(conversationId)
             )

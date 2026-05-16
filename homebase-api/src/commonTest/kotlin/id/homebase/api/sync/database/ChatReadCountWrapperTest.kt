@@ -82,12 +82,18 @@ class ChatReadCountWrapperTest {
 
     /** Creates a mock HomebaseFile with the specified parameters */
     private fun createMockHomebaseFile(
-        uniqueId: Uuid, driveId: Uuid, fileType: Int, groupId: Uuid?, created: UnixTimeUtc
+        uniqueId: Uuid,
+        driveId: Uuid,
+        fileType: Int,
+        groupId: Uuid?,
+        created: UnixTimeUtc,
+        fileState: String = "active",
+        archivalStatus: Int = 1,
     ): HomebaseFile {
         val jsonHeader = """{
             "driveId": "${driveId}",
             "fileId": "${Uuid.random()}",
-            "fileState": "active",
+            "fileState": "$fileState",
             "fileSystemType": "standard",
             "serverFileIsEncrypted": true,
             "keyHeader": {
@@ -114,7 +120,7 @@ class ChatReadCountWrapperTest {
                     "userDate": ${created.milliseconds},
                     "content": "test content",
                     "previewThumbnail": null,
-                    "archivalStatus": 1
+                    "archivalStatus": $archivalStatus
                 },
                 "localAppData": null,
                 "referencedFile": null,
@@ -420,6 +426,89 @@ class ChatReadCountWrapperTest {
 //            )
 //        }
 //    }
+
+    /**
+     * Regression for ChatReadCount.sq: the unread-count predicate must exclude
+     * BOTH soft-delete markers. Seeds three unread messages in one conversation:
+     *   - fully active                 (fileState=active,  archivalStatus=1) → counts
+     *   - fileState=Deleted drift case (fileState=deleted, archivalStatus=1) → must not count
+     *   - legacy-only marker case      (fileState=active,  archivalStatus=2) → must not count
+     * Removing either SQL clause makes one of the two excluded rows leak through.
+     */
+    @Test
+    fun selectUnreadCountForConversation_excludesSoftDeletedRows() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val convoId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            val convo = createMockHomebaseFile(convoId, driveId, 8888, null, now)
+            val activeMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(1000),
+                fileState = "active", archivalStatus = 1,
+            )
+            val driftDeletedMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(2000),
+                fileState = "deleted", archivalStatus = 1,
+            )
+            val legacyRemovedMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(3000),
+                fileState = "active", archivalStatus = 2,
+            )
+            insertHomebaseFile(dbm, identityId, driveId, convo)
+            insertHomebaseFile(dbm, identityId, driveId, activeMsg)
+            insertHomebaseFile(dbm, identityId, driveId, driftDeletedMsg)
+            insertHomebaseFile(dbm, identityId, driveId, legacyRemovedMsg)
+
+            val unread = dbm.chatReadCount.selectUnreadCountForConversation(
+                identityId, convoId, selfDomain,
+            )
+
+            assertEquals(
+                1L, unread,
+                "Only the fully-active row counts; both soft-delete markers must be excluded",
+            )
+        }
+    }
+
+    /** Same scenario but via the bulk query — guards selectAllUnreadCount. */
+    @Test
+    fun selectAllUnreadCount_excludesSoftDeletedRows() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val convoId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            val convo = createMockHomebaseFile(convoId, driveId, 8888, null, now)
+            val activeMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(1000),
+                fileState = "active", archivalStatus = 1,
+            )
+            val driftDeletedMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(2000),
+                fileState = "deleted", archivalStatus = 1,
+            )
+            val legacyRemovedMsg = createMockHomebaseFile(
+                Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(3000),
+                fileState = "active", archivalStatus = 2,
+            )
+            insertHomebaseFile(dbm, identityId, driveId, convo)
+            insertHomebaseFile(dbm, identityId, driveId, activeMsg)
+            insertHomebaseFile(dbm, identityId, driveId, driftDeletedMsg)
+            insertHomebaseFile(dbm, identityId, driveId, legacyRemovedMsg)
+
+            val rows = dbm.chatReadCount.selectAllUnreadCount(identityId, selfDomain)
+            val row = rows.firstOrNull { it.conversationId == convoId }
+
+            assertNotNull(row, "Conversation with one unread message should appear")
+            assertEquals(
+                1L, row.unreadCount,
+                "Only the fully-active row counts; both soft-delete markers must be excluded",
+            )
+        }
+    }
 
     @Test
     fun testSelectAllReadCountEmpty() = runTest {
