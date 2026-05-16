@@ -144,11 +144,8 @@ class QueryBatch(
         cursor: QueryBatchCursor? = null,
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
         sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
-        fileSystemType: Int? = null, // Default would be FileSystemType.Standard
-        // Default is [FileStateFilter.Active] — most reads should hide
-        // soft-deleted rows. Pass [FileStateFilter.All] from audit /
-        // diagnostic paths that need them in the result.
-        fileState: FileStateFilter = FileStateFilter.Active,
+        fileSystemType: Int? = null, // Default is FileSystemType.Standard
+        fileState: FileStateFilter = FileStateFilter.Active, // Default is [FileStateFilter.Active]
         globalTransitIdAnyOf: List<Uuid>? = null,
         filetypesAnyOf: List<Int>? = null,
         datatypesAnyOf: List<Int>? = null,
