@@ -5,7 +5,6 @@ package id.homebase.chat.services
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -108,7 +107,6 @@ class ChatMessageStreamPagingTest {
             sortOrder = sortOrder,
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
-            fileStateAnyOf = listOf(FileState.Active.value),
             filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
             groupIdAnyOf = listOf(conversationId),
         )
@@ -202,11 +200,11 @@ class ChatMessageStreamPagingTest {
     // ---------- tests ----------
 
     /**
-     * Regression: with the SQL-side `fileStateAnyOf = [Active]` filter wired
-     * into `fetchMessages` (and mirrored in [fetchPage]), soft-deleted rows
-     * must never reach the UI. Seeds an interleaved mix of active and
-     * deleted messages and asserts only the actives come back, with the
-     * deleted uniqueIds completely absent from the result set.
+     * Regression: with [QueryBatch]'s default of `FileStateFilter.Active`,
+     * soft-deleted rows must never reach the UI via `fetchMessages`. Seeds
+     * an interleaved mix of active and deleted messages and asserts only
+     * the actives come back, with the deleted uniqueIds completely absent
+     * from the result set.
      */
     @Test
     fun fetchMessages_excludesSoftDeletedRows() = runTest {

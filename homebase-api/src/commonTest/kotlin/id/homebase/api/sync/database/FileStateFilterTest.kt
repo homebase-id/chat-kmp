@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -13,13 +14,13 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
- * Coverage for the new SQL [DriveMainIndex.fileState] column wired in
- * "feat(db): promote fileState to a SQL column on DriveMainIndex":
+ * Coverage for the [FileStateFilter] parameter on `QueryBatch.queryBatchAsync`:
  *
- *  - `QueryBatch.queryBatchAsync` filters by `fileStateAnyOf` end-to-end:
- *    inclusion when the row's state is in the list, exclusion when it
- *    isn't, and pass-through when the parameter is null (existing
- *    default).
+ *  - The default is [FileStateFilter.Active] — omitted callers get
+ *    only active rows.
+ *  - [FileStateFilter.Deleted] returns only soft-deleted rows.
+ *  - [FileStateFilter.All] is the audit / diagnostic escape hatch
+ *    that returns both states.
  *  - The upsert `ON CONFLICT … DO UPDATE` branches refresh the column
  *    when the same row is re-inserted with a different state (the
  *    classic active → soft-delete transition).
@@ -33,20 +34,43 @@ class FileStateFilterTest {
     private val driveId: Uuid = Uuid.random()
 
     @Test
-    fun queryBatch_filtersByFileState_activeRow() = runTest {
+    fun queryBatch_defaultFilterIsActive() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
-            val uniqueId = Uuid.random()
-            seed(dbm, uniqueId, fileState = "active")
+            val activeId = Uuid.random()
+            val deletedId = Uuid.random()
+            seed(dbm, activeId, fileState = "active")
+            seed(dbm, deletedId, fileState = "deleted")
 
-            val results = queryBatchFor(dbm, fileStateAnyOf = null)
-            assertEquals(1, results.size, "default (null filter) must return active row")
+            // Omitting the filter must surface ONLY the active row.
+            val defaulted = queryBatchWithDefault(dbm)
+            assertEquals(1, defaulted.size, "default must surface only the active row")
+            assertEquals(activeId, defaulted.single().fileMetadata.appData.uniqueId)
 
-            val activeOnly = queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Active.value))
-            assertEquals(1, activeOnly.size, "explicit Active filter must return the active row")
-            assertEquals(uniqueId, activeOnly.single().fileMetadata.appData.uniqueId)
+            // Explicit Active matches the default.
+            val active = queryBatchFor(dbm, FileStateFilter.Active)
+            assertEquals(1, active.size)
+            assertEquals(activeId, active.single().fileMetadata.appData.uniqueId)
 
-            val deletedOnly = queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Deleted.value))
-            assertTrue(deletedOnly.isEmpty(), "Deleted filter must exclude the active row")
+            // Explicit Deleted inverts the result.
+            val deleted = queryBatchFor(dbm, FileStateFilter.Deleted)
+            assertEquals(1, deleted.size)
+            assertEquals(deletedId, deleted.single().fileMetadata.appData.uniqueId)
+        }
+    }
+
+    @Test
+    fun queryBatch_filterAll_returnsBothStates() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val activeId = Uuid.random()
+            val deletedId = Uuid.random()
+            seed(dbm, activeId, fileState = "active")
+            seed(dbm, deletedId, fileState = "deleted")
+
+            val all = queryBatchFor(dbm, FileStateFilter.All)
+
+            assertEquals(2, all.size, "All filter must surface both rows")
+            val ids = all.map { it.fileMetadata.appData.uniqueId }.toSet()
+            assertEquals(setOf(activeId, deletedId), ids)
         }
     }
 
@@ -61,11 +85,11 @@ class FileStateFilterTest {
             seed(dbm, uniqueId, fileId = fileId, fileState = "active", modifiedMs = t0)
 
             assertEquals(
-                1, queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Active.value)).size,
+                1, queryBatchFor(dbm, FileStateFilter.Active).size,
                 "active filter sees the row before transition",
             )
             assertTrue(
-                queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Deleted.value)).isEmpty(),
+                queryBatchFor(dbm, FileStateFilter.Deleted).isEmpty(),
                 "deleted filter excludes the row before transition",
             )
 
@@ -77,11 +101,11 @@ class FileStateFilterTest {
             seed(dbm, uniqueId, fileId = fileId, fileState = "deleted", modifiedMs = t0 + 1000)
 
             assertTrue(
-                queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Active.value)).isEmpty(),
+                queryBatchFor(dbm, FileStateFilter.Active).isEmpty(),
                 "active filter excludes the row after deletion",
             )
             assertEquals(
-                1, queryBatchFor(dbm, fileStateAnyOf = listOf(FileState.Deleted.value)).size,
+                1, queryBatchFor(dbm, FileStateFilter.Deleted).size,
                 "deleted filter sees the row after deletion",
             )
         }
@@ -106,9 +130,20 @@ class FileStateFilterTest {
 
     // ---------- helpers ----------
 
+    /** Mirrors a call site that omits the filter — exercises the default. */
+    private suspend fun queryBatchWithDefault(dbm: DatabaseManager): List<HomebaseFile> =
+        QueryBatch(identityId).queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 100,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.UserDate,
+            fileSystemType = 0,
+        ).records
+
     private suspend fun queryBatchFor(
         dbm: DatabaseManager,
-        fileStateAnyOf: List<Int>?,
+        fileState: FileStateFilter,
     ): List<HomebaseFile> = QueryBatch(identityId).queryBatchAsync(
         dbm = dbm,
         driveId = driveId,
@@ -116,7 +151,7 @@ class FileStateFilterTest {
         sortOrder = QueryBatchSortOrder.NewestFirst,
         sortField = QueryBatchSortField.UserDate,
         fileSystemType = 0,
-        fileStateAnyOf = fileStateAnyOf,
+        fileState = fileState,
     ).records
 
     private suspend fun seed(

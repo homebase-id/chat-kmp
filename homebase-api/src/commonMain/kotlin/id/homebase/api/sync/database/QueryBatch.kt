@@ -5,6 +5,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.common.IntRange
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.HomebaseFile
@@ -143,7 +145,10 @@ class QueryBatch(
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
         sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
         fileSystemType: Int? = null, // Default would be FileSystemType.Standard
-        fileStateAnyOf: List<Int>? = null,
+        // Default is [FileStateFilter.Active] — most reads should hide
+        // soft-deleted rows. Pass [FileStateFilter.All] from audit /
+        // diagnostic paths that need them in the result.
+        fileState: FileStateFilter = FileStateFilter.Active,
         globalTransitIdAnyOf: List<Uuid>? = null,
         filetypesAnyOf: List<Int>? = null,
         datatypesAnyOf: List<Int>? = null,
@@ -230,8 +235,10 @@ class QueryBatch(
             listWhereAnd.add("($timeField, driveMainIndex.rowId) $isign (${stopBoundary.time.milliseconds}, $rowId)")
         }
 
-        if (!fileStateAnyOf.isNullOrEmpty()) {
-            listWhereAnd.add("fileState IN (${intList(fileStateAnyOf)})")
+        when (fileState) {
+            FileStateFilter.Active -> listWhereAnd.add("fileState = ${FileState.Active.value}")
+            FileStateFilter.Deleted -> listWhereAnd.add("fileState = ${FileState.Deleted.value}")
+            FileStateFilter.All -> { /* no WHERE clause */ }
         }
 
         val leftJoin = buildSharedWhereAnd(
@@ -321,7 +328,7 @@ class QueryBatch(
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
         sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
         fileSystemType: Int? = null,
-        fileStateAnyOf: List<Int>? = null,
+        fileState: FileStateFilter = FileStateFilter.Active,
         requiredSecurityGroup: IntRange? = null,
         globalTransitIdAnyOf: List<Uuid>? = null,
         filetypesAnyOf: List<Int>? = null,
@@ -343,7 +350,7 @@ class QueryBatch(
         val (result, moreRows, refCursor) = queryBatchAsync(
             dbm,
             driveId, noOfItems, cursor, sortOrder, sortField,
-            fileSystemType, fileStateAnyOf,
+            fileSystemType, fileState,
             globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
             senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
             userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf,
@@ -393,7 +400,7 @@ class QueryBatch(
                     val (r2, moreRows2, refCursor2) = queryBatchSmartCursorAsync(
                         dbm,
                         driveId, noOfItems - result.size, updatedCursor,
-                        sortOrder, sortField, fileSystemType, fileStateAnyOf,
+                        sortOrder, sortField, fileSystemType, fileState,
                         requiredSecurityGroup, globalTransitIdAnyOf, filetypesAnyOf,
                         datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
                         archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
@@ -417,7 +424,7 @@ class QueryBatch(
                 return queryBatchSmartCursorAsync(
                     dbm,
                     driveId, noOfItems, updatedCursor, sortOrder, sortField,
-                    fileSystemType, fileStateAnyOf, requiredSecurityGroup,
+                    fileSystemType, fileState, requiredSecurityGroup,
                     globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
                     senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
                     userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf, localTagsAnyOf, localTagsAllOf
@@ -474,7 +481,7 @@ class QueryBatch(
         val (records, hasMoreRows, updatedCursor) = queryBatchAsync(
             dbm,
             driveId, noOfItems, queryCursor, QueryBatchSortOrder.OldestFirst,
-            QueryBatchSortField.OnlyModifiedDate, fileSystemType, null,
+            QueryBatchSortField.OnlyModifiedDate, fileSystemType, FileStateFilter.All,
             globalTransitIdAnyOf, filetypesAnyOf,
             datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
             archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
