@@ -49,6 +49,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowSizeClass
 import co.touchlab.kermit.Logger
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.DatabaseUpgradeState
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
@@ -132,6 +134,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.pending_upgrade_snackbar_message
 import id.homebase.resources.pending_upgrade_snackbar_action
 import id.homebase.resources.pending_upgrade_title
+import id.homebase.resources.database_upgrade_snackbar
 import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
 
@@ -444,6 +447,27 @@ fun AppNavHost(
                                 if (result == SnackbarResult.ActionPerformed) {
                                     uriHandler.openUrl(pendingUpgrade.upgradeUrl)
                                 }
+                            }
+                        }
+
+                        // Snackbar fired once per process after DatabaseManager wipes the local
+                        // DB on a schema-version bump. Tells the user why their conversations /
+                        // vault / feed appear empty while DriveSync repopulates from the server.
+                        // Skipped on fresh installs (fromVersion == 0): no prior data, nothing
+                        // to "restore". markUpgradeConsumed() flips state back to Idle so
+                        // recomposition doesn't re-fire the effect.
+                        val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
+                        val dbUpgradeSnapshot = dbUpgrade
+                        if (dbUpgradeSnapshot is DatabaseUpgradeState.JustUpgraded &&
+                            dbUpgradeSnapshot.fromVersion > 0
+                        ) {
+                            val dbUpgradeMsg = stringResource(MR.string.database_upgrade_snackbar)
+                            LaunchedEffect(dbUpgradeSnapshot) {
+                                snackbarHostState.showSnackbar(
+                                    message = dbUpgradeMsg,
+                                    duration = SnackbarDuration.Long,
+                                )
+                                DatabaseManager.markUpgradeConsumed()
                             }
                         }
 
