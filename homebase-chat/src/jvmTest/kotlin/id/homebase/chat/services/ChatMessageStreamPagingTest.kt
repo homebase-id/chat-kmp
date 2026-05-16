@@ -5,6 +5,7 @@ package id.homebase.chat.services
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -99,6 +100,10 @@ class ChatMessageStreamPagingTest {
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
     ): Triple<List<MessageUiModel>, Boolean, QueryBatchCursor> {
         val queryBatch = QueryBatch(testIdentityId)
+        // Per-conversation-type filter — must mirror ChatMessageStream.fetchMessages.
+        val fileStateFilter =
+            if (conversationId == ChatProtocol.ConversationWithYourselfId) FileStateFilter.Active
+            else FileStateFilter.All
         val result = queryBatch.queryBatchAsync(
             dbm = dbm,
             driveId = chatDriveId,
@@ -107,6 +112,7 @@ class ChatMessageStreamPagingTest {
             sortOrder = sortOrder,
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
+            fileState = fileStateFilter,
             filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
             groupIdAnyOf = listOf(conversationId),
         )
@@ -200,15 +206,15 @@ class ChatMessageStreamPagingTest {
     // ---------- tests ----------
 
     /**
-     * Regression: with [QueryBatch]'s default of `FileStateFilter.Active`,
-     * soft-deleted rows must never reach the UI via `fetchMessages`. Seeds
-     * an interleaved mix of active and deleted messages and asserts only
-     * the actives come back, with the deleted uniqueIds completely absent
-     * from the result set.
+     * Note-to-self regression: tombstones have no UX value for self-deletions, so
+     * `ChatMessageStream.fetchMessages` filters soft-deleted rows at SQL via
+     * `FileStateFilter.Active`. Seeds an interleaved mix of active and deleted
+     * messages under `ConversationWithYourselfId` and asserts only the actives
+     * come back.
      */
     @Test
-    fun fetchMessages_excludesSoftDeletedRows() = runTest {
-        val conversationId = Uuid.random()
+    fun fetchMessages_noteToSelf_excludesSoftDeletedRows() = runTest {
+        val conversationId = ChatProtocol.ConversationWithYourselfId
         val baseTime = 1_700_000_000_000L
 
         val activeIds = mutableListOf<Uuid>()
@@ -234,6 +240,44 @@ class ChatMessageStreamPagingTest {
             "no deleted id may appear in the page",
         )
         assertFalse(hasMore, "10 actives fit within limit=50; hasMore must be false")
+    }
+
+    /**
+     * Regular-conversation regression: tombstones DO carry signal ("a peer deleted
+     * a message here") and must render as a "Deleted File" placeholder via
+     * `MessageMapper`'s deleted-file branch (Signal/WhatsApp convention). Flipping
+     * the per-type branch in `ChatMessageStream.fetchMessages` would make this fail.
+     */
+    @Test
+    fun fetchMessages_regularConversation_includesTombstones() = runTest {
+        val conversationId = Uuid.random()  // NOT ConversationWithYourselfId
+        val baseTime = 1_700_000_000_000L
+
+        val activeId = seedMessage(
+            conversationId = conversationId,
+            userDateMs = baseTime,
+            fileState = "active",
+        )
+        val deletedId = seedMessage(
+            conversationId = conversationId,
+            userDateMs = baseTime + 1_000L,
+            fileState = "deleted",
+        )
+
+        val (page, _, _) = fetchPage(conversationId, limit = 50)
+
+        assertEquals(2, page.size, "regular conversations must surface both active and tombstone rows")
+        val byId = page.associateBy { it.id }
+        val activeMsg = byId[activeId]
+        val deletedMsg = byId[deletedId]
+        assertNotNull(activeMsg, "active message must appear")
+        assertNotNull(deletedMsg, "tombstone must appear")
+        assertFalse(activeMsg.isDeleted, "active row must not be marked deleted")
+        assertTrue(deletedMsg.isDeleted, "soft-deleted row must render as tombstone (isDeleted=true)")
+        assertEquals(
+            "Deleted File", deletedMsg.content,
+            "tombstone content must match MessageMapper's deleted-file branch",
+        )
     }
 
     @Test
