@@ -3,6 +3,15 @@
 **Status: FROZEN — Phase 2 review complete.** All design decisions
 recorded in Appendix B. Ready for Phase 3 implementation.
 
+> **AMENDED 2026-05-17:** §10 GL pipeline scope-cut reversed — a minimal
+> GL surface bridge has been added so HDR videos can be transcoded with
+> hardware tone-mapping (matches Signal's HDR capability). See §10
+> amendment row and the new Appendix B entry. The bridge is
+> pixel-rotation-free; rotation continues to ride on
+> `MediaMuxer.setOrientationHint`. YuvCopier was removed in trade
+> (GL_LINEAR bilinear sampler replaces the previous nearest-neighbour
+> scale at strictly better quality).
+
 This document is the load-bearing design artefact for the clean-room
 rewrite of the Android compress path. The vendored Signal tree at
 `../transcoder/` is reference material only; nothing in it survives the
@@ -115,17 +124,30 @@ object HomebaseVideoTranscoder {
 | `android.media.MediaCodec.BufferInfo` | Per-sample timing + flag exchange. | Required by MediaCodec API. |
 | `android.os.HandlerThread` / `android.os.Handler` | _Only if_ we go async-callback in section 5. OPEN. | n/a |
 
+**Native APIs we explicitly USE for the GL surface bridge** (§10 amendment, 2026-05-17):
+
+- **`android.opengl.EGL14`** — EGL 1.4 context + window-surface management.
+  Used by `InputSurface` to wrap the encoder's `createInputSurface()`
+  return as an EGL window surface.
+- **`android.opengl.GLES20`** + **`android.opengl.GLES11Ext`** — GLES 2.0
+  pass-through shader (vertex + fragment, single textured quad sampling
+  a `GL_TEXTURE_EXTERNAL_OES` texture). Used by `TextureRender`.
+- **`android.graphics.SurfaceTexture`** — wraps the decoder's output
+  Surface, gives us frame-available notifications + `updateTexImage`.
+  Used by `OutputSurface`. Only the *decoder* output uses a
+  SurfaceTexture; the encoder consumes a raw `Surface` directly.
+
+These three classes (~450 LOC) are the price of decoder-side HDR
+tone-mapping — `KEY_COLOR_TRANSFER_REQUEST` is only honoured when the
+decoder writes to a Surface.
+
 **Native APIs we explicitly DON'T use:**
 
-- **OpenGL ES** (`android.opengl.GLES20`, `android.opengl.EGL14`,
-  `android.view.Surface` as a GL render target). Signal uses these
-  to render rotated frames through a GL pipeline so the encoder sees
-  upright pixels. We sidestep this entirely: preserve source rotation
-  via `MediaMuxer.setOrientationHint()` and let the player rotate at
-  playback time. This kills `InputSurface.java` + `OutputSurface.java`
-  + `TextureRender.java` (~700 LOC) from the rewrite. See section 10
-  for the trade-off.
-- **`SurfaceTexture`**. Same reasoning.
+- **OpenGL ES rotation / colour-correction / cropping**. The GL bridge
+  is pass-through only. Rotation lives in container metadata via
+  `MediaMuxer.setOrientationHint()` (no pixel rotation in the GL
+  pipeline). Scaling is implicit via `GL_LINEAR` sampling — no
+  custom box-filter shader.
 - **`MediaCodec`'s async-callback API**. OPEN — see section 5; we
   default to sync for now.
 - **Custom MP4 atom parsing**. We rely on `MediaMuxer` for output
@@ -166,15 +188,20 @@ object HomebaseVideoTranscoder {
                   ┌─────────────────┐                  │              ┌──────────────────┐
                   │ MediaCodec dec  │                  │              │ MediaCodec dec   │
                   │ (video, H.264   │                  │              │ (audio, AAC      │
-                  │  or HEVC in)    │                  │              │  in)             │
-                  └────────┬────────┘                  │              └─────────┬────────┘
-                           │ ByteBuffer (YUV)          │                        │ ByteBuffer (PCM)
-                           ▼                           │                        ▼
-                  ┌─────────────────┐                  │              ┌──────────────────┐
-                  │ MediaCodec enc  │                  │              │ MediaCodec enc   │
-                  │ (video, H.264   │                  │              │ (audio, AAC      │
-                  │  out)           │                  │              │  out, 128 kbps)  │
-                  └────────┬────────┘                  │              └─────────┬────────┘
+                  │  or HEVC in,    │                  │              │  in)             │
+                  │  Surface out)   │                  │              └─────────┬────────┘
+                  └────────┬────────┘                  │                        │ ByteBuffer (PCM)
+                           │ SurfaceTexture (OES)      │                        ▼
+                           │ + GL textured quad        │              ┌──────────────────┐
+                           │ (pass-through shader,     │              │ MediaCodec enc   │
+                           │  GL_LINEAR bilinear)      │              │ (audio, AAC      │
+                           ▼                           │              │  out, 128 kbps)  │
+                  ┌─────────────────┐                  │              └─────────┬────────┘
+                  │ MediaCodec enc  │                  │                        │
+                  │ (video, H.264   │                  │                        │
+                  │  out, Surface   │                  │                        │
+                  │  input)         │                  │                        │
+                  └────────┬────────┘                  │                        │
                            │ ByteBuffer (compressed)   │                        │ ByteBuffer (compressed)
                            │ + BufferInfo (PTS, flags) │                        │ + BufferInfo
                            ▼                           │                        ▼
@@ -568,7 +595,7 @@ can crib surgically.
 | ~~No HDR tone-mapping.~~ **WITHDRAWN — HDR IS supported.** See new §11. | n/a | User benchmark: "can't be worse than Signal." Signal handles HDR; so do we. Implementation crucially does NOT require restoring the GL pipeline — Signal's strategy uses decoder-side hardware tone-mapping via `KEY_COLOR_TRANSFER_REQUEST` (API 31+) and accepts degraded passthrough on older APIs. No fragment-shader work needed. | None — see §11 for the strategy. |
 | **No `LimitedSizeOutputStream` cap.** Skip Signal's "abort if encoder produces > N bytes" guard. | One inner class, ~30 LOC. | We don't take an `upperSizeLimit` parameter. If we ever want a cap, the bitrate envelope + duration gives us a soft estimate. | None given current callers. |
 | **No `OutputStream` write target.** Only file paths. | `setOutput(OutputStream)` overload + `StreamOutput` adapter. | `MediaMuxer` doesn't accept an `OutputStream` — Signal's adapter is a Frankenstein of a custom muxer that knows how to write to one. Our scope cut #1 eliminates the need. Callers that want to encrypt during write can encrypt the file post-transcode (one more pass; acceptable). | None given current callers. |
-| **No GL pixel pipeline.** Use source rotation metadata, not pixel rotation. | `InputSurface.java` + `OutputSurface.java` + `TextureRender.java` (~700 LOC + significant test exposure). | **RESOLVED.** Source rotation is preserved through `MediaMuxer.setOrientationHint()`, which writes to the MP4 `tkhd` matrix. All three implemented receiver-side players honour this by convention: Android uses `androidx.media3.exoplayer.ExoPlayer` (verified in `VideoPlayerSurface.android.kt`), iOS uses `AVPlayer` from `platform.AVFoundation.AVPlayer` (`VideoPlayerSurface.native.kt`), Desktop uses VLC-J via `MediaPlayerFactory` (`VideoPlayerSurface.jvm.kt`). Web is a stub today; when implemented against `HTMLVideoElement`, browsers also honour `tkhd` natively. We're not flipping / cropping / recoloring; no other reason for a GL pipeline. | None for current scope. |
+| ~~**No GL pixel pipeline.** Use source rotation metadata, not pixel rotation.~~ **AMENDED 2026-05-17 — minimal GL surface bridge restored.** | n/a — restored | Original cut was made on the basis "we're not flipping / cropping / recoloring; no other reason for a GL pipeline." This missed that **HDR tone-mapping via `KEY_COLOR_TRANSFER_REQUEST` requires Surface-output decoder**, which the ByteBuffer pipeline didn't provide. To match Signal's HDR capability we restored a *minimal* GL bridge: `InputSurface` (EGL14 window-surface wrapper for encoder input), `OutputSurface` (SurfaceTexture wrapper for decoder output), `TextureRender` (pass-through GLES 2.0 fragment shader). Pixel rotation is still NOT done in GL — rotation continues to ride on `MediaMuxer.setOrientationHint()` per the original §10 rationale (ExoPlayer / AVPlayer / VLC-J / `HTMLVideoElement` all honour `tkhd`). YuvCopier deleted in trade — GL_LINEAR bilinear sampling strictly improves on the previous nearest-neighbour scale. Net +430 LOC. | None for current scope. |
 | **No async `MediaCodec.Callback`.** Sync pump only (section 5). | `HandlerThread` orchestration, `Channel` plumbing per codec. | Section 5 analysis. | None initially; can revisit. |
 | **No multi-audio-track preservation.** Single audio track in, single audio track out. | Extra extractor track selection + muxer setup + per-track pump state. | The send pipeline currently doesn't support multi-track audio (descriptor only carries one); the chat playback also doesn't surface track selection. Source files with multi-track audio collapse to first track. | None given current scope. |
 
@@ -604,8 +631,11 @@ the canonical check from `../transcoder/videoconverter/utils/MediaCodecCompat.kt
 
 **API 31+ (Android 12+):** for each candidate decoder, build a
 `MediaFormat` copy with `KEY_COLOR_TRANSFER_REQUEST` set to
-`COLOR_TRANSFER_SDR_VIDEO`. Configure + start. Then call
-`isToneMapEffective()`:
+`COLOR_TRANSFER_SDR_VIDEO`. Configure + start (with decoder output going
+to the `OutputSurface` SurfaceTexture per the §10 amendment). The decoder
+performs hardware tone-mapping while writing to the texture; the GL
+pass-through shader paints those SDR pixels into the encoder's input
+surface. Then call `isToneMapEffective()`:
 
 - If the chosen codec is a software codec (per `MediaCodecInfo.isSoftwareOnly()`
   on API 29+, or name-prefix heuristics earlier), tone-mapping does
@@ -706,3 +736,138 @@ here for the design-review record.
   `KEY_COLOR_TRANSFER_REQUEST` on API 31+ with post-configure verify;
   pre-API-31 passes through with degraded colors. No GL pipeline
   needed.
+- **§10 GL pipeline (amendment, 2026-05-17):** restored minimal GL
+  surface bridge. Original Phase-2 decision missed that
+  `KEY_COLOR_TRANSFER_REQUEST` only works when the decoder writes to a
+  Surface — without GL, HDR transcodes silently degraded or required
+  fail-fast. Restoring three small classes (`InputSurface`,
+  `OutputSurface`, `TextureRender`, ~450 LOC) provides the Surface
+  bridge HDR needs AND obsoletes our nearest-neighbour software YUV
+  scaler (`YuvCopier`, ~75 LOC, deleted) in favour of GL_LINEAR
+  bilinear sampling. The bridge is pixel-rotation-free; rotation
+  metadata still rides on `MediaMuxer.setOrientationHint()` per the
+  original §10. The bridge also enables Phase-2 quality improvements
+  (e.g. Signal's box-filter shader for aggressive downscales) via the
+  `TextureRender.changeFragmentShader` hook. Net +430 LOC.
+- **AAC pass-through + trim PTS normalization (2026-05-17):** ported
+  Signal's `formatCanSkipTranscode` fast path (`AudioTrackConverter.java:494-505`):
+  AAC input at acceptable bitrate now skips the decoder/encoder round
+  trip and mux-copies samples directly via the new `AudioRemuxer`
+  alongside `AudioPair` (shared `AudioTrack` interface). Sidesteps the
+  documented HE-AAC re-encode bug. Also normalised PTS at encoder-queue
+  time (subtract `trimStartUs`) so trimmed output starts at t=0 in
+  container time — fixes leading silent gap in some players.
+
+---
+
+## Appendix C — Remaining gaps vs Signal (post-2026-05-17)
+
+After surface bridge + AAC pass-through + PTS normalization, the v2
+transcoder is at functional parity with Signal for the user-visible
+"can Signal transcode this video that we can't?" question. What
+follows is the honest list of finer-grained gaps that remain. None
+are blocking; this is a "future work" register.
+
+### Quality gaps
+
+- **No box-filter shader for aggressive downscales.** Signal generates
+  a custom GLES fragment shader with manual box-filter sampling for
+  large downscale ratios (`VideoTrackConverter.java:443-489`). We use
+  `GL_LINEAR` (bilinear) on every output dimension. For modest
+  downscales (≤2×, e.g. 1080p→720p) bilinear is indistinguishable;
+  for >2× downscales (4K→480p, ~5×) bilinear shows mild aliasing on
+  high-frequency content. **Mitigation hook already in place:**
+  `TextureRender.changeFragmentShader(String)` — a future contributor
+  can wire Signal's `createFragmentShader` in ~50 LOC.
+
+### Coverage / robustness gaps
+
+- **Spatial-video / vendor-codec quirk retry path is untested.** We
+  plumb the "frame counts should match" error-string detection and
+  the `android.media.MediaCodec`-stack-frame predicate (SPEC §9.2)
+  but no test fixture exercises it. Signal has tens of millions of
+  installs validating the path against real iPhone-spatial-video and
+  vendor codec regressions; ours hasn't been stress-tested. **First
+  user report from a device that hits this is the canary.**
+- **Vendor codec quirk catalogue.** Signal accumulated multi-year
+  empirical fixes for specific OEM codecs (e.g. Samsung Exynos
+  pre-roll bugs, MediaTek HEVC stride misreports). We inherit the
+  *architecture* (REGULAR→ALL fallback, mid-stream exclusion, stuck-
+  frame watchdog) but not the *specific* device knowledge. New
+  device reports will surface these.
+
+### Less-common feature gaps
+
+- **Anamorphic source aspect ratio.** We probe display dimensions via
+  `KEY_DISPLAY_WIDTH`/`KEY_DISPLAY_HEIGHT` (SPEC §9.5) for the
+  already-optimal short-edge check, but the encoder is configured at
+  the *coded* dimensions from short-edge math. For sources where
+  coded ≠ display (e.g. 720×480 NTSC stretched to 854×480), the
+  output's aspect ratio gets squashed. Rare in mobile-captured
+  content; common in shared/ripped media. Fix would be ~10 LOC to
+  use display dimensions in `OutputDimensions.computeOutputDimensions`.
+- **Multi-audio-track preservation.** SPEC §10 explicit cut — input
+  with multiple audio tracks (e.g. director's commentary; multi-
+  language Blu-ray rip) collapses to first track only. Signal does
+  the same. Not a regression vs Signal; just noting it's still cut.
+- **Faststart MOOV-before-MDAT.** Both downstream paths (HLS .ts
+  segments + sub-5 MB MP4 that's fully downloaded before playback)
+  make this irrelevant; documented in SPEC §10. Would become a gap
+  only if we ever serve MP4s via HTTP progressive download.
+- **CRF / constant-quality encoding.** SPEC §6 frozen decision is
+  bitrate (VBR). MediaCodec encoders accept `KEY_BITRATE_MODE = CQ`
+  on recent devices for more consistent visual quality at variable
+  file size — would be a worthwhile experiment once we have
+  receiver-side quality telemetry.
+- **HEVC for HIGH preset.** SPEC §6 frozen decision is H.264 across
+  all presets. HEVC at the same bitrate gives meaningfully better
+  quality; revisit when receiver compatibility telemetry justifies
+  it. Signal has an experimental `LEVEL_3_H265` preset; we don't.
+
+### Test coverage gaps
+
+- **HDR happy path untested on emulator.** The Android emulator
+  exposes only software HEVC decoders (`c2.android.hevc.decoder`,
+  `c2.goldfish.hevc.decoder`, `OMX.google.hevc.decoder`), all of
+  which fail `isToneMapEffective`. Our HDR instrumented test
+  (`compressVideo_hdr10_720p_producesTonemappedSdrOrControlledFailure`)
+  branches on `hasHardwareHevcDecoder()` and verifies the *failure*
+  path on emulator. Verifying the *success* path requires running
+  the same test on a physical device with hardware HEVC decoding —
+  any modern Android phone, but not the CI environment.
+- **No real HE-AAC fixture.** The AAC pass-through path is tested
+  with regular AAC-LC (sample.mp4). The path's main motivation —
+  Signal's HE-AAC re-encode bug — would benefit from a fixture
+  with HE-AAC audio specifically, to assert no audio distortion
+  through the pipeline. Currently we rely on the "no codec
+  construction" assertion as a proxy.
+
+### Where we're now better than Signal
+
+- **Suspend coroutine API** vs callback `CancellationSignal`. Native
+  to our codebase.
+- **No third-party deps.** Signal pulls in isobmff-like parsing
+  libraries for their custom MP4 muxer and faststart processor; we
+  trust `MediaMuxer` and don't faststart.
+- **~1,800 LOC vs Signal's ~5,500.** ~33% the size, with HDR,
+  pass-through, surface bridge, all the §9 device-quirk workarounds.
+- **Explicit `Result.AlreadyOptimal`** vs Signal's "return 0 to mean
+  skipped" — caller can't get confused about null/0 semantics.
+- **GL pipeline is minimal** — pass-through shader only (~450 LOC
+  across three files). Signal's includes box-filter shader
+  generation, flipX vertex variants, rotation matrices — useful but
+  not what we need.
+
+### Recommendation
+
+None of the above are blocking; all are quality-of-life or edge-
+case improvements. The order I'd tackle them if/when needed:
+
+1. Box-filter shader (only when telemetry shows users transcoding
+   4K → 480p often enough to notice the aliasing).
+2. Anamorphic dimensions (when first user report).
+3. HE-AAC fixture for regression coverage (any time we touch
+   `AudioRemuxer` again).
+4. Spatial-video stress test (when first device report).
+5. HEVC HIGH preset / CRF mode (experiments once receiver
+   telemetry exists).

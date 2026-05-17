@@ -1,6 +1,5 @@
 package id.homebase.api.video
 
-import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
@@ -8,13 +7,9 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.video.transcoder.StreamingTranscoder
-import id.homebase.api.video.transcoder.TranscoderOptions
-import id.homebase.api.video.transcoder.TranscodingPreset
-import id.homebase.api.video.transcoder.postprocessing.Mp4FaststartPostProcessor
-import id.homebase.api.video.transcoder.videoconverter.MediaConverter
+import id.homebase.api.video.transcoder_v2.HomebaseVideoTranscoder
+import id.homebase.api.video.transcoder_v2.TranscodeException
 import java.io.File
-import java.io.RandomAccessFile
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -143,134 +138,57 @@ actual object FFmpegUtils {
             return@withContext null
         }
 
-        // Pass null when no trim is requested; a non-null TranscoderOptions
-        // forces transcode even on already-optimal inputs.
-        val options: TranscoderOptions? =
-            if (trimStartMs != null && trimEndMs != null) {
-                TranscoderOptions(
-                    startTimeUs = trimStartMs * 1_000L,
-                    endTimeUs   = trimEndMs   * 1_000L,
-                )
-            } else {
-                if (trimStartMs != null || trimEndMs != null) {
-                    Log.w(TAG, "Partial trim ignored (got start=$trimStartMs end=$trimEndMs); pass both or neither")
-                }
+        val trim: HomebaseVideoTranscoder.TrimRange? = when {
+            trimStartMs != null && trimEndMs != null ->
+                HomebaseVideoTranscoder.TrimRange(trimStartMs, trimEndMs)
+            trimStartMs != null || trimEndMs != null -> {
+                Log.w(TAG, "Partial trim ignored (got start=$trimStartMs end=$trimEndMs); pass both or neither")
                 null
             }
+            else -> null
+        }
 
-        val dataSource = FileBackedMediaDataSource(inFile)
-        val transcoder = try {
-            when (quality) {
-                VideoQuality.LOW ->
-                    StreamingTranscoder(
-                        dataSource, options, TranscodingPreset.LEVEL_1,
-                        /*upperSizeLimit=*/ Long.MAX_VALUE, /*allowAudioRemux=*/ true,
-                    )
-                VideoQuality.STANDARD ->
-                    StreamingTranscoder(
-                        dataSource, options, TranscodingPreset.LEVEL_3,
-                        /*upperSizeLimit=*/ Long.MAX_VALUE, /*allowAudioRemux=*/ true,
-                    )
-                VideoQuality.HIGH ->
-                    // Custom 1080p / 5 Mbps target — above the highest built-in preset.
-                    StreamingTranscoder(
-                        dataSource, options,
-                        MediaConverter.VIDEO_CODEC_H264,
-                        /*videoBitrate=*/ 5_000_000,
-                        /*audioBitrate=*/ 192_000,
-                        /*shortEdge=*/ 1080,
-                        /*allowAudioRemux=*/ true,
-                    )
-            }
+        val outFile = File(context.cacheDir, "compressed_${inFile.name}")
+
+        val result = try {
+            HomebaseVideoTranscoder.transcode(
+                inputPath = inFile.absolutePath,
+                outputPath = outFile.absolutePath,
+                quality = quality,
+                trim = trim,
+                onProgress = onProgress,
+            )
+        } catch (e: TranscodeException) {
+            Log.e(
+                TAG,
+                "Transcode failed (in=$inputPath, codec=${e.inputCodec}, " +
+                    "decoder=${e.attemptedDecoder}, encoder=${e.attemptedEncoder})",
+                e,
+            )
+            outFile.delete()
+            return@withContext null
         } catch (e: Throwable) {
-            Log.e(TAG, "Failed to construct StreamingTranscoder", e)
-            try { dataSource.close() } catch (_: Exception) {}
+            Log.e(TAG, "Transcode crashed", e)
+            outFile.delete()
             return@withContext null
         }
 
-        if (!transcoder.isTranscodeRequired) {
-            Log.d(TAG, "Video already optimal — skipping compression (quality=$quality)")
-            try { dataSource.close() } catch (_: Exception) {}
-
-            // The input passes through unchanged on this path — so it still
-            // carries any EXIF / GPS / location atoms the camera wrote. Try a
-            // metadata-only strip via mp4parser (no re-encode). Returns null
-            // here if the input had no location atoms, in which case the
-            // caller proceeds with the original.
-            val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
-            return@withContext if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
-                Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
-                sanitized.absolutePath
-            } else {
-                null
-            }
-        }
-
-        val tempOut = File(context.cacheDir, "compressed_${inFile.name}.tmp")
-        val finalOut = File(context.cacheDir, "compressed_${inFile.name}")
-
-        try {
-            tempOut.outputStream().use { os ->
-                transcoder.transcode(
-                    { pct -> onProgress?.invoke(pct / 100f) },
-                    os,
-                    /*cancelationSignal=*/ null,
-                )
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "MediaCodec transcode failed", e)
-            tempOut.delete()
-            try { dataSource.close() } catch (_: Exception) {}
-            return@withContext null
-        }
-
-        // Faststart: move moov in front of mdat so the resulting MP4 plays
-        // back streaming-friendly when sent through the small-video direct-
-        // upload path (>=5MB videos go through HLS instead and don't need it).
-        try {
-            val faststart = Mp4FaststartPostProcessor { tempOut.inputStream() }
-            finalOut.outputStream().use { os ->
-                faststart.processAndWriteTo(os, tempOut.length())
-            }
-            tempOut.delete()
-        } catch (e: Throwable) {
-            Log.w(TAG, "Faststart post-process failed; using raw transcode output", e)
-            // The raw transcoder output is still a valid playable MP4; just
-            // missing the faststart. Promote it to the final path.
-            if (!tempOut.renameTo(finalOut)) {
-                // Rename can fail across mount points or if finalOut already
-                // exists; fall back to copy+delete.
-                tempOut.inputStream().use { input ->
-                    finalOut.outputStream().use { output -> input.copyTo(output) }
+        when (result) {
+            is HomebaseVideoTranscoder.Result.AlreadyOptimal -> {
+                // The input passes through unchanged on this path — so it still
+                // carries any EXIF / GPS / location atoms the camera wrote. Try
+                // a metadata-only strip via mp4parser (no re-encode). Returns
+                // null if the input had no location atoms; caller falls back to
+                // the original via `?: payload.filePath`.
+                val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
+                if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
+                    Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
+                    sanitized.absolutePath
+                } else {
+                    null
                 }
-                tempOut.delete()
             }
-        }
-        try { dataSource.close() } catch (_: Exception) {}
-
-        finalOut.absolutePath
-    }
-
-    /**
-     * Minimal [MediaDataSource] backed by a [RandomAccessFile]. Android stdlib
-     * doesn't ship a public file-backed MediaDataSource (just an internal one
-     * used by MediaPlayer), so we provide our own. Callers invoke `getSize()`
-     * once and `readAt(position, …)` repeatedly.
-     */
-    private class FileBackedMediaDataSource(file: File) : MediaDataSource() {
-        private val raf = RandomAccessFile(file, "r")
-        private val length = file.length()
-
-        override fun readAt(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
-            if (position >= length) return -1
-            raf.seek(position)
-            return raf.read(buffer, offset, size)
-        }
-
-        override fun getSize(): Long = length
-
-        override fun close() {
-            raf.close()
+            is HomebaseVideoTranscoder.Result.Transcoded -> result.outputPath
         }
     }
 
