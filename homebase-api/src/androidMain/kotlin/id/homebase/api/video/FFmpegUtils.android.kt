@@ -49,7 +49,7 @@ actual object FFmpegUtils {
             // setDataSource(String) requires a filesystem path. FileKit returns
             // content:// URIs for gallery picks — use the (Context, Uri) overload.
             if (inputPath.startsWith("content://") || inputPath.startsWith("content:")) {
-                val context = ActivityProvider.requireActivity().applicationContext
+                val context = ActivityProvider.requireApplicationContext()
                 retriever.setDataSource(context, inputPath.toUri())
             } else {
                 retriever.setDataSource(inputPath)
@@ -79,7 +79,7 @@ actual object FFmpegUtils {
 
     actual suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val uniqueId = getUniqueId(inputPath)
             val outputFile = File(context.cacheDir, "thumb-$uniqueId.jpg")
             if (outputFile.exists() && outputFile.length() > 0L) {
@@ -103,7 +103,7 @@ actual object FFmpegUtils {
             val retriever = MediaMetadataRetriever()
             try {
                 if (filePath.startsWith("content://") || filePath.startsWith("content:")) {
-                    val context = ActivityProvider.requireActivity().applicationContext
+                    val context = ActivityProvider.requireApplicationContext()
                     retriever.setDataSource(context, filePath.toUri())
                 } else {
                     retriever.setDataSource(filePath)
@@ -136,7 +136,7 @@ actual object FFmpegUtils {
         trimEndMs: Long?,
         quality: VideoQuality,
     ): String? = withContext(Dispatchers.IO) {
-        val context = ActivityProvider.requireActivity().applicationContext
+        val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
         if (!inFile.exists()) {
             Log.e(TAG, "File not found: $inputPath")
@@ -277,7 +277,7 @@ actual object FFmpegUtils {
     actual suspend fun segmentVideo(inputPath: String,
                                     onProgress: ((Float) -> Unit)?): Pair<String, String>? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val file = File(inputPath)
             if (!file.exists()) return@withContext null
 
@@ -344,7 +344,7 @@ actual object FFmpegUtils {
 
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val cacheFile = File(context.cacheDir, "input_$fileName")
             cacheFile.writeBytes(data)
             return@withContext cacheFile.absolutePath
@@ -356,7 +356,7 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val inputFile = File(inputPath)
             if (!inputFile.exists()) return@withContext null
 

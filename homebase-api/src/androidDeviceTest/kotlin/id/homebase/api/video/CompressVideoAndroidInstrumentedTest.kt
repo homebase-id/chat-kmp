@@ -5,12 +5,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
-import org.junit.Ignore
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -18,31 +17,34 @@ import org.junit.runner.RunWith
  * Android-side mirror of [id.homebase.api.video.FFmpegPipelineCoverageJvmTest]
  * for the MediaCodec-driven [FFmpegUtils.compressVideo] path.
  *
- * Currently `@Ignore`'d because `FFmpegUtils.compressVideo` reaches through
- * `ActivityProvider.requireActivity()` for `context.cacheDir`, and the
- * instrumentation environment has no Activity to register — the first call
- * would throw `IllegalStateException`. To enable: either (a) add an
- * `ActivityScenarioRule<EmptyTestActivity>` + a tiny EmptyTestActivity here
- * and call `ActivityProvider.initialize(it)` in `@Before`, or (b) refactor
- * `FFmpegUtils.android.kt` to accept any Context (it only uses cacheDir).
- * Option (b) is cleaner long term. Until either is wired, run locally with
- * a booted device after un-`@Ignore`ing and applying the chosen fix:
+ * No `@Ignore` — CI doesn't auto-run `connectedAndroidDeviceTest`, so this
+ * is dormant on PR builds. Run locally with a booted device:
  *
  *   ./gradlew homebase-api:connectedAndroidDeviceTest
  *
- * Asserts the upgrade-relevant facts:
+ * Asserts:
  *  - Each [VideoQuality] level produces a non-null output file (codec
  *    selection didn't break on this device).
- *  - LOW < STANDARD < HIGH for output file size (the quality mapping in
- *    `compressVideo` actually wires through to bitrate/resolution).
+ *  - LOW ≤ STANDARD ≤ HIGH for output file size (quality mapping wires
+ *    through to bitrate / resolution).
  *  - Trim 1000-4000ms produces a clip whose duration is ~3000ms (same
  *    assertion shape as the JVM regression suite).
  *  - The progress callback fires more than twice during compression of the
  *    6-second fixture — i.e. the user sees real progress, not just 0%→100%.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Blocked on ActivityProvider/ComponentActivity wiring for the instrumentation context — see KDoc for the two fix paths")
 class CompressVideoAndroidInstrumentedTest {
+
+    @Before
+    fun setUp() {
+        // FFmpegUtils.android.kt resolves cacheDir via ActivityProvider. The
+        // instrumentation environment has no Activity, but the new
+        // initializeApplicationContext path lets us register the test
+        // Context up-front (same pattern Application.onCreate uses in prod).
+        ActivityProvider.initializeApplicationContext(
+            InstrumentationRegistry.getInstrumentation().targetContext
+        )
+    }
 
     private fun copyFixtureToCache(name: String): File {
         val ctx = InstrumentationRegistry.getInstrumentation().context
@@ -53,30 +55,17 @@ class CompressVideoAndroidInstrumentedTest {
         return out
     }
 
-    private fun setActivityProviderForInstrumentation() {
-        // FFmpegUtils.android.kt:compressVideo reaches through ActivityProvider
-        // to get the application context (used for cacheDir). In the
-        // instrumentation environment there's no Activity yet; we feed
-        // ActivityProvider the test app context directly so it doesn't NPE.
-        // If ActivityProvider has no test-friendly init, this is the place to
-        // add one — see the prior thumbnail port for the same pattern.
-        // TODO(plan-reactive-zooming-papert): wire a small helper here if
-        // ActivityProvider doesn't expose a setter — minor follow-up.
-    }
-
     @Test
     fun compressVideo_standardQuality_producesPlayableMp4() = runTest {
-        setActivityProviderForInstrumentation()
         val fixture = copyFixtureToCache("sample.mp4")
         try {
             val out = FFmpegUtils.compressVideo(
                 inputPath = fixture.absolutePath,
                 quality = VideoQuality.STANDARD,
             )
-            // sample.mp4 is 320x180/h264/35kbps — way below LEVEL_3's 720p/2.5M
-            // target, so isTranscodeRequired() should be false and the
-            // "already optimal" contract returns null. This proves the
-            // short-circuit path works on real hardware.
+            // sample.mp4 is 320x180 / h264 / ~35kbps — way below LEVEL_3's
+            // 720p / 2.5M target. isTranscodeRequired() should be false and
+            // the "already optimal" contract returns null.
             assertEquals(null, out, "Already-optimal fixture must short-circuit to null")
         } finally {
             fixture.delete()
@@ -85,7 +74,6 @@ class CompressVideoAndroidInstrumentedTest {
 
     @Test
     fun compressVideo_withTrim_producesTrimmedOutput() = runTest {
-        setActivityProviderForInstrumentation()
         val fixture = copyFixtureToCache("sample.mp4")
         val cleanup = mutableListOf<File>(fixture)
         try {
@@ -109,7 +97,6 @@ class CompressVideoAndroidInstrumentedTest {
 
     @Test
     fun compressVideo_progressCallback_firesContinuously() = runTest {
-        setActivityProviderForInstrumentation()
         val fixture = copyFixtureToCache("sample.mp4")
         val cleanup = mutableListOf<File>(fixture)
         try {
@@ -145,9 +132,8 @@ class CompressVideoAndroidInstrumentedTest {
 
     @Test
     fun compressVideo_qualityMapping_lowerBitrateProducesSmallerFile() = runTest {
-        setActivityProviderForInstrumentation()
         // The 26KB sample is too small to test bitrate stratification (every
-        // quality will short-circuit). Force a transcode via trim so each
+        // quality would short-circuit). Force a transcode via trim so each
         // quality actually re-encodes. Use a 5-second window to stay well
         // within the fixture's 6-second duration.
         val fixture = copyFixtureToCache("sample.mp4")

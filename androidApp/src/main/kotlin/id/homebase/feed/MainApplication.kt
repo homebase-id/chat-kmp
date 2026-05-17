@@ -13,6 +13,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
+import id.homebase.api.ActivityProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.sweepShareOutbound
 import id.homebase.api.storage.SecureStorage
@@ -47,6 +48,13 @@ import org.koin.core.context.GlobalContext.startKoin
 class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
         super.onCreate()
+
+        // Register the application Context up-front so components that only
+        // need Context (cacheDir, ContentResolver — e.g. FFmpegUtils Android
+        // actuals, VideoThumbnailExtractor) can resolve it before MainActivity
+        // exists, and instrumented tests can register a test Context the same
+        // way. Activity-scoped access still goes through ActivityProvider.initialize.
+        ActivityProvider.initializeApplicationContext(this)
 
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)
