@@ -36,6 +36,22 @@ actual object FFmpegUtils {
     private val bridge: FFmpegKitBridge
         get() = FFmpegKitBridgeHolder.getBridge()
 
+    private var cachedFfmpegVersion: String? = null
+    private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = try {
+            parseFfmpegVersionBanner(bridge.getFfmpegVersionBanner())
+        } catch (e: Exception) {
+            println("Docs: getFfmpegVersion failed: ${e.message}")
+            null
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
+
     actual fun getUniqueId(filePath: String): String {
         // Match Android/Desktop: use file name + size for consistent ID generation
         val fileManager = NSFileManager.defaultManager
@@ -106,7 +122,9 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
+        quality: VideoQuality,
     ): String? =
+            // TODO map quality → -b:v / -vf scale. Currently uses fixed MAX_BITRATE/MAX_WIDTH.
             withContext(Dispatchers.IO) {
                 val fileManager = NSFileManager.defaultManager
 

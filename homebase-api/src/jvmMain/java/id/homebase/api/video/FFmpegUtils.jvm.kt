@@ -10,6 +10,26 @@ import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
 
+    @Volatile private var cachedFfmpegVersion: String? = null
+    @Volatile private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = if (!FFmpegBinaryManager.isAvailable()) {
+            null
+        } else {
+            runCatching {
+                val output = runProcessWithOutput(
+                    listOf(FFmpegBinaryManager.ffmpegPath(), "-version")
+                )
+                parseFfmpegVersionBanner(output)
+            }.getOrNull()
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
+
     actual suspend fun getDurationMs(inputPath: String): Long {
         val command = listOf(
             FFmpegBinaryManager.ffprobePath(),
@@ -91,7 +111,9 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
+        quality: VideoQuality,
     ): String? =
+        // TODO map quality → -b:v / -vf scale. Currently uses fixed MAX_BITRATE/MAX_WIDTH.
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 

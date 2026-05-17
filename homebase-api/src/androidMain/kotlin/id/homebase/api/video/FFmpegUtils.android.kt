@@ -1,21 +1,47 @@
 package id.homebase.api.video
 
+import android.media.MediaDataSource
+import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFprobeKit
 import com.arthenica.ffmpegkit.ReturnCode
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.video.transcoder.StreamingTranscoder
+import id.homebase.api.video.transcoder.TranscoderOptions
+import id.homebase.api.video.transcoder.TranscodingPreset
+import id.homebase.api.video.transcoder.postprocessing.Mp4FaststartPostProcessor
+import id.homebase.api.video.transcoder.videoconverter.MediaConverter
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import android.media.MediaMetadataRetriever
 
 actual object FFmpegUtils {
     private const val TAG = "FFmpegUtils"
+
+    @Volatile private var cachedFfmpegVersion: String? = null
+    @Volatile private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = try {
+            val session = FFmpegKit.execute("-version")
+            if (!ReturnCode.isSuccess(session.returnCode)) {
+                null
+            } else {
+                parseFfmpegVersionBanner(session.allLogsAsString)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getFfmpegVersion failed", e)
+            null
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
         val retriever = MediaMetadataRetriever()
@@ -40,210 +66,212 @@ actual object FFmpegUtils {
     }
 
     actual fun getUniqueId(filePath: String): String {
+        // TODO: potential BUG — for content:// URIs, `File(filePath).length()`
+        // returns 0 and `File(filePath).name` is the encoded URI tail, so every
+        // gallery pick collapses toward the same hash bucket. Callers that
+        // cache by this id (grabThumbnail, etc.) can return another video's
+        // cached output. Fix by resolving the URI to size via
+        // ContentResolver.openAssetFileDescriptor(...).length when filePath
+        // starts with "content://".
         val file = File(filePath)
-        // Simple deterministic ID generation based on file props
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
     actual suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireActivity().applicationContext
-            val file = File(inputPath)
-            if (!file.exists()) return@withContext null
-
             val uniqueId = getUniqueId(inputPath)
-            val outputDir = context.cacheDir
-            // thumb0001-ID.png
-            val outputName = "thumb0001-$uniqueId.png"
-            val outputPath = File(outputDir, outputName).absolutePath
-
-            if (File(outputPath).exists()) return@withContext outputPath
-
-            val commandDestination = File(outputDir, "thumb%04d-$uniqueId.png").absolutePath
-
-            // -frames:v 1
-            val command = "-y -i \"$inputPath\" -frames:v 1 \"$commandDestination\""
-
-            Log.d(TAG, "Thumbnail command: $command")
-
-            val session = FFmpegKit.execute(command)
-            if (ReturnCode.isSuccess(session.returnCode)) {
-                // Validate file creation
-                if (File(outputPath).exists()) {
-                    return@withContext outputPath
-                } else {
-                    Log.w(TAG, "Thumbnail generated success but file not found at $outputPath")
-                    return@withContext null
-                }
-            } else {
-                Log.e(TAG, "Thumbnail failed: ${session.failStackTrace}")
-                return@withContext null
+            val outputFile = File(context.cacheDir, "thumb-$uniqueId.jpg")
+            if (outputFile.exists() && outputFile.length() > 0L) {
+                return@withContext outputFile.absolutePath
             }
+
+            // Delegate to the platform-native poster-frame extractor. Same
+            // MediaMetadataRetriever + content-resolver fallbacks that the
+            // scrubber preview uses; works for both file paths and content://
+            // URIs, and avoids the FFmpegKit JNI surface entirely (the v7
+            // upgrade aborted on HLS-remuxed MP4 inputs here, see homebase.log
+            // tombstone from 2026-05-17).
+            val bytes = VideoThumbnailExtractor.extractPosterFrame(inputPath)
+                ?: return@withContext null
+            outputFile.writeBytes(bytes)
+            outputFile.absolutePath
         }
 
     actual suspend fun getRotationFromFile(filePath: String): Int =
         withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
             try {
-                val session =
-                    FFprobeKit.execute(
-                        "-v quiet -select_streams v:0 -show_entries side_data_list=side_data_type,rotation -of json=compact=1 \"$filePath\""
-                    )
-                val output = session.output
-                if (output.isNullOrBlank()) return@withContext 0
-
-                val json = JSONObject(output)
-                val streams = json.optJSONArray("streams")
-                val sideDataList =
-                    streams?.optJSONObject(0)?.optJSONArray("side_data_list")
-                        ?: json.optJSONArray("side_data_list")
-
-                if (sideDataList != null) {
-                    for (i in 0 until sideDataList.length()) {
-                        val entry = sideDataList.optJSONObject(i)
-                        if (entry?.optString("side_data_type") == "Display Matrix") {
-                            val rotationStr = entry.optString("rotation")
-                            val rotation = rotationStr.toDoubleOrNull()?.toInt() ?: 0
-                            return@withContext if (rotation in -360..360) rotation else 0
-                        }
-                    }
+                if (filePath.startsWith("content://") || filePath.startsWith("content:")) {
+                    val context = ActivityProvider.requireActivity().applicationContext
+                    retriever.setDataSource(context, filePath.toUri())
+                } else {
+                    retriever.setDataSource(filePath)
                 }
-                return@withContext 0
+                val rotation = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    ?.toIntOrNull()
+                    ?: 0
+                if (rotation in -360..360) rotation else 0
             } catch (e: Exception) {
                 Log.w(TAG, "getRotationFromFile failed", e)
-                return@withContext 0
+                0
+            } finally {
+                retriever.runCatching { release() }
             }
         }
 
-    private const val MAX_BITRATE = 3_000_000L
-    private const val MAX_WIDTH = 1280
-
+    /**
+     * Pure-platform MediaCodec/Extractor/Format/Muxer transcode. Returns the
+     * absolute path of the compressed MP4, or null if the input is already
+     * within the target quality envelope (caller falls back to the original
+     * file). Hardware → software codec fallback is handled internally. On
+     * failure (codec unavailable, decode error, etc.) logs and returns null —
+     * the caller proceeds with the uncompressed original.
+     */
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
-    ): String? =
-        withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
-            val file = File(inputPath)
-            if (!file.exists()) {
-                Log.e(TAG, "File not found: $inputPath")
-                return@withContext null
-            }
+        quality: VideoQuality,
+    ): String? = withContext(Dispatchers.IO) {
+        val context = ActivityProvider.requireActivity().applicationContext
+        val inFile = File(inputPath)
+        if (!inFile.exists()) {
+            Log.e(TAG, "File not found: $inputPath")
+            return@withContext null
+        }
 
-            val hasTrim = trimStartMs != null || trimEndMs != null
-
-            // When trim is requested we always re-encode (stream-copy can't
-            // apply -t accurately). Otherwise, compute avg bitrate from
-            // fileSize / duration — FFprobeKit's stream.bitrate is optional
-            // and was sometimes null even on perfectly-encoded files, forcing
-            // unnecessary re-encodes.
-            val needsCompression = hasTrim || !isAlreadyOptimal(inputPath, file)
-
-            if (!needsCompression) {
-                Log.d(TAG, "Video already optimal — skipping compression")
-                return@withContext null
-            }
-
-            val outputDir = context.cacheDir
-            val outputPath = File(outputDir, "compressed_${file.name}").absolutePath
-
-            // Build argument lists for hw + sw, threading the optional trim args
-            // (-ss before -i for fast input seek; -t after -i for duration).
-            fun trimPrefix(): List<String> = buildList {
-                if (trimStartMs != null && trimStartMs > 0) {
-                    add("-ss"); add(formatSeconds(trimStartMs))
-                }
-            }
-
-            fun trimSuffix(): List<String> = buildList {
-                if (trimEndMs != null) {
-                    val dur = (trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)
-                    add("-t"); add(formatSeconds(dur))
-                }
-            }
-
-            // Try hardware encoder first, fall back to software
-            val hwArguments = buildList {
-                add("-y")
-                addAll(trimPrefix())
-                add("-i"); add(inputPath)
-                addAll(trimSuffix())
-                addAll(listOf(
-                    "-c:v", "h264_mediacodec",
-                    "-b:v", "3000k",
-                    "-vf", "scale='min(1280,iw)':-2",
-                    outputPath
-                ))
-            }
-
-            Log.d(TAG, "Compression with hardware encoder: $hwArguments")
-            val hwSession = FFmpegKit.executeWithArguments(hwArguments.toTypedArray())
-
-            if (ReturnCode.isSuccess(hwSession.returnCode)) {
-                return@withContext outputPath
-            }
-
-            // Fall back to software encoder
-            Log.w(TAG, "Hardware encoder failed, falling back to libx264")
-            val swArguments = buildList {
-                add("-y")
-                addAll(trimPrefix())
-                add("-i"); add(inputPath)
-                addAll(trimSuffix())
-                addAll(listOf(
-                    "-c:v", "libx264",
-                    "-b:v", "3000k",
-                    "-vf", "scale='min(1280,iw)':-2",
-                    "-preset", "fast",
-                    outputPath
-                ))
-            }
-
-            val swSession = FFmpegKit.executeWithArguments(swArguments.toTypedArray())
-            if (ReturnCode.isSuccess(swSession.returnCode)) {
-                return@withContext outputPath
+        // Pass null when no trim is requested; a non-null TranscoderOptions
+        // forces transcode even on already-optimal inputs.
+        val options: TranscoderOptions? =
+            if (trimStartMs != null && trimEndMs != null) {
+                TranscoderOptions(
+                    startTimeUs = trimStartMs * 1_000L,
+                    endTimeUs   = trimEndMs   * 1_000L,
+                )
             } else {
-                Log.e(TAG, "Compression failed: ${swSession.failStackTrace}")
-                // Both encoders failed — delete the partial/empty output (see #5).
-                deleteFailedFfmpegOutput(outputPath)
-                return@withContext null
+                if (trimStartMs != null || trimEndMs != null) {
+                    Log.w(TAG, "Partial trim ignored (got start=$trimStartMs end=$trimEndMs); pass both or neither")
+                }
+                null
+            }
+
+        val dataSource = FileBackedMediaDataSource(inFile)
+        val transcoder = try {
+            when (quality) {
+                VideoQuality.LOW ->
+                    StreamingTranscoder(
+                        dataSource, options, TranscodingPreset.LEVEL_1,
+                        /*upperSizeLimit=*/ Long.MAX_VALUE, /*allowAudioRemux=*/ true,
+                    )
+                VideoQuality.STANDARD ->
+                    StreamingTranscoder(
+                        dataSource, options, TranscodingPreset.LEVEL_3,
+                        /*upperSizeLimit=*/ Long.MAX_VALUE, /*allowAudioRemux=*/ true,
+                    )
+                VideoQuality.HIGH ->
+                    // Custom 1080p / 5 Mbps target — above the highest built-in preset.
+                    StreamingTranscoder(
+                        dataSource, options,
+                        MediaConverter.VIDEO_CODEC_H264,
+                        /*videoBitrate=*/ 5_000_000,
+                        /*audioBitrate=*/ 192_000,
+                        /*shortEdge=*/ 1080,
+                        /*allowAudioRemux=*/ true,
+                    )
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to construct StreamingTranscoder", e)
+            try { dataSource.close() } catch (_: Exception) {}
+            return@withContext null
+        }
+
+        if (!transcoder.isTranscodeRequired) {
+            Log.d(TAG, "Video already optimal — skipping compression (quality=$quality)")
+            try { dataSource.close() } catch (_: Exception) {}
+
+            // The input passes through unchanged on this path — so it still
+            // carries any EXIF / GPS / location atoms the camera wrote. Try a
+            // metadata-only strip via mp4parser (no re-encode). Returns null
+            // here if the input had no location atoms, in which case the
+            // caller proceeds with the original.
+            val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
+            return@withContext if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
+                Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
+                sanitized.absolutePath
+            } else {
+                null
             }
         }
 
-    /**
-     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
-     * Bitrate is computed from fileSize / duration rather than read from
-     * `videoStream.bitrate`, which is optional in MP4 / FFprobeKit and used to
-     * be null often enough to force unnecessary re-encodes.
-     */
-    private suspend fun isAlreadyOptimal(inputPath: String, file: File): Boolean {
-        return try {
-            val session = FFprobeKit.getMediaInformation(inputPath) ?: return false
-            val info = session.mediaInformation ?: return false
-            val videoStream = info.streams?.firstOrNull { it.type == "video" }
-                ?: return false
-            val codec = videoStream.codec?.lowercase() ?: return false
-            val width = videoStream.width?.toInt() ?: return false
+        val tempOut = File(context.cacheDir, "compressed_${inFile.name}.tmp")
+        val finalOut = File(context.cacheDir, "compressed_${inFile.name}")
 
-            val sizeBytes = if (file.exists()) file.length() else 0L
-            val durationMs = getDurationMs(inputPath)
-            if (sizeBytes <= 0L || durationMs <= 0L) return false
-            val avgBitrate = sizeBytes * 8L * 1000L / durationMs
-
-            val ok = codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
-            Log.d(TAG, "isAlreadyOptimal: codec=$codec width=$width avgBps=$avgBitrate → $ok")
-            ok
-        } catch (e: Exception) {
-            Log.w(TAG, "isAlreadyOptimal probe failed, assuming compression needed", e)
-            false
+        try {
+            tempOut.outputStream().use { os ->
+                transcoder.transcode(
+                    { pct -> onProgress?.invoke(pct / 100f) },
+                    os,
+                    /*cancelationSignal=*/ null,
+                )
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "MediaCodec transcode failed", e)
+            tempOut.delete()
+            try { dataSource.close() } catch (_: Exception) {}
+            return@withContext null
         }
+
+        // Faststart: move moov in front of mdat so the resulting MP4 plays
+        // back streaming-friendly when sent through the small-video direct-
+        // upload path (>=5MB videos go through HLS instead and don't need it).
+        try {
+            val faststart = Mp4FaststartPostProcessor { tempOut.inputStream() }
+            finalOut.outputStream().use { os ->
+                faststart.processAndWriteTo(os, tempOut.length())
+            }
+            tempOut.delete()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Faststart post-process failed; using raw transcode output", e)
+            // The raw transcoder output is still a valid playable MP4; just
+            // missing the faststart. Promote it to the final path.
+            if (!tempOut.renameTo(finalOut)) {
+                // Rename can fail across mount points or if finalOut already
+                // exists; fall back to copy+delete.
+                tempOut.inputStream().use { input ->
+                    finalOut.outputStream().use { output -> input.copyTo(output) }
+                }
+                tempOut.delete()
+            }
+        }
+        try { dataSource.close() } catch (_: Exception) {}
+
+        finalOut.absolutePath
     }
 
-    private fun formatSeconds(ms: Long): String {
-        val whole = ms / 1000
-        val frac = ms % 1000
-        return "$whole.${frac.toString().padStart(3, '0')}"
+    /**
+     * Minimal [MediaDataSource] backed by a [RandomAccessFile]. Android stdlib
+     * doesn't ship a public file-backed MediaDataSource (just an internal one
+     * used by MediaPlayer), so we provide our own. Callers invoke `getSize()`
+     * once and `readAt(position, …)` repeatedly.
+     */
+    private class FileBackedMediaDataSource(file: File) : MediaDataSource() {
+        private val raf = RandomAccessFile(file, "r")
+        private val length = file.length()
+
+        override fun readAt(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
+            if (position >= length) return -1
+            raf.seek(position)
+            return raf.read(buffer, offset, size)
+        }
+
+        override fun getSize(): Long = length
+
+        override fun close() {
+            raf.close()
+        }
     }
 
     actual suspend fun segmentVideo(inputPath: String,

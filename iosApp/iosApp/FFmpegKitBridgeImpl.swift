@@ -12,6 +12,12 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         let failStackTrace = session?.getFailStackTrace()
         return FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace)
     }
+
+    func getFfmpegVersionBanner() -> String? {
+        guard let session = FFmpegKit.execute("-version") else { return nil }
+        guard ReturnCode.isSuccess(session.getReturnCode()) else { return nil }
+        return session.getAllLogsAsString()
+    }
     
     func getMediaInformation(filePath: String) -> MediaInfo? {
         guard let session = FFprobeKit.getMediaInformation(filePath) else {
