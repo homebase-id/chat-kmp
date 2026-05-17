@@ -266,22 +266,140 @@ historical reasons.)
 
 ---
 
-## ../transcoder/videoconverter/utils/MediaCodecCompat.kt — `isHdrVideo`
-**HDR detection on input format** _(SPEC §9.6)_
+## ../transcoder/videoconverter/utils/MediaCodecCompat.kt:249-285
+**HDR detection on input format** _(SPEC §9.6, §11)_
 
-Detects HDR content from `MediaFormat.KEY_COLOR_TRANSFER` and
-`MediaFormat.KEY_COLOR_STANDARD`. Specifically checks for HLG /
-PQ transfer curves and BT.2020 color space.
+```kotlin
+fun isHdrVideo(format: MediaFormat): Boolean {
+    if (format.containsKey(MediaFormat.KEY_COLOR_TRANSFER)) {
+        val colorTransfer = format.getInteger(MediaFormat.KEY_COLOR_TRANSFER)
+        if (colorTransfer == MediaFormat.COLOR_TRANSFER_ST2084 ||
+            colorTransfer == MediaFormat.COLOR_TRANSFER_HLG) return true
+        // Anything outside the known SDR set: treat as HDR.
+        // Devices report non-standard values like 65791 for HDR.
+    }
+    if (format.containsKey(MediaFormat.KEY_HDR_STATIC_INFO)) return true
+    if (Build.VERSION.SDK_INT >= 29 && format.containsKey(MediaFormat.KEY_HDR10_PLUS_INFO)) return true
+    // HEVC profile fallback
+    if (format.containsKey(MediaFormat.KEY_PROFILE)) {
+        val profile = format.getInteger(MediaFormat.KEY_PROFILE)
+        if (profile == CodecProfileLevel.HEVCProfileMain10HDR10 ||
+            profile == CodecProfileLevel.HEVCProfileMain10HDR10Plus) return true
+    }
+    return false
+}
+```
+
+Four detection signals: explicit color transfer (PQ/HLG), HDR10
+static metadata presence, HDR10+ dynamic metadata presence (API 29+),
+HEVC profile fallback (for older extractors that don't populate the
+color/metadata keys).
 
 **Phase-3 implementation notes:**
-- Port this helper verbatim into `internal/PreflightProbe.kt`.
-- Use it both for the short-circuit (don't auto-pass HDR through —
-  forced re-encode would lose HDR info; instead, throw
-  `UnsupportedSourceException`) and for telemetry in
-  `TranscodeException.isHdrInput`.
-- Note: Signal also has tone-mapping logic that activates this
-  detection. We've scope-cut tone-mapping (SPEC §10) — fail fast
-  instead.
+- Port verbatim into `internal/PreflightProbe.kt`.
+- The non-standard `KEY_COLOR_TRANSFER` heuristic (treat anything
+  not-known-SDR as HDR) is empirical from Signal — keep it; the
+  alternative is silently mis-transcoding HDR as SDR.
+- Used by both the preflight short-circuit (we don't pass HDR
+  through unchanged; always re-encode for SDR receivers) and by
+  the per-attempt decoder config in `DecoderConfig.kt`.
+
+---
+
+## ../transcoder/videoconverter/VideoTrackConverter.java:490-564
+**HDR tone-mapping request + per-codec fallback** _(SPEC §11)_
+
+Per-decoder-candidate loop. For HDR + API 31+:
+
+```java
+final boolean requestToneMapping = Build.VERSION.SDK_INT >= 31 && isHdr;
+for (Pair<String, MediaFormat> candidate : candidates) {
+    decoder = MediaCodec.createByCodecName(codecName);
+    if (requestToneMapping) {
+        try {
+            final MediaFormat toneMapFormat = new MediaFormat(baseFormat);
+            toneMapFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
+                                     MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
+            decoder.configure(toneMapFormat, surface, null, 0);
+            decoder.start();
+            mToneMapApplied = isToneMapEffective(decoder, codecName);  // verify!
+            mDecoderName = codecName;
+            return decoder;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // Codec doesn't accept the key — release + recreate, then fall through to plain configure
+            decoder.release();
+            decoder = MediaCodec.createByCodecName(codecName);
+        }
+    }
+    decoder.configure(baseFormat, surface, null, 0);  // plain — degraded HDR passthrough
+    decoder.start();
+    return decoder;
+}
+
+if (mIsHdrInput) throw new HdrDecoderUnavailableException(...);
+throw new CodecUnavailableException(...);
+```
+
+Critical order: the tone-map attempt is tried PER CODEC. If codec X
+rejects the request, fall through to plain configure on codec X
+(produces degraded output but at least works). Only after all
+candidates fail entirely do we throw.
+
+**Phase-3 implementation notes:**
+- Port this loop into `internal/DecoderConfig.kt`.
+- Pre-API-31 path: just configure normally; let HDR pixels flow
+  through to SDR encoder. Result: wrong colors, playable. Matches
+  Signal. v2 could add a GL fragment-shader tone-map for pre-API-31
+  — out of scope for v1.
+- Note Signal's per-codec `release()` + `createByCodecName()` after
+  rejection — needed because `decoder.configure()` failing leaves
+  the decoder in a partially-initialized state where retrying
+  config doesn't work cleanly.
+
+---
+
+## ../transcoder/videoconverter/VideoTrackConverter.java:670-700
+**isToneMapEffective — verify the codec actually tone-maps** _(SPEC §11)_
+
+After `decoder.configure(toneMapFormat, ...)` + `decoder.start()`,
+check that the request actually took effect:
+
+```kotlin
+private fun isToneMapEffective(decoder: MediaCodec, codecName: String): Boolean {
+    // 1. Software codecs never tone-map. Check via MediaCodecInfo.
+    val info = decoder.codecInfo
+    if (info.isSoftwareOnly /* API 29+ */) {
+        Log.w(TAG, "Video decoder: software codec $codecName cannot tone-map")
+        return false
+    }
+    // 2. Read the decoder's actual output format. If transfer is still ST2084/HLG,
+    //    the codec accepted the request without honoring it.
+    val outputFormat = decoder.outputFormat
+    if (outputFormat.containsKey(MediaFormat.KEY_COLOR_TRANSFER)) {
+        val transfer = outputFormat.getInteger(MediaFormat.KEY_COLOR_TRANSFER)
+        if (transfer == MediaFormat.COLOR_TRANSFER_ST2084 || transfer == MediaFormat.COLOR_TRANSFER_HLG) {
+            Log.w(TAG, "Video decoder: $codecName accepted tone-map request but output is still HDR ($transfer)")
+            return false
+        }
+    }
+    return true
+}
+```
+
+This is real device-quirk learning — some vendor codecs accept
+`KEY_COLOR_TRANSFER_REQUEST` without complaint but produce HDR
+output anyway. Without this verify, the encoder would receive HDR
+pixels (silently degraded output) on those devices.
+
+**Phase-3 implementation notes:**
+- Port nearly verbatim.
+- When the verify fails, the candidate codec is excluded for THIS
+  transcode attempt — try the next codec. (Signal does this by
+  returning the decoder anyway with `mToneMapApplied = false`; we
+  should be stricter and reject — try next candidate.)
+- `MediaCodecInfo.isSoftwareOnly()` is API 29+. For 27-28, name
+  prefix heuristic (`"OMX.google."`, `"c2.android."`) — see Signal's
+  fallback in MediaCodecCompat.
 
 ---
 

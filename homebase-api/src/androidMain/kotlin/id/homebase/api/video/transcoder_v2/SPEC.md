@@ -1,7 +1,7 @@
 # Homebase Android Video Transcoder — Spec
 
-**Status: DRAFT — Phase 1 deliverable.** Sections tagged `OPEN` carry a
-recommendation but are open to discussion in the design review (Phase 2).
+**Status: FROZEN — Phase 2 review complete.** All design decisions
+recorded in Appendix B. Ready for Phase 3 implementation.
 
 This document is the load-bearing design artefact for the clean-room
 rewrite of the Android compress path. The vendored Signal tree at
@@ -387,7 +387,8 @@ Skip transcode and return `Result.AlreadyOptimal` iff ALL these hold:
 
 ## 8. Failure model
 
-Single exception base + two specific subclasses. Replaces Signal's 8.
+Single exception base + three specific subclasses. Collapses Signal's
+eight classes.
 
 ```kotlin
 open class TranscodeException(
@@ -407,8 +408,17 @@ class CodecUnavailableException(
     val isEncoder: Boolean,
 ) : TranscodeException("No ${if (isEncoder) "encoder" else "decoder"} available for $codecMimeType")
 
-/** Input is unreadable/unsupported (no video track, HDR with no fallback, corrupt container, etc.) */
+/** Input is unreadable / unsupported (no video track, corrupt container, etc.) */
 class UnsupportedSourceException(
+    message: String,
+    cause: Throwable? = null,
+) : TranscodeException(message, cause)
+
+/**
+ * HDR input — all decoder candidates failed to apply tone-mapping
+ * (API 31+) or to produce viable output. See §11.
+ */
+class HdrDecoderUnavailableException(
     message: String,
     cause: Throwable? = null,
 ) : TranscodeException(message, cause)
@@ -421,7 +431,7 @@ class UnsupportedSourceException(
 | `EncodingException` (generic + decoderName/encoderName fields) | `TranscodeException` (base) |
 | `TranscodingException` (Java-level) | `TranscodeException` |
 | `CodecUnavailableException` | `CodecUnavailableException` (same name, same role) |
-| `HdrDecoderUnavailableException` | `UnsupportedSourceException("HDR input requires tone-mapping which is not implemented")` |
+| `HdrDecoderUnavailableException` | `HdrDecoderUnavailableException` (same name, same role — see §11) |
 | `VideoSourceException` (can't read metadata / open file) | `UnsupportedSourceException` |
 | `VideoSizeException` (output exceeded upperSizeLimit) | gone — we don't have a hard cap |
 | `MuxingException` (muxer-specific failure) | `TranscodeException` (the muxer's underlying IO/state error becomes the cause) |
@@ -506,12 +516,21 @@ can crib surgically.
    what users see; encode against those. Falls back to `KEY_WIDTH` /
    `KEY_HEIGHT`. (`VideoTrackConverter.java:129-134`.)
 
-6. **HDR detection on the input format.** `MediaCodecCompat.isHdrVideo(format)`
-   reads `MediaFormat.KEY_COLOR_TRANSFER` and `KEY_COLOR_STANDARD`.
-   We surface this as `TranscodeException.isHdrInput` for crash
-   reports but throw `UnsupportedSourceException` (rather than
-   tone-mapping). Phase-3 implementation: copy the detection helper
-   ~verbatim from `MediaCodecCompat.kt`.
+6. **HDR detection + decoder tone-mapping verify.** Signal's
+   `MediaCodecCompat.isHdrVideo(format)` reads `KEY_COLOR_TRANSFER`,
+   `KEY_HDR_STATIC_INFO`, `KEY_HDR10_PLUS_INFO`, and falls back to
+   HEVC profile inspection. Handles non-standard `KEY_COLOR_TRANSFER`
+   values (e.g. `65791`) some devices report.
+
+   Equally important: `VideoTrackConverter.isToneMapEffective()` —
+   after configuring + starting the decoder with
+   `KEY_COLOR_TRANSFER_REQUEST`, verifies the codec is hardware (not
+   software, which doesn't tone-map) AND the output format's
+   `KEY_COLOR_TRANSFER` is no longer HDR. Some codecs accept the
+   request without honoring it; the verify catches this.
+
+   Both are real device-quirk knowledge; port nearly verbatim. See
+   §11 for the full HDR strategy.
 
 7. **Time-interleaved decoder feeding.** The pump alternates between
    video and audio `step()` based on which side has the earlier
@@ -546,12 +565,96 @@ can crib surgically.
 | **No custom MP4 muxer.** Trust `MediaMuxer`. | `Mp4Writer.java` + `StreamingMuxer.java` + `AndroidMuxer.java` + `AvcTrack.java` + `HevcTrack.java` + `AacTrack.java` + `H264Utils.java` + `Utils.java` + `MuxingException.java` (~1,800 LOC) | `MediaMuxer` writes ISO BMFF MP4 with `AVCDecoderConfigurationRecord` + `AudioSpecificConfig` from the encoder's `INFO_OUTPUT_FORMAT_CHANGED` payload. That's what Signal's custom muxer also does, just behind a wider API surface. | Tiny: `MediaMuxer` is a stable Google-maintained API; bugs are rare. |
 | **No faststart post-processor.** Skip the `moov`-before-`mdat` rewrite pass. | `Mp4FaststartPostProcessor.kt` + the `mp4parser` dep for transcode purposes (Mp4LocationStripper would migrate to a different parser or get rewritten — separate decision) | **RESOLVED.** Android's `MPEG4Writer` (the C++ backend of `MediaMuxer`) writes `moov` at the END by default — the `mStreamableFile` flag is true only when an explicit max-file-size limit is set, which `MediaMuxer`'s Java API doesn't expose. Confirmed against [AOSP frameworks/av source](https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/media/libstagefright/MPEG4Writer.cpp). This is FINE for both downstream paths: (a) small videos that stay as MP4 (<5MB after compress) are downloaded *in full* by the receiver before local playback, and random-access players (ExoPlayer, AVPlayer, VLC) handle moov-end transparently; (b) large videos (≥5MB) are re-containerized to encrypted MPEG-TS segments by the HLS segmenter (`segmentAndEncryptVideo`, still ffmpeg) — `.ts` is not MP4, so faststart doesn't apply at all to the streamed segments. Faststart matters only for HTTP progressive download of MP4, which neither path does. | None for current scope. If we ever add HTTP progressive download of small MP4s (vs. download-then-play), we'd need a faststart pass then. |
 | **No `Mp4Sanitizer` shim.** | `stub/Mp4Sanitizer.kt` + `stub/SanitizedMetadata.kt` | Already dead — only used by the (also-deleted) faststart processor. | None. |
-| **No HDR tone-mapping.** Throw `UnsupportedSourceException` on HDR input the device can't decode to SDR natively. | Signal's `HdrDecoderUnavailableException` recovery path + any GL/colorspace conversion shaders. | HDR camera content is becoming common on phones (iPhone Pro, recent Samsung). Failing to send these is a real UX gap. **OPEN — call this out to the user.** v1 punts; v2 implements `MediaFormat.KEY_COLOR_TRANSFER_REQUEST` + verifies, falls back to tone-map shader if unsupported. | Real — affects HDR phone capture. |
+| ~~No HDR tone-mapping.~~ **WITHDRAWN — HDR IS supported.** See new §11. | n/a | User benchmark: "can't be worse than Signal." Signal handles HDR; so do we. Implementation crucially does NOT require restoring the GL pipeline — Signal's strategy uses decoder-side hardware tone-mapping via `KEY_COLOR_TRANSFER_REQUEST` (API 31+) and accepts degraded passthrough on older APIs. No fragment-shader work needed. | None — see §11 for the strategy. |
 | **No `LimitedSizeOutputStream` cap.** Skip Signal's "abort if encoder produces > N bytes" guard. | One inner class, ~30 LOC. | We don't take an `upperSizeLimit` parameter. If we ever want a cap, the bitrate envelope + duration gives us a soft estimate. | None given current callers. |
 | **No `OutputStream` write target.** Only file paths. | `setOutput(OutputStream)` overload + `StreamOutput` adapter. | `MediaMuxer` doesn't accept an `OutputStream` — Signal's adapter is a Frankenstein of a custom muxer that knows how to write to one. Our scope cut #1 eliminates the need. Callers that want to encrypt during write can encrypt the file post-transcode (one more pass; acceptable). | None given current callers. |
 | **No GL pixel pipeline.** Use source rotation metadata, not pixel rotation. | `InputSurface.java` + `OutputSurface.java` + `TextureRender.java` (~700 LOC + significant test exposure). | **RESOLVED.** Source rotation is preserved through `MediaMuxer.setOrientationHint()`, which writes to the MP4 `tkhd` matrix. All three implemented receiver-side players honour this by convention: Android uses `androidx.media3.exoplayer.ExoPlayer` (verified in `VideoPlayerSurface.android.kt`), iOS uses `AVPlayer` from `platform.AVFoundation.AVPlayer` (`VideoPlayerSurface.native.kt`), Desktop uses VLC-J via `MediaPlayerFactory` (`VideoPlayerSurface.jvm.kt`). Web is a stub today; when implemented against `HTMLVideoElement`, browsers also honour `tkhd` natively. We're not flipping / cropping / recoloring; no other reason for a GL pipeline. | None for current scope. |
 | **No async `MediaCodec.Callback`.** Sync pump only (section 5). | `HandlerThread` orchestration, `Channel` plumbing per codec. | Section 5 analysis. | None initially; can revisit. |
 | **No multi-audio-track preservation.** Single audio track in, single audio track out. | Extra extractor track selection + muxer setup + per-track pump state. | The send pipeline currently doesn't support multi-track audio (descriptor only carries one); the chat playback also doesn't surface track selection. Source files with multi-track audio collapse to first track. | None given current scope. |
+
+---
+
+---
+
+## 11. HDR support
+
+User benchmark: match Signal. Signal's strategy is decoder-side
+hardware tone-mapping on API 31+ and degraded passthrough on older
+APIs — neither requires the GL pipeline, so the §10 GL scope-cut
+holds.
+
+### Detection
+
+`internal/PreflightProbe.kt` answers "is this HDR?" via the same
+logic as Signal's `MediaCodecCompat.isHdrVideo`. Inspect the input
+`MediaFormat`:
+
+1. `KEY_COLOR_TRANSFER` == `COLOR_TRANSFER_ST2084` (PQ / HDR10) or
+   `COLOR_TRANSFER_HLG`.
+2. `KEY_HDR_STATIC_INFO` present (HDR10 mastering display).
+3. (API 29+) `KEY_HDR10_PLUS_INFO` present.
+4. Fallback: HEVC `Main10HDR10` / `Main10HDR10Plus` profile via
+   `KEY_PROFILE`.
+
+Some devices report non-standard `KEY_COLOR_TRANSFER` values (e.g.
+`65791`) — anything outside the known SDR set treated as HDR. Copy
+the canonical check from `../transcoder/videoconverter/utils/MediaCodecCompat.kt:249-285`.
+
+### Transcode path
+
+**API 31+ (Android 12+):** for each candidate decoder, build a
+`MediaFormat` copy with `KEY_COLOR_TRANSFER_REQUEST` set to
+`COLOR_TRANSFER_SDR_VIDEO`. Configure + start. Then call
+`isToneMapEffective()`:
+
+- If the chosen codec is a software codec (per `MediaCodecInfo.isSoftwareOnly()`
+  on API 29+, or name-prefix heuristics earlier), tone-mapping does
+  NOT apply — software codecs don't honor the request. Reject; try
+  next codec.
+- Read the decoder's actual output `MediaFormat`. If its
+  `KEY_COLOR_TRANSFER` is still `COLOR_TRANSFER_ST2084` or
+  `COLOR_TRANSFER_HLG`, the codec accepted the request without
+  honoring it. Reject; try next codec.
+
+If the codec rejects the `KEY_COLOR_TRANSFER_REQUEST` key itself
+(`IllegalArgumentException` / `IllegalStateException` from
+`configure()`), retry the SAME codec without the key — produces
+degraded output, matches the pre-API-31 path below.
+
+If all candidates fail, throw `TranscodeException` subclass
+`HdrDecoderUnavailableException` (added to §8 — see below).
+
+**API <31:** configure decoder normally (no tone-map request).
+Decoded frames are 10-bit HDR in the BT.2020/PQ or HLG color space;
+the SDR-only H.264 encoder receives them and produces an 8-bit
+BT.709 file. Result is playable but colors are visibly off — gamma
+crushed, highlights blown, color primaries wrong. **This matches
+Signal's behavior on the same APIs.** A future v2 could add a GL
+fragment-shader tone-map path for pre-API-31 devices; explicitly
+out of scope for v1.
+
+### Surface to `TranscodeException`
+
+Restore `HdrDecoderUnavailableException : TranscodeException` (was
+removed in §8's collapse). Updated §8 hierarchy is now three
+classes:
+
+```kotlin
+open class TranscodeException(...)
+class CodecUnavailableException(...) : TranscodeException(...)
+class UnsupportedSourceException(...) : TranscodeException(...)
+class HdrDecoderUnavailableException(...) : TranscodeException(...)  // ← new
+```
+
+`isHdrInput` stays on the base `TranscodeException` (any failure can
+note HDR-ness for telemetry, not just HDR-specific failures).
+
+### Verify-tone-map helper
+
+Port `isToneMapEffective()` nearly verbatim from
+`../transcoder/videoconverter/VideoTrackConverter.java:670-700`.
+This is the kind of "we learned this the hard way" device-quirk
+logic where reinventing risks missing a vendor codec quirk.
 
 ---
 
@@ -564,28 +667,42 @@ homebase-api/src/androidMain/kotlin/id/homebase/api/video/transcoder_v2/
   SPEC.md                          (this file)
   signal-reference-notes.md        (targeted refs)
   HomebaseVideoTranscoder.kt       (the public object + Result/TrimRange)
-  TranscodeException.kt            (exception hierarchy)
+  TranscodeException.kt            (exception hierarchy — 4 classes)
   internal/
     QualityProfile.kt              (enum → bitrate/dimension mapping)
-    PreflightProbe.kt              (already-optimal check via MediaMetadataRetriever)
+    PreflightProbe.kt              (already-optimal check + HDR detection)
     CodecSelection.kt              (REGULAR → ALL with dedupe + exclusion set)
+    DecoderConfig.kt               (HDR tone-map request + verify dance)
     VideoPair.kt                   (decoder + encoder for the video track, plus step())
     AudioPair.kt                   (decoder + encoder for the audio track, plus step())
     TranscodePump.kt               (main while-loop: interleaved step + lazy muxer start)
     OutputDimensions.kt            (short-edge scaling + multiple-of-16 rounding)
 ```
 
-Estimated ~1,200-1,500 LOC, down from Signal's ~5,500 mostly through
-the scope cuts.
+Estimated ~1,300-1,600 LOC, down from Signal's ~5,500. Scope cuts
+that account for the saving (versus restored items): no custom MP4
+muxer, no faststart, no GL pipeline; HDR handled via
+decoder-side `KEY_COLOR_TRANSFER_REQUEST` only — no shader work.
 
-## Appendix B — Open items (for review)
+## Appendix B — Decisions log
 
-Four genuine design questions remain. Two factual OPEN items
-(`§10 faststart` and `§10 rotation`) were verified and resolved
-inline — see the §10 table.
+All OPEN items resolved before Phase 2 (user review session). Listed
+here for the design-review record.
 
-- **Section 5:** sync pump (Model A) vs. async callbacks (Model B).
-- **Section 6:** H.265 for HIGH preset.
-- **Section 6:** bitrate-vs-CRF on the encoder.
-- **Section 10 (HDR):** punt HDR for v1, or invest in tone-mapping
-  before first release?
+- **§5 Threading:** sync pump on `Dispatchers.IO`. Decided per
+  user review.
+- **§6 H.265 for HIGH preset:** no for v1. Stay on H.264 for
+  receiver-compatibility; revisit when we have receiver-side
+  telemetry. Decided per user review.
+- **§6 Bitrate vs CRF:** bitrate (VBR). Decided per user review.
+- **§10 Faststart:** no faststart pass. Resolved by verifying
+  `MediaMuxer`'s default + that neither downstream path needs
+  moov-front (small-MP4 = full local download, large = HLS .ts via
+  ffmpeg).
+- **§10 Rotation hint:** preserve via `MediaMuxer.setOrientationHint()`,
+  no GL pipeline. Resolved by verifying ExoPlayer / AVPlayer / VLC
+  all honour `tkhd`.
+- **§11 HDR:** support it (matches Signal). Use decoder-side
+  `KEY_COLOR_TRANSFER_REQUEST` on API 31+ with post-configure verify;
+  pre-API-31 passes through with degraded colors. No GL pipeline
+  needed.
