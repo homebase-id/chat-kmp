@@ -18,10 +18,15 @@ import org.junit.runner.RunWith
  * Android-side mirror of [id.homebase.api.video.FFmpegPipelineCoverageJvmTest]
  * for the MediaCodec-driven [FFmpegUtils.compressVideo] path.
  *
- * Currently `@Ignore`'d because we don't have emulator-on-CI infra yet —
- * `connectedAndroidTest` would fail on PR runners that don't have a booted
- * device. Run locally with a booted emulator/device by removing the
- * `@Ignore`s and:
+ * Currently `@Ignore`'d because `FFmpegUtils.compressVideo` reaches through
+ * `ActivityProvider.requireActivity()` for `context.cacheDir`, and the
+ * instrumentation environment has no Activity to register — the first call
+ * would throw `IllegalStateException`. To enable: either (a) add an
+ * `ActivityScenarioRule<EmptyTestActivity>` + a tiny EmptyTestActivity here
+ * and call `ActivityProvider.initialize(it)` in `@Before`, or (b) refactor
+ * `FFmpegUtils.android.kt` to accept any Context (it only uses cacheDir).
+ * Option (b) is cleaner long term. Until either is wired, run locally with
+ * a booted device after un-`@Ignore`ing and applying the chosen fix:
  *
  *   ./gradlew homebase-api:connectedAndroidDeviceTest
  *
@@ -36,7 +41,7 @@ import org.junit.runner.RunWith
  *    6-second fixture — i.e. the user sees real progress, not just 0%→100%.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Requires emulator-on-CI infra; runs locally with `connectedAndroidDeviceTest`")
+@Ignore("Blocked on ActivityProvider/ComponentActivity wiring for the instrumentation context — see KDoc for the two fix paths")
 class CompressVideoAndroidInstrumentedTest {
 
     private fun copyFixtureToCache(name: String): File {

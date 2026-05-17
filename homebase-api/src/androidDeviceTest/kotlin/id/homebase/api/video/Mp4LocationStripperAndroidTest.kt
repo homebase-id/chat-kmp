@@ -9,7 +9,6 @@ import java.nio.file.StandardOpenOption
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mp4parser.BasicContainer
@@ -25,13 +24,15 @@ import org.mp4parser.support.AbstractBox
  * harmless `titl` atom), writes them out, runs the stripper, and re-parses to
  * verify the GPS atom is gone while unrelated atoms survive.
  *
- * `@Ignore`'d for the same reason as [CompressVideoAndroidInstrumentedTest] —
- * no emulator-on-CI infra yet. Runnable locally with a booted device:
+ * No `@Ignore` — this test has no environment requirements beyond a booted
+ * Android device/emulator. CI doesn't auto-run `connectedAndroidDeviceTest`,
+ * so the test is dormant on PR builds; anyone running it locally with
  *
  *   ./gradlew homebase-api:connectedAndroidDeviceTest
+ *
+ * gets results.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Requires emulator-on-CI infra; runs locally with `connectedAndroidDeviceTest`")
 class Mp4LocationStripperAndroidTest {
 
     private fun cacheDir(): File =
