@@ -11,6 +11,7 @@ import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.flow
 
 
 class VideoPayloadProcessor(
@@ -136,7 +137,16 @@ class VideoPayloadProcessor(
 
                 encryptVideoFile(
                     inputPath = videoPath,
-                    keyHeader = keyHeader
+                    keyHeader = keyHeader,
+                    onProgress = { pct ->
+                        onProgress?.invoke(
+                            VideoPayloadProgressPhase(
+                                payload.key,
+                                VideoProcessingPhase.ENCRYPTING,
+                                pct
+                            )
+                        )
+                    },
                 )
 
             } else {
@@ -242,14 +252,42 @@ class VideoPayloadProcessor(
 
     internal suspend fun encryptVideoFile(
         inputPath: String,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
     ): String {
         val outputPath =
             "${fileOperationsProvider.getCacheDirectory()}/video-encrypted-${Uuid.random()}.bin"
+        val totalBytes = fileOperationsProvider.getFileSize(inputPath)
+
+        // If caller passed onProgress AND we know the size, wrap the input
+        // flow with a byte counter that emits per-chunk progress (0..1).
+        // Otherwise pass the raw source through unchanged.
+        val source = fileOperationsProvider.readFileAsFlow(inputPath)
+        val countedSource =
+            if (onProgress == null || totalBytes <= 0L) source
+            else flow {
+                var consumed = 0L
+                var lastPctEmitted = -1
+                source.collect { chunk ->
+                    emit(chunk)
+                    consumed += chunk.size
+                    // Throttle to integer-percent boundaries to keep the UI's
+                    // recomposition pressure sane on large files (mirrors
+                    // TranscodePump.maybeEmitProgress).
+                    val pct = ((consumed.toFloat() / totalBytes) * 100f)
+                        .toInt()
+                        .coerceIn(0, 100)
+                    if (pct != lastPctEmitted) {
+                        lastPctEmitted = pct
+                        onProgress(pct / 100f)
+                    }
+                }
+            }
+
         fileOperationsProvider.writeStream(
             path = outputPath,
             data = AesCbc.streamEncryptWithCbc(
-                dataStream = fileOperationsProvider.readFileAsFlow(inputPath),
+                dataStream = countedSource,
                 key = keyHeader.aesKey,
                 iv = keyHeader.iv,
             ),
