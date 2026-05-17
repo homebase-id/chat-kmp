@@ -5,9 +5,24 @@ annotation pass — entries appear only when reading a Signal file
 surfaces a decision worth preserving (a device-quirk workaround, a
 non-obvious EOS edge, a magic constant whose history matters).
 
+> **NOTE 2026-05-17:** The vendored Signal tree previously at
+> `../transcoder/` has been deleted from the working copy — the v2
+> rewrite no longer needs it, and 5,500 LOC of orphan reference code
+> was harder to ignore than it was worth. Citations below still point
+> at the old paths and line numbers for historical accuracy; if you
+> need to look at the actual Signal source, fetch it from git history
+> at commit `3e0a407a` (the parent of the deletion commit), or read
+> Signal-Android upstream at
+> https://github.com/signalapp/Signal-Android.
+>
+> The notes themselves remain valuable as the *reasoning* record —
+> why we ported some patterns verbatim and rejected others. That's
+> the load-bearing part; the file/line citations were always just
+> breadcrumbs.
+
 Citations use the path relative to this file, so:
 `../transcoder/videoconverter/MediaConverter.java:142-211` resolves to
-the Signal-vendored file.
+the (now-deleted) Signal-vendored file.
 
 Most entries cross-reference `SPEC.md` section 9 (Device-quirk
 allowlist) or section 10 (Scope cuts).
