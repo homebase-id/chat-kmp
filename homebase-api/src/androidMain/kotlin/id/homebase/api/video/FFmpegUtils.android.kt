@@ -4,6 +4,7 @@ import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.ReturnCode
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
@@ -11,7 +12,9 @@ import id.homebase.api.video.transcoder_v2.HomebaseVideoTranscoder
 import id.homebase.api.video.transcoder_v2.TranscodeException
 import java.io.File
 import java.util.UUID
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
@@ -225,6 +228,46 @@ actual object FFmpegUtils {
         }
     }
 
+    /**
+     * Async FFmpegKit invocation that bridges to a suspending coroutine and
+     * reports per-`Statistics` progress (encoded position / total duration)
+     * via [onProgress]. Returns the completed [FFmpegSession] for the caller
+     * to inspect `returnCode` and friends.
+     *
+     * Pass `totalDurationMs` so we can convert the encoder's reported
+     * position into a 0..1 fraction. If unknown (≤0), [onProgress] still
+     * fires per statistics callback but with a clamped 0f — the spinner
+     * falls back to its indeterminate state.
+     *
+     * Cancellation: if the calling coroutine is cancelled, the FFmpegKit
+     * session is cancelled too; its completion callback then fires with a
+     * cancelled return code (caller checks `ReturnCode.isSuccess`).
+     */
+    private suspend fun runFfmpegAsyncWithProgress(
+        args: Array<String>,
+        totalDurationMs: Long,
+        onProgress: ((Float) -> Unit)?,
+    ): FFmpegSession = suspendCancellableCoroutine { cont ->
+        val session = FFmpegKit.executeWithArgumentsAsync(
+            args,
+            { sess -> if (cont.isActive) cont.resume(sess) },
+            null,  // log callback: not used; FFmpegKit's own logs are enough
+            { stats ->
+                if (onProgress != null) {
+                    val pct = if (totalDurationMs > 0) {
+                        (stats.time.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    onProgress(pct)
+                }
+            },
+        )
+        cont.invokeOnCancellation {
+            try { session.cancel() } catch (_: Exception) {}
+        }
+    }
+
     actual suspend fun segmentVideo(inputPath: String,
                                     onProgress: ((Float) -> Unit)?): Pair<String, String>? =
         withContext(Dispatchers.IO) {
@@ -277,10 +320,14 @@ actual object FFmpegUtils {
             commandArgs.add("hls")
             commandArgs.add(playlistPath)
 
-            val command = commandArgs.joinToString(" ")
-            Log.d(TAG, "Segment command: $command")
+            Log.d(TAG, "Segment command: ${commandArgs.joinToString(" ")}")
 
-            val session = FFmpegKit.execute(command)
+            val durationMs = getDurationMs(inputPath)
+            val session = runFfmpegAsyncWithProgress(
+                args = commandArgs.toTypedArray(),
+                totalDurationMs = durationMs,
+                onProgress = onProgress,
+            )
             if (ReturnCode.isSuccess(session.returnCode)) {
                 val segmentPath = playlistPath.replace(".m3u8", ".ts")
                 return@withContext Pair(playlistPath, segmentPath)
@@ -364,7 +411,12 @@ actual object FFmpegUtils {
 
             Log.d(TAG, "Segment+Encrypt args: $args")
 
-            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            val durationMs = getDurationMs(inputPath)
+            val session = runFfmpegAsyncWithProgress(
+                args = args.toTypedArray(),
+                totalDurationMs = durationMs,
+                onProgress = onProgress,
+            )
             if (ReturnCode.isSuccess(session.returnCode)) {
                 // Segmentation done — FFmpeg has consumed the key material. Delete it now
                 // so the plaintext AES key doesn't linger in the cache dir (see #7).
@@ -390,7 +442,14 @@ actual object FFmpegUtils {
                 outputPath
             )
             Log.d(TAG, "Remux HLS→MP4 args: ${args.joinToString(" ")}")
-            val session = FFmpegKit.executeWithArguments(args)
+            // No caller of remux passes onProgress today; keep this silent for
+            // now. Switching to the async helper anyway for consistency + so
+            // the call honours coroutine cancellation.
+            val session = runFfmpegAsyncWithProgress(
+                args = args,
+                totalDurationMs = getDurationMs(playlistPath),
+                onProgress = null,
+            )
             val ok = ReturnCode.isSuccess(session.returnCode)
             if (!ok) Log.e(TAG, "Remux failed: ${session.failStackTrace}")
             ok
