@@ -150,6 +150,14 @@ actual object FFmpegUtils {
 
         val outFile = File(context.cacheDir, "compressed_${inFile.name}")
 
+        // Probe input duration BEFORE the transcode so we can characterize the
+        // workload in the timing log (transcode-wall-time alone isn't useful
+        // without input duration + size). MediaMetadataRetriever is cheap.
+        val inputDurationMs = getDurationMs(inputPath)
+        val inputBytes = inFile.length()
+        val trimDurationMs = if (trim != null) trim.endMs - trim.startMs else inputDurationMs
+        val t0 = System.currentTimeMillis()
+
         val result = try {
             HomebaseVideoTranscoder.transcode(
                 inputPath = inFile.absolutePath,
@@ -159,22 +167,33 @@ actual object FFmpegUtils {
                 onProgress = onProgress,
             )
         } catch (e: TranscodeException) {
+            val elapsedMs = System.currentTimeMillis() - t0
             Log.e(
                 TAG,
-                "Transcode failed (in=$inputPath, codec=${e.inputCodec}, " +
-                    "decoder=${e.attemptedDecoder}, encoder=${e.attemptedEncoder})",
+                "Transcode FAILED after ${elapsedMs}ms (in=$inputPath, codec=${e.inputCodec}, " +
+                    "decoder=${e.attemptedDecoder}, encoder=${e.attemptedEncoder}, " +
+                    "inputBytes=$inputBytes, inputDurationMs=$inputDurationMs, " +
+                    "trimDurationMs=$trimDurationMs, quality=$quality)",
                 e,
             )
             outFile.delete()
             return@withContext null
         } catch (e: Throwable) {
-            Log.e(TAG, "Transcode crashed", e)
+            val elapsedMs = System.currentTimeMillis() - t0
+            Log.e(TAG, "Transcode crashed after ${elapsedMs}ms", e)
             outFile.delete()
             return@withContext null
         }
 
+        val elapsedMs = System.currentTimeMillis() - t0
+
         when (result) {
             is HomebaseVideoTranscoder.Result.AlreadyOptimal -> {
+                Log.i(
+                    TAG,
+                    "compressVideo: ${elapsedMs}ms (AlreadyOptimal short-circuit) " +
+                        "in=${inputBytes}B/${inputDurationMs}ms quality=$quality",
+                )
                 // The input passes through unchanged on this path — so it still
                 // carries any EXIF / GPS / location atoms the camera wrote. Try
                 // a metadata-only strip via mp4parser (no re-encode). Returns
@@ -188,7 +207,21 @@ actual object FFmpegUtils {
                     null
                 }
             }
-            is HomebaseVideoTranscoder.Result.Transcoded -> result.outputPath
+            is HomebaseVideoTranscoder.Result.Transcoded -> {
+                val outBytes = outFile.length()
+                // realtime = elapsedMs / trimDurationMs; <1.0 means we transcode
+                // faster than playback (good); >1.0 means slower than realtime.
+                val realtimeRatio = if (trimDurationMs > 0)
+                    "%.2f".format(elapsedMs.toFloat() / trimDurationMs)
+                else "n/a"
+                Log.i(
+                    TAG,
+                    "compressVideo: ${elapsedMs}ms (Transcoded, ${realtimeRatio}× realtime) " +
+                        "in=${inputBytes}B/${inputDurationMs}ms out=${outBytes}B " +
+                        "trimDurationMs=$trimDurationMs quality=$quality",
+                )
+                result.outputPath
+            }
         }
     }
 
