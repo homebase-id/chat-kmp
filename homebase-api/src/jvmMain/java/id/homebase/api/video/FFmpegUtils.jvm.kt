@@ -10,6 +10,26 @@ import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
 
+    @Volatile private var cachedFfmpegVersion: String? = null
+    @Volatile private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = if (!FFmpegBinaryManager.isAvailable()) {
+            null
+        } else {
+            runCatching {
+                val output = runProcessWithOutput(
+                    listOf(FFmpegBinaryManager.ffmpegPath(), "-version")
+                )
+                parseFfmpegVersionBanner(output)
+            }.getOrNull()
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
+
     actual suspend fun getDurationMs(inputPath: String): Long {
         val command = listOf(
             FFmpegBinaryManager.ffprobePath(),
@@ -83,111 +103,101 @@ actual object FFmpegUtils {
             output.trim().toIntOrNull() ?: 0
         }
 
-    private const val MAX_BITRATE = 3_000_000L
-    private const val MAX_WIDTH = 1280
-
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
-    ): String? =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+        quality: VideoQuality,
+    ): String? = withContext(Dispatchers.IO) {
+        if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
-            val hasTrim = trimStartMs != null || trimEndMs != null
+        val inputFile = File(inputPath)
+        if (!inputFile.exists()) return@withContext null
 
-            // Check if compression is needed. When trim is requested we
-            // must always re-encode, since stream-copy won't apply -t accurately.
-            // For the no-trim path: codec + width come from ffprobe (reliably
-            // reported), but bitrate is computed from fileSize / duration —
-            // ffprobe's stream-level `bit_rate` is optional and frequently null
-            // for libx264 output, which used to force unnecessary re-encodes.
-            val needsCompression = hasTrim || !isAlreadyOptimal(inputPath)
+        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
+        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
-            if (!needsCompression) {
-                println("Video already optimal — skipping compression")
-                return@withContext null
-            }
-
-            val inputFile = File(inputPath)
-            val outputPath =
-                "${System.getProperty("java.io.tmpdir")}/compressed_${inputFile.name}"
-
-            val sourceDurationMs = getDurationMs(inputPath)
-            val effectiveDurationMs = trimDurationMs(sourceDurationMs, trimStartMs, trimEndMs)
-
-            val command = mutableListOf<String>().apply {
-                add(FFmpegBinaryManager.ffmpegPath())
-                add("-y")
-                // -ss before -i: fast input seek; with re-encode this is also frame-accurate.
-                if (trimStartMs != null && trimStartMs > 0) {
-                    add("-ss"); add(formatSeconds(trimStartMs))
-                }
-                add("-i"); add(inputPath)
-                if (trimEndMs != null) {
-                    val durSec = ((trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)) / 1000.0
-                    add("-t"); add(formatSeconds((durSec * 1000.0).toLong()))
-                }
-                addAll(listOf(
-                    "-c:v", "libx264",
-                    "-b:v", "3000k",
-                    "-vf", "scale='min(1280,iw)':-2",
-                    "-preset", "fast",
-                    "-progress", "pipe:1",
-                    "-nostats",
-                    outputPath
-                ))
-            }
-
-            val result = runProcessWithLogs(
-                command = command,
-                totalDurationMs = effectiveDurationMs,
-                onProgress = onProgress
-            )
-
-            if (result.exitCode == 0 && File(outputPath).exists()) {
-                outputPath
-            } else {
-                // FFmpeg failed — delete the partial/empty output (see #5).
-                deleteFailedFfmpegOutput(outputPath)
-                null
-            }
+        val outputPath =
+            "${System.getProperty("java.io.tmpdir")}/compressed_${inputFile.name}"
+        val sourceDurationMs = getDurationMs(inputPath)
+        val inputBytes = inputFile.length()
+        val probe = probeVideoTrackViaFfprobe(inputPath)
+        val effectiveDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
+            (effectiveTrimEnd - effectiveTrimStart).coerceAtLeast(1L)
+        } else {
+            sourceDurationMs
         }
 
+        // Hand probed input + caller params to the commonMain planner.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = inputPath,
+            outputPath = outputPath,
+            quality = quality,
+            trimStartMs = effectiveTrimStart,
+            trimEndMs = effectiveTrimEnd,
+            probedWidthPx = probe.widthPx,
+            probedHeightPx = probe.heightPx,
+            probedCodecMime = probe.codec,
+            inputDurationMs = sourceDurationMs,
+            inputBytes = inputBytes,
+        )
+
+        if (plan.skipReason != null) {
+            println("compressVideo: AlreadyOptimal — ${plan.skipReason}")
+            return@withContext null
+        }
+
+        // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs
+        // the binary path prepended. We also append the JVM-specific progress-
+        // wiring flags so `runProcessWithLogs` can parse `-progress pipe:1`.
+        val command = buildList {
+            add(FFmpegBinaryManager.ffmpegPath())
+            addAll(plan.args)
+            add("-progress"); add("pipe:1")
+            add("-nostats")
+        }
+
+        val result = runProcessWithLogs(
+            command = command,
+            totalDurationMs = effectiveDurationMs,
+            onProgress = onProgress,
+        )
+
+        if (result.exitCode == 0 && File(outputPath).exists()) {
+            outputPath
+        } else {
+            // FFmpeg failed — delete the partial/empty output (see #5).
+            deleteFailedFfmpegOutput(outputPath)
+            null
+        }
+    }
+
     /**
-     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
-     * The avg bitrate is computed from fileSize / duration rather than queried via
-     * ffprobe — `stream.bit_rate` is optional and not always present (e.g. libx264
-     * output without an explicit muxer hint), which used to force re-encodes for
-     * already-tiny files.
+     * Probes (codec, width, height) of the first video track via `ffprobe`.
+     * Returns null codec / zero dims on any probe failure — caller falls back
+     * to "no -vf scale" and the already-optimal predicate fails through to a
+     * real transcode.
      */
-    private suspend fun isAlreadyOptimal(inputPath: String): Boolean {
+    private data class FfprobeResult(val codec: String?, val widthPx: Int, val heightPx: Int)
+
+    private suspend fun probeVideoTrackViaFfprobe(inputPath: String): FfprobeResult {
         val probeCommand = listOf(
             FFmpegBinaryManager.ffprobePath(),
             "-v", "quiet",
             "-select_streams", "v:0",
-            "-show_entries", "stream=codec_name,width",
+            "-show_entries", "stream=codec_name,width,height",
             "-of", "csv=p=0",
-            inputPath
+            inputPath,
         )
         val output = runProcessWithOutput(probeCommand).trim()
         val parts = output.split(",")
-        if (parts.size < 2) return false
-        val codec = parts[0].lowercase()
-        val width = parts[1].toIntOrNull() ?: return false
-
-        val sizeBytes = File(inputPath).length()
-        val durationMs = getDurationMs(inputPath)
-        if (sizeBytes <= 0L || durationMs <= 0L) return false
-        val avgBitrate = sizeBytes * 8L * 1000L / durationMs
-        return codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
-    }
-
-    private fun trimDurationMs(sourceMs: Long, startMs: Long?, endMs: Long?): Long {
-        val s = startMs?.coerceAtLeast(0L) ?: 0L
-        val e = endMs ?: sourceMs
-        return (e - s).coerceAtLeast(1L)
+        if (parts.size < 3) return FfprobeResult(null, 0, 0)
+        return FfprobeResult(
+            codec = parts[0].lowercase().ifBlank { null },
+            widthPx = parts[1].toIntOrNull() ?: 0,
+            heightPx = parts[2].toIntOrNull() ?: 0,
+        )
     }
 
     private fun formatSeconds(ms: Long): String {

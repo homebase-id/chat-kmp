@@ -18,6 +18,12 @@ interface FFmpegKitBridge {
      * @return MediaInfo or null if failed
      */
     fun getMediaInformation(filePath: String): MediaInfo?
+
+    /**
+     * Returns the raw output of `ffmpeg -version` (banner + build flags), or null if it
+     * could not be obtained. Callers extract the version token via parseFfmpegVersionBanner.
+     */
+    fun getFfmpegVersionBanner(): String?
 }
 
 /** Result of an FFmpeg/FFprobe operation. */
