@@ -24,6 +24,8 @@ import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PHAssetFetcher
 import id.homebase.core.image.PublicImageFetcher
+import id.homebase.core.notifications.KMPNotifierBackend
+import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.IOSUpdateAppManager
@@ -50,6 +52,7 @@ actual fun platformModule(): Module = module {
     single<DatabaseSizeProbe> { NativeDatabaseSizeProbe() }
     single<UpdateAppManager> { IOSUpdateAppManager(get()) }
     single<ShakeDetector> { IosShakeDetector() }
+    single<NotificationBackend> { KMPNotifierBackend() }
     single(createdAtStart = true) {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
