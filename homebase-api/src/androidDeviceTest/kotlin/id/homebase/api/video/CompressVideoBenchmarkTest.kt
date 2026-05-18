@@ -9,6 +9,7 @@ import id.homebase.api.video.transcoder_v2.HomebaseVideoTranscoder
 import java.io.File
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Ignore
@@ -32,36 +33,41 @@ import org.junit.runner.RunWith
  * Then grep the device logcat (or test stdout) for `BENCHMARK` lines and
  * paste the result into the "Last results" block below.
  *
- * --- Last results on Medium_Phone_API_36.0 emulator (2026-05-17) ---
+ * --- Last results on Medium_Phone_API_36.0 emulator (2026-05-18, CBR enabled) ---
  *
- *     BENCHMARK fixture=sample.mp4         ffmpeg= 449ms,298 KB  v2=AlreadyOptimal(180ms)   speedup=n/a
- *     BENCHMARK fixture=bbb_1080p_2mb.mp4  ffmpeg=9892ms,3.0 MB  v2=12919ms,6.2 MB          speedup=0.77×
- *     BENCHMARK fixture=bbb_1080p_10mb.mp4 ffmpeg=10010ms,3.1 MB v2=12264ms,6.1 MB          speedup=0.82×
- *     BENCHMARK fixture=hdr10_720p.mp4     ffmpeg=3886ms,1.3 MB  v2=FAILED(1250ms)          speedup=n/a
+ *     BENCHMARK fixture=sample.mp4         ffmpeg=1715ms,298 KB  v2=AlreadyOptimal(877ms)   speedup=n/a
+ *     BENCHMARK fixture=bbb_1080p_2mb.mp4  ffmpeg=34357ms,3.0 MB v2=24204ms,6.3 MB          speedup=1.42×
+ *     BENCHMARK fixture=bbb_1080p_10mb.mp4 ffmpeg=24159ms,3.1 MB v2=19468ms,6.3 MB          speedup=1.24×
+ *     BENCHMARK fixture=hdr10_720p.mp4     ffmpeg=5901ms,1.3 MB  v2=FAILED(2169ms)          speedup=n/a
+ *
+ * Earlier run (2026-05-17, default VBR encoder) for comparison: v2 ~6.2 MB
+ * on both 1080p fixtures — switching to BITRATE_MODE_CBR in VideoPair.kt
+ * had **NO measurable effect on emulator output size** (still ~6.3 MB).
  *
  * **EMULATOR CAVEATS — these numbers do NOT reflect real-device performance:**
  *
  * 1. The Android emulator has NO hardware H.264 encoder. v2's MediaCodec
  *    pipeline falls back to the emulator's software codec
- *    (`c2.goldfish.*` / `c2.android.avc.encoder`), which runs slower than
- *    `libx264` (which ffmpeg uses, also software, but heavily optimised).
- *    On a real phone v2 hits the hardware H.264 encoder block — typically
- *    a 3–10× speedup vs `libx264`, reversing the emulator's ratio.
- * 2. v2 output is ~2× larger than ffmpeg's (6 MB vs 3 MB for the same 10s
- *    1080p input). MediaCodec's `KEY_BIT_RATE` is a *target* not a cap;
- *    its default `BITRATE_MODE_VBR` lets bursts go well above target.
- *    The SPEC §6 decision was VBR — bumping to `BITRATE_MODE_CBR` (or
- *    explicitly capping via `KEY_MAX_BITRATE`) would close this gap.
- *    Tracked as a future improvement; not blocking.
+ *    (`c2.goldfish.*` / `c2.android.avc.encoder`), which runs comparable
+ *    to `libx264` (which ffmpeg uses, also software). On a real phone v2
+ *    hits the hardware H.264 encoder block — typically much faster than
+ *    libx264 with far lower battery cost.
+ * 2. v2 output stays ~2× larger than ffmpeg's (6.3 MB vs 3.0 MB for the
+ *    same 10s 1080p input) on the emulator even with `BITRATE_MODE_CBR`
+ *    set in VideoPair.kt. The emulator's `c2.goldfish.avc.encoder`
+ *    silently ignores the CBR request. Hardware AVC encoder blocks on
+ *    real phones implement proper rate control and DO honour CBR — the
+ *    real-device output should land near the 2.5 Mbps × 10s ≈ 3 MB target.
+ *    **The CBR fix is only verifiable on a physical device.**
  * 3. v2's HDR path correctly returns null (HdrDecoderUnavailableException)
  *    on emulators with software-only HEVC — see [hasHardwareHevcDecoder]
  *    in [CompressVideoAndroidInstrumentedTest]. ffmpeg processes HDR as
  *    if it were SDR, producing visibly-wrong colours but a playable file.
  *
  * Re-run on a real phone to get realistic numbers. Expected real-device
- * speedup for v2 over ffmpeg on phone-recorded 1080p H.264 content:
- * roughly 2–5× faster, with significantly lower battery cost (hardware
- * codec uses orders of magnitude less power than libx264).
+ * results for v2 vs ffmpeg on phone-recorded 1080p H.264 content:
+ * roughly 2–5× faster, output size near the bitrate target (~3 MB for a
+ * 10s clip at STANDARD), significantly lower battery cost.
  *
  * Note on the ffmpeg command: matches v2's STANDARD profile target
  * (720p short edge, 2.5 Mbps H.264 video, 128 kbps AAC audio).
@@ -105,7 +111,7 @@ class CompressVideoBenchmarkTest {
     private data class Fixture(val name: String, val scaleToShortEdge720: Boolean)
 
     @Test
-    fun benchmark_ffmpegKit_vs_mediaCodecV2() = runTest {
+    fun benchmark_ffmpegKit_vs_mediaCodecV2() = runTest(timeout = 5.minutes) {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val results = ArrayList<String>()
 

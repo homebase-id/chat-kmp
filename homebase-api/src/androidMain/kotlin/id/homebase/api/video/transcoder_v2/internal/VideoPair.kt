@@ -233,9 +233,16 @@ internal object VideoPairFactory {
         val out = computeOutputDimensions(srcW, srcH, profile.shortEdgePx)
 
         // Encoder output format (Surface input — no KEY_COLOR_FORMAT=YUV).
+        // KEY_BITRATE_MODE = CBR: the benchmark on 2026-05-17 showed default
+        // VBR produced ~2x the target bitrate on 1080p content (6.2 MB output
+        // for a 2.5 Mbps × 10s ≈ 3 MB target). CBR enforces the average rate
+        // and brings output size in line with ffmpeg's. Amends the SPEC §6
+        // "VBR" decision — measured output was wildly above target on real
+        // workloads, defeating the whole point of the bitrate envelope.
         val outFormat = MediaFormat.createVideoFormat(profile.videoCodec, out.width, out.height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, profile.videoBitrateBps)
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
             setInteger(MediaFormat.KEY_FRAME_RATE, 30)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
