@@ -95,6 +95,16 @@ class OutboxSync(
             val msg = e.message ?: return false
             if (msg.contains("Could not find file", ignoreCase = true)) return true
             if (msg.contains(Regex("Mis(sing|matching) version tag", RegexOption.IGNORE_CASE))) return true
+            // Server-enforced size invariants — never recover with retry.
+            // Catches "Thumbnail size of N exceeds 1024" (the bug behind
+            // the URL-preview SVG outbox stall on 2026-05-17) and any
+            // sibling quota messages the server emits in the same shape
+            // with errorCode collapsed to UnhandledScenario.
+            if (msg.contains(Regex("size of \\d+ exceeds \\d+", RegexOption.IGNORE_CASE))) return true
+            // Client-side pre-flight rejections from
+            // [UploadValidation.kt]. The validator throws ClientException
+            // shaped like a server response so we land here on attempt 1.
+            if (msg.startsWith("Upload validation failed: ")) return true
         }
         return false
     }

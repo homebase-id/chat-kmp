@@ -423,4 +423,54 @@ actual object ImageUtils {
     }
 
     private const val BLUR_RADIUS: Int = 25
+
+    actual suspend fun rasterizeSvg(
+        svgBytes: ByteArray,
+        maxDim: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val dom = org.jetbrains.skia.svg.SVGDOM(org.jetbrains.skia.Data.makeFromBytes(svgBytes))
+
+        val root = dom.root ?: throw IllegalArgumentException("SVG has no root element")
+        val intrinsicW = root.width.value.toInt().takeIf { it > 0 }
+        val intrinsicH = root.height.value.toInt().takeIf { it > 0 }
+        val (naturalW, naturalH) = when {
+            intrinsicW != null && intrinsicH != null -> intrinsicW to intrinsicH
+            else -> parseSvgDimensions(svgBytes) ?: (320 to 320)
+        }
+        dom.setContainerSize(naturalW.toFloat(), naturalH.toFloat())
+
+        // Vector → always render at exactly the requested maxDim box,
+        // preserving aspect. Same rationale as the JVM actual.
+        val scale = maxDim.toFloat() / maxOf(naturalW, naturalH)
+        val targetW = (naturalW * scale).toInt().coerceAtLeast(1)
+        val targetH = (naturalH * scale).toInt().coerceAtLeast(1)
+
+        val surface = Surface.makeRasterN32Premul(targetW, targetH)
+        val canvas = surface.canvas
+        canvas.scale(targetW.toFloat() / naturalW, targetH.toFloat() / naturalH)
+        dom.render(canvas)
+
+        val rendered = surface.makeImageSnapshot()
+        val encoded = rendered.encodeToData(encodedFormatFor(outputFormat), quality)
+            ?: throw IllegalStateException("Failed to encode rasterized SVG to ${outputFormat.name}")
+
+        return ImageResult(
+            bytes = encoded.bytes,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(targetW, targetH)
+        )
+    }
+}
+
+// Last-resort dimension parser when SVGDOM doesn't expose intrinsic
+// width/height (viewBox-only SVGs commonly do this). Same shape as
+// ThumbnailGenerator.getSvgDimensions — duplicated here to keep
+// ImageUtils per-platform actuals self-contained.
+private fun parseSvgDimensions(svgBytes: ByteArray): Pair<Int, Int>? {
+    val text = svgBytes.decodeToString()
+    val w = Regex("""width\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+    val h = Regex("""height\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+    return if (w != null && h != null) w to h else null
 }

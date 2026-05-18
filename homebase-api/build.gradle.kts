@@ -112,6 +112,7 @@ kotlin {
             implementation(libs.android.database.sqlcipher)
             implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
+            implementation(libs.androidsvg)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)

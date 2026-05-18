@@ -114,6 +114,30 @@ expect object ImageUtils {
         outputFormat: ImageFormat = ImageFormat.PNG,
         quality: Int = 100,
     ): ImageResult
+
+    /**
+     * Rasterize an SVG document into a bitmap.
+     *
+     * Scales the SVG into a box of [maxDim] × [maxDim] preserving aspect
+     * ratio, renders it, and encodes the result in [outputFormat] at the
+     * given [quality]. The returned [ImageResult.naturalSize] is the
+     * SVG's intrinsic (vector) size; [ImageResult.size] is the rendered
+     * pixel size.
+     *
+     * Suspending because the Web actual awaits an async browser
+     * `Image.onload` / `OffscreenCanvas.convertToBlob`. JVM, Native and
+     * Android impls don't suspend in practice.
+     *
+     * Throws on parse / render failure — callers (e.g.
+     * [createThumbnails]) should wrap in try/catch and fall back to
+     * a no-thumb result so a malformed SVG can't break the upload.
+     */
+    suspend fun rasterizeSvg(
+        svgBytes: ByteArray,
+        maxDim: Int,
+        outputFormat: ImageFormat = ImageFormat.WEBP,
+        quality: Int = 76,
+    ): ImageResult
 }
 
 /**
