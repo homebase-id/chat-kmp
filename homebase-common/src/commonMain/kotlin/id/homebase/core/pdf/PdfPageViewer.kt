@@ -1,0 +1,152 @@
+package id.homebase.core.pdf
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.resources.MR
+import id.homebase.resources.vault_gallery_page_counter
+import id.homebase.resources.vault_pdf_page_content_description
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
+
+private const val PAGE_CACHE_WINDOW = 5
+
+@Composable
+fun PdfPageViewer(
+    renderer: PdfRenderer,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    val pageCount = renderer.pageCount
+    val renderedPages = remember { mutableStateMapOf<Int, ImageBitmap>() }
+
+    val currentPage by remember {
+        derivedStateOf {
+            val bounded = listState.boundedFirstVisibleItemIndex(pageCount)
+            (bounded ?: 0) + 1
+        }
+    }
+
+    // Evict pages outside the visible window to bound memory usage
+    LaunchedEffect(Unit) {
+        snapshotFlow { listState.boundedFirstVisibleItemIndex(pageCount) }
+            .collect { visibleIndex ->
+                val center = visibleIndex ?: return@collect
+                val keep = (center - PAGE_CACHE_WINDOW)..(center + PAGE_CACHE_WINDOW)
+                val toEvict = renderedPages.keys.filter { it !in keep }
+                toEvict.forEach { renderedPages.remove(it) }
+            }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(pageCount) { index ->
+                PdfPage(
+                    renderer = renderer,
+                    pageIndex = index,
+                    pageCount = pageCount,
+                    cachedBitmap = renderedPages[index],
+                    onRendered = { renderedPages[index] = it },
+                )
+            }
+        }
+
+        if (pageCount > 1) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = stringResource(MR.string.vault_gallery_page_counter, currentPage, pageCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfPage(
+    renderer: PdfRenderer,
+    pageIndex: Int,
+    pageCount: Int,
+    cachedBitmap: ImageBitmap?,
+    onRendered: (ImageBitmap) -> Unit,
+) {
+    LaunchedEffect(pageIndex) {
+        if (cachedBitmap == null) {
+            val bitmap = withContext(Dispatchers.Default) {
+                renderer.renderPage(pageIndex, 1200, 1600)
+            }
+            onRendered(bitmap)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.75f)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+        contentAlignment = Alignment.Center,
+    ) {
+        val bitmap = cachedBitmap
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = stringResource(
+                    MR.string.vault_pdf_page_content_description,
+                    pageIndex + 1,
+                    pageCount,
+                ),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}

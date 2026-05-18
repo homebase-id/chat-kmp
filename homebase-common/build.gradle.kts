@@ -132,6 +132,7 @@ kotlin {
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
+            implementation(libs.pdfbox)
         }
         // Uncomment in step 10 of the WASM pre-flight plan, paired with
         // `wasmJs { browser() }`. ktor-client-js provides the browser

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,17 +24,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.vault_image_add
+import id.homebase.resources.vault_add_entry
+import id.homebase.resources.vault_choose_file
 import id.homebase.resources.vault_image_choose_gallery
 import id.homebase.resources.vault_image_take_photo
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VaultImageAddSheet(
+fun VaultAddEntrySheet(
     sheetState: SheetState,
     onTakePhoto: () -> Unit,
     onChooseGallery: () -> Unit,
+    onChooseFile: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -47,7 +50,7 @@ fun VaultImageAddSheet(
                 .padding(bottom = 16.dp),
         ) {
             Text(
-                text = stringResource(MR.string.vault_image_add),
+                text = stringResource(MR.string.vault_add_entry),
                 style = MaterialTheme.typography.titleLarge,
             )
 
@@ -74,8 +77,6 @@ fun VaultImageAddSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -92,6 +93,27 @@ fun VaultImageAddSheet(
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
                     text = stringResource(MR.string.vault_image_choose_gallery),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clickable(onClick = onChooseFile),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Description,
+                    contentDescription = stringResource(MR.string.vault_choose_file),
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = stringResource(MR.string.vault_choose_file),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

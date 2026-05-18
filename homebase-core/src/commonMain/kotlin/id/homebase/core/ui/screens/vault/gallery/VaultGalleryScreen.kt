@@ -64,6 +64,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -103,6 +105,8 @@ fun VaultGalleryScreen(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
+    val uploaderService = koinInject<VaultUploaderService>()
+    val fileOperationsProvider = koinInject<FileOperationsProvider>()
     val pages = file.payloadDescriptors
     if (pages.isEmpty()) return
 
@@ -232,6 +236,12 @@ fun VaultGalleryScreen(
                             onToggleUI = onTapImage,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
+                        )
+                    } else if (file.isPdf) {
+                        PdfViewerPage(
+                            file = file,
+                            uploaderService = uploaderService,
+                            fileOperationsProvider = fileOperationsProvider,
                         )
                     } else {
                         GalleryPageNonImage(
