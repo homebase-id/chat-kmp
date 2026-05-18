@@ -101,6 +101,10 @@ class OutboxSync(
             // sibling quota messages the server emits in the same shape
             // with errorCode collapsed to UnhandledScenario.
             if (msg.contains(Regex("size of \\d+ exceeds \\d+", RegexOption.IGNORE_CASE))) return true
+            // Client-side pre-flight rejections from
+            // [UploadValidation.kt]. The validator throws ClientException
+            // shaped like a server response so we land here on attempt 1.
+            if (msg.startsWith("Upload validation failed: ")) return true
         }
         return false
     }
