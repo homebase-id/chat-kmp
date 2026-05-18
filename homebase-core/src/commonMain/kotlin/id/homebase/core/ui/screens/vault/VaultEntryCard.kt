@@ -86,8 +86,8 @@ fun VaultEntryCard(
                 .height(THUMBNAIL_HEIGHT),
             contentAlignment = Alignment.Center,
         ) {
-            // Stacked shadow layers (only for multi-page)
-            if (file.hasMultiplePages) {
+            // Stacked shadow layers (multi-payload entries like scans, not PDFs)
+            if (file.hasMultiplePages && !file.isPdf) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -299,8 +299,8 @@ fun VaultEntryCard(
                     }
                 }
 
-                // Page count badge (only for multi-page)
-                if (file.hasMultiplePages) {
+                // Page count badge (multi-payload entries like scans, not PDFs)
+                if (file.hasMultiplePages && !file.isPdf) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)

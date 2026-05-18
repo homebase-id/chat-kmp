@@ -242,6 +242,14 @@ fun VaultGalleryScreen(
                             file = file,
                             uploaderService = uploaderService,
                             fileOperationsProvider = fileOperationsProvider,
+                            onToggleUI = onTapImage,
+                        )
+                    } else if (file.isText) {
+                        TextViewerPage(
+                            file = file,
+                            uploaderService = uploaderService,
+                            fileOperationsProvider = fileOperationsProvider,
+                            onToggleUI = onTapImage,
                         )
                     } else {
                         GalleryPageNonImage(

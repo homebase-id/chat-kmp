@@ -2,10 +2,7 @@ package id.homebase.core.pdf
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,8 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.boundedFirstVisibleItemIndex
@@ -42,6 +40,7 @@ private const val PAGE_CACHE_WINDOW = 5
 @Composable
 fun PdfPageViewer(
     renderer: PdfRenderer,
+    onTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -66,11 +65,15 @@ fun PdfPageViewer(
             }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    val tapModifier = if (onTap != null) {
+        Modifier.pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) }
+    } else {
+        Modifier
+    }
+
+    Box(modifier = modifier.fillMaxSize().then(tapModifier)) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             items(pageCount) { index ->
@@ -80,6 +83,7 @@ fun PdfPageViewer(
                     pageCount = pageCount,
                     cachedBitmap = renderedPages[index],
                     onRendered = { renderedPages[index] = it },
+                    modifier = Modifier.fillParentMaxHeight(),
                 )
             }
         }
@@ -112,6 +116,7 @@ private fun PdfPage(
     pageCount: Int,
     cachedBitmap: ImageBitmap?,
     onRendered: (ImageBitmap) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(pageIndex) {
         if (cachedBitmap == null) {
@@ -123,10 +128,8 @@ private fun PdfPage(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(0.75f)
-            .clip(RoundedCornerShape(4.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLowest),
         contentAlignment = Alignment.Center,
     ) {

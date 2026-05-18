@@ -49,6 +49,13 @@ data class VaultEntry(
     val isAudio: Boolean get() = contentType.startsWith("audio/")
 
     val isPdf: Boolean get() = contentType == "application/pdf"
+
+    val isText: Boolean get() = contentType.startsWith("text/") ||
+        contentType == "application/json" ||
+        contentType == "application/xml" ||
+        contentType == "application/x-yaml" ||
+        contentType == "application/javascript" ||
+        contentType == "application/x-sh"
 }
 
 /**

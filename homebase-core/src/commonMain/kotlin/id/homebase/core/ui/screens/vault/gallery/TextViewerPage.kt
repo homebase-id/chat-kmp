@@ -1,11 +1,18 @@
 package id.homebase.core.ui.screens.vault.gallery
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
@@ -13,7 +20,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,99 +27,85 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.core.pdf.PdfPageViewer
-import id.homebase.core.pdf.PdfRenderer
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
-import id.homebase.resources.vault_pdf_preview_error
-import kotlinx.coroutines.CancellationException
+import id.homebase.resources.vault_text_preview_error
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
-private sealed interface PdfViewerState {
-    data object Loading : PdfViewerState
-    data class Ready(val renderer: PdfRenderer, val tempFilePath: String) : PdfViewerState
-    data object Error : PdfViewerState
-}
-
-private fun cleanupPdfResources(
-    renderer: PdfRenderer?,
-    tempPath: String?,
-    fileOps: FileOperationsProvider,
-) {
-    renderer?.close()
-    tempPath?.let { try { fileOps.deleteTempFile(it) } catch (_: Exception) { } }
+private sealed interface TextViewerState {
+    data object Loading : TextViewerState
+    data class Ready(val content: String) : TextViewerState
+    data object Error : TextViewerState
 }
 
 @Composable
-fun PdfViewerPage(
+fun TextViewerPage(
     file: VaultEntry,
     uploaderService: VaultUploaderService,
     fileOperationsProvider: FileOperationsProvider,
     onToggleUI: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var state by remember { mutableStateOf<PdfViewerState>(PdfViewerState.Loading) }
+    var state by remember { mutableStateOf<TextViewerState>(TextViewerState.Loading) }
 
     LaunchedEffect(file.fileId) {
-        // Clean up previous Ready state when fileId changes
-        val prev = state
-        if (prev is PdfViewerState.Ready) {
-            cleanupPdfResources(prev.renderer, prev.tempFilePath, fileOperationsProvider)
-        }
-        state = PdfViewerState.Loading
-
-        var tempPath: String? = null
-        var renderer: PdfRenderer? = null
+        state = TextViewerState.Loading
         try {
             val payloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
-            tempPath = withContext(Dispatchers.Default) {
+            val tempPath = withContext(Dispatchers.Default) {
                 uploaderService.downloadPayload(file, payloadKey)
             }
             if (tempPath == null) {
-                state = PdfViewerState.Error
+                state = TextViewerState.Error
             } else {
-                renderer = PdfRenderer()
-                renderer.open(tempPath)
-                state = PdfViewerState.Ready(renderer, tempPath)
+                val bytes = withContext(Dispatchers.Default) {
+                    fileOperationsProvider.readFileBytes(tempPath)
+                }
+                state = TextViewerState.Ready(bytes.decodeToString())
+                try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) { }
             }
-        } catch (e: CancellationException) {
-            cleanupPdfResources(renderer, tempPath, fileOperationsProvider)
-            throw e
         } catch (_: Exception) {
-            cleanupPdfResources(renderer, tempPath, fileOperationsProvider)
-            state = PdfViewerState.Error
+            state = TextViewerState.Error
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            val current = state
-            if (current is PdfViewerState.Ready) {
-                cleanupPdfResources(current.renderer, current.tempFilePath, fileOperationsProvider)
-            }
-        }
-    }
-
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) { detectTapGestures(onTap = { onToggleUI() }) },
+        contentAlignment = Alignment.Center,
+    ) {
         when (val s = state) {
-            is PdfViewerState.Loading -> {
+            is TextViewerState.Loading -> {
                 CircularProgressIndicator()
             }
 
-            is PdfViewerState.Ready -> {
-                PdfPageViewer(
-                    renderer = s.renderer,
-                    onTap = onToggleUI,
-                    modifier = Modifier.fillMaxSize(),
-                )
+            is TextViewerState.Ready -> {
+                SelectionContainer {
+                    Text(
+                        text = s.content,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                            .verticalScroll(rememberScrollState())
+                            .horizontalScroll(rememberScrollState())
+                            .padding(16.dp),
+                    )
+                }
             }
 
-            is PdfViewerState.Error -> {
+            is TextViewerState.Error -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         imageVector = Icons.Outlined.ErrorOutline,
@@ -123,7 +115,7 @@ fun PdfViewerPage(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = stringResource(MR.string.vault_pdf_preview_error),
+                        text = stringResource(MR.string.vault_text_preview_error),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
