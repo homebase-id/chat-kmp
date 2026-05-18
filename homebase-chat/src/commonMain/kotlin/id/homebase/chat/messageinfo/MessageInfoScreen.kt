@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.common.util.formatBytes
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
 import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
@@ -48,6 +49,7 @@ import id.homebase.resources.failed
 import id.homebase.resources.label_edited
 import id.homebase.resources.label_received
 import id.homebase.resources.label_sent
+import id.homebase.resources.label_size
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
@@ -157,6 +159,35 @@ fun MessageInfoUi(
                         text = stringResource(
                             MR.string.label_edited,
                             uiState.message.modified?.let { formateDateTime(it) } ?: "",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
+
+                // One Size row per payload that has a known byte count. Useful
+                // for confirming transcode output sizes (e.g. CBR taking
+                // effect after the surface-bridge rewrite) and for users
+                // gauging how much data a message carries when there's no
+                // download button to peek at file properties.
+                //
+                // Per-payload (not summed) because messages can carry multiple
+                // payloads — video + HLS playlist + audio + image — and the
+                // per-payload breakdown is more diagnostic than a total.
+                val sizedPayloads = remember(uiState.message?.payloads) {
+                    uiState.message?.payloads
+                        ?.filter { (it.bytesWritten ?: 0L) > 0L }
+                        .orEmpty()
+                }
+                sizedPayloads.forEach { p ->
+                    // Label prefers the contentType (e.g. "video/mp2t") which
+                    // is more user-meaningful than the payload key. Falls back
+                    // to the key for typed payloads with no MIME.
+                    val label = p.contentType ?: p.key
+                    Text(
+                        text = stringResource(
+                            MR.string.label_size,
+                            "${formatBytes(p.bytesWritten ?: 0L)} ($label)",
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
