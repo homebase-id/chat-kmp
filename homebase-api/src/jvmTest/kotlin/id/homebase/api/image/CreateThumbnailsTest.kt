@@ -232,22 +232,24 @@ class CreateThumbnailsTest {
     // SVG handling (synthetic data)
     // =========================================================
 
-    // SVG is unsupported as a thumbnail today — no ImageUtils actual
-    // can decode it, and the receiver's Coil pipeline doesn't include
-    // coil3-svg either. createThumbnails returns null embedded thumb +
-    // empty thumb list so the upload doesn't trip the server's
-    // MaxEmbeddedThumbBase64Chars cap and the bubble cleanly renders
-    // title + description only (LinkPreviewCard gates on hasImage).
-    // Natural-size detection still runs so callers can label dimensions.
+    // SVG is rasterized through ImageUtils.rasterizeSvg into the same
+    // shape as any other image: a tiny embedded webp + the regular
+    // 320/640/1080/1600 px webp set. Receivers display the bitmap
+    // thumbs natively; no SVG decoder required on the receiver side.
 
     @Test
-    fun svg_withDimensions_producesNoThumbs() = runTest {
+    fun svg_withDimensions_producesRasterizedThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
         val (naturalSize, embeddedThumb, thumbList) = createThumbnails(svgBytes, "key")
         assertEquals(200, naturalSize.pixelWidth)
         assertEquals(100, naturalSize.pixelHeight)
-        assertNull(embeddedThumb, "SVG should not produce an embedded thumb")
-        assertTrue(thumbList.isEmpty(), "SVG should not produce additional thumbs")
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        assertTrue(thumbList.isNotEmpty(), "SVG should produce additional raster thumbs")
+        for (thumb in thumbList) {
+            assertEquals("image/webp", thumb.contentType)
+            ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
+        }
     }
 
     @Test
@@ -267,34 +269,58 @@ class CreateThumbnailsTest {
     }
 
     @Test
-    fun svg_embeddedThumbIsNull() = runTest {
+    fun svg_embeddedThumbIsWebp() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
         val (_, embeddedThumb, _) = createThumbnails(svgBytes, "key")
-        assertNull(embeddedThumb, "SVG must not be returned as an embedded thumb")
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        assertTrue(embeddedThumb.pixelWidth <= 20)
+        assertTrue(embeddedThumb.pixelHeight <= 20)
+        // The embedded thumb content is base64 of a webp; decoded size
+        // must respect tinyThumbSize budget so the upload stays under
+        // the server's MaxEmbeddedThumbBytes cap.
+        val decoded = Base64.decode(embeddedThumb.content!!)
+        assertTrue(
+            decoded.size <= tinyThumbSize.maxBytes,
+            "tiny embedded SVG-rasterized thumb is ${decoded.size} bytes > ${tinyThumbSize.maxBytes}"
+        )
     }
 
     @Test
-    fun svg_noAdditionalThumbsEither() = runTest {
+    fun svg_producesAdditionalRasterThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(2000, 1000, "<rect width=\"2000\" height=\"1000\"/>")
         val (_, _, thumbList) = createThumbnails(svgBytes, "key")
-        assertTrue(thumbList.isEmpty(), "SVG must not produce additional ThumbnailFiles")
+        assertTrue(thumbList.isNotEmpty(), "Large SVG should rasterize into the standard thumb set")
     }
 
     /**
-     * Regression: services.msgsndr.com sometimes returns Google Calendar's
-     * SVG logo inline as the link-preview imageUrl. Before this guard the
-     * SVG was wrapped verbatim in an EmbeddedThumb of ~1634 base64 chars,
-     * over the server's 1024 cap. The upload returned HTTP 400 "Thumbnail
-     * size of 1634 exceeds 1024" and the outbox burned attempts for ~48h,
-     * blocking every subsequent message via dependency-id chaining.
+     * Regression: services.msgsndr.com returns Google Calendar's SVG
+     * logo inline as the link-preview imageUrl. Phase 1 dropped these
+     * to keep the outbox unblocked (server rejected the raw SVG with
+     * "Thumbnail size of 1634 exceeds 1024"). Phase 3 rasterizes them
+     * through ImageUtils.rasterizeSvg so the bubble shows a real image.
      * See /home/seifert/odin/chat-kmp/homebase.log lines 21565-21585.
      */
     @Test
-    fun svg_googleCalendarFavicon_producesNoEmbeddedThumb() = runTest {
+    fun svg_googleCalendarFavicon_producesRealBitmapThumb() = runTest {
         val svgBytes = ImageTestHelper.loadImage("google_calendar_logo.svg")
         val (_, embeddedThumb, thumbList) = createThumbnails(svgBytes, "chat_links")
-        assertNull(embeddedThumb)
-        assertTrue(thumbList.isEmpty())
+
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        val tinyDecoded = Base64.decode(embeddedThumb.content!!)
+        ImageTestHelper.assertValidWebp(tinyDecoded)
+        assertTrue(
+            tinyDecoded.size <= tinyThumbSize.maxBytes,
+            "Google Calendar SVG tiny is ${tinyDecoded.size} bytes > ${tinyThumbSize.maxBytes}"
+        )
+
+        assertTrue(thumbList.isNotEmpty(), "Should produce additional raster thumbs")
+        for (thumb in thumbList) {
+            assertEquals("chat_links", thumb.key)
+            assertEquals("image/webp", thumb.contentType)
+            ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
+        }
     }
 
     // =========================================================

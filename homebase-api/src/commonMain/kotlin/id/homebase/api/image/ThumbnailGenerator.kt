@@ -81,16 +81,56 @@ suspend fun createThumbnails(
     val isGif = imageBytes.size >= 3 && imageBytes[0] == 0x47.toByte() /* G */ && imageBytes[1] == 0x49.toByte() /* I */ && imageBytes[2] == 0x46.toByte() /* F */
 
     if (isSvg) {
-        // SVG is unsupported as a thumbnail: previously this branch
-        // wrapped the raw SVG bytes in an EmbeddedThumb, which exceeded
-        // the server's MaxEmbeddedThumbBase64Chars cap for anything
-        // larger than ~768 raw bytes (e.g. the Google Calendar logo
-        // returned by services.msgsndr.com link previews) and got the
-        // upload rejected with HTTP 400 "Thumbnail size of N exceeds
-        // 1024". The receiver's Coil pipeline can't decode SVG either,
-        // so passing it through was broken on both sides.
-        val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
-        return@withContext Triple(naturalSize, null, emptyList())
+        // Rasterize SVG into the same shape of result the non-SVG path
+        // produces: a tiny embedded webp + the regular 320/640/1080/1600
+        // px webp set. The previous "drop everything" branch (Phase 1)
+        // stopped the URL-preview outbox stall but left link previews
+        // image-less; this restores real thumbs while keeping the safety
+        // net — if rasterization throws (malformed SVG, decoder gives
+        // up) we fall back to the Phase 1 no-thumb result so we never
+        // re-stall the outbox.
+        return@withContext try {
+            val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
+
+            val tinyResult = ImageUtils.rasterizeSvg(
+                svgBytes = imageBytes,
+                maxDim = tinyThumbSize.maxPixelDimension,
+                outputFormat = ImageFormat.WEBP,
+                quality = tinyThumbSize.quality,
+            )
+            val embeddedTiny = EmbeddedThumb(
+                pixelWidth = tinyResult.size.pixelWidth,
+                pixelHeight = tinyResult.size.pixelHeight,
+                contentType = "image/webp",
+                content = toBase64(tinyResult.bytes),
+            )
+
+            val applicable = getRevisedThumbs(naturalSize, thumbSizes ?: baseThumbSizes)
+            val additional = applicable.map { instr ->
+                val r = ImageUtils.rasterizeSvg(
+                    svgBytes = imageBytes,
+                    maxDim = instr.maxPixelDimension,
+                    outputFormat = ImageFormat.WEBP,
+                    quality = instr.quality,
+                )
+                ThumbnailFile(
+                    pixelWidth = r.size.pixelWidth,
+                    pixelHeight = r.size.pixelHeight,
+                    thumbnailBytes = r.bytes,
+                    key = payloadKey,
+                    contentType = "image/webp",
+                    quality = instr.quality,
+                )
+            }
+
+            Triple(naturalSize, embeddedTiny, additional)
+        } catch (e: Exception) {
+            // Phase 1 safety net: no thumb is better than a stuck outbox.
+            // The receiver's LinkPreviewCard gates on hasImage (set false
+            // by LinkPreviewPayloadBuilder when previewThumbnail is null).
+            val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
+            Triple(naturalSize, null, emptyList())
+        }
     }
 
     // Determine natural size using ImageUtils (for non-SVG images)

@@ -89,14 +89,13 @@ class LinkPreviewPayloadBuilderTest {
      * `imageUrl` is a 2180-char `data:image/svg+xml;base64,…` data URI
      * (Google Calendar's SVG logo, 1634 raw bytes after decode).
      *
-     * Before this fix the builder wrapped the SVG verbatim in an
-     * EmbeddedThumb of 1634 raw bytes, blowing the server's 1024 cap.
-     * The upload returned HTTP 400 "Thumbnail size of 1634 exceeds 1024"
-     * and the outbox stalled the conversation for ~48h via dependency-id
-     * chaining.
+     * Phase 1 dropped the thumb to keep the outbox unblocked. Phase 3
+     * rasterizes the SVG through ImageUtils.rasterizeSvg so the builder
+     * produces a real bitmap previewThumbnail (≤ MaxEmbeddedThumbBytes)
+     * and the bubble shows the image — no warning triangle, no stall.
      */
     @Test
-    fun build_dropsThumb_andFlipsHasImageFalse_whenImageUrlIsSvgDataUri() = runTest {
+    fun build_rasterizesSvg_intoBitmapThumb_andFlipsHasImageTrue() = runTest {
         val svgDataUri = "data:image/svg+xml;base64," + svgBase64FromBugLog()
         val preview = LinkPreview(
             title = "Google Calendar",
@@ -111,16 +110,26 @@ class LinkPreviewPayloadBuilderTest {
         val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
 
         val payload = bundle.payloads.single()
-        assertEquals(null, payload.previewThumbnail, "SVG must not be attached as an embedded thumb")
-        assertTrue(bundle.previewThumbs.isEmpty(), "previewThumbs list must be empty when no thumb was produced")
+        val thumb = payload.previewThumbnail
+        assertNotNull(thumb, "SVG should rasterize into a real embedded thumb")
+        assertEquals("image/webp", thumb.contentType)
+        val content = thumb.content
+        assertNotNull(content)
+        // Decoded raw size must stay under the server cap so the upload
+        // succeeds on attempt=1.
+        val decodedSize = (content.length / 4) * 3
+        assertTrue(
+            decodedSize <= 1024,
+            "rasterized SVG tiny is ~$decodedSize raw bytes, server cap is 1024"
+        )
+        assertEquals(1, bundle.previewThumbs.size, "exactly one embedded tiny thumb")
 
         val descriptor = OdinSystemSerializer
             .deserialize<List<LinkPreviewDescriptor>>(payload.descriptorContent!!)
             .single()
-        assertFalse(
+        assertTrue(
             descriptor.hasImage,
-            "hasImage must be false so the receiver's LinkPreviewCard skips the image block " +
-                    "(no THUMB_MEDIUM request, no warning triangle)"
+            "hasImage must be true so LinkPreviewCard renders the bubble image"
         )
     }
 
