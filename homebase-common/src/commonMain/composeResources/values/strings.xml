@@ -807,6 +807,7 @@
     <string name="vault_pdf_preview_error">Unable to preview PDF</string>
     <string name="vault_pdf_page_content_description">PDF page %1$d of %2$d</string>
     <string name="vault_text_preview_error">Unable to preview file</string>
+    <string name="vault_text_truncated">File is large — showing first 1 MB</string>
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>

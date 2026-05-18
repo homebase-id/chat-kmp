@@ -325,7 +325,7 @@ class VaultUploaderService(
                             ),
                         )
                     }
-                    if (pdfResult != null) onPdfPageCount?.invoke(pdfResult.pageCount)
+                    if (pdfResult != null && index == 0) onPdfPageCount?.invoke(pdfResult.pageCount)
                 } catch (e: Exception) {
                     Logger.w(e, TAG) { "PDF thumbnail generation failed for payload $key" }
                 }

@@ -10,6 +10,7 @@ import kotlinx.cinterop.usePinned
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGBitmapContextCreateImage
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
+import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawPDFPage
 import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGContextScaleCTM
@@ -52,39 +53,43 @@ actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailRe
                 val bitmapHeight = (mediaBox.useContents { size.height } * scale).toInt()
 
                 val colorSpace = CGColorSpaceCreateDeviceRGB()
-                val bytesPerRow = bitmapWidth * 4
-                val bitmapData = ByteArray(bytesPerRow * bitmapHeight)
+                try {
+                    val bytesPerRow = bitmapWidth * 4
+                    val bitmapData = ByteArray(bytesPerRow * bitmapHeight)
 
-                val result = bitmapData.usePinned { bmpPinned ->
-                    val context = CGBitmapContextCreate(
-                        data = bmpPinned.addressOf(0),
-                        width = bitmapWidth.toULong(),
-                        height = bitmapHeight.toULong(),
-                        bitsPerComponent = 8u,
-                        bytesPerRow = bytesPerRow.toULong(),
-                        space = colorSpace,
-                        bitmapInfo = BITMAP_INFO,
-                    ) ?: return null
+                    val result = bitmapData.usePinned { bmpPinned ->
+                        val context = CGBitmapContextCreate(
+                            data = bmpPinned.addressOf(0),
+                            width = bitmapWidth.toULong(),
+                            height = bitmapHeight.toULong(),
+                            bitsPerComponent = 8u,
+                            bytesPerRow = bytesPerRow.toULong(),
+                            space = colorSpace,
+                            bitmapInfo = BITMAP_INFO,
+                        ) ?: return null
 
-                    CGContextScaleCTM(context, scale, scale)
-                    CGContextDrawPDFPage(context, page)
+                        CGContextScaleCTM(context, scale, scale)
+                        CGContextDrawPDFPage(context, page)
 
-                    val cgImage = CGBitmapContextCreateImage(context)
-                    CGContextRelease(context)
-                    cgImage ?: return null
+                        val cgImage = CGBitmapContextCreateImage(context)
+                        CGContextRelease(context)
+                        cgImage ?: return null
 
-                    val uiImage = UIImage(cGImage = cgImage)
-                    CGImageRelease(cgImage)
+                        val uiImage = UIImage(cGImage = cgImage)
+                        CGImageRelease(cgImage)
 
-                    val jpegData = UIImageJPEGRepresentation(uiImage, 0.8)
-                        ?: return null
+                        val jpegData = UIImageJPEGRepresentation(uiImage, 0.8)
+                            ?: return null
 
-                    PdfThumbnailResult(
-                        thumbnailBytes = jpegData.toKotlinByteArray(),
-                        pageCount = pageCount,
-                    )
+                        PdfThumbnailResult(
+                            thumbnailBytes = jpegData.toKotlinByteArray(),
+                            pageCount = pageCount,
+                        )
+                    }
+                    result
+                } finally {
+                    CGColorSpaceRelease(colorSpace)
                 }
-                result
             } finally {
                 CGPDFDocumentRelease(document)
             }

@@ -13,6 +13,7 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
+import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawPDFPage
 import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGContextScaleCTM
@@ -61,20 +62,24 @@ actual class PdfRenderer actual constructor() {
         val bytesPerRow = bitmapWidth * 4
         val bitmapData = ByteArray(bytesPerRow * bitmapHeight)
 
-        bitmapData.usePinned { pinned ->
-            val context = CGBitmapContextCreate(
-                data = pinned.addressOf(0),
-                width = bitmapWidth.toULong(),
-                height = bitmapHeight.toULong(),
-                bitsPerComponent = 8u,
-                bytesPerRow = bytesPerRow.toULong(),
-                space = colorSpace,
-                bitmapInfo = BITMAP_INFO,
-            ) ?: throw RuntimeException("Cannot create CGContext")
+        try {
+            bitmapData.usePinned { pinned ->
+                val context = CGBitmapContextCreate(
+                    data = pinned.addressOf(0),
+                    width = bitmapWidth.toULong(),
+                    height = bitmapHeight.toULong(),
+                    bitsPerComponent = 8u,
+                    bytesPerRow = bytesPerRow.toULong(),
+                    space = colorSpace,
+                    bitmapInfo = BITMAP_INFO,
+                ) ?: throw RuntimeException("Cannot create CGContext")
 
-            CGContextScaleCTM(context, scale, scale)
-            CGContextDrawPDFPage(context, page)
-            CGContextRelease(context)
+                CGContextScaleCTM(context, scale, scale)
+                CGContextDrawPDFPage(context, page)
+                CGContextRelease(context)
+            }
+        } finally {
+            CGColorSpaceRelease(colorSpace)
         }
 
         val skiaImage = org.jetbrains.skia.Image.makeRaster(

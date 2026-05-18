@@ -35,13 +35,16 @@ import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
 import id.homebase.resources.vault_text_preview_error
+import id.homebase.resources.vault_text_truncated
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
+private const val MAX_TEXT_BYTES = 1_048_576
+
 private sealed interface TextViewerState {
     data object Loading : TextViewerState
-    data class Ready(val content: String) : TextViewerState
+    data class Ready(val content: String, val truncated: Boolean) : TextViewerState
     data object Error : TextViewerState
 }
 
@@ -68,7 +71,9 @@ fun TextViewerPage(
                 val bytes = withContext(Dispatchers.Default) {
                     fileOperationsProvider.readFileBytes(tempPath)
                 }
-                state = TextViewerState.Ready(bytes.decodeToString())
+                val truncated = bytes.size > MAX_TEXT_BYTES
+                val displayBytes = if (truncated) bytes.copyOf(MAX_TEXT_BYTES) else bytes
+                state = TextViewerState.Ready(displayBytes.decodeToString(), truncated)
                 try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) { }
             }
         } catch (_: Exception) {
@@ -88,20 +93,30 @@ fun TextViewerPage(
             }
 
             is TextViewerState.Ready -> {
-                SelectionContainer {
-                    Text(
-                        text = s.content,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .verticalScroll(rememberScrollState())
-                            .horizontalScroll(rememberScrollState())
-                            .padding(16.dp),
-                    )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (s.truncated) {
+                        Text(
+                            text = stringResource(MR.string.vault_text_truncated),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                    SelectionContainer(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = s.content,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .verticalScroll(rememberScrollState())
+                                .horizontalScroll(rememberScrollState())
+                                .padding(16.dp),
+                        )
+                    }
                 }
             }
 

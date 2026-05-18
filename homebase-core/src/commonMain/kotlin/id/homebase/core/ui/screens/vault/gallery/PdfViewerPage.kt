@@ -78,7 +78,7 @@ fun PdfViewerPage(
                 state = PdfViewerState.Error
             } else {
                 renderer = PdfRenderer()
-                renderer.open(tempPath)
+                withContext(Dispatchers.Default) { renderer.open(tempPath) }
                 state = PdfViewerState.Ready(renderer, tempPath)
             }
         } catch (e: CancellationException) {
