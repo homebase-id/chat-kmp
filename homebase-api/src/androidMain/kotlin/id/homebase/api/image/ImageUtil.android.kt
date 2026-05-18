@@ -21,6 +21,9 @@ import id.homebase.api.image.draw.StrokeKind
 import id.homebase.api.image.draw.stackBlur
 import android.graphics.BitmapShader
 import android.graphics.Shader
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.RectF
+import com.caverock.androidsvg.SVG
 
 /**
  * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
@@ -422,5 +425,54 @@ actual object ImageUtils {
     }
 
     private const val BLUR_RADIUS: Int = 25
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual suspend fun rasterizeSvg(
+        svgBytes: ByteArray,
+        maxDim: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val svg = SVG.getFromInputStream(ByteArrayInputStream(svgBytes))
+
+        // AndroidSVG's documentWidth/Height returns -1 when the SVG only
+        // declares a viewBox. Fall back to the viewBox extents, then to
+        // a 320×320 box. Same approach as the Skiko actuals.
+        val docW = svg.documentWidth.toInt().takeIf { it > 0 }
+        val docH = svg.documentHeight.toInt().takeIf { it > 0 }
+        val viewBox = svg.documentViewBox
+        val (naturalW, naturalH) = when {
+            docW != null && docH != null -> docW to docH
+            viewBox != null && viewBox.width() > 0 && viewBox.height() > 0 ->
+                viewBox.width().toInt() to viewBox.height().toInt()
+            else -> 320 to 320
+        }
+
+        // Vector → always render at exactly the requested maxDim box,
+        // preserving aspect. (calculateTargetDimensions refuses to upscale
+        // — correct for rasters, wrong for vectors.)
+        val scale = maxDim.toFloat() / maxOf(naturalW, naturalH)
+        val targetW = (naturalW * scale).toInt().coerceAtLeast(1)
+        val targetH = (naturalH * scale).toInt().coerceAtLeast(1)
+
+        // Tell AndroidSVG the render container so percentage-sized
+        // elements scale correctly when the SVG is viewBox-only.
+        svg.setDocumentWidth(naturalW.toFloat())
+        svg.setDocumentHeight(naturalH.toFloat())
+
+        val bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = AndroidCanvas(bitmap)
+            svg.renderToCanvas(canvas, RectF(0f, 0f, targetW.toFloat(), targetH.toFloat()))
+            val bytes = encodeBitmap(bitmap, outputFormat, quality)
+            return ImageResult(
+                bytes = bytes,
+                naturalSize = ImageSize(naturalW, naturalH),
+                size = ImageSize(targetW, targetH),
+            )
+        } finally {
+            bitmap.recycle()
+        }
+    }
 }
 
