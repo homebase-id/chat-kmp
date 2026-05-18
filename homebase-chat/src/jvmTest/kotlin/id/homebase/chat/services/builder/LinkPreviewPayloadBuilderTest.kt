@@ -6,13 +6,23 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalEncodingApi::class)
 class LinkPreviewPayloadBuilderTest {
+
+    private fun svgBase64FromBugLog(): String {
+        val bytes = this::class.java.getResourceAsStream("/google_calendar_logo.svg")
+            ?.readBytes() ?: error("google_calendar_logo.svg test resource missing")
+        return Base64.encode(bytes)
+    }
+
 
     /**
      * Real server response for `https://diku.dk/` captured from
@@ -70,6 +80,48 @@ class LinkPreviewPayloadBuilderTest {
         assertFalse(descriptor.hasImage, "imageUrl was null → hasImage must be false")
         assertEquals(null, descriptor.imageWidth)
         assertEquals(null, descriptor.imageHeight)
+    }
+
+    /**
+     * Real server response for the bug-report URL
+     * `https://services.msgsndr.com/urls/l/veRVz_mXd`, captured verbatim
+     * from /home/seifert/odin/chat-kmp/homebase.log at 2026-05-17T17:34:19.
+     * `imageUrl` is a 2180-char `data:image/svg+xml;base64,…` data URI
+     * (Google Calendar's SVG logo, 1634 raw bytes after decode).
+     *
+     * Before this fix the builder wrapped the SVG verbatim in an
+     * EmbeddedThumb of 1634 raw bytes, blowing the server's 1024 cap.
+     * The upload returned HTTP 400 "Thumbnail size of 1634 exceeds 1024"
+     * and the outbox stalled the conversation for ~48h via dependency-id
+     * chaining.
+     */
+    @Test
+    fun build_dropsThumb_andFlipsHasImageFalse_whenImageUrlIsSvgDataUri() = runTest {
+        val svgDataUri = "data:image/svg+xml;base64," + svgBase64FromBugLog()
+        val preview = LinkPreview(
+            title = "Google Calendar",
+            url = "https://services.msgsndr.com/urls/l/veRVz_mXd",
+            description = "Easier Time Management",
+            imageUrl = svgDataUri,
+            imageWidth = null,
+            imageHeight = null,
+        )
+        val fakeFileOps = RecordingFileOperationsProvider()
+
+        val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
+
+        val payload = bundle.payloads.single()
+        assertEquals(null, payload.previewThumbnail, "SVG must not be attached as an embedded thumb")
+        assertTrue(bundle.previewThumbs.isEmpty(), "previewThumbs list must be empty when no thumb was produced")
+
+        val descriptor = OdinSystemSerializer
+            .deserialize<List<LinkPreviewDescriptor>>(payload.descriptorContent!!)
+            .single()
+        assertFalse(
+            descriptor.hasImage,
+            "hasImage must be false so the receiver's LinkPreviewCard skips the image block " +
+                    "(no THUMB_MEDIUM request, no warning triangle)"
+        )
     }
 
     @Test

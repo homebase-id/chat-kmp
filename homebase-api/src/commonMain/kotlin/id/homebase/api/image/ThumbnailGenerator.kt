@@ -59,12 +59,20 @@ fun getRevisedThumbs(sourceSize: ImageSize, thumbs: List<ThumbnailInstruction>):
 
 /**
  * Main entry — mirrors createThumbnails in JS
+ *
+ * The second slot is nullable: SVG inputs return `null` (no embedded
+ * thumb, no additional raster thumbs) because none of the per-platform
+ * [ImageUtils] actuals can decode SVG today. Receivers gate the bubble
+ * image block on a `hasImage` flag in the descriptor, so a missing
+ * thumb cleanly renders as "no image" rather than a warning triangle.
+ * A future SVG → bitmap rasterizer (in [ImageUtils]) would route SVG
+ * through the regular raster path and restore real thumbs.
  */
 suspend fun createThumbnails(
     imageBytes: ByteArray,
     payloadKey: String,
     thumbSizes: List<ThumbnailInstruction>? = null
-): Triple<ImageSize, EmbeddedThumb, List<ThumbnailFile>> = withContext(Dispatchers.Default) {
+): Triple<ImageSize, EmbeddedThumb?, List<ThumbnailFile>> = withContext(Dispatchers.Default) {
 
     // GIF and SVG handling: for SVG files we expect bytes to be svg xml; for GIFs we treat them specially
     // Check these FIRST before trying to decode, as Skia can't decode SVG
@@ -73,26 +81,16 @@ suspend fun createThumbnails(
     val isGif = imageBytes.size >= 3 && imageBytes[0] == 0x47.toByte() /* G */ && imageBytes[1] == 0x49.toByte() /* I */ && imageBytes[2] == 0x46.toByte() /* F */
 
     if (isSvg) {
-        // For SVG, we return the original vector format
-        // Try to get dimensions from SVG, fallback to default
+        // SVG is unsupported as a thumbnail: previously this branch
+        // wrapped the raw SVG bytes in an EmbeddedThumb, which exceeded
+        // the server's MaxEmbeddedThumbBase64Chars cap for anything
+        // larger than ~768 raw bytes (e.g. the Google Calendar logo
+        // returned by services.msgsndr.com link previews) and got the
+        // upload rejected with HTTP 400 "Thumbnail size of N exceeds
+        // 1024". The receiver's Coil pipeline can't decode SVG either,
+        // so passing it through was broken on both sides.
         val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
-
-        val vectorThumb = ThumbnailFile(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            thumbnailBytes = imageBytes,
-            key = payloadKey,
-            contentType = "image/svg+xml",
-            quality = 100
-        )
-        val embedded = EmbeddedThumb(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            contentType = "image/svg+xml",
-            content = toBase64(vectorThumb.thumbnailBytes)
-        )
-
-        return@withContext Triple(naturalSize, embedded, listOf(vectorThumb))
+        return@withContext Triple(naturalSize, null, emptyList())
     }
 
     // Determine natural size using ImageUtils (for non-SVG images)
