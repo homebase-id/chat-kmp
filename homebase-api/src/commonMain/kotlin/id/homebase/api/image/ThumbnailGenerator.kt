@@ -10,6 +10,25 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+// Output shape (per createThumbnails call) is the same for every input
+// format: a tiny embedded webp + N additional webp thumbnail files,
+// sorted by increasing size. The N differs by input characteristics:
+//
+//   • Raster (JPEG/PNG/WebP/HEIC): N is whatever getRevisedThumbs keeps
+//     after filtering baseThumbSizes against the source's natural size.
+//     Sizes >= source are dropped (or collapsed into a single synthetic
+//     thumb at source size) because upscaling rasters just amplifies
+//     pixels without adding detail.
+//   • GIF: N = 0. The animated original travels as the payload; we only
+//     produce the embedded tiny so receivers have an instant blurred
+//     preview. The receiver's HomebaseImageLoader keeps "image/gif" in
+//     THUMBLESS_CONTENT_TYPES and loads the full payload.
+//   • SVG: N = baseThumbSizes.size (currently 4). Vector data is
+//     resolution-independent, so rendering at sizes above the SVG's
+//     declared intrinsic is free quality — we ship the full ladder so
+//     hi-DPI viewers always get a crisp render regardless of whether
+//     the author declared the SVG as 16×16, 192×192, or viewBox-only.
+//
 // Thumb presets
 val baseThumbSizes = listOf(
     ThumbnailInstruction(quality = 84, maxPixelDimension = 320, maxBytes = 26 * 1024),
@@ -89,6 +108,13 @@ suspend fun createThumbnails(
         // net — if rasterization throws (malformed SVG, decoder gives
         // up) we fall back to the Phase 1 no-thumb result so we never
         // re-stall the outbox.
+        //
+        // Unlike rasters we don't filter through getRevisedThumbs:
+        // vector data is resolution-independent, so rendering above the
+        // SVG's declared intrinsic size is free quality (no pixel
+        // amplification artifacts). Producing the full ladder means a
+        // 192×192-declared Google Calendar logo or a 16×16 favicon-style
+        // SVG still gets a crisp 1600px thumb for hi-DPI viewers.
         return@withContext try {
             val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
 
@@ -105,8 +131,8 @@ suspend fun createThumbnails(
                 content = toBase64(tinyResult.bytes),
             )
 
-            val applicable = getRevisedThumbs(naturalSize, thumbSizes ?: baseThumbSizes)
-            val additional = applicable.map { instr ->
+            val instructions = thumbSizes ?: baseThumbSizes
+            val additional = instructions.map { instr ->
                 val r = ImageUtils.rasterizeSvg(
                     svgBytes = imageBytes,
                     maxDim = instr.maxPixelDimension,

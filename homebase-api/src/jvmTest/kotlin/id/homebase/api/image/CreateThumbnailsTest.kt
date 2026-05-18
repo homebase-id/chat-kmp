@@ -238,14 +238,19 @@ class CreateThumbnailsTest {
     // thumbs natively; no SVG decoder required on the receiver side.
 
     @Test
-    fun svg_withDimensions_producesRasterizedThumbs() = runTest {
+    fun svg_withDimensions_producesFullRasterLadder() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
         val (naturalSize, embeddedThumb, thumbList) = createThumbnails(svgBytes, "key")
         assertEquals(200, naturalSize.pixelWidth)
         assertEquals(100, naturalSize.pixelHeight)
         assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
-        assertTrue(thumbList.isNotEmpty(), "SVG should produce additional raster thumbs")
+        // Vectors render crisp at any size — we always produce the full
+        // baseThumbSizes ladder regardless of the SVG's declared size,
+        // so hi-DPI viewers can ask for THUMB_LARGE without falling
+        // back to an undersized intrinsic render.
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "SVG should produce one raster per baseThumbSize, got ${thumbList.size}")
         for (thumb in thumbList) {
             assertEquals("image/webp", thumb.contentType)
             ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
@@ -290,7 +295,8 @@ class CreateThumbnailsTest {
     fun svg_producesAdditionalRasterThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(2000, 1000, "<rect width=\"2000\" height=\"1000\"/>")
         val (_, _, thumbList) = createThumbnails(svgBytes, "key")
-        assertTrue(thumbList.isNotEmpty(), "Large SVG should rasterize into the standard thumb set")
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "Every SVG should rasterize into the full baseThumbSizes ladder")
     }
 
     /**
@@ -315,11 +321,20 @@ class CreateThumbnailsTest {
             "Google Calendar SVG tiny is ${tinyDecoded.size} bytes > ${tinyThumbSize.maxBytes}"
         )
 
-        assertTrue(thumbList.isNotEmpty(), "Should produce additional raster thumbs")
-        for (thumb in thumbList) {
+        // 192×192 declared intrinsic, but vector data has no quality
+        // ceiling — produce the full baseThumbSizes ladder so receivers
+        // at any DPI get a crisp render.
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "Google Calendar SVG should produce the full raster ladder, got ${thumbList.size}")
+        for ((i, thumb) in thumbList.withIndex()) {
             assertEquals("chat_links", thumb.key)
             assertEquals("image/webp", thumb.contentType)
             ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
+            assertEquals(
+                baseThumbSizes[i].maxPixelDimension,
+                max(thumb.pixelWidth, thumb.pixelHeight),
+                "thumb[$i] should match baseThumbSizes[$i].maxPixelDimension"
+            )
         }
     }
 
