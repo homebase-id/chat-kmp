@@ -4,6 +4,7 @@ import kotlinx.io.files.Path
 
 data class HelpUiState(
     val appVersion: String,
+    val ffmpegVersion: String? = null,
     val isUpdateAvailable: Boolean = false,
     val isUpdateSupported: Boolean = true,
     val isCheckingForUpdate: Boolean = true,

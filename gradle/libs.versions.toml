@@ -23,6 +23,7 @@ nucleus = "1.14.4"
 conveyor = "2.0"
 conveyorControl = "1.1"
 ffmpegKit = "1.0"
+mp4parser = "1.9.39"
 vlcj = "4.8.2"
 jetbrains-compose-material3 = "1.9.0"
 jetbrains-compose-material3-adaptive = "1.2.0"
@@ -71,6 +72,7 @@ play-services-location = "21.3.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
+mp4parser-isoparser = { module = "org.mp4parser:isoparser", version.ref = "mp4parser" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
