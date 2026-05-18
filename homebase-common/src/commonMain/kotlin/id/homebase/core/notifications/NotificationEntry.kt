@@ -1,7 +1,6 @@
 package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
-import com.mmk.kmpnotifier.notification.PayloadData
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
