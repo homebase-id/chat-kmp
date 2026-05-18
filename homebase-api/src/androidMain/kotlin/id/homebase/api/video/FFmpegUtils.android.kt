@@ -5,7 +5,10 @@ import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegSession
+import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.ffmpegkit.Statistics
+import com.arthenica.ffmpegkit.StatisticsCallback
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
 import java.io.File
@@ -202,7 +205,9 @@ actual object FFmpegUtils {
         // thread, avoiding the issue. Verified empirically on the API 36
         // emulator running compressVideo 4× sequentially.
         val session = try {
-            executeFfmpegAsync(args)
+            executeFfmpegAsync(args) { stats ->
+                onProgress?.invoke(progressFraction(stats.time.toLong(), trimDurationMs))
+            }
         } catch (e: Throwable) {
             val elapsedMs = System.currentTimeMillis() - t0
             Log.e(TAG, "compressVideo crashed after ${elapsedMs}ms", e)
@@ -302,16 +307,35 @@ actual object FFmpegUtils {
      * [FFmpegSession] so the caller can inspect `returnCode` and friends.
      * Uses the async API to avoid sync `executeWithArguments`'s
      * re-entry-in-same-process crashes (see [compressVideo] for details).
+     *
+     * When [onStatistics] is non-null, the 4-arg overload is used so ffmpeg-kit
+     * fires progress callbacks (~1-2 Hz) on its internal worker thread.
      */
-    private suspend fun executeFfmpegAsync(args: Array<String>): FFmpegSession =
+    private suspend fun executeFfmpegAsync(
+        args: Array<String>,
+        onStatistics: ((Statistics) -> Unit)? = null,
+    ): FFmpegSession =
         suspendCancellableCoroutine { cont ->
-            val session = FFmpegKit.executeWithArgumentsAsync(args) { sess ->
+            val onComplete = FFmpegSessionCompleteCallback { sess ->
                 if (cont.isActive) cont.resume(sess)
+            }
+            val session = if (onStatistics != null) {
+                FFmpegKit.executeWithArgumentsAsync(
+                    args,
+                    onComplete,
+                    null,
+                    StatisticsCallback { stats -> stats?.let(onStatistics) },
+                )
+            } else {
+                FFmpegKit.executeWithArgumentsAsync(args, onComplete)
             }
             cont.invokeOnCancellation {
                 try { session.cancel() } catch (_: Exception) {}
             }
         }
+
+    private fun progressFraction(timeMs: Long, durationMs: Long): Float =
+        if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     actual suspend fun segmentVideo(inputPath: String,
                                     onProgress: ((Float) -> Unit)?): Pair<String, String>? =
@@ -452,7 +476,20 @@ actual object FFmpegUtils {
 
             Log.d(TAG, "Segment+Encrypt args: $args")
 
-            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            // Re-probe on the segmentation input — the upstream compressor may
+            // have trimmed, so the original input's duration is no longer the
+            // denominator for progress scaling.
+            val durationMs = getDurationMs(inputPath)
+
+            val session = try {
+                executeFfmpegAsync(args.toTypedArray()) { stats ->
+                    onProgress?.invoke(progressFraction(stats.time.toLong(), durationMs))
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "segmentAndEncryptVideo crashed", e)
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
+                return@withContext null
+            }
             if (ReturnCode.isSuccess(session.returnCode)) {
                 // Segmentation done — FFmpeg has consumed the key material. Delete it now
                 // so the plaintext AES key doesn't linger in the cache dir (see #7).
