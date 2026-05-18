@@ -4,9 +4,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -42,6 +48,34 @@ fun fileTypeIcon(contentType: String): ImageVector = when {
     contentType.startsWith("video/") -> Icons.Outlined.VideoFile
     contentType.startsWith("audio/") -> Icons.Outlined.AudioFile
     contentType == "application/pdf" -> Icons.Outlined.PictureAsPdf
+
+    contentType == "application/json" ||
+        contentType == "application/xml" ||
+        contentType == "application/javascript" ||
+        contentType == "application/x-sh" ||
+        contentType == "application/x-yaml" ||
+        contentType.startsWith("text/x-") -> Icons.Outlined.Code
+
+    contentType == "text/csv" ||
+        contentType == "application/vnd.ms-excel" ||
+        contentType.contains("spreadsheetml") -> Icons.Outlined.TableChart
+
+    contentType == "application/vnd.ms-powerpoint" ||
+        contentType.contains("presentationml") -> Icons.Outlined.Slideshow
+
+    contentType == "application/msword" ||
+        contentType.contains("wordprocessingml") ||
+        contentType == "application/vnd.oasis.opendocument.text" ||
+        contentType == "application/rtf" -> Icons.Outlined.Article
+
+    contentType == "application/zip" ||
+        contentType == "application/x-tar" ||
+        contentType == "application/gzip" ||
+        contentType == "application/x-rar-compressed" ||
+        contentType == "application/x-7z-compressed" -> Icons.Outlined.FolderZip
+
+    contentType.startsWith("text/") -> Icons.Outlined.Description
+
     else -> Icons.AutoMirrored.Outlined.InsertDriveFile
 }
 
