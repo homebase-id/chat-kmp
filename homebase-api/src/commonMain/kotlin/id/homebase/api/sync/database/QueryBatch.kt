@@ -5,6 +5,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.common.IntRange
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.HomebaseFile
@@ -142,8 +144,8 @@ class QueryBatch(
         cursor: QueryBatchCursor? = null,
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
         sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
-        fileSystemType: Int? = null, // Default would be FileSystemType.Standard
-        fileStateAnyOf: List<Int>? = null,
+        fileSystemType: Int? = null, // Default is FileSystemType.Standard
+        fileState: FileStateFilter = FileStateFilter.Active, // Default is [FileStateFilter.Active]
         globalTransitIdAnyOf: List<Uuid>? = null,
         filetypesAnyOf: List<Int>? = null,
         datatypesAnyOf: List<Int>? = null,
@@ -230,8 +232,10 @@ class QueryBatch(
             listWhereAnd.add("($timeField, driveMainIndex.rowId) $isign (${stopBoundary.time.milliseconds}, $rowId)")
         }
 
-        if (!fileStateAnyOf.isNullOrEmpty()) {
-            listWhereAnd.add("fileState IN (${intList(fileStateAnyOf)})")
+        when (fileState) {
+            FileStateFilter.Active -> listWhereAnd.add("fileState = ${FileState.Active.value}")
+            FileStateFilter.Deleted -> listWhereAnd.add("fileState = ${FileState.Deleted.value}")
+            FileStateFilter.All -> { /* no WHERE clause */ }
         }
 
         val leftJoin = buildSharedWhereAnd(
@@ -321,7 +325,7 @@ class QueryBatch(
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
         sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
         fileSystemType: Int? = null,
-        fileStateAnyOf: List<Int>? = null,
+        fileState: FileStateFilter = FileStateFilter.Active,
         requiredSecurityGroup: IntRange? = null,
         globalTransitIdAnyOf: List<Uuid>? = null,
         filetypesAnyOf: List<Int>? = null,
@@ -343,7 +347,7 @@ class QueryBatch(
         val (result, moreRows, refCursor) = queryBatchAsync(
             dbm,
             driveId, noOfItems, cursor, sortOrder, sortField,
-            fileSystemType, fileStateAnyOf,
+            fileSystemType, fileState,
             globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
             senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
             userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf,
@@ -393,7 +397,7 @@ class QueryBatch(
                     val (r2, moreRows2, refCursor2) = queryBatchSmartCursorAsync(
                         dbm,
                         driveId, noOfItems - result.size, updatedCursor,
-                        sortOrder, sortField, fileSystemType, fileStateAnyOf,
+                        sortOrder, sortField, fileSystemType, fileState,
                         requiredSecurityGroup, globalTransitIdAnyOf, filetypesAnyOf,
                         datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
                         archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
@@ -417,7 +421,7 @@ class QueryBatch(
                 return queryBatchSmartCursorAsync(
                     dbm,
                     driveId, noOfItems, updatedCursor, sortOrder, sortField,
-                    fileSystemType, fileStateAnyOf, requiredSecurityGroup,
+                    fileSystemType, fileState, requiredSecurityGroup,
                     globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
                     senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
                     userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf, localTagsAnyOf, localTagsAllOf
@@ -432,60 +436,6 @@ class QueryBatch(
         }
 
         return QueryBatchResult(result, moreRows, refCursor)
-    }
-
-    /**
-     * Legacy query for modified items - should be removed eventually
-     */
-    suspend fun queryModifiedAsync(
-        dbm: DatabaseManager,
-        driveId: Uuid,
-        noOfItems: Int,
-        cursorString: String? = null,
-        stopAtModifiedUnixTimeSeconds: TimeRowCursor? = null,
-        fileSystemType: Int? = null,
-        requiredSecurityGroup: IntRange? = null,
-        globalTransitIdAnyOf: List<Uuid>? = null,
-        filetypesAnyOf: List<Int>? = null,
-        datatypesAnyOf: List<Int>? = null,
-        senderIdAnyOf: List<String>? = null,
-        groupIdAnyOf: List<Uuid>? = null,
-        uniqueIdAnyOf: List<Uuid>? = null,
-        archivalStatusAnyOf: List<Int>? = null,
-        userDateSpan: UnixTimeUtcRange? = null,
-        aclAnyOf: List<Uuid>? = null,
-        tagsAnyOf: List<Uuid>? = null,
-        tagsAllOf: List<Uuid>? = null,
-        localTagsAnyOf: List<Uuid>? = null,
-        localTagsAllOf: List<Uuid>? = null
-    ): QueryModifiedResult {
-
-        val cursor = if (cursorString != null) {
-            TimeRowCursor.fromJson(cursorString)
-        } else {
-            TimeRowCursor(UnixTimeUtc(0), 0L)
-        }
-
-        val queryCursor = QueryBatchCursor(
-            paging = cursor.copy(row = cursor.row ?: 0L),
-            stop = stopAtModifiedUnixTimeSeconds
-        )
-
-        val (records, hasMoreRows, updatedCursor) = queryBatchAsync(
-            dbm,
-            driveId, noOfItems, queryCursor, QueryBatchSortOrder.OldestFirst,
-            QueryBatchSortField.OnlyModifiedDate, fileSystemType, null,
-            globalTransitIdAnyOf, filetypesAnyOf,
-            datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
-            archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
-            tagsAllOf, localTagsAnyOf, localTagsAllOf
-        )
-
-        return QueryModifiedResult(
-            records = records,
-            hasMoreRows = hasMoreRows,
-            cursor = updatedCursor.paging?.toJson() ?: ""
-        )
     }
 
     // Helper functions
@@ -537,10 +487,3 @@ data class QueryBatchResult(
     val hasMoreRows: Boolean,
     val cursor: QueryBatchCursor
 )
-
-data class QueryModifiedResult(
-    val records: List<HomebaseFile>,
-    val hasMoreRows: Boolean,
-    val cursor: String
-)
-

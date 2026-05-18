@@ -64,6 +64,7 @@
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
     <string name="not_connected">Not connected</string>
     <string name="loading">Loading...</string>
+    <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>

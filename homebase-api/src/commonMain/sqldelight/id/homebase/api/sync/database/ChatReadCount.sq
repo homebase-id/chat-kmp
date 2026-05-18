@@ -57,7 +57,14 @@ WHERE d.identityId = ?
   AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
   AND d.originalAuthor IS NOT NULL
   AND d.originalAuthor != ?
-  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  -- Exclude soft-deleted messages. We check BOTH markers because
+  -- HomebaseFile.isSoftDeleted() returns true for either, and the defragmenter
+  -- has documented drift between them (SoftDeleteArchivalMismatch).
+  --   fileState != 0      → canonical FileState.Deleted marker (SQL column).
+  --   archivalStatus != 2 → legacy ArchivalStatus.Removed marker (kept for
+  --                          rows written before the fileState column existed
+  --                          and for the drift case the defragmenter repairs).
+  AND d.fileState != 0
   AND d.archivalStatus != 2;
 
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
@@ -94,7 +101,14 @@ WHERE d.identityId = ?
   -- unread to yourself would be wrong.
   AND d.originalAuthor IS NOT NULL
   AND d.originalAuthor != ?
-  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  -- Exclude soft-deleted messages. We check BOTH markers because
+  -- HomebaseFile.isSoftDeleted() returns true for either, and the defragmenter
+  -- has documented drift between them (SoftDeleteArchivalMismatch).
+  --   fileState != 0      → canonical FileState.Deleted marker (SQL column).
+  --   archivalStatus != 2 → legacy ArchivalStatus.Removed marker (kept for
+  --                          rows written before the fileState column existed
+  --                          and for the drift case the defragmenter repairs).
+  AND d.fileState != 0
   AND d.archivalStatus != 2
 GROUP BY d.groupId;
 

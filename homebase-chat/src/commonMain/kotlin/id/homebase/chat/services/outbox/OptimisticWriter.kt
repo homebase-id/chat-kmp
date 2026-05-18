@@ -468,9 +468,13 @@ class OptimisticWriter(
                 appData = existingFile.fileMetadata.appData.copy(
                     content = "",
                     previewThumbnail = null,
-                    // Mirror the soft-delete into the SQL-queryable archivalStatus
-                    // column so unread-count queries can exclude this row without
-                    // having to deserialise the jsonHeader to read fileState.
+                    // Belt-and-suspenders: HomebaseFile.isSoftDeleted() checks BOTH
+                    // markers and the defragmenter's SoftDeleteArchivalMismatch
+                    // classifier asserts the two stay in sync. Unread-count SQL now
+                    // filters on fileState directly, so this mirror is no longer
+                    // required for that purpose — but removing it would make every
+                    // fresh soft-delete look like drift the defragmenter would try
+                    // to repair.
                     archivalStatus = ArchivalStatus.Removed,
                 )
             )

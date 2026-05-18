@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -1730,7 +1731,8 @@ class ConversationService(
         if (preFile == null) audit.checkWarn("preFileExists", "conversation file does NOT exist locally — updateConversationInternal will have nothing to update") else audit.checkPass("preFileExists")
         val outboxBefore = dbm.outbox.count()
         val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
-        val messagesBefore = runCatching { QueryBatch(identityId).queryBatchAsync(dbm = dbm, driveId = chatDrive, noOfItems = 10_000, groupIdAnyOf = listOf(conversationId)).records.size }.getOrElse { -1 }
+        // audit: include soft-deleted rows in the count
+        val messagesBefore = runCatching { QueryBatch(identityId).queryBatchAsync(dbm = dbm, driveId = chatDrive, noOfItems = 10_000, fileState = FileStateFilter.All, groupIdAnyOf = listOf(conversationId)).records.size }.getOrElse { -1 }
         audit.pre("counts: outboxRows=$outboxBefore messagesWithGroupId=$messagesBefore")
         // ---- end DEBUG ----
 
@@ -1856,7 +1858,8 @@ class ConversationService(
         audit.info("local file archivalStatus/versionTag updates after outbox round-trip; UI hiding is done by ConversationStream.onConversationDeleted in the caller")
         val outboxAfter = dbm.outbox.count()
         val outboxDelta = outboxAfter - outboxBefore
-        val messagesAfter = runCatching { QueryBatch(identityId).queryBatchAsync(dbm = dbm, driveId = chatDrive, noOfItems = 10_000, groupIdAnyOf = listOf(conversationId)).records.size }.getOrElse { -1 }
+        // audit: include soft-deleted rows in the count
+        val messagesAfter = runCatching { QueryBatch(identityId).queryBatchAsync(dbm = dbm, driveId = chatDrive, noOfItems = 10_000, fileState = FileStateFilter.All, groupIdAnyOf = listOf(conversationId)).records.size }.getOrElse { -1 }
         audit.post("counts: outboxRows=$outboxAfter (delta=$outboxDelta) messagesWithGroupId=$messagesAfter (delta=${messagesAfter - messagesBefore}, expected unchanged until outbox processes)")
         audit.check("postOutboxDelta", outboxDelta >= 1,
             "outbox did not grow at all — both STEP 1 (DeleteFilesByGroupId) and STEP 2 (UpdateFile) silently failed to enqueue")

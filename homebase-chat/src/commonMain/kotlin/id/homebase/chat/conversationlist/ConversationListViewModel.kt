@@ -1106,15 +1106,17 @@ class ConversationListViewModel(
                             val window = messageState.window
                             val windowMessages = window.messages
                             val messagesModels = withContext(Dispatchers.Default) {
-                                val filteredByExit = if (exitedAt != null)
+                                // Soft-delete display lives at the SQL layer now (see
+                                // ChatMessageStream.fetchMessages): note-to-self filters
+                                // tombstones out, regular conversations keep them. We let
+                                // the in-memory window mirror SQL on the next page load —
+                                // a just-deleted note-to-self message remains visible as a
+                                // "Deleted File" tombstone briefly and disappears on the
+                                // next visit. Single source of truth.
+                                val messages = if (exitedAt != null)
                                     windowMessages.filter { it.userDate <= exitedAt }
                                 else
                                     windowMessages
-                                val messages =
-                                    if (conversationId == ChatProtocol.ConversationWithYourselfId)
-                                        filteredByExit.filter { !it.isDeleted }
-                                    else
-                                        filteredByExit
                                 val timezone = TimeZone.currentSystemDefault()
                                 val groupedMessages =
                                     messages.sortedBy { it.userDate }.groupBy { message ->
