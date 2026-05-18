@@ -42,12 +42,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.feed_error_retry
 import id.homebase.resources.feed_error_title
 import id.homebase.resources.feed_loading
-import io.github.kdroidfilter.webview.request.RequestInterceptor
-import io.github.kdroidfilter.webview.request.WebRequest
-import io.github.kdroidfilter.webview.request.WebRequestInterceptResult
-import io.github.kdroidfilter.webview.web.WebViewNavigator
-import io.github.kdroidfilter.webview.web.rememberWebViewNavigator
-import io.github.kdroidfilter.webview.web.rememberWebViewState
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
@@ -141,24 +135,23 @@ private fun FeedWebView(
     onAction: (FeedUiAction) -> Unit,
     reloadKey: Int = 0,
 ) {
-    val webViewState = rememberWebViewState(url)
     val uriHandler = getUriHandler()
     val feedHost = remember(url) { extractHost(url) }
     var lastInjectedScript by remember { mutableStateOf<String?>(null) }
     val interceptor = remember(feedHost) {
-        FeedRequestInterceptor(
+        feedRequestInterceptor(
             allowedHost = feedHost,
             isFeedReady = { lastInjectedScript != null },
             openExternally = { externalUrl: String -> uriHandler.openUrl(externalUrl) },
         )
     }
-    val webViewNavigator = rememberWebViewNavigator(requestInterceptor = interceptor)
+    val webView = rememberFeedWebView(url, interceptor)
     var isReady by remember { mutableStateOf(false) }
     var minDisplayElapsed by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
         if (reloadKey > 0) {
-            webViewNavigator.loadUrl(url)
+            webView.controller.loadUrl(url)
         }
     }
 
@@ -175,20 +168,20 @@ private fun FeedWebView(
     // On first load completion: inject credentials into localStorage, then reload.
     // evaluateJavaScript is async (callback-based, not suspend), so we reload
     // in the callback to ensure localStorage is populated before the page reloads.
-    LaunchedEffect(webViewState.isLoading, injectionScript) {
-        if (!webViewState.isLoading && injectionScript != null && injectionScript != lastInjectedScript) {
+    LaunchedEffect(webView.state.isLoading, injectionScript) {
+        if (!webView.state.isLoading && injectionScript != null && injectionScript != lastInjectedScript) {
             lastInjectedScript = injectionScript
-            webViewNavigator.evaluateJavaScript(injectionScript) {
+            webView.controller.evaluateJavaScript(injectionScript) {
                 // Navigate explicitly rather than reload(): the SPA may have
                 // client-side-redirected to /owner/login before our injection ran,
                 // and reload() would reload the login page instead of /apps/feed.
-                webViewNavigator.loadUrl(url)
+                webView.controller.loadUrl(url)
             }
         }
     }
 
-    LaunchedEffect(webViewState.isLoading) {
-        if (webViewState.isLoading) {
+    LaunchedEffect(webView.state.isLoading) {
+        if (webView.state.isLoading) {
             onAction(FeedUiAction.PageStarted)
         } else if (lastInjectedScript != null) {
             onAction(FeedUiAction.PageFinished)
@@ -196,14 +189,14 @@ private fun FeedWebView(
         }
     }
 
-    LaunchedEffect(webViewState.lastLoadedUrl) {
-        val lastUrl = webViewState.lastLoadedUrl ?: return@LaunchedEffect
+    LaunchedEffect(webView.state.lastLoadedUrl) {
+        val lastUrl = webView.state.lastLoadedUrl ?: return@LaunchedEffect
 //        Logger.i(tag = "FeedWebView") {
-//            "nav: $lastUrl (loading=${webViewState.isLoading}, injected=${lastInjectedScript != null})"
+//            "nav: $lastUrl (loading=${webView.state.isLoading}, injected=${lastInjectedScript != null})"
 //        }
         if (lastUrl != url && extractHost(lastUrl) != feedHost) {
-            webViewNavigator.stopLoading()
-            webViewNavigator.navigateBack()
+            webView.controller.stopLoading()
+            webView.controller.navigateBack()
             uriHandler.openUrl(lastUrl)
         }
     }
@@ -212,10 +205,10 @@ private fun FeedWebView(
     // feed is up (lastInjectedScript != null), let the WebView display its own
     // error UI for transient failures rather than yanking the user out.
     LaunchedEffect(Unit) {
-        snapshotFlow { webViewState.errorsForCurrentRequest.toList() }
+        snapshotFlow { webView.state.mainFrameErrors.toList() }
             .collect { errors ->
                 if (lastInjectedScript != null) return@collect
-                val mainFrameError = errors.firstOrNull { it.isFromMainFrame } ?: return@collect
+                val mainFrameError = errors.firstOrNull() ?: return@collect
                 onAction(FeedUiAction.PageError(mainFrameError.description))
             }
     }
@@ -226,9 +219,8 @@ private fun FeedWebView(
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            PlatformWebView(
-                state = webViewState,
-                navigator = webViewNavigator,
+            PlatformFeedWebView(
+                webView = webView,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -292,37 +284,30 @@ private fun FeedLoadingOverlay() {
     }
 }
 
-private class FeedRequestInterceptor(
-    private val allowedHost: String?,
-    private val isFeedReady: () -> Boolean,
-    private val openExternally: (String) -> Unit,
-) : RequestInterceptor {
-    override fun onInterceptUrlRequest(
-        request: WebRequest,
-        navigator: WebViewNavigator,
-    ): WebRequestInterceptResult {
-        if (!request.isForMainFrame) return WebRequestInterceptResult.Allow
+private fun feedRequestInterceptor(
+    allowedHost: String?,
+    isFeedReady: () -> Boolean,
+    openExternally: (String) -> Unit,
+): (FeedWebRequest) -> FeedWebRequestDecision = { request ->
+    when {
+        !request.isForMainFrame -> FeedWebRequestDecision.Allow
+        else -> {
+            val isSameHost = extractHost(request.url) == allowedHost
+            val path = extractPath(request.url)
+            val isFeedPath = path == "/apps/feed" || path?.startsWith("/apps/feed/") == true
 
-        val isSameHost = extractHost(request.url) == allowedHost
-        val path = extractPath(request.url)
-        val isFeedPath = path == "/apps/feed" || path?.startsWith("/apps/feed/") == true
-
-        if (isSameHost && isFeedPath) return WebRequestInterceptResult.Allow
-
-        // Until the auth handoff completes, silently reject — the SPA may try to
-        // redirect to /owner/login before our injection lands. Once the feed is
-        // up, treat any non-/apps/ navigation as a user-driven link.
-        if (!isFeedReady()) {
-//            Logger.i(tag = "FeedWebView") { "blocked pre-handoff nav → ${request.url}" }
-            return WebRequestInterceptResult.Reject
+            when {
+                isSameHost && isFeedPath -> FeedWebRequestDecision.Allow
+                // Until the auth handoff completes, silently reject — the SPA may try to
+                // redirect to /owner/login before our injection lands. Once the feed is
+                // up, treat any non-/apps/ navigation as a user-driven link.
+                !isFeedReady() -> FeedWebRequestDecision.Reject
+                else -> {
+                    openExternally(request.url)
+                    FeedWebRequestDecision.Reject
+                }
+            }
         }
-
-//        Logger.i(tag = "FeedWebView") {
-//            val kind = if (isSameHost) "same-host non-apps" else "external"
-//            "redirecting $kind → ${request.url}"
-//        }
-        openExternally(request.url)
-        return WebRequestInterceptResult.Reject
     }
 }
 
