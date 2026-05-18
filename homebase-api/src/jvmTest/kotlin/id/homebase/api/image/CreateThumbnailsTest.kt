@@ -5,6 +5,7 @@ import kotlin.math.max
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -20,7 +21,7 @@ class CreateThumbnailsTest {
         val (naturalSize, embeddedThumb, thumbList) = createThumbnails(bytes, "payload-key")
         assertEquals(800, naturalSize.pixelWidth)
         assertEquals(600, naturalSize.pixelHeight)
-        assertNotNull(embeddedThumb.contentType)
+        assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
         assertTrue(embeddedThumb.pixelWidth > 0)
         val content = embeddedThumb.content
@@ -33,6 +34,7 @@ class CreateThumbnailsTest {
     fun standardJpeg_embeddedThumbIsTiny() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         assertTrue(embeddedThumb.pixelWidth <= 20, "Embedded thumb width ${embeddedThumb.pixelWidth} > 20")
         assertTrue(embeddedThumb.pixelHeight <= 20, "Embedded thumb height ${embeddedThumb.pixelHeight} > 20")
         assertEquals("image/webp", embeddedThumb.contentType)
@@ -42,9 +44,10 @@ class CreateThumbnailsTest {
     fun standardJpeg_embeddedThumbBase64Decodable() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         val decoded = Base64.decode(embeddedThumb.content!!)
         assertTrue(decoded.isNotEmpty(), "Decoded embedded thumb should not be empty")
-        assertTrue(decoded.size <= 768, "Decoded embedded thumb ${decoded.size} > 768 bytes")
+        assertTrue(decoded.size <= tinyThumbSize.maxBytes, "Decoded embedded thumb ${decoded.size} > ${tinyThumbSize.maxBytes} bytes")
     }
 
     @Test
@@ -140,6 +143,7 @@ class CreateThumbnailsTest {
     fun tinyImage32x32_stillHasEmbeddedThumb() = runTest {
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         assertNotNull(embeddedThumb.content)
         assertEquals("image/webp", embeddedThumb.contentType)
     }
@@ -175,6 +179,7 @@ class CreateThumbnailsTest {
     fun webpLossy_succeeds() = runTest {
         val bytes = ImageTestHelper.loadImage("lossy_mountain.webp")
         val (naturalSize, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         assertTrue(naturalSize.pixelWidth > 0)
         assertEquals("image/webp", embeddedThumb.contentType)
     }
@@ -201,6 +206,7 @@ class CreateThumbnailsTest {
     fun gif_embeddedThumbIsWebp() = runTest {
         val bytes = ImageTestHelper.loadImage("mountain_800.gif")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
     }
 
@@ -209,6 +215,7 @@ class CreateThumbnailsTest {
         // GIF embedded thumb uses natural image dimensions, NOT tiny thumb dimensions
         val bytes = ImageTestHelper.loadImage("mountain_800.gif")
         val (naturalSize, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         assertEquals(naturalSize.pixelWidth, embeddedThumb.pixelWidth)
         assertEquals(naturalSize.pixelHeight, embeddedThumb.pixelHeight)
     }
@@ -225,15 +232,29 @@ class CreateThumbnailsTest {
     // SVG handling (synthetic data)
     // =========================================================
 
+    // SVG is rasterized through ImageUtils.rasterizeSvg into the same
+    // shape as any other image: a tiny embedded webp + the regular
+    // 320/640/1080/1600 px webp set. Receivers display the bitmap
+    // thumbs natively; no SVG decoder required on the receiver side.
+
     @Test
-    fun svg_withDimensions_returnsSvgAsIs() = runTest {
+    fun svg_withDimensions_producesFullRasterLadder() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
-        val (naturalSize, _, thumbList) = createThumbnails(svgBytes, "key")
+        val (naturalSize, embeddedThumb, thumbList) = createThumbnails(svgBytes, "key")
         assertEquals(200, naturalSize.pixelWidth)
         assertEquals(100, naturalSize.pixelHeight)
-        assertEquals(1, thumbList.size)
-        assertEquals("image/svg+xml", thumbList[0].contentType)
-        assertTrue(thumbList[0].thumbnailBytes.contentEquals(svgBytes), "SVG should be returned as-is")
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        // Vectors render crisp at any size — we always produce the full
+        // baseThumbSizes ladder regardless of the SVG's declared size,
+        // so hi-DPI viewers can ask for THUMB_LARGE without falling
+        // back to an undersized intrinsic render.
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "SVG should produce one raster per baseThumbSize, got ${thumbList.size}")
+        for (thumb in thumbList) {
+            assertEquals("image/webp", thumb.contentType)
+            ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
+        }
     }
 
     @Test
@@ -253,26 +274,68 @@ class CreateThumbnailsTest {
     }
 
     @Test
-    fun svg_embeddedThumbIsSvg() = runTest {
+    fun svg_embeddedThumbIsWebp() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
         val (_, embeddedThumb, _) = createThumbnails(svgBytes, "key")
-        assertEquals("image/svg+xml", embeddedThumb.contentType)
-    }
-
-    @Test
-    fun svg_embeddedThumbBase64DecodesToOriginal() = runTest {
-        val svgBytes = ImageTestHelper.makeSvgBytes(200, 100)
-        val (_, embeddedThumb, _) = createThumbnails(svgBytes, "key")
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        assertTrue(embeddedThumb.pixelWidth <= 20)
+        assertTrue(embeddedThumb.pixelHeight <= 20)
+        // The embedded thumb content is base64 of a webp; decoded size
+        // must respect tinyThumbSize budget so the upload stays under
+        // the server's MaxEmbeddedThumbBytes cap.
         val decoded = Base64.decode(embeddedThumb.content!!)
-        assertTrue(decoded.contentEquals(svgBytes), "Embedded SVG base64 should decode to original bytes")
+        assertTrue(
+            decoded.size <= tinyThumbSize.maxBytes,
+            "tiny embedded SVG-rasterized thumb is ${decoded.size} bytes > ${tinyThumbSize.maxBytes}"
+        )
     }
 
     @Test
-    fun svg_noResizeApplied() = runTest {
+    fun svg_producesAdditionalRasterThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(2000, 1000, "<rect width=\"2000\" height=\"1000\"/>")
         val (_, _, thumbList) = createThumbnails(svgBytes, "key")
-        assertEquals(1, thumbList.size)
-        assertTrue(thumbList[0].thumbnailBytes.contentEquals(svgBytes))
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "Every SVG should rasterize into the full baseThumbSizes ladder")
+    }
+
+    /**
+     * Regression: services.msgsndr.com returns Google Calendar's SVG
+     * logo inline as the link-preview imageUrl. Phase 1 dropped these
+     * to keep the outbox unblocked (server rejected the raw SVG with
+     * "Thumbnail size of 1634 exceeds 1024"). Phase 3 rasterizes them
+     * through ImageUtils.rasterizeSvg so the bubble shows a real image.
+     * See /home/seifert/odin/chat-kmp/homebase.log lines 21565-21585.
+     */
+    @Test
+    fun svg_googleCalendarFavicon_producesRealBitmapThumb() = runTest {
+        val svgBytes = ImageTestHelper.loadImage("google_calendar_logo.svg")
+        val (_, embeddedThumb, thumbList) = createThumbnails(svgBytes, "chat_links")
+
+        assertNotNull(embeddedThumb)
+        assertEquals("image/webp", embeddedThumb.contentType)
+        val tinyDecoded = Base64.decode(embeddedThumb.content!!)
+        ImageTestHelper.assertValidWebp(tinyDecoded)
+        assertTrue(
+            tinyDecoded.size <= tinyThumbSize.maxBytes,
+            "Google Calendar SVG tiny is ${tinyDecoded.size} bytes > ${tinyThumbSize.maxBytes}"
+        )
+
+        // 192×192 declared intrinsic, but vector data has no quality
+        // ceiling — produce the full baseThumbSizes ladder so receivers
+        // at any DPI get a crisp render.
+        assertEquals(baseThumbSizes.size, thumbList.size,
+            "Google Calendar SVG should produce the full raster ladder, got ${thumbList.size}")
+        for ((i, thumb) in thumbList.withIndex()) {
+            assertEquals("chat_links", thumb.key)
+            assertEquals("image/webp", thumb.contentType)
+            ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
+            assertEquals(
+                baseThumbSizes[i].maxPixelDimension,
+                max(thumb.pixelWidth, thumb.pixelHeight),
+                "thumb[$i] should match baseThumbSizes[$i].maxPixelDimension"
+            )
+        }
     }
 
     // =========================================================
@@ -321,6 +384,7 @@ class CreateThumbnailsTest {
         val bytes = ImageTestHelper.loadImage("cmyk_logo.jpg")
         val (naturalSize, embeddedThumb, thumbList) = createThumbnails(bytes, "key")
         assertTrue(naturalSize.pixelWidth > 0)
+        assertNotNull(embeddedThumb)
         assertNotNull(embeddedThumb.content)
         assertTrue(thumbList.isNotEmpty())
     }
@@ -376,7 +440,8 @@ class CreateThumbnailsTest {
             val bytes = ImageTestHelper.loadImage(file)
             val (naturalSize, embeddedThumb, _) = createThumbnails(bytes, "key")
             assertTrue(naturalSize.pixelWidth > 0, "Failed for $file: width")
-            assertNotNull(embeddedThumb.content, "Failed for $file: embedded thumb")
+            assertNotNull(embeddedThumb, "Failed for $file: embedded thumb missing")
+            assertNotNull(embeddedThumb.content, "Failed for $file: embedded thumb content")
         }
     }
 
@@ -399,6 +464,7 @@ class CreateThumbnailsTest {
     fun tinyThumbFromEmbedded_isDecodable() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
+        assertNotNull(embeddedThumb)
         val decoded = Base64.decode(embeddedThumb.content!!)
         val size = ImageUtils.getNaturalSize(decoded)
         assertTrue(size.pixelWidth > 0, "Decoded tiny thumb should have positive width")
@@ -424,6 +490,7 @@ class CreateThumbnailsTest {
                 "createThumbnails($file): naturalSize height should be positive"
             )
 
+            assertNotNull(embeddedThumb, "createThumbnails($file): embedded thumb should not be null")
             val content = embeddedThumb.content
             assertNotNull(content, "createThumbnails($file): embedded thumb content should not be null")
             assertTrue(content.isNotEmpty(), "createThumbnails($file): embedded thumb content should not be empty")

@@ -29,6 +29,7 @@ object MainIndexMetaHelpers {
             fileType = driveMainIndexRecord.fileType,
             dataType = driveMainIndexRecord.dataType,
             archivalStatus = driveMainIndexRecord.archivalStatus,
+            fileState = driveMainIndexRecord.fileState,
             historyStatus = driveMainIndexRecord.historyStatus,
             userDate = driveMainIndexRecord.userDate,
             created = driveMainIndexRecord.created,
@@ -54,6 +55,7 @@ object MainIndexMetaHelpers {
             fileType = driveMainIndexRecord.fileType,
             dataType = driveMainIndexRecord.dataType,
             archivalStatus = driveMainIndexRecord.archivalStatus,
+            fileState = driveMainIndexRecord.fileState,
             historyStatus = driveMainIndexRecord.historyStatus,
             userDate = driveMainIndexRecord.userDate,
             created = driveMainIndexRecord.created,
@@ -111,6 +113,7 @@ object MainIndexMetaHelpers {
                 fileType = (header.fileMetadata.appData.fileType ?: 0).toLong(),
                 dataType = (header.fileMetadata.appData.dataType ?: 0).toLong(),
                 archivalStatus = (header.fileMetadata.appData.archivalStatus?.value ?: 0).toLong(),
+                fileState = header.fileState.value.toLong(),
                 historyStatus = 0L,
                 // Fall back to `metadata.created` when appData.userDate is null —
                 // older Web/RN clients didn't always capture userDate, and the

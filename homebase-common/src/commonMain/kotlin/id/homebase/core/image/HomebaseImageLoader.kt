@@ -42,8 +42,15 @@ class HomebaseImageLoader(
     companion object {
         private const val TAG = "HomebaseImageLoader"
 
-        // Content types that don't need thumbnails (render as-is)
-        val THUMBLESS_CONTENT_TYPES = setOf("image/svg+xml", "image/gif")
+        // Content types whose payload is rendered as-is, bypassing the
+        // thumbnail pipeline. GIF stays here because we want the
+        // animated original, not a static raster frame. SVG used to be
+        // here because the sender side wrapped SVG bytes verbatim as a
+        // "thumbnail" — receivers had to load the payload directly
+        // since Coil has no SVG decoder. Phase 3 rasterizes SVG to webp
+        // thumbnails on the sender side, so the receiver now prefers
+        // those real bitmaps just like any other format.
+        val THUMBLESS_CONTENT_TYPES = setOf("image/gif")
 
         // Default retry configuration for image loading.
         // retryOn unwraps the RuntimeException wrapper produced below so the real
