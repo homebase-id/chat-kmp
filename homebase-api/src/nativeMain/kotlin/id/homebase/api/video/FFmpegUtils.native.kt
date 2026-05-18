@@ -1,10 +1,12 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import kotlin.coroutines.resume
 import kotlin.math.roundToLong
 import kotlinx.cinterop.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.AVFoundation.*
 import platform.CoreMedia.CMTimeGetSeconds
@@ -176,7 +178,7 @@ actual object FFmpegUtils {
             // (which app cacheDir-rooted), so this naive quoting is sufficient.
             val command = plan.args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
 
-            val result = bridge.executeFFmpeg(command)
+            val result = executeFfmpegWithProgress(command, durationMs, onProgress)
             if (result.isSuccess) {
                 return@withContext outputPath
             }
@@ -233,6 +235,35 @@ actual object FFmpegUtils {
                     null
                 }
             }
+
+    private fun progressFraction(timeMs: Long, durationMs: Long): Float =
+        if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
+
+    /**
+     * Bridges the Swift async ffmpeg API to a suspending coroutine and converts
+     * ffmpeg-kit's elapsed media time (ms) into a 0..1 progress fraction via
+     * [progressFraction]. Cancellation calls the bridge-wide cancel — fine for
+     * the current single-job flow (see [FFmpegKitBridge.cancelAllFFmpegSessions]
+     * docs for the per-session follow-up).
+     */
+    private suspend fun executeFfmpegWithProgress(
+        command: String,
+        durationMs: Long,
+        onProgress: ((Float) -> Unit)?,
+    ): FFmpegResult = suspendCancellableCoroutine { cont ->
+        bridge.executeFFmpegAsync(
+            command = command,
+            onProgress = { timeMs ->
+                onProgress?.invoke(progressFraction(timeMs, durationMs))
+            },
+            onComplete = { result ->
+                if (cont.isActive) cont.resume(result)
+            },
+        )
+        cont.invokeOnCancellation {
+            try { bridge.cancelAllFFmpegSessions() } catch (_: Exception) {}
+        }
+    }
 
     private fun getCacheDirectory(): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
@@ -299,7 +330,12 @@ actual object FFmpegUtils {
                 val command =
                         "$baseCommand -hls_time 6 -hls_list_size 0 -hls_flags single_file -hls_key_info_file \"$keyInfoFilePath\" -f hls -hls_segment_filename \"$segmentPath\" \"$indexPath\""
 
-                val result = bridge.executeFFmpeg(command)
+                // Re-probe on the segmentation input — the upstream compressor
+                // may have trimmed, so the original input's duration is no
+                // longer the denominator for progress scaling.
+                val durationMs = getDurationMs(inputPath)
+
+                val result = executeFfmpegWithProgress(command, durationMs, onProgress)
 
                 if (result.isSuccess) {
                     // Segmentation done — FFmpeg has consumed the key material. Delete it now
