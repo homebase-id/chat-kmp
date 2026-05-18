@@ -1,8 +1,6 @@
 package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
-import com.mmk.kmpnotifier.notification.NotifierManager
-import com.mmk.kmpnotifier.notification.PayloadData
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.PushSubscriptionResponse
@@ -53,6 +51,7 @@ class NotificationService(
     private val userPreferences: UserPreferences,
     private val credentialsManager: CredentialsManager,
     private val pendingNotificationTap: PendingNotificationTap,
+    private val notificationBackend: NotificationBackend,
 ) {
 
     private var isListening = false
@@ -111,16 +110,16 @@ class NotificationService(
     }
 
     /**
-     * Initializes notification listeners. Call after NotifierManager.initialize() has been called
-     * on the platform side.
+     * Initializes notification listeners. Call after the platform backend has
+     * been initialized at the entry point (e.g. NotifierManager.initialize()
+     * on Android/JVM/iOS).
      */
     fun startListening() {
         if (isListening) return
         isListening = true
 
-        NotifierManager.addListener(object : NotifierManager.Listener {
+        notificationBackend.addListener(object : NotificationListener {
             override fun onNewToken(token: String) {
-                super.onNewToken(token)
                 Logger.i(tag = "NotificationService") { "New push token: $token" }
                 registerToken(token)
             }
@@ -128,7 +127,6 @@ class NotificationService(
             override fun onPushNotificationWithPayloadData(
                 title: String?, body: String?, data: PayloadData
             ) {
-                super.onPushNotificationWithPayloadData(title, body, data)
                 Logger.i(tag = "NotificationService") {
                     "Push received — title=$title body=$body data=$data"
                 }
@@ -144,20 +142,18 @@ class NotificationService(
             }
 
             override fun onPushNotification(title: String?, body: String?) {
-                super.onPushNotification(title, body)
                 Logger.i(tag = "NotificationService") {
                     "Push received — title=$title body=$body"
                 }
             }
 
             override fun onPayloadData(data: PayloadData) {
-                super.onPayloadData(data)
                 Logger.i(tag = "NotificationService") { "Payload received: $data" }
                 handleIncomingPayload(data)
             }
         })
 
-        NotifierManager.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
+        notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
     }
 
     /**
@@ -510,18 +506,17 @@ class NotificationService(
         }
     }
 
-    /** Displays a local notification using KMPNotifier (fallback). */
+    /** Displays a local notification using the platform backend (fallback). */
     fun showLocalNotification(
         title: String,
         body: String,
         payloadData: Map<String, String> = emptyMap(),
     ) {
-        val notifier = NotifierManager.getLocalNotifier()
-        notifier.notify(
+        notificationBackend.showLocalNotification(
             id = Random.nextInt(0, Int.MAX_VALUE),
             title = title,
             body = body,
-            payloadData = payloadData
+            payloadData = payloadData,
         )
     }
 
@@ -582,7 +577,7 @@ class NotificationService(
     /** Gets the current push notification token, or null if not available. */
     suspend fun getToken(): String? {
         return try {
-            NotifierManager.getPushNotifier().getToken()
+            notificationBackend.getPushToken()
         } catch (e: Exception) {
             Logger.w(tag = "NotificationService") { "Failed to get push token: ${e.message}" }
             null
@@ -594,7 +589,7 @@ class NotificationService(
         try {
             Logger.i(tag = "NotificationService") { "Unsubscribing token..." }
             api.unsubscribe()
-            NotifierManager.getPushNotifier().deleteMyToken()
+            notificationBackend.deletePushToken()
             Logger.i(tag = "NotificationService") { "Token deleted and unsubscribed" }
         } catch (e: Exception) {
             Logger.w(tag = "NotificationService") { "Failed to delete token/unsubscribe: ${e.message}" }
@@ -609,10 +604,10 @@ class NotificationService(
         return try {
             Logger.i(tag = "NotificationService") { "Re-registering: unsubscribing old token..." }
             api.unsubscribe()
-            NotifierManager.getPushNotifier().deleteMyToken()
+            notificationBackend.deletePushToken()
 
             Logger.i(tag = "NotificationService") { "Re-registering: fetching new token..." }
-            val newToken = NotifierManager.getPushNotifier().getToken()
+            val newToken = notificationBackend.getPushToken()
             if (newToken != null) {
                 registerTokenSuspend(newToken)
             }

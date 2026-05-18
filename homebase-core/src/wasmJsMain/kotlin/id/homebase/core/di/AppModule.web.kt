@@ -6,6 +6,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
+import id.homebase.core.notifications.NoopNotificationBackend
+import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -14,6 +16,7 @@ actual fun platformModule(): Module = module {
     single { createSettings() }
     single<FileOperationsProvider> { WebFileOperationsProvider() }
     single { id.homebase.core.share.ShareCacheStorage() }
+    single<NotificationBackend> { NoopNotificationBackend() }
     single {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {

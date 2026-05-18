@@ -1,6 +1,5 @@
 package id.homebase.core.notifications
 
-import com.mmk.kmpnotifier.notification.PayloadData
 import kotlin.concurrent.Volatile
 
 /**
