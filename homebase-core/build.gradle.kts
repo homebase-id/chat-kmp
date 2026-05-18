@@ -95,19 +95,24 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
-            implementation(libs.composenativewebview)
             implementation(libs.filekit.dialogs.compose)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
+            // composenativewebview has no wasmJs artifact — must stay off
+            // commonMain. The FeedWebView facade (commonMain) is bridged to
+            // kdroidfilter types in `FeedWebView.native.kt`.
+            implementation(libs.composenativewebview)
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
             implementation(libs.play.app.update)
+            implementation(libs.composenativewebview)
         }
         jvmMain.dependencies {
                 implementation(libs.conveyor.control)
+                implementation(libs.composenativewebview)
         }
         // Uncomment in step 10 of the WASM pre-flight plan, paired with
         // `wasmJs { browser() }`. ktor-client-js provides the browser
