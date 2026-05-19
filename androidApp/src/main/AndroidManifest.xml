@@ -42,7 +42,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:largeHeap="true"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         tools:targetApi="33">
@@ -83,7 +83,7 @@
             android:name=".share.ShareReceiverActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:label="Homebase Chat">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
