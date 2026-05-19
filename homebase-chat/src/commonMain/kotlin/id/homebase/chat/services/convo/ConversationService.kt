@@ -44,8 +44,10 @@ import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -86,6 +88,12 @@ class ConversationService(
     /** Used by the heal redistribute path to spill the encrypted payload bytes
      *  to a temp file for upload. Same nullable-for-tests rationale as above. */
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
+    /** Coalescing window for the lastRead writeback. Production uses the 1s
+     *  default; tests pass a very large value and drive the flush explicitly
+     *  via [flushLastReadNow] to avoid virtual-time fragility under
+     *  `runTest` (whose dispatcher behavior around `delay` + launched
+     *  coroutines doesn't reliably hold the timer parked). */
+    private val lastReadDebounceMs: Long = 1_000L,
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
 
@@ -105,7 +113,6 @@ class ConversationService(
     private val lastReadMutex = Mutex()
     private val pendingLastReadAdvances = mutableMapOf<Uuid, UnixTimeUtc>()
     private var lastReadFlushJob: Job? = null
-    private val lastReadDebounceMs = 1_000L
     // endregion
 
     private val mapper: ConversationMapper = ConversationMapper(
@@ -2286,9 +2293,10 @@ class ConversationService(
                 try {
                     delay(lastReadDebounceMs)
                     flushDirtyLastRead()
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    // Expected when a subsequent advance reschedules — the
-                    // new job will handle the flush.
+                } catch (_: CancellationException) {
+                    // Expected when a subsequent advance reschedules or
+                    // flushLastReadNow drains synchronously — that path
+                    // will handle the flush.
                 }
             }
         }
@@ -2352,24 +2360,20 @@ class ConversationService(
      * force a synchronous flush without waiting for the debounce.
      */
     suspend fun flushLastReadNow() {
+        // We use cancelAndJoin (not bare cancel) here because we're NOT
+        // inside lastReadMutex when we call it — the prior flush, if past
+        // its delay(), would otherwise race us into flushDirtyLastRead on
+        // the mutex and process an empty snapshot. The in-mutex cancel in
+        // updateLocalLastReadTime deliberately does NOT join: a prior
+        // flush parked on the same mutex would deadlock waiting for us to
+        // release it.
         val job = lastReadMutex.withLock {
             val j = lastReadFlushJob
             lastReadFlushJob = null
             j
         }
-        job?.cancel()
+        job?.cancelAndJoin()
         flushDirtyLastRead()
-    }
-
-    /**
-     * Test affordance + safety net — drop any pending writeback for a
-     * conversation that no longer makes sense (e.g. deleted locally). Most
-     * production code paths don't need to call this; successful enqueues
-     * already clear the entry via [flushDirtyLastRead].
-     */
-    @Suppress("unused")
-    private suspend fun clearLastReadDirty(conversationId: Uuid) {
-        lastReadMutex.withLock { pendingLastReadAdvances.remove(conversationId) }
     }
 
 }
