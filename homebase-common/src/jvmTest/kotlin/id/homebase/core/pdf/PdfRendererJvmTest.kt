@@ -111,6 +111,40 @@ class PdfRendererJvmTest {
             file.delete()
         }
     }
+    @Test
+    fun close_thenPageCount_returnsZero() {
+        val file = createTestPdf(3)
+        try {
+            val renderer = PdfRenderer()
+            renderer.open(file.absolutePath)
+            assertEquals(3, renderer.pageCount)
+            renderer.close()
+            assertEquals(0, renderer.pageCount)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun reopen_afterClose_works() {
+        val file1 = createTestPdf(2)
+        val file2 = createTestPdf(4)
+        try {
+            val renderer = PdfRenderer()
+            renderer.open(file1.absolutePath)
+            assertEquals(2, renderer.pageCount)
+            renderer.close()
+
+            renderer.open(file2.absolutePath)
+            assertEquals(4, renderer.pageCount)
+            val bitmap = renderer.renderPage(0, 300, 400)
+            assertTrue(bitmap.width > 0)
+            renderer.close()
+        } finally {
+            file1.delete()
+            file2.delete()
+        }
+    }
 }
 
 class PdfThumbnailGeneratorJvmTest {

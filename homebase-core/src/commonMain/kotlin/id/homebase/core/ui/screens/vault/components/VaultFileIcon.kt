@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Description
@@ -66,7 +66,7 @@ fun fileTypeIcon(contentType: String): ImageVector = when {
     contentType == "application/msword" ||
         contentType.contains("wordprocessingml") ||
         contentType == "application/vnd.oasis.opendocument.text" ||
-        contentType == "application/rtf" -> Icons.Outlined.Article
+        contentType == "application/rtf" -> Icons.AutoMirrored.Outlined.Article
 
     contentType == "application/zip" ||
         contentType == "application/x-tar" ||

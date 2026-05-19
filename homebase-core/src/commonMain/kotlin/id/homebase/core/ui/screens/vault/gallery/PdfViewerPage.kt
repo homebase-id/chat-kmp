@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.pdf.PdfPageViewer
-import id.homebase.core.pdf.PdfRenderer
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
@@ -36,17 +35,8 @@ import org.jetbrains.compose.resources.stringResource
 
 private sealed interface PdfViewerState {
     data object Loading : PdfViewerState
-    data class Ready(val renderer: PdfRenderer, val tempFilePath: String) : PdfViewerState
+    data class Ready(val tempFilePath: String) : PdfViewerState
     data object Error : PdfViewerState
-}
-
-private fun cleanupPdfResources(
-    renderer: PdfRenderer?,
-    tempPath: String?,
-    fileOps: FileOperationsProvider,
-) {
-    renderer?.close()
-    tempPath?.let { try { fileOps.deleteTempFile(it) } catch (_: Exception) { } }
 }
 
 @Composable
@@ -60,32 +50,21 @@ fun PdfViewerPage(
     var state by remember { mutableStateOf<PdfViewerState>(PdfViewerState.Loading) }
 
     LaunchedEffect(file.fileId) {
-        // Clean up previous Ready state when fileId changes
         val prev = state
         if (prev is PdfViewerState.Ready) {
-            cleanupPdfResources(prev.renderer, prev.tempFilePath, fileOperationsProvider)
+            try { fileOperationsProvider.deleteTempFile(prev.tempFilePath) } catch (_: Exception) { }
         }
         state = PdfViewerState.Loading
 
-        var tempPath: String? = null
-        var renderer: PdfRenderer? = null
         try {
             val payloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
-            tempPath = withContext(Dispatchers.Default) {
+            val tempPath = withContext(Dispatchers.Default) {
                 uploaderService.downloadPayload(file, payloadKey)
             }
-            if (tempPath == null) {
-                state = PdfViewerState.Error
-            } else {
-                renderer = PdfRenderer()
-                withContext(Dispatchers.Default) { renderer.open(tempPath) }
-                state = PdfViewerState.Ready(renderer, tempPath)
-            }
+            state = if (tempPath != null) PdfViewerState.Ready(tempPath) else PdfViewerState.Error
         } catch (e: CancellationException) {
-            cleanupPdfResources(renderer, tempPath, fileOperationsProvider)
             throw e
         } catch (_: Exception) {
-            cleanupPdfResources(renderer, tempPath, fileOperationsProvider)
             state = PdfViewerState.Error
         }
     }
@@ -94,7 +73,7 @@ fun PdfViewerPage(
         onDispose {
             val current = state
             if (current is PdfViewerState.Ready) {
-                cleanupPdfResources(current.renderer, current.tempFilePath, fileOperationsProvider)
+                try { fileOperationsProvider.deleteTempFile(current.tempFilePath) } catch (_: Exception) { }
             }
         }
     }
@@ -107,7 +86,7 @@ fun PdfViewerPage(
 
             is PdfViewerState.Ready -> {
                 PdfPageViewer(
-                    renderer = s.renderer,
+                    filePath = s.tempFilePath,
                     onTap = onToggleUI,
                     modifier = Modifier.fillMaxSize(),
                 )

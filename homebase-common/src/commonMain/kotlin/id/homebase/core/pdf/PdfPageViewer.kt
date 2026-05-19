@@ -2,6 +2,7 @@ package id.homebase.core.pdf
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -35,10 +35,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
+@Composable
+expect fun PdfPageViewer(
+    filePath: String,
+    onTap: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+)
+
+// Bitmap-based viewer used by Android, JVM, and Web actuals
 private const val PAGE_CACHE_WINDOW = 5
 
 @Composable
-fun PdfPageViewer(
+internal fun BitmapPdfPageViewer(
     renderer: PdfRenderer,
     onTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -54,7 +62,6 @@ fun PdfPageViewer(
         }
     }
 
-    // Evict pages outside the visible window to bound memory usage
     LaunchedEffect(Unit) {
         snapshotFlow { listState.boundedFirstVisibleItemIndex(pageCount) }
             .collect { visibleIndex ->
@@ -77,7 +84,7 @@ fun PdfPageViewer(
             modifier = Modifier.fillMaxSize(),
         ) {
             items(pageCount) { index ->
-                PdfPage(
+                BitmapPdfPage(
                     renderer = renderer,
                     pageIndex = index,
                     pageCount = pageCount,
@@ -110,7 +117,7 @@ fun PdfPageViewer(
 }
 
 @Composable
-private fun PdfPage(
+private fun BitmapPdfPage(
     renderer: PdfRenderer,
     pageIndex: Int,
     pageCount: Int,
