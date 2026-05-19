@@ -25,6 +25,7 @@ class VideoPayloadProcessor(
         descriptorContentPayloadKey: String,
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
+        videoQuality: VideoQuality = VideoQuality.STANDARD,
     ): VideoProcessResult {
 
         // Resolve content URIs (Android) to real filesystem paths before FFmpeg work
@@ -80,6 +81,7 @@ class VideoPayloadProcessor(
                 inputPath = payload.filePath,
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
+                quality = videoQuality,
                 onProgress = {
                     onProgress?.invoke(
                         VideoPayloadProgressPhase(

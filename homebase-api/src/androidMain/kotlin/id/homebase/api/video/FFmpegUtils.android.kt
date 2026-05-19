@@ -1,21 +1,46 @@
 package id.homebase.api.video
 
+import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFprobeKit
+import com.arthenica.ffmpegkit.FFmpegSession
+import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.ffmpegkit.Statistics
+import com.arthenica.ffmpegkit.StatisticsCallback
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
 import java.io.File
 import java.util.UUID
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import android.media.MediaMetadataRetriever
 
 actual object FFmpegUtils {
     private const val TAG = "FFmpegUtils"
+
+    @Volatile private var cachedFfmpegVersion: String? = null
+    @Volatile private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = try {
+            val session = FFmpegKit.execute("-version")
+            if (!ReturnCode.isSuccess(session.returnCode)) {
+                null
+            } else {
+                parseFfmpegVersionBanner(session.allLogsAsString)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getFfmpegVersion failed", e)
+            null
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
         val retriever = MediaMetadataRetriever()
@@ -23,7 +48,7 @@ actual object FFmpegUtils {
             // setDataSource(String) requires a filesystem path. FileKit returns
             // content:// URIs for gallery picks — use the (Context, Uri) overload.
             if (inputPath.startsWith("content://") || inputPath.startsWith("content:")) {
-                val context = ActivityProvider.requireActivity().applicationContext
+                val context = ActivityProvider.requireApplicationContext()
                 retriever.setDataSource(context, inputPath.toUri())
             } else {
                 retriever.setDataSource(inputPath)
@@ -40,216 +65,282 @@ actual object FFmpegUtils {
     }
 
     actual fun getUniqueId(filePath: String): String {
+        // TODO: potential BUG — for content:// URIs, `File(filePath).length()`
+        // returns 0 and `File(filePath).name` is the encoded URI tail, so every
+        // gallery pick collapses toward the same hash bucket. Callers that
+        // cache by this id (grabThumbnail, etc.) can return another video's
+        // cached output. Fix by resolving the URI to size via
+        // ContentResolver.openAssetFileDescriptor(...).length when filePath
+        // starts with "content://".
         val file = File(filePath)
-        // Simple deterministic ID generation based on file props
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
     actual suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
-            val file = File(inputPath)
-            if (!file.exists()) return@withContext null
-
+            val context = ActivityProvider.requireApplicationContext()
             val uniqueId = getUniqueId(inputPath)
-            val outputDir = context.cacheDir
-            // thumb0001-ID.png
-            val outputName = "thumb0001-$uniqueId.png"
-            val outputPath = File(outputDir, outputName).absolutePath
-
-            if (File(outputPath).exists()) return@withContext outputPath
-
-            val commandDestination = File(outputDir, "thumb%04d-$uniqueId.png").absolutePath
-
-            // -frames:v 1
-            val command = "-y -i \"$inputPath\" -frames:v 1 \"$commandDestination\""
-
-            Log.d(TAG, "Thumbnail command: $command")
-
-            val session = FFmpegKit.execute(command)
-            if (ReturnCode.isSuccess(session.returnCode)) {
-                // Validate file creation
-                if (File(outputPath).exists()) {
-                    return@withContext outputPath
-                } else {
-                    Log.w(TAG, "Thumbnail generated success but file not found at $outputPath")
-                    return@withContext null
-                }
-            } else {
-                Log.e(TAG, "Thumbnail failed: ${session.failStackTrace}")
-                return@withContext null
+            val outputFile = File(context.cacheDir, "thumb-$uniqueId.jpg")
+            if (outputFile.exists() && outputFile.length() > 0L) {
+                return@withContext outputFile.absolutePath
             }
+
+            // Delegate to the platform-native poster-frame extractor. Same
+            // MediaMetadataRetriever + content-resolver fallbacks that the
+            // scrubber preview uses; works for both file paths and content://
+            // URIs, and avoids the FFmpegKit JNI surface entirely (the v7
+            // upgrade aborted on HLS-remuxed MP4 inputs here, see homebase.log
+            // tombstone from 2026-05-17).
+            val bytes = VideoThumbnailExtractor.extractPosterFrame(inputPath)
+                ?: return@withContext null
+            outputFile.writeBytes(bytes)
+            outputFile.absolutePath
         }
 
     actual suspend fun getRotationFromFile(filePath: String): Int =
         withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
             try {
-                val session =
-                    FFprobeKit.execute(
-                        "-v quiet -select_streams v:0 -show_entries side_data_list=side_data_type,rotation -of json=compact=1 \"$filePath\""
-                    )
-                val output = session.output
-                if (output.isNullOrBlank()) return@withContext 0
-
-                val json = JSONObject(output)
-                val streams = json.optJSONArray("streams")
-                val sideDataList =
-                    streams?.optJSONObject(0)?.optJSONArray("side_data_list")
-                        ?: json.optJSONArray("side_data_list")
-
-                if (sideDataList != null) {
-                    for (i in 0 until sideDataList.length()) {
-                        val entry = sideDataList.optJSONObject(i)
-                        if (entry?.optString("side_data_type") == "Display Matrix") {
-                            val rotationStr = entry.optString("rotation")
-                            val rotation = rotationStr.toDoubleOrNull()?.toInt() ?: 0
-                            return@withContext if (rotation in -360..360) rotation else 0
-                        }
-                    }
+                if (filePath.startsWith("content://") || filePath.startsWith("content:")) {
+                    val context = ActivityProvider.requireApplicationContext()
+                    retriever.setDataSource(context, filePath.toUri())
+                } else {
+                    retriever.setDataSource(filePath)
                 }
-                return@withContext 0
+                val rotation = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    ?.toIntOrNull()
+                    ?: 0
+                if (rotation in -360..360) rotation else 0
             } catch (e: Exception) {
                 Log.w(TAG, "getRotationFromFile failed", e)
-                return@withContext 0
+                0
+            } finally {
+                retriever.runCatching { release() }
             }
         }
 
-    private const val MAX_BITRATE = 3_000_000L
-    private const val MAX_WIDTH = 1280
-
+    /**
+     * Compress + optionally trim a video file via ffmpeg-kit. Returns the
+     * absolute path of the compressed MP4, or null if the input is already
+     * within the target quality envelope (caller falls back to the original
+     * file) or if ffmpeg failed.
+     *
+     * Pure probe-and-invoke wrapper around [FfmpegCompressPlanner] — the
+     * planner (commonMain) owns the quality→target mapping, already-optimal
+     * predicate, and ffmpeg arg list assembly. This actual contributes:
+     * MediaExtractor-based probe, FFmpegKit invocation, timing log, EXIF
+     * strip on the short-circuit path.
+     */
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
-    ): String? =
-        withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
-            val file = File(inputPath)
-            if (!file.exists()) {
-                Log.e(TAG, "File not found: $inputPath")
-                return@withContext null
-            }
+        quality: VideoQuality,
+    ): String? = withContext(Dispatchers.IO) {
+        val context = ActivityProvider.requireApplicationContext()
+        val inFile = File(inputPath)
+        if (!inFile.exists()) {
+            Log.e(TAG, "File not found: $inputPath")
+            return@withContext null
+        }
 
-            val hasTrim = trimStartMs != null || trimEndMs != null
+        if ((trimStartMs == null) != (trimEndMs == null)) {
+            Log.w(TAG, "Partial trim ignored (got start=$trimStartMs end=$trimEndMs); pass both or neither")
+        }
+        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
+        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
-            // When trim is requested we always re-encode (stream-copy can't
-            // apply -t accurately). Otherwise, compute avg bitrate from
-            // fileSize / duration — FFprobeKit's stream.bitrate is optional
-            // and was sometimes null even on perfectly-encoded files, forcing
-            // unnecessary re-encodes.
-            val needsCompression = hasTrim || !isAlreadyOptimal(inputPath, file)
+        val outFile = File(context.cacheDir, "compressed_${inFile.name}")
+        val inputDurationMs = getDurationMs(inputPath)
+        val inputBytes = inFile.length()
+        val probe = probeVideoTrack(inputPath)
+        val trimDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
+            effectiveTrimEnd - effectiveTrimStart
+        } else {
+            inputDurationMs
+        }
+        val t0 = System.currentTimeMillis()
 
-            if (!needsCompression) {
-                Log.d(TAG, "Video already optimal — skipping compression")
-                return@withContext null
-            }
+        // Hand probed input + caller params to the commonMain planner.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = inputPath,
+            outputPath = outFile.absolutePath,
+            quality = quality,
+            trimStartMs = effectiveTrimStart,
+            trimEndMs = effectiveTrimEnd,
+            probedWidthPx = probe.widthPx,
+            probedHeightPx = probe.heightPx,
+            probedCodecMime = if (probe.videoTrackCount == 1 && probe.audioTrackCount <= 1) probe.videoMime else null,
+            inputDurationMs = inputDurationMs,
+            inputBytes = inputBytes,
+            // Default encoder = libx264. Android doesn't expose a hardware
+            // libavcodec wrapper (h264_mediacodec exists but is unreliable in
+            // FFmpegKit builds); stick with libx264 for predictable behaviour.
+        )
 
-            val outputDir = context.cacheDir
-            val outputPath = File(outputDir, "compressed_${file.name}").absolutePath
-
-            // Build argument lists for hw + sw, threading the optional trim args
-            // (-ss before -i for fast input seek; -t after -i for duration).
-            fun trimPrefix(): List<String> = buildList {
-                if (trimStartMs != null && trimStartMs > 0) {
-                    add("-ss"); add(formatSeconds(trimStartMs))
-                }
-            }
-
-            fun trimSuffix(): List<String> = buildList {
-                if (trimEndMs != null) {
-                    val dur = (trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)
-                    add("-t"); add(formatSeconds(dur))
-                }
-            }
-
-            // Try hardware encoder first, fall back to software
-            val hwArguments = buildList {
-                add("-y")
-                addAll(trimPrefix())
-                add("-i"); add(inputPath)
-                addAll(trimSuffix())
-                addAll(listOf(
-                    "-c:v", "h264_mediacodec",
-                    "-b:v", "3000k",
-                    "-vf", "scale='min(1280,iw)':-2",
-                    outputPath
-                ))
-            }
-
-            Log.d(TAG, "Compression with hardware encoder: $hwArguments")
-            val hwSession = FFmpegKit.executeWithArguments(hwArguments.toTypedArray())
-
-            if (ReturnCode.isSuccess(hwSession.returnCode)) {
-                return@withContext outputPath
-            }
-
-            // Fall back to software encoder
-            Log.w(TAG, "Hardware encoder failed, falling back to libx264")
-            val swArguments = buildList {
-                add("-y")
-                addAll(trimPrefix())
-                add("-i"); add(inputPath)
-                addAll(trimSuffix())
-                addAll(listOf(
-                    "-c:v", "libx264",
-                    "-b:v", "3000k",
-                    "-vf", "scale='min(1280,iw)':-2",
-                    "-preset", "fast",
-                    outputPath
-                ))
-            }
-
-            val swSession = FFmpegKit.executeWithArguments(swArguments.toTypedArray())
-            if (ReturnCode.isSuccess(swSession.returnCode)) {
-                return@withContext outputPath
+        if (plan.skipReason != null) {
+            val elapsedMs = System.currentTimeMillis() - t0
+            Log.i(TAG, "compressVideo: ${elapsedMs}ms (AlreadyOptimal) ${plan.skipReason}")
+            // EXIF / GPS / location atoms survive an un-re-encoded pass-through;
+            // strip via mp4parser. Returns null if input had no location atoms
+            // — caller falls back to the original.
+            val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
+            return@withContext if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
+                Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
+                sanitized.absolutePath
             } else {
-                Log.e(TAG, "Compression failed: ${swSession.failStackTrace}")
-                // Both encoders failed — delete the partial/empty output (see #5).
-                deleteFailedFfmpegOutput(outputPath)
-                return@withContext null
+                null
             }
         }
+
+        val args = plan.args.toTypedArray()
+        Log.d(TAG, "compressVideo args: ${args.joinToString(" ")}")
+
+        // executeWithArgumentsAsync, not Sync. FFmpegKit's sync API has known
+        // issues with re-entry: running ffmpeg's main() twice in the same
+        // process can crash because some internal global state isn't reset
+        // properly. The async variant runs each invocation on a fresh worker
+        // thread, avoiding the issue. Verified empirically on the API 36
+        // emulator running compressVideo 4× sequentially.
+        val session = try {
+            executeFfmpegAsync(args) { stats ->
+                onProgress?.invoke(progressFraction(stats.time.toLong(), trimDurationMs))
+            }
+        } catch (e: Throwable) {
+            val elapsedMs = System.currentTimeMillis() - t0
+            Log.e(TAG, "compressVideo crashed after ${elapsedMs}ms", e)
+            outFile.delete()
+            return@withContext null
+        }
+
+        val elapsedMs = System.currentTimeMillis() - t0
+        if (!ReturnCode.isSuccess(session.returnCode)) {
+            Log.e(
+                TAG,
+                "compressVideo FAILED after ${elapsedMs}ms (rc=${session.returnCode}, " +
+                    "in=$inputPath, inputBytes=$inputBytes, inputDurationMs=$inputDurationMs, " +
+                    "trimDurationMs=$trimDurationMs, quality=$quality): ${session.failStackTrace}"
+            )
+            outFile.delete()
+            return@withContext null
+        }
+
+        val outBytes = outFile.length()
+        val realtimeRatio = if (trimDurationMs > 0) {
+            "%.2f".format(elapsedMs.toFloat() / trimDurationMs)
+        } else {
+            "n/a"
+        }
+        Log.i(
+            TAG,
+            "compressVideo: ${elapsedMs}ms (Transcoded, ${realtimeRatio}× realtime) " +
+                "in=${inputBytes}B/${inputDurationMs}ms out=${outBytes}B " +
+                "outDims=${plan.outputDims?.first}x${plan.outputDims?.second} " +
+                "trimDurationMs=$trimDurationMs quality=$quality",
+        )
+        outFile.absolutePath
+    }
 
     /**
-     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
-     * Bitrate is computed from fileSize / duration rather than read from
-     * `videoStream.bitrate`, which is optional in MP4 / FFprobeKit and used to
-     * be null often enough to force unnecessary re-encodes.
+     * Probe of the first video track via MediaExtractor: codec MIME, width,
+     * height, plus track counts so the caller can decide whether the input is
+     * "single video + ≤1 audio" (a precondition for the already-optimal
+     * short-circuit). Returns zeros / null on any probe failure.
      */
-    private suspend fun isAlreadyOptimal(inputPath: String, file: File): Boolean {
-        return try {
-            val session = FFprobeKit.getMediaInformation(inputPath) ?: return false
-            val info = session.mediaInformation ?: return false
-            val videoStream = info.streams?.firstOrNull { it.type == "video" }
-                ?: return false
-            val codec = videoStream.codec?.lowercase() ?: return false
-            val width = videoStream.width?.toInt() ?: return false
+    private data class VideoTrackProbe(
+        val videoTrackCount: Int,
+        val audioTrackCount: Int,
+        val videoMime: String?,
+        val widthPx: Int,
+        val heightPx: Int,
+    )
 
-            val sizeBytes = if (file.exists()) file.length() else 0L
-            val durationMs = getDurationMs(inputPath)
-            if (sizeBytes <= 0L || durationMs <= 0L) return false
-            val avgBitrate = sizeBytes * 8L * 1000L / durationMs
+    private fun probeVideoTrack(inputPath: String): VideoTrackProbe {
+        var videoCount = 0
+        var audioCount = 0
+        var videoMime: String? = null
+        var widthPx = 0
+        var heightPx = 0
 
-            val ok = codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
-            Log.d(TAG, "isAlreadyOptimal: codec=$codec width=$width avgBps=$avgBitrate → $ok")
-            ok
+        val extractor = android.media.MediaExtractor()
+        try {
+            extractor.setDataSource(inputPath)
+            for (i in 0 until extractor.trackCount) {
+                val fmt = extractor.getTrackFormat(i)
+                val mime = fmt.getString(android.media.MediaFormat.KEY_MIME) ?: continue
+                when {
+                    mime.startsWith("video/") -> {
+                        videoCount++
+                        if (videoMime == null) {
+                            videoMime = mime
+                            widthPx = readDim(fmt, android.media.MediaFormat.KEY_WIDTH, "display-width")
+                            heightPx = readDim(fmt, android.media.MediaFormat.KEY_HEIGHT, "display-height")
+                        }
+                    }
+                    mime.startsWith("audio/") -> audioCount++
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "isAlreadyOptimal probe failed, assuming compression needed", e)
-            false
+            Log.w(TAG, "probeVideoTrack failed for $inputPath", e)
+        } finally {
+            try { extractor.release() } catch (_: Exception) {}
+        }
+        return VideoTrackProbe(videoCount, audioCount, videoMime, widthPx, heightPx)
+    }
+
+    private fun readDim(format: android.media.MediaFormat, primary: String, display: String): Int {
+        return try {
+            if (format.containsKey(display)) format.getInteger(display)
+            else format.getInteger(primary)
+        } catch (_: Exception) {
+            0
         }
     }
 
-    private fun formatSeconds(ms: Long): String {
-        val whole = ms / 1000
-        val frac = ms % 1000
-        return "$whole.${frac.toString().padStart(3, '0')}"
-    }
+    // (probeDimensions + Int.toEven removed — output-dim math + even-rounding
+    // now live in FfmpegCompressPlanner.computeOutputDims in commonMain.)
+
+    /**
+     * Async FFmpegKit bridged to a suspending coroutine. Returns the completed
+     * [FFmpegSession] so the caller can inspect `returnCode` and friends.
+     * Uses the async API to avoid sync `executeWithArguments`'s
+     * re-entry-in-same-process crashes (see [compressVideo] for details).
+     *
+     * When [onStatistics] is non-null, the 4-arg overload is used so ffmpeg-kit
+     * fires progress callbacks (~1-2 Hz) on its internal worker thread.
+     */
+    private suspend fun executeFfmpegAsync(
+        args: Array<String>,
+        onStatistics: ((Statistics) -> Unit)? = null,
+    ): FFmpegSession =
+        suspendCancellableCoroutine { cont ->
+            val onComplete = FFmpegSessionCompleteCallback { sess ->
+                if (cont.isActive) cont.resume(sess)
+            }
+            val session = if (onStatistics != null) {
+                FFmpegKit.executeWithArgumentsAsync(
+                    args,
+                    onComplete,
+                    null,
+                    StatisticsCallback { stats -> stats?.let(onStatistics) },
+                )
+            } else {
+                FFmpegKit.executeWithArgumentsAsync(args, onComplete)
+            }
+            cont.invokeOnCancellation {
+                try { session.cancel() } catch (_: Exception) {}
+            }
+        }
+
+    private fun progressFraction(timeMs: Long, durationMs: Long): Float =
+        if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     actual suspend fun segmentVideo(inputPath: String,
                                     onProgress: ((Float) -> Unit)?): Pair<String, String>? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val file = File(inputPath)
             if (!file.exists()) return@withContext null
 
@@ -316,7 +407,7 @@ actual object FFmpegUtils {
 
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val cacheFile = File(context.cacheDir, "input_$fileName")
             cacheFile.writeBytes(data)
             return@withContext cacheFile.absolutePath
@@ -328,7 +419,7 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val inputFile = File(inputPath)
             if (!inputFile.exists()) return@withContext null
 
@@ -385,7 +476,20 @@ actual object FFmpegUtils {
 
             Log.d(TAG, "Segment+Encrypt args: $args")
 
-            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            // Re-probe on the segmentation input — the upstream compressor may
+            // have trimmed, so the original input's duration is no longer the
+            // denominator for progress scaling.
+            val durationMs = getDurationMs(inputPath)
+
+            val session = try {
+                executeFfmpegAsync(args.toTypedArray()) { stats ->
+                    onProgress?.invoke(progressFraction(stats.time.toLong(), durationMs))
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "segmentAndEncryptVideo crashed", e)
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
+                return@withContext null
+            }
             if (ReturnCode.isSuccess(session.returnCode)) {
                 // Segmentation done — FFmpeg has consumed the key material. Delete it now
                 // so the plaintext AES key doesn't linger in the cache dir (see #7).

@@ -17,6 +17,7 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
+        quality: VideoQuality,
     ): String? = null
 
     actual suspend fun getDurationMs(inputPath: String): Long = 0L

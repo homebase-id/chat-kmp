@@ -23,6 +23,8 @@ import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.notifications.DesktopChatNotificationBridge
+import id.homebase.core.notifications.KMPNotifierBackend
+import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.JvmUpdateAppManager
@@ -48,6 +50,7 @@ actual fun platformModule(): Module = module {
         platformInfo = get(),
     ) }
     single<ShakeDetector> { JvmShakeDetector() }
+    single<NotificationBackend> { KMPNotifierBackend() }
     single(createdAtStart = true) {
         DesktopChatNotificationBridge(
             eventBus = get(),

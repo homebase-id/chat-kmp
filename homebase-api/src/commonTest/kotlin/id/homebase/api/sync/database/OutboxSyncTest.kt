@@ -649,6 +649,132 @@ class OutboxSyncTest {
         db.close()
     }
 
+    /**
+     * Regression for the URL-preview SVG bug (homebase.log 2026-05-17 17:34:21):
+     * `getLinkPreview` returned an inline SVG `data:` URI for Google Calendar.
+     * `ThumbnailGenerator` wrapped the SVG bytes (1634 raw) verbatim in an
+     * EmbeddedThumb, the server rejected the upload with HTTP 400
+     * "Thumbnail size of 1634 exceeds 1024" (errorCode collapsed to
+     * UnhandledScenario), and the outbox treated it as retryable — the
+     * stuck row blocked every subsequent message in the conversation for
+     * ~48h via dependency-id chaining. After the fix, the size-exceeds
+     * pattern in `isPermanentFailure` drops the row on attempt 1.
+     */
+    @Test
+    fun testPermanentFailure_ThumbnailSizeExceedsDroppedOnFirstAttempt() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.failureException = clientException(
+                errorCode = OdinClientErrorCode.UnhandledScenario,
+                message = "Thumbnail size of 1634 exceeds 1024",
+            )
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val droppedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+            }
+            testScheduler.runCurrent()
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+
+            try { sync.send() } catch (_: Exception) {}
+            advanceUntilIdle()
+
+            val dropped = droppedDeferred.await()
+
+            assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+            assertEquals(uniqueId, dropped.uniqueId)
+            assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        }
+        db.close()
+    }
+
+    /**
+     * Regression: once the head of a dependency chain is dropped (permanent
+     * failure), the next message in the chain must become eligible to
+     * checkout. This locks in the SQL behavior in `OutboxQueries.kt`
+     * (`WHERE … dependencyUniqueId IS NULL OR EXISTS(dep row)`).
+     */
+    @Test
+    fun testDependencyChainUnblocksAfterPermanentFailure() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.failureException = clientException(
+                errorCode = OdinClientErrorCode.UnhandledScenario,
+                message = "Thumbnail size of 1634 exceeds 1024",
+            )
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val completedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
+                    .first().totalCount
+            }
+            testScheduler.runCurrent()
+
+            val driveId = Uuid.random()
+            val stuckHead = Uuid.random()
+            val dependent = Uuid.random()
+
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = stuckHead,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = dependent,
+                dependencyUniqueId = stuckHead,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null,
+            )
+            assertEquals(2L, db.outbox.count())
+
+            // After head drops on attempt 1, the dependent becomes
+            // eligible. Future uploader.upload() calls still throw the
+            // size-exceeds exception → dependent also drops.
+            try { sync.send() } catch (_: Exception) {}
+            advanceUntilIdle()
+            completedDeferred.await()
+
+            assertEquals(
+                0L, db.outbox.count(),
+                "both stuck head and its dependent must be drained — dependent " +
+                        "stays in outbox only as long as the head exists"
+            )
+        }
+        db.close()
+    }
+
     @Test
     fun testEmptyOutbox() {
         val db = DatabaseManager({ createInMemoryDatabase() })

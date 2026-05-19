@@ -82,9 +82,13 @@ class HomebaseImageLoaderTest {
     }
 
     @Test
-    fun `THUMBLESS_CONTENT_TYPES contains svg and gif`() {
-        assertTrue(HomebaseImageLoader.THUMBLESS_CONTENT_TYPES.contains("image/svg+xml"))
+    fun `THUMBLESS_CONTENT_TYPES contains gif but not svg`() {
+        // Phase 3 rasterizes SVG into real webp thumbs on the sender
+        // side, so the receiver now prefers those bitmaps just like
+        // any other format. GIF stays in THUMBLESS because we want the
+        // animated original, not a static raster frame.
         assertTrue(HomebaseImageLoader.THUMBLESS_CONTENT_TYPES.contains("image/gif"))
+        assertTrue(!HomebaseImageLoader.THUMBLESS_CONTENT_TYPES.contains("image/svg+xml"))
     }
 
     @Test

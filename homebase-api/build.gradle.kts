@@ -32,6 +32,11 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
+        // Enables `src/androidInstrumentedTest/` for emulator-on-device tests
+        // (currently used by CompressVideoAndroidInstrumentedTest, which is
+        // @Ignore'd until CI emulator infra lands). Locally runnable with:
+        //   ./gradlew homebase-api:connectedAndroidTest
+        withDeviceTest {}
     }
 
     jvm() {
@@ -112,6 +117,12 @@ kotlin {
             implementation(libs.android.database.sqlcipher)
             implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
+            // MP4 atom-tree manipulation. Used by Mp4LocationStripper to drop
+            // EXIF / GPS location atoms from camera-recorded MP4s when the
+            // input passes through compressVideo's already-optimal check
+            // without re-encoding (re-encode naturally drops the atoms).
+            implementation(libs.mp4parser.isoparser)
+            implementation(libs.androidsvg)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
@@ -165,6 +176,21 @@ kotlin {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }
             implementation(libs.sqlite.jdbc.crypt)
+        }
+        // Android instrumented (on-device) tests for things that need real
+        // platform implementations — e.g. CompressVideoAndroidInstrumentedTest
+        // exercises the MediaCodec transcode path, which needs real codec
+        // hardware to load. Currently @Ignore'd until CI emulator infra is
+        // wired up. Source set named `androidDeviceTest` per AGP 9 KMP
+        // convention (vs the older `androidInstrumentedTest`).
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.junit)
         }
     }
 

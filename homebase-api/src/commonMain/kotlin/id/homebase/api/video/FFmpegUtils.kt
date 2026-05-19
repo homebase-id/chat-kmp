@@ -14,6 +14,7 @@ expect object FFmpegUtils {
         onProgress: ((Float) -> Unit)? = null,
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
+        quality: VideoQuality = VideoQuality.STANDARD,
     ): String?
 
     suspend fun getDurationMs(inputPath: String): Long
@@ -36,4 +37,24 @@ expect object FFmpegUtils {
      * using stream copy (no re-encoding). Returns true on success.
      */
     suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean
+
+    /**
+     * Version reported by the underlying ffmpeg (e.g. "n6.0", "6.1.1"), or null if it
+     * could not be determined. Result is process-stable; actuals memoize after the first call.
+     */
+    suspend fun getFfmpegVersion(): String?
+}
+
+/**
+ * Parses the version token out of the first line of `ffmpeg -version` output.
+ * Banner format: "ffmpeg version <ver> Copyright (c) ..."
+ */
+internal fun parseFfmpegVersionBanner(output: String?): String? {
+    if (output.isNullOrBlank()) return null
+    val firstLine = output.lineSequence()
+        .firstOrNull { it.contains("ffmpeg version", ignoreCase = true) }
+        ?: return null
+    val afterTag = firstLine.substringAfter("ffmpeg version", "").trim()
+    if (afterTag.isEmpty()) return null
+    return afterTag.substringBefore(' ').takeIf { it.isNotBlank() }
 }

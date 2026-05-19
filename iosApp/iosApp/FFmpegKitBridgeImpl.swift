@@ -12,6 +12,36 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         let failStackTrace = session?.getFailStackTrace()
         return FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace)
     }
+
+    func executeFFmpegAsync(
+        command: String,
+        onProgress: @escaping (KotlinLong) -> Void,
+        onComplete: @escaping (FFmpegResult) -> Void
+    ) {
+        FFmpegKit.executeAsync(
+            command,
+            withCompleteCallback: { session in
+                let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+                let failStackTrace = session?.getFailStackTrace()
+                onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                let timeMs = Int64(stats?.getTime() ?? 0)
+                onProgress(KotlinLong(value: timeMs))
+            }
+        )
+    }
+
+    func cancelAllFFmpegSessions() {
+        FFmpegKit.cancel()
+    }
+
+    func getFfmpegVersionBanner() -> String? {
+        guard let session = FFmpegKit.execute("-version") else { return nil }
+        guard ReturnCode.isSuccess(session.getReturnCode()) else { return nil }
+        return session.getAllLogsAsString()
+    }
     
     func getMediaInformation(filePath: String) -> MediaInfo? {
         guard let session = FFprobeKit.getMediaInformation(filePath) else {

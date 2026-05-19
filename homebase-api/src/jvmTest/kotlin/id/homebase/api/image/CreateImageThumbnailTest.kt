@@ -96,7 +96,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20, "Tiny thumb max dim ${max(result.pixelWidth, result.pixelHeight)} > 20")
-        assertTrue(result.thumbnailBytes.size <= 768, "Tiny thumb size ${result.thumbnailBytes.size} > 768")
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes, "Tiny thumb size ${result.thumbnailBytes.size} > ${tinyThumbSize.maxBytes}")
         assertEquals("image/webp", result.contentType)
     }
 
@@ -105,7 +105,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("5760_x_4320.jpg")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768)
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes)
     }
 
     @Test
@@ -113,7 +113,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("dice.png")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768)
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes)
         assertEquals("image/webp", result.contentType)
     }
 
@@ -122,7 +122,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("1_webp_a.webp")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768)
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes)
     }
 
     @Test
@@ -130,7 +130,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("mountain_800.gif")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768)
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes)
         assertEquals("image/webp", result.contentType)
     }
 
@@ -139,7 +139,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768)
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes)
     }
 
     @Test
@@ -158,7 +158,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("wrenches.jpg")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768, "Tiny thumb ${result.thumbnailBytes.size} > 768 for wrenches")
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes, "Tiny thumb ${result.thumbnailBytes.size} > ${tinyThumbSize.maxBytes} for wrenches")
     }
 
     @Test
@@ -166,7 +166,7 @@ class CreateImageThumbnailTest {
         val bytes = ImageTestHelper.loadImage("waterhouse.jpg")
         val result = createImageThumbnail(bytes, "key", tinyThumbSize, isTinyThumb = true)
         assertTrue(max(result.pixelWidth, result.pixelHeight) <= 20)
-        assertTrue(result.thumbnailBytes.size <= 768, "Tiny thumb ${result.thumbnailBytes.size} > 768 for waterhouse")
+        assertTrue(result.thumbnailBytes.size <= tinyThumbSize.maxBytes, "Tiny thumb ${result.thumbnailBytes.size} > ${tinyThumbSize.maxBytes} for waterhouse")
     }
 
     // =========================================================
@@ -328,8 +328,8 @@ class CreateImageThumbnailTest {
                 "Tiny thumb for $file produced empty bytes"
             )
             assertTrue(
-                result.thumbnailBytes.size <= 768,
-                "Tiny thumb for $file is ${result.thumbnailBytes.size} bytes (max 768)"
+                result.thumbnailBytes.size <= tinyThumbSize.maxBytes,
+                "Tiny thumb for $file is ${result.thumbnailBytes.size} bytes (max ${tinyThumbSize.maxBytes})"
             )
             val maxDim = maxOf(result.pixelWidth, result.pixelHeight)
             assertTrue(

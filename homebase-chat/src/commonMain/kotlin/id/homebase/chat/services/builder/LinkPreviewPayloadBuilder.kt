@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.link.LinkPreview
@@ -31,7 +32,37 @@ object LinkPreviewPayloadBuilder {
             ByteArray(0)
         }
 
-        val actualHasImage = imageBytes.isNotEmpty()
+        // Generate tinyThumb first so we know whether we'll be able to
+        // render an image on the receiver side. createThumbnails returns
+        // null for SVG (no decoder in any ImageUtils actual today); the
+        // defensive size check below catches a hypothetical future raster
+        // path that produces an oversize thumb so the upload can't slip
+        // past the server's MaxEmbeddedThumbBytes cap and stall the
+        // outbox. Server measures raw (decoded) bytes; estimate the raw
+        // length from the base64 string without re-decoding it.
+        val tinyThumb: EmbeddedThumb? = if (imageBytes.isNotEmpty()) {
+            try {
+                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
+                val content = thumb?.content
+                if (thumb != null && content != null &&
+                    estimateRawBytesFromBase64(content) > HomebaseProtocol.MaxEmbeddedThumbBytes) {
+                    null
+                } else {
+                    thumb
+                }
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
+        // hasImage is the receiver-side gate (LinkPreviewCard skips the
+        // image block when false). If we couldn't produce a thumb the
+        // bubble must render title + description only — otherwise it
+        // requests THUMB_MEDIUM from the drive and shows a warning
+        // triangle when the load fails.
+        val actualHasImage = tinyThumb != null
 
         // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
         var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = null)
@@ -54,18 +85,6 @@ object LinkPreviewPayloadBuilder {
             bytes = payloadBytes, prefix = "link_preview", suffix = ".dat"
         )
 
-        // 4. Generate tinyThumb if image exists
-        val tinyThumb: EmbeddedThumb? = if (actualHasImage) {
-            try {
-                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
-                thumb
-            } catch (e: Exception) {
-                null
-            }
-        } else {
-            null
-        }
-
         return PayloadBundle(
             payloads = listOf(
                 PayloadFile(
@@ -77,6 +96,19 @@ object LinkPreviewPayloadBuilder {
                 )
             ), thumbnails = emptyList(), previewThumbs = listOfNotNull(tinyThumb)
         )
+    }
+
+    // Avoid re-decoding the base64 string just to count bytes. Each 4
+    // base64 chars encodes 3 raw bytes; trailing '=' padding shaves 1
+    // or 2 off the last group.
+    private fun estimateRawBytesFromBase64(content: String): Int {
+        if (content.isEmpty()) return 0
+        val padding = when {
+            content.endsWith("==") -> 2
+            content.endsWith("=") -> 1
+            else -> 0
+        }
+        return content.length / 4 * 3 - padding
     }
 
     private fun buildDescriptorJson(

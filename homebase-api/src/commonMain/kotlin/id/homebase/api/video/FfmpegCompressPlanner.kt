@@ -1,0 +1,220 @@
+package id.homebase.api.video
+
+/**
+ * The bitrate + dimension targets for a given [VideoQuality]. Single source of
+ * truth so Android, iOS, and Desktop produce comparable output for the same
+ * `quality` enum value.
+ */
+data class QualityTargets(
+    /** Target short-edge dimension in pixels. Source is scaled DOWN to this; not up. */
+    val shortEdgePx: Int,
+    /** Target average video bitrate, bits per second. */
+    val videoBitrateBps: Int,
+    /** Target AAC audio bitrate, bits per second. */
+    val audioBitrateBps: Int,
+)
+
+fun VideoQuality.targets(): QualityTargets = when (this) {
+    VideoQuality.LOW      -> QualityTargets(shortEdgePx = 480,  videoBitrateBps = 1_250_000, audioBitrateBps = 128_000)
+    VideoQuality.STANDARD -> QualityTargets(shortEdgePx = 720,  videoBitrateBps = 2_500_000, audioBitrateBps = 128_000)
+    VideoQuality.HIGH     -> QualityTargets(shortEdgePx = 1080, videoBitrateBps = 5_000_000, audioBitrateBps = 192_000)
+}
+
+/**
+ * The output of [FfmpegCompressPlanner.plan]. Either tells the caller to skip
+ * ffmpeg ([skipReason] non-null — input was already within the quality envelope)
+ * or provides the [args] to invoke ffmpeg with.
+ */
+data class FfmpegCompressPlan(
+    /** ffmpeg argv (after the ffmpeg-binary name itself). Empty when [skipReason] is non-null. */
+    val args: List<String>,
+    /** Non-null = caller should skip ffmpeg invocation and return null. Description for logs. */
+    val skipReason: String?,
+    /** Resolved output dimensions, for logging. Null when [skipReason] is non-null. */
+    val outputDims: Pair<Int, Int>?,
+)
+
+/**
+ * Pure-function planner for ffmpeg `compressVideo` invocations. Caller supplies
+ * probed input metadata + caller-driven params; planner decides whether to
+ * short-circuit (already-optimal) and assembles the full ffmpeg argv list when
+ * not skipping.
+ *
+ * Lives in commonMain so Android, iOS, and Desktop actuals share one
+ * implementation of:
+ *  - the quality → bitrate/dimension mapping ([QualityTargets])
+ *  - the already-optimal predicate ([isAlreadyOptimal])
+ *  - output-dimension computation ([computeOutputDims])
+ *  - ffmpeg arg assembly (this object's [plan] method)
+ *
+ * Each platform's `FFmpegUtils.compressVideo` actual then reduces to: probe
+ * the input via the platform-native API (MediaExtractor / Swift bridge /
+ * ffprobe), call [plan], and either short-circuit or hand `plan.args` to the
+ * platform-native ffmpeg invoker. No I/O or platform dependencies in this file.
+ */
+object FfmpegCompressPlanner {
+
+    /**
+     * Build the compress plan.
+     *
+     * @param inputPath path to the source video file (used as the `-i` arg)
+     * @param outputPath where ffmpeg should write the result
+     * @param quality target quality preset → resolved via [VideoQuality.targets]
+     * @param trimStartMs trim start in milliseconds; if both trim ends are non-null,
+     *   trim args (`-ss`/`-to`) are appended and the already-optimal short-circuit is
+     *   disabled (trim always re-encodes)
+     * @param trimEndMs trim end in milliseconds; same semantics as [trimStartMs]
+     * @param probedWidthPx source video width as probed by the caller; pass 0 if unknown
+     *   (planner will fall through to ffmpeg encoding at source dims)
+     * @param probedHeightPx source video height as probed by the caller; pass 0 if unknown
+     * @param probedCodecMime source video codec, in either MediaCodec form
+     *   (`"video/avc"`, `"video/hevc"`) or ffprobe short form (`"h264"`, `"hevc"`).
+     *   Pass null when probe failed — already-optimal short-circuit will not fire.
+     * @param inputDurationMs source video duration in milliseconds (for bitrate calc).
+     *   Pass ≤0 if unknown — already-optimal short-circuit will not fire.
+     * @param inputBytes source file size in bytes (for bitrate calc)
+     * @param encoder ffmpeg encoder name. Defaults to `"libx264"`; iOS passes
+     *   `"h264_videotoolbox"` first and falls back to libx264 on failure
+     */
+    fun plan(
+        inputPath: String,
+        outputPath: String,
+        quality: VideoQuality,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
+        probedWidthPx: Int,
+        probedHeightPx: Int,
+        probedCodecMime: String?,
+        inputDurationMs: Long,
+        inputBytes: Long,
+        encoder: String = "libx264",
+    ): FfmpegCompressPlan {
+        val targets = quality.targets()
+        val hasTrim = trimStartMs != null && trimEndMs != null
+
+        // Already-optimal short-circuit: skip ffmpeg entirely. Trim forces
+        // re-encode (the trim points are precise only with a real encode pass).
+        if (!hasTrim && isAlreadyOptimal(
+                probedCodecMime, probedWidthPx, probedHeightPx,
+                inputBytes, inputDurationMs, targets,
+            )
+        ) {
+            return FfmpegCompressPlan(
+                args = emptyList(),
+                skipReason = "input already optimal " +
+                    "(codec=$probedCodecMime, ${probedWidthPx}x${probedHeightPx}, " +
+                    "${inputDurationMs}ms, ${inputBytes}B, quality=$quality)",
+                outputDims = null,
+            )
+        }
+
+        val outDims = computeOutputDims(probedWidthPx, probedHeightPx, targets.shortEdgePx)
+        val scaleArgs = if (outDims != null) {
+            // Explicit W:H — sidesteps the comma-escaping landmine that an
+            // expression-based filter (`scale=min(N,iw):-2`) hits when fed
+            // through executeWithArguments / shell parsers.
+            listOf("-vf", "scale=${outDims.first}:${outDims.second}")
+        } else {
+            // Source already at-or-below target short edge — no scaling needed.
+            emptyList()
+        }
+
+        val args = buildList {
+            add("-y")
+            add("-i"); add(inputPath)
+            if (trimStartMs != null && trimEndMs != null) {
+                // -ss AFTER -i: accurate seek (with re-encode pass; what the user expects).
+                add("-ss"); add(formatSeconds(trimStartMs))
+                add("-to"); add(formatSeconds(trimEndMs))
+            }
+            add("-c:v"); add(encoder)
+            // -preset is a libx264 option. h264_videotoolbox ignores it with a
+            // warning — skip on non-libx264 to keep stderr clean.
+            if (encoder == "libx264") {
+                add("-preset"); add("veryfast")
+            }
+            add("-b:v"); add("${targets.videoBitrateBps / 1000}k")
+            addAll(scaleArgs)
+            add("-c:a"); add("aac")
+            add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
+            add("-movflags"); add("+faststart")
+            add(outputPath)
+        }
+
+        return FfmpegCompressPlan(
+            args = args,
+            skipReason = null,
+            outputDims = outDims ?: (probedWidthPx to probedHeightPx),
+        )
+    }
+
+    /**
+     * Already-optimal predicate. True iff the source is H.264 single-video-track
+     * within both the short-edge and the average-bitrate budget (×1.2 slack).
+     *
+     * Mirrors the Android v2 SPEC §7 logic. Returns false on any probe
+     * gap (null codec, zero dim, zero duration) — caller falls through to a
+     * real transcode in that case.
+     */
+    internal fun isAlreadyOptimal(
+        codecMime: String?,
+        widthPx: Int,
+        heightPx: Int,
+        inputBytes: Long,
+        durationMs: Long,
+        targets: QualityTargets,
+    ): Boolean {
+        if (codecMime == null || widthPx <= 0 || heightPx <= 0 || durationMs <= 0) return false
+        if (!isH264(codecMime)) return false
+        val shortEdgePx = minOf(widthPx, heightPx)
+        if (shortEdgePx > targets.shortEdgePx) return false
+        val avgBitrateBps = inputBytes * 8L * 1000L / durationMs
+        val budgetBps = (1.2 * (targets.videoBitrateBps + targets.audioBitrateBps)).toLong()
+        return avgBitrateBps <= budgetBps
+    }
+
+    /**
+     * Returns the (width, height) the encoder should produce, or null if the
+     * source short edge is already at-or-below [shortEdgePx] (no scaling needed
+     * — encode at source dims).
+     *
+     * Both output dims rounded UP to the nearest even integer — libx264 (and
+     * h264_videotoolbox) require even W/H.
+     */
+    internal fun computeOutputDims(srcW: Int, srcH: Int, shortEdgePx: Int): Pair<Int, Int>? {
+        if (srcW <= 0 || srcH <= 0) return null
+        val srcShort = minOf(srcW, srcH)
+        if (srcShort <= shortEdgePx) return null  // no upscaling; no scale arg needed
+        val (outW, outH) = if (srcW < srcH) {
+            // Portrait
+            shortEdgePx to (srcH * shortEdgePx / srcW)
+        } else {
+            // Landscape (or square)
+            (srcW * shortEdgePx / srcH) to shortEdgePx
+        }
+        return outW.toEven() to outH.toEven()
+    }
+
+    /**
+     * H.264 codec detection. Accepts both Android MediaExtractor's MIME form
+     * (`"video/avc"`) and ffprobe / iOS bridge's short form (`"h264"`).
+     * Case-insensitive.
+     */
+    private fun isH264(codecMime: String): Boolean {
+        val lower = codecMime.lowercase()
+        return lower == "video/avc" || lower == "h264" || lower == "avc"
+    }
+
+    private fun Int.toEven(): Int = if (this and 1 == 0) this else this + 1
+
+    /**
+     * Formats `<ms>` as `S.fff` for ffmpeg's `-ss`/`-to` args. Locale-safe —
+     * always uses `.` as the decimal separator (some default locales use `,`,
+     * which ffmpeg parses as a separate arg).
+     */
+    private fun formatSeconds(ms: Long): String {
+        val whole = ms / 1000L
+        val frac = ms % 1000L
+        return "$whole." + frac.toString().padStart(3, '0')
+    }
+}

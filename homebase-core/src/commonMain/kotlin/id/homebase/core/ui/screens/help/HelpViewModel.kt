@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.help
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.video.FFmpegUtils
 import id.homebase.core.logging.LogFileExporter
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.setErrorCollectionEnabled
@@ -37,6 +38,19 @@ class HelpViewModel(
 
     init {
         checkForUpdate()
+        loadFfmpegVersion()
+    }
+
+    private fun loadFfmpegVersion() {
+        viewModelScope.launch {
+            val version = try {
+                FFmpegUtils.getFfmpegVersion()
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to read ffmpeg version" }
+                null
+            }
+            _uiState.update { it.copy(ffmpegVersion = version) }
+        }
     }
 
     fun onAction(action: HelpUiAction) {

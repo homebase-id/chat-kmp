@@ -44,6 +44,7 @@ import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
 import id.homebase.resources.help_enable_error_collection
+import id.homebase.resources.help_ffmpeg_version
 import id.homebase.resources.help_submit_debug_log
 import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
@@ -201,6 +202,25 @@ fun HelpUi(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    uiState.ffmpegVersion?.let { ffmpegVersion ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.help_ffmpeg_version),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = ffmpegVersion,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     if (uiState.isCheckingForUpdate) {
                         HelpClickableRow(

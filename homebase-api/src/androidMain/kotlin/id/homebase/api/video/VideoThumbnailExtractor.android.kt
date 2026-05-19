@@ -26,7 +26,7 @@ actual object VideoThumbnailExtractor {
 
     actual suspend fun extractPosterFrame(videoPath: String): ByteArray? =
         withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireActivity().applicationContext
+            val context = ActivityProvider.requireApplicationContext()
             val isContentUri = videoPath.startsWith("content://") || videoPath.startsWith("content:")
 
             if (isContentUri) {
@@ -101,7 +101,7 @@ actual object VideoThumbnailExtractor {
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
 
-        val context = ActivityProvider.requireActivity().applicationContext
+        val context = ActivityProvider.requireApplicationContext()
         val isContentUri = filePath.startsWith("content://") || filePath.startsWith("content:")
         if (!isContentUri && !File(filePath).exists()) return@channelFlow
 

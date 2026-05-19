@@ -1328,17 +1328,65 @@ fun ConversationContent(
                             }
                         }
                     } else if (!uiState.isSearchActive) {
-                        Column(
-                            modifier = Modifier.animateContentSize()
-                                .focusProperties { canFocus = inputFocusable }) {
-                            uiState.replyToMessage?.let { msg ->
-                                ReplyPreviewBar(
-                                    message = msg,
-                                    onDismiss = {
-                                        onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                                    },
-                                )
+                        var showSendButton by remember { mutableStateOf(false) }
+                        var isRecordingActive by remember { mutableStateOf(false) }
+
+                        val performSend = { text: String, attachments: List<id.homebase.chat.services.renderer.PayloadRenderer> ->
+                            val hasContent = text.isNotBlank() ||
+                                attachments.any { it !is id.homebase.chat.services.renderer.LinkPreviewRenderer }
+                            if (hasContent) {
+                                if (uiState.isEditingMessageId != null) {
+                                    onUiAction(ConversationListUiAction.EditMessageSave)
+                                } else {
+                                    onUiAction(
+                                        ConversationListUiAction.SendMessage(
+                                            conversationId = conversation.conversation.id,
+                                            payloadRenderers = attachments,
+                                        )
+                                    )
+                                    payloadRenderers = emptyList()
+                                }
                             }
+                        }
+
+                        val toggleAttachmentSheet = {
+                            showEmojiSheet = false
+                            if (showAttachmentSheet && !isKeyboardVisible) {
+                                showAttachmentSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showAttachmentSheet = true
+                            }
+                        }
+
+                        UnifiedInputBubble(
+                            replyToMessage = uiState.replyToMessage,
+                            onDismissReply = {
+                                onUiAction(ConversationListUiAction.CancelReplyToMessage)
+                            },
+                            editExistingMode = uiState.isEditingMessageId != null,
+                            showSendButton = showSendButton,
+                            isRecordingActive = isRecordingActive,
+                            isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                            onSendMessage = {
+                                performSend(textFieldState.toMarkdown(), payloadRenderers)
+                            },
+                            onCancelEdit = {
+                                onUiAction(ConversationListUiAction.CancelEditMessage)
+                            },
+                            onAddAttachmentClick = { toggleAttachmentSheet() },
+                            modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                        ) {
                             MessageInputBar(
                                 textFieldState = textFieldState,
                                 recordingData = recordingData,
@@ -1346,29 +1394,12 @@ fun ConversationContent(
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
                                 isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                                showActionButtons = false,
+                                onSendStateChanged = { showSendButton = it },
+                                onRecordingStateChanged = { isRecordingActive = it },
                                 payloadRenderers = payloadRenderers,
                                 onPayloadRenderersChange = { payloadRenderers = it },
-                                onSendMessage = { text, attachments ->
-                                    val hasContent = text.isNotBlank() ||
-                                        attachments.any { it !is id.homebase.chat.services.renderer.LinkPreviewRenderer }
-                                    if (hasContent) {
-                                        if (uiState.isEditingMessageId != null) {
-                                            onUiAction(
-                                                ConversationListUiAction.EditMessageSave
-                                            )
-                                        } else {
-                                            onUiAction(
-                                                ConversationListUiAction.SendMessage(
-                                                    conversationId = conversation.conversation.id,
-                                                    payloadRenderers = attachments,
-                                                )
-                                            )
-                                            // Clear the staged slot so the next message doesn't
-                                            // inherit the just-sent attachments.
-                                            payloadRenderers = emptyList()
-                                        }
-                                    }
-                                },
+                                onSendMessage = { text, attachments -> performSend(text, attachments) },
                                 onEmojiClick = {
                                     showAttachmentSheet = false
                                     if (showEmojiSheet && !isKeyboardVisible) {
@@ -1398,25 +1429,7 @@ fun ConversationContent(
                                     showEmojiSheet = false
                                     showAttachmentSheet = false
                                 },
-                                onAddAttachmentClick = {
-                                    showEmojiSheet = false
-                                    if (showAttachmentSheet && !isKeyboardVisible) {
-                                        showAttachmentSheet = false
-                                        if (wasKeyboardVisible) {
-                                            focusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        }
-                                    } else {
-                                        if (isKeyboardVisible) {
-                                            wasKeyboardVisible = true
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                        } else {
-                                            wasKeyboardVisible = false
-                                        }
-                                        showAttachmentSheet = true
-                                    }
-                                },
+                                onAddAttachmentClick = { toggleAttachmentSheet() },
                                 onCameraClick = { cameraLauncher.launch() },
                                 onVideoRecordClick = { videoRecorderLauncher.launch() },
                                 onRecordingStarted = {
@@ -1437,7 +1450,8 @@ fun ConversationContent(
                                         )
                                     )
                                 },
-                                onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
+                                onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) },
+                            )
                         }
                     } // else (not Left)
                 }

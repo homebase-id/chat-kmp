@@ -23,6 +23,7 @@ nucleus = "1.14.4"
 conveyor = "2.0"
 conveyorControl = "1.1"
 ffmpegKit = "1.0"
+mp4parser = "1.9.39"
 vlcj = "4.8.2"
 jetbrains-compose-material3 = "1.9.0"
 jetbrains-compose-material3-adaptive = "1.2.0"
@@ -72,6 +73,7 @@ metadataExtractor = "2.19.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
+mp4parser-isoparser = { module = "org.mp4parser:isoparser", version.ref = "mp4parser" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
@@ -176,6 +178,7 @@ coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref
 coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil3" }
 coil3-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" } # Android only
 coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
+androidsvg = { module = "com.caverock:androidsvg-aar", version = "1.4" }
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlinStdlib" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "googleAccompanist" }
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "googleAccompanist" }

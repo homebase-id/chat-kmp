@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.drives.upload.validateForUpload
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -93,6 +94,11 @@ class DriveOutboxUploader(
 
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UploadFileRequest>(outboxRecord.json.decodeToString())
+        // Pre-flight: catch oversize thumbs / payload-key typos / etc.
+        // before the network call so the row drops on attempt 1 via the
+        // existing isPermanentFailure path instead of after a wasted
+        // round-trip. See UploadValidation.kt.
+        request.validateForUpload()
         Logger.d("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} fileType=${request.metadata.appData.fileType} driveId=${request.driveId}")
         try {
             val result = driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
@@ -223,6 +229,8 @@ class DriveOutboxUploader(
 
     private suspend fun updateFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(outboxRecord.json.decodeToString())
+        // Pre-flight: same gate as uploadNewFile — see UploadValidation.kt.
+        request.validateForUpload()
         val result = driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
