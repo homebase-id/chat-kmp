@@ -3,11 +3,17 @@ package id.homebase.api.video
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegSession
+import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
+import com.arthenica.ffmpegkit.ReturnCode
 import id.homebase.api.ActivityProvider
 import java.io.File
+import kotlin.coroutines.resume
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -183,4 +189,82 @@ class CompressVideoAndroidInstrumentedTest {
             cleanup.forEach { it.delete() }
         }
     }
+
+    // -----------------------------------------------------------------
+    // MediaCodec smoke test — sanity check for the FFmpeg 8 binder gate.
+    //
+    // FFmpeg 8 added `android_binder_threadpool_init_if_required()` which
+    // runs at every ffmpeg_execute() inside `#if CONFIG_MEDIACODEC`. The
+    // upstream init aborts (SIGABRT) when called from a process that
+    // isn't a proper binder client. Homebase's build gates the real
+    // init on argv containing `_mediacodec` — software-only invocations
+    // skip it entirely.
+    //
+    // This test forces the HW path via `-c:v h264_mediacodec`. It proves:
+    //   1. Our argv-scan gate detects "_mediacodec" → flips the
+    //      `homebase_mediacodec_will_be_used` flag → real init runs.
+    //   2. The real init survives in the instrumented-test process.
+    //   3. h264_mediacodec actually encodes successfully on the
+    //      Android emulator (which provides a software MediaCodec impl).
+    //
+    // Output: a fresh ~2s mp4 at quality good enough to be non-empty.
+    // We don't assert duration / dimensions — that's covered by the
+    // baseline tests. Here we just want "did it run end-to-end".
+    // -----------------------------------------------------------------
+
+    @Test
+    fun compressVideo_h264MediaCodecSmoke() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val outFile = File(ctx.cacheDir, "h264_mediacodec_smoke.mp4")
+        outFile.delete()
+        val cleanup = mutableListOf(fixture, outFile)
+        try {
+            val args = arrayOf(
+                "-y",
+                "-i", fixture.absolutePath,
+                "-t", "2", // 2s is enough — keeps test under 30s
+                "-c:v", "h264_mediacodec",
+                "-b:v", "2M",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
+                outFile.absolutePath,
+            )
+            Log.i("MEDIACODEC_SMOKE", "args: ${args.joinToString(" ")}")
+            val session = executeFfmpegArgs(args)
+            val rc = session.returnCode
+            val outBytes = if (outFile.exists()) outFile.length() else 0L
+            Log.i(
+                "MEDIACODEC_SMOKE",
+                "rc=$rc outBytes=$outBytes failStackTrace=${session.failStackTrace}",
+            )
+            assertTrue(
+                ReturnCode.isSuccess(rc),
+                "h264_mediacodec encode must succeed (rc=$rc). " +
+                    "If this fails with SIGABRT in logcat at " +
+                    "android_binder_threadpool_init_if_required, the binder " +
+                    "gate broke. If it fails with codec not found, the " +
+                    "emulator dropped MediaCodec support. See ffmpeg-kit " +
+                    "CUSTOMIZATION.md U24.",
+            )
+            assertTrue(outBytes > 0L, "encoded output must be non-empty")
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
+    /** Minimal coroutine wrapper around FFmpegKit.executeWithArgumentsAsync —
+     *  mirrors FFmpegUtils.android.kt::executeFfmpegAsync but lives here so
+     *  the test doesn't depend on a private internal helper. */
+    private suspend fun executeFfmpegArgs(args: Array<String>): FFmpegSession =
+        suspendCancellableCoroutine { cont ->
+            val onComplete = FFmpegSessionCompleteCallback { sess ->
+                if (cont.isActive) cont.resume(sess)
+            }
+            val session = FFmpegKit.executeWithArgumentsAsync(args, onComplete)
+            cont.invokeOnCancellation {
+                try { session.cancel() } catch (_: Exception) {}
+            }
+        }
 }
