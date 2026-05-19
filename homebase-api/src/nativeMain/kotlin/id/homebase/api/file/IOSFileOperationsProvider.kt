@@ -67,26 +67,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override fun copyToSandboxIfNeeded(path: String): String {
-        if (path.startsWith("ph://") || path.contains("/L0/")) return path
-        val fm = NSFileManager.defaultManager
-        if (fm.isReadableFileAtPath(path)) return path
-
-        val url = NSURL.fileURLWithPath(path)
-        val accessed = url.startAccessingSecurityScopedResource()
-        try {
-            val ext = url.pathExtension ?: "tmp"
-            val tempPath = "${NSTemporaryDirectory()}sandbox_${NSUUID().UUIDString}.$ext"
-            if (fm.copyItemAtPath(path, tempPath, null)) {
-                return tempPath
-            }
-        } finally {
-            if (accessed) url.stopAccessingSecurityScopedResource()
-        }
-        return path
-    }
-
-    @OptIn(ExperimentalForeignApi::class)
     override fun deleteTempFile(path: String): Boolean {
         return runCatching {
             val fileManager = NSFileManager.defaultManager
@@ -209,22 +189,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
             }
             data.writeToFile(tmpPath, atomically = true)
             return tmpPath
-        }
-
-        if (path.contains("File Provider Storage") || path.contains("/Shared/AppGroup/")) {
-            val url = NSURL.fileURLWithPath(path)
-            val accessed = url.startAccessingSecurityScopedResource()
-            try {
-                val fm = NSFileManager.defaultManager
-                val ext = url.pathExtension ?: "tmp"
-                val tempPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.$ext"
-                val tempUrl = NSURL.fileURLWithPath(tempPath)
-                if (fm.copyItemAtURL(url, tempUrl, null)) {
-                    return tempPath
-                }
-            } finally {
-                if (accessed) url.stopAccessingSecurityScopedResource()
-            }
         }
 
         return path
