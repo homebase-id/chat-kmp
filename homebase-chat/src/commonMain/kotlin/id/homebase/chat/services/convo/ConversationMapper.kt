@@ -224,8 +224,27 @@ class ConversationMapper(
                     exitedAt = exitedAt,
                     fileUpdated = metadata.updated.toInstant()
                 )
-            } catch (t: Throwable) {
-                logger.e(t) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Cooperative cancellation — never an indictment of file content.
+                throw e
+            } catch (e: Exception) {
+                // Content / validation failure — malformed JSON, missing
+                // uniqueId, empty participants list, schema drift, etc.
+                // This IS what the recovery path is for: surface as
+                // ConversationState.Invalid so [recoverConversation] can
+                // replace the broken local row with a placeholder and
+                // re-sync the real file from the server.
+                //
+                // NOTE: `Error` subclasses (NoClassDefFoundError, LinkageError,
+                // OutOfMemoryError, …) are NOT caught here — they're JVM /
+                // environment problems, not file-content problems, and we
+                // must not treat them as "this conversation is corrupt" or
+                // we'll mass-overwrite real conv-files with placeholders
+                // when, say, a class is missing at runtime. Those propagate
+                // out to [ConversationStream.loadBasicConversations], which
+                // catches them per row and skips (leaving the file on disk
+                // untouched).
+                logger.e(e) {
                     "FAILED map | fileId=${conversationFile.fileId}"
                 }
                 ConversationUiModel(

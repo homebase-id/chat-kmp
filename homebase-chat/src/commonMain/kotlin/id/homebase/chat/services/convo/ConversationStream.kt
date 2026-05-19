@@ -810,8 +810,29 @@ class ConversationStream(
             // mapper would resurrect a "deleted conversation" placeholder for them
             // on every reload. See [onConversationDeleted].
             .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
-            .map { file ->
-                val ui = mapper.mapToBasic(file)
+            .mapNotNull { file ->
+                // [ConversationMapper.mapToBasic] re-throws JVM `Error`s
+                // (NoClassDefFoundError, LinkageError, OOM, …) instead of
+                // routing them through the Invalid placeholder + recovery
+                // path, because those errors are environment problems —
+                // they have nothing to do with the file's content. Catch
+                // them here and SKIP the row: leave the conv-file on disk
+                // untouched, do not write a placeholder, do not delete it.
+                // The next reload (or app restart with the env fixed) will
+                // map it correctly. Surfacing a stale env error as "your
+                // data is corrupt" is what mass-overwrote real conv-files
+                // with placeholders during the missing-ImageSize incident.
+                val ui = try {
+                    mapper.mapToBasic(file)
+                } catch (e: Error) {
+                    Logger.e(throwable = e, tag = "ConvListPerf") {
+                        "loadBasicConversations: JVM error mapping fileId=${file.fileId} " +
+                            "uniqueId=${file.fileMetadata.appData.uniqueId} — SKIPPING this row " +
+                            "(file untouched on disk; recovery NOT triggered). " +
+                            "Likely a runtime/classpath issue, not file corruption."
+                    }
+                    return@mapNotNull null
+                }
                 val finalUi = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
