@@ -39,12 +39,15 @@ actual class PdfRenderer actual constructor() {
         close()
         val nsUrl = NSURL.fileURLWithPath(filePath)
         val accessed = nsUrl.startAccessingSecurityScopedResource()
-        if (accessed) accessedUrl = nsUrl
 
         val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
         try {
             document = CGPDFDocumentCreateWithURL(cfUrl as platform.CoreFoundation.CFURLRef)
                 ?: throw IllegalArgumentException("Cannot open PDF: $filePath")
+            if (accessed) accessedUrl = nsUrl
+        } catch (e: Throwable) {
+            if (accessed) nsUrl.stopAccessingSecurityScopedResource()
+            throw e
         } finally {
             platform.CoreFoundation.CFRelease(cfUrl)
         }
