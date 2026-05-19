@@ -93,6 +93,11 @@ fun main() {
             )
         }
     }
+    LocalCallbackServer.setDataUpgradeCallback {
+        runBlocking {
+            eventBus.emit(BackendEvent.DataUpgradeReturned)
+        }
+    }
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")

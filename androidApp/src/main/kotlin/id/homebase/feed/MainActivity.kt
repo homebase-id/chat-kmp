@@ -162,6 +162,17 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
+            // Owner-console "Data Upgrade" return URL.
+            // Path: homebase-fchat://data-upgrade-callback
+            if (data.host == "data-upgrade-callback") {
+                Logger.i(tag = "MainActivity") { "Data-upgrade deep link return" }
+                lifecycleScope.launch {
+                    eventBus.emit(BackendEvent.DataUpgradeReturned)
+                }
+                intent.data = null
+                return
+            }
+
             // Auth callback
             val callbackURL = data.toString()
             lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }

@@ -8,6 +8,7 @@ import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+import id.homebase.core.config.dataUpgradeReturnUrl
 
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -280,7 +281,8 @@ val appModule = module {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
             credentialsManager = get(),
-            isUpgradeRequired = { upgradeProvider.isUpgradeRequired() },
+            checkUpgradeStatus = { upgradeProvider.checkUpgradeStatus() },
+            dataUpgradeReturnUrl = ::dataUpgradeReturnUrl,
         )
     }
     singleOf(::ConnectionRequestService)

@@ -108,6 +108,7 @@
     <string name="pending_upgrade_title">Data upgrade required</string>
     <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
     <string name="pending_upgrade_confirm">Upgrade Now</string>
+    <string name="upgrade_running_message">Upgrading your identity…</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>

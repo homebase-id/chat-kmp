@@ -2,7 +2,9 @@ package id.homebase.core.upgrade
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.upgrade.UpgradeStatus
 import id.homebase.api.storage.SharedPreferences
+import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,11 +16,13 @@ sealed interface PendingUpgradeState {
     data object None : PendingUpgradeState
     data class ShowSnackbar(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
     data class ShowDialog(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
+    data class UpgradeRunning(val epoch: Long = 0) : PendingUpgradeState
 }
 
 class PendingUpgradeManager(
     private val credentialsManager: CredentialsManager,
-    private val isUpgradeRequired: suspend () -> Boolean,
+    private val checkUpgradeStatus: suspend () -> UpgradeStatus,
+    private val dataUpgradeReturnUrl: () -> String = { "" },
     private val clock: Clock = Clock.System,
 ) {
     private val _state = MutableStateFlow<PendingUpgradeState>(PendingUpgradeState.None)
@@ -28,23 +32,29 @@ class PendingUpgradeManager(
     private var epoch = 0L
 
     suspend fun checkUpgrade() {
-        val required = try {
-            isUpgradeRequired()
+        val status = try {
+            checkUpgradeStatus()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG) { "Upgrade check failed: ${e.message}" }
             return
         }
-        onUpgradeCheckResult(required)
+        onUpgradeCheckResult(status)
     }
 
-    internal suspend fun onUpgradeCheckResult(required: Boolean) {
-        Logger.d(tag = TAG) { "onUpgradeCheckResult(required=$required)" }
-        if (!required) {
+    internal suspend fun onUpgradeCheckResult(status: UpgradeStatus) {
+        Logger.d(tag = TAG) { "onUpgradeCheckResult(status=$status)" }
+        if (status == UpgradeStatus.NONE) {
             SharedPreferences.remove(KEY_FIRST_SEEN_MS)
             dialogDismissedThisSession = false
             _state.value = PendingUpgradeState.None
+            return
+        }
+
+        if (status == UpgradeStatus.RUNNING) {
+            val nextEpoch = ++epoch
+            _state.value = PendingUpgradeState.UpgradeRunning(nextEpoch)
             return
         }
 
@@ -68,7 +78,8 @@ class PendingUpgradeManager(
             return
         }
 
-        val upgradeUrl = "https://${domain.domainName}/owner/settings/version-info"
+        val returnUrl = dataUpgradeReturnUrl()
+        val upgradeUrl = "https://${domain.domainName}/owner/data-upgrade?returnUrl=${returnUrl.encodeURLParameter()}"
         val nowMs = clock.now().toEpochMilliseconds()
         val elapsedDays = (nowMs - firstSeenMs) / (1000 * 60 * 60 * 24)
 

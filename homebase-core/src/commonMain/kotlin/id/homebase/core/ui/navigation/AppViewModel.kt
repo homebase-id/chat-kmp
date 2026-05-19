@@ -23,6 +23,8 @@ import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
+import id.homebase.core.upgrade.registerDataUpgradeCallbackHandler
+import id.homebase.core.upgrade.unregisterDataUpgradeCallbackHandler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -73,12 +75,25 @@ class AppViewModel(
                 _uiState.update { it.copy(pendingUpgrade = upgradeState) }
             }
         }
+        viewModelScope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DataUpgradeReturned) {
+                    checkPendingUpgrade()
+                }
+            }
+        }
+        registerDataUpgradeCallbackHandler {
+            viewModelScope.launch {
+                eventBus.emit(BackendEvent.DataUpgradeReturned)
+            }
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
         unregisterShareHandler()
         unregisterPermissionCallbackHandler()
+        unregisterDataUpgradeCallbackHandler()
     }
 
     fun refreshData() {
