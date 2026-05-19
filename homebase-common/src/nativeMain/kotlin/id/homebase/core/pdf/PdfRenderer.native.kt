@@ -29,9 +29,6 @@ import platform.CoreGraphics.CGPDFPageGetBoxRect
 import platform.CoreGraphics.kCGPDFMediaBox
 import platform.Foundation.NSURL
 
-// kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
-private val BITMAP_INFO: UInt = 2u or 8192u
-
 actual class PdfRenderer actual constructor() {
 
     private var document: CGPDFDocumentRef? = null
@@ -82,7 +79,7 @@ actual class PdfRenderer actual constructor() {
                     bitsPerComponent = 8u,
                     bytesPerRow = bytesPerRow.toULong(),
                     space = colorSpace,
-                    bitmapInfo = BITMAP_INFO,
+                    bitmapInfo = PDF_BITMAP_INFO,
                 ) ?: throw RuntimeException("Cannot create CGContext")
 
                 CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)

@@ -404,48 +404,64 @@ class VaultViewModel(
             payloadDescriptors = placeholderDescriptors,
         )
 
+        vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
+
         viewModelScope.launch {
-            val fileData = files.mapIndexed { index, file ->
-                val ext = file.name.substringAfterLast('.', "tmp")
-                val cacheDir = fileOperationsProvider.getCacheDirectory()
-                val tempPath = "$cacheDir/vault_upload_${Uuid.random()}.$ext"
-                file.copyTo(PlatformFile(tempPath))
-                tempPath to fileContentTypes[index]
-            }
-
-            if (firstContentType == "application/pdf") {
-                try {
-                    val pdfResult = withContext(Dispatchers.Default) {
-                        generatePdfThumbnailFromFile(fileData.first().first, 320)
-                    }
-                    val thumbBytes = pdfResult?.thumbnailBytes
-                    if (thumbBytes != null) {
-                        val thumbPath = fileOperationsProvider.writeBytesToTempFile(
-                            thumbBytes, "pdf_card_", ".jpg",
-                        )
-                        localAttachmentStore.put(
-                            pendingId,
-                            "vlt_pg_00",
-                            LocalAttachmentContext.Image(localFilePath = thumbPath, aspectRatio = null),
-                        )
-                    }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "PDF card thumbnail generation failed" }
+            var fileData: List<Pair<String, String>> = emptyList()
+            try {
+                fileData = files.mapIndexed { index, file ->
+                    val ext = file.name.substringAfterLast('.', "tmp")
+                    val cacheDir = fileOperationsProvider.getCacheDirectory()
+                    val tempPath = "$cacheDir/vault_upload_${Uuid.random()}.$ext"
+                    file.copyTo(PlatformFile(tempPath))
+                    tempPath to fileContentTypes[index]
                 }
-            }
 
-            vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
+                if (firstContentType == "application/pdf") {
+                    try {
+                        val pdfResult = withContext(Dispatchers.Default) {
+                            generatePdfThumbnailFromFile(fileData.first().first, 320)
+                        }
+                        val thumbBytes = pdfResult?.thumbnailBytes
+                        if (thumbBytes != null) {
+                            val thumbPath = fileOperationsProvider.writeBytesToTempFile(
+                                thumbBytes, "pdf_card_", ".jpg",
+                            )
+                            localAttachmentStore.put(
+                                pendingId,
+                                "vlt_pg_00",
+                                LocalAttachmentContext.Image(localFilePath = thumbPath, aspectRatio = null),
+                            )
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.w(e, TAG) { "PDF card thumbnail generation failed" }
+                    }
+                }
 
-            val uniqueId = vaultUploaderService.uploadFile(
-                entryName = firstName,
-                files = fileData,
-                scope = viewModelScope,
-                groupId = action.sectionId,
-                uniqueId = pendingId,
-            )
-            if (uniqueId == null) {
+                val uniqueId = vaultUploaderService.uploadFile(
+                    entryName = firstName,
+                    files = fileData,
+                    scope = viewModelScope,
+                    groupId = action.sectionId,
+                    uniqueId = pendingId,
+                )
+                if (uniqueId == null) {
+                    vaultStream.updateOptimisticEntry(
+                        pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
+                    )
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                fileData.forEach { (path, _) ->
+                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
+                }
+                throw e
+            } catch (e: Exception) {
+                fileData.forEach { (path, _) ->
+                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
+                }
                 vaultStream.updateOptimisticEntry(
                     pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
                 )

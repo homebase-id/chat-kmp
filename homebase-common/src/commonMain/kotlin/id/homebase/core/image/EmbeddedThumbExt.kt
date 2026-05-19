@@ -10,10 +10,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 fun EmbeddedThumb.decodeBitmap(): ImageBitmap? {
     val raw = content ?: return null
     return try {
-        val cleaned = raw
-            .removePrefix("data:image/png;base64,")
-            .removePrefix("data:image/jpeg;base64,")
-            .removePrefix("data:image/jpg;base64,")
+        val cleaned = raw.replace(Regex("^data:image/[^;]+;base64,"), "")
         Base64.decode(cleaned).decodeToImageBitmap()
     } catch (_: Exception) {
         null

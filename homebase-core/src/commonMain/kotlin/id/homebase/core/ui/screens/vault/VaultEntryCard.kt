@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import id.homebase.core.image.decodeBitmap
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -122,127 +121,14 @@ fun VaultEntryCard(
                     ).value
                 val localImage = localCtx as? LocalAttachmentContext.Image
 
-                if ((file.isImage || file.isPdf) && localImage != null) {
-                    var imageModifier: Modifier = Modifier.fillMaxSize()
-                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                        with(sharedTransitionScope) {
-                            imageModifier = imageModifier.sharedBounds(
-                                rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
-                                animatedVisibilityScope = animatedVisibilityScope,
-                            )
-                        }
-                    }
-                    AsyncImage(
-                        model = localImage.localFilePath,
-                        contentDescription = description,
-                        modifier = imageModifier,
-                        contentScale = ContentScale.Crop,
-                    )
-                } else if (file.isImage) {
-                    @OptIn(ExperimentalEncodingApi::class)
-                    val descriptor = file.payloadDescriptors.firstOrNull()
-                    val payloadIv = remember(descriptor?.iv) {
-                        descriptor?.iv?.let {
-                            try {
-                                Base64.decode(it)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                    }
-                    if (descriptor != null && payloadIv != null) {
-                        HomebaseImage(
-                            imageData = HomebaseImageData(
-                                driveId = file.driveId,
-                                fileId = file.fileId,
-                                payloadKey = descriptor.key,
-                                previewThumbnail = file.previewThumbnail,
-                                requestedSize = ImageSize.THUMB_MEDIUM,
-                                isEncrypted = file.isEncrypted,
-                                keyHeader = KeyHeader(
-                                    iv = payloadIv,
-                                    aesKey = file.keyHeader.aesKey
-                                ),
-                                lastModified = descriptor.lastModified,
-                            ),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = description,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Outlined.Image,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                } else if (file.isPdf) {
-                    @OptIn(ExperimentalEncodingApi::class)
-                    val descriptor = file.payloadDescriptors.firstOrNull()
-                    val payloadIv = remember(descriptor?.iv) {
-                        descriptor?.iv?.let {
-                            try { Base64.decode(it) } catch (_: Exception) { null }
-                        }
-                    }
-                    if (descriptor != null && payloadIv != null) {
-                        HomebaseImage(
-                            imageData = HomebaseImageData(
-                                driveId = file.driveId,
-                                fileId = file.fileId,
-                                payloadKey = descriptor.key,
-                                previewThumbnail = file.previewThumbnail,
-                                requestedSize = ImageSize.THUMB_MEDIUM,
-                                isEncrypted = file.isEncrypted,
-                                keyHeader = KeyHeader(
-                                    iv = payloadIv,
-                                    aesKey = file.keyHeader.aesKey,
-                                ),
-                                lastModified = descriptor.lastModified,
-                            ),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = description,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
-                    } else if (file.previewThumbnail != null) {
-                        val thumbBitmap = remember(file.previewThumbnail) {
-                            file.previewThumbnail.decodeBitmap()
-                        }
-                        if (thumbBitmap != null) {
-                            Image(
-                                bitmap = thumbBitmap,
-                                contentDescription = description,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = fileTypeIcon(file.contentType),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(32.dp),
-                            )
-                        }
-                    } else {
-                        Icon(
-                            imageVector = fileTypeIcon(file.contentType),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                } else {
-                    Icon(
-                        imageVector = fileTypeIcon(file.contentType),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
+                VaultCardThumbnail(
+                    file = file,
+                    localImage = localImage,
+                    firstPayloadKey = firstPayloadKey,
+                    description = description,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
 
                 // Upload status overlay
                 when (val status = file.uploadStatus) {
@@ -296,7 +182,6 @@ fun VaultEntryCard(
                             text = stringResource(MR.string.vault_pdf_badge),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onError,
-                            fontSize = 8.sp,
                         )
                     }
                 }
@@ -341,4 +226,90 @@ fun VaultEntryCard(
             }
         }
     }
+}
+
+@OptIn(ExperimentalEncodingApi::class)
+@Composable
+private fun VaultCardThumbnail(
+    file: VaultEntry,
+    localImage: LocalAttachmentContext.Image?,
+    firstPayloadKey: String,
+    description: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+) {
+    // 1. Local file available (pending upload or cached thumbnail)
+    if ((file.isImage || file.isPdf) && localImage != null) {
+        var imageModifier: Modifier = Modifier.fillMaxSize()
+        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                imageModifier = imageModifier.sharedBounds(
+                    rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+            }
+        }
+        AsyncImage(
+            model = localImage.localFilePath,
+            contentDescription = description,
+            modifier = imageModifier,
+            contentScale = ContentScale.Crop,
+        )
+        return
+    }
+
+    // 2. Encrypted server thumbnail (image or PDF — same HomebaseImage path)
+    val descriptor = file.payloadDescriptors.firstOrNull()
+    val payloadIv = remember(descriptor?.iv) {
+        descriptor?.iv?.let {
+            try { Base64.decode(it) } catch (_: Exception) { null }
+        }
+    }
+    if ((file.isImage || file.isPdf) && descriptor != null && payloadIv != null) {
+        HomebaseImage(
+            imageData = HomebaseImageData(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                payloadKey = descriptor.key,
+                previewThumbnail = file.previewThumbnail,
+                requestedSize = ImageSize.THUMB_MEDIUM,
+                isEncrypted = file.isEncrypted,
+                keyHeader = KeyHeader(
+                    iv = payloadIv,
+                    aesKey = file.keyHeader.aesKey,
+                ),
+                lastModified = descriptor.lastModified,
+            ),
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            contentDescription = description,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+        return
+    }
+
+    // 3. PDF embedded preview thumbnail (no encryption key available yet)
+    if (file.isPdf && file.previewThumbnail != null) {
+        val thumbBitmap = remember(file.previewThumbnail) {
+            file.previewThumbnail.decodeBitmap()
+        }
+        if (thumbBitmap != null) {
+            Image(
+                bitmap = thumbBitmap,
+                contentDescription = description,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            return
+        }
+    }
+
+    // 4. Fallback icon
+    Icon(
+        imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType),
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(32.dp),
+    )
 }

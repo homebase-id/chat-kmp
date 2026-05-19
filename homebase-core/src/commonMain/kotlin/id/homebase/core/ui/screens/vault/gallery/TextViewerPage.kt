@@ -69,12 +69,14 @@ fun TextViewerPage(
             if (tempPath == null) {
                 state = TextViewerState.Error
             } else {
-                val bytes = withContext(Dispatchers.Default) {
-                    fileOperationsProvider.readFileBytes(tempPath)
+                val fileSize = withContext(Dispatchers.Default) {
+                    fileOperationsProvider.getFileSize(tempPath)
                 }
-                val truncated = bytes.size > MAX_TEXT_BYTES
-                val displayBytes = if (truncated) bytes.copyOf(MAX_TEXT_BYTES) else bytes
-                state = TextViewerState.Ready(displayBytes.decodeToString(), truncated)
+                val truncated = fileSize > MAX_TEXT_BYTES
+                val bytes = withContext(Dispatchers.Default) {
+                    fileOperationsProvider.readFileHeaderBytes(tempPath, MAX_TEXT_BYTES)
+                }
+                state = TextViewerState.Ready(bytes.decodeToString(), truncated)
                 try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) { }
             }
         } catch (e: CancellationException) {

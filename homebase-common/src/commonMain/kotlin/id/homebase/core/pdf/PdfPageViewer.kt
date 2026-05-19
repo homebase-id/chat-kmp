@@ -34,6 +34,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_pdf_page_content_description
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
@@ -56,6 +58,7 @@ internal fun BitmapPdfPageViewer(
     val listState = rememberLazyListState()
     val pageCount = renderer.pageCount
     val renderedPages = remember { mutableStateMapOf<Int, ImageBitmap>() }
+    val renderMutex = remember { Mutex() }
 
     val currentPage by remember {
         derivedStateOf {
@@ -88,6 +91,7 @@ internal fun BitmapPdfPageViewer(
             items(pageCount) { index ->
                 BitmapPdfPage(
                     renderer = renderer,
+                    renderMutex = renderMutex,
                     pageIndex = index,
                     pageCount = pageCount,
                     cachedBitmap = renderedPages[index],
@@ -121,6 +125,7 @@ internal fun BitmapPdfPageViewer(
 @Composable
 private fun BitmapPdfPage(
     renderer: PdfRenderer,
+    renderMutex: Mutex,
     pageIndex: Int,
     pageCount: Int,
     cachedBitmap: ImageBitmap?,
@@ -139,8 +144,10 @@ private fun BitmapPdfPage(
 
         LaunchedEffect(pageIndex, pixelWidth, pixelHeight) {
             if (cachedBitmap == null && pixelWidth > 0 && pixelHeight > 0) {
-                val bitmap = withContext(Dispatchers.Default) {
-                    renderer.renderPage(pageIndex, pixelWidth, pixelHeight)
+                val bitmap = renderMutex.withLock {
+                    withContext(Dispatchers.Default) {
+                        renderer.renderPage(pageIndex, pixelWidth, pixelHeight)
+                    }
                 }
                 onRendered(bitmap)
             }

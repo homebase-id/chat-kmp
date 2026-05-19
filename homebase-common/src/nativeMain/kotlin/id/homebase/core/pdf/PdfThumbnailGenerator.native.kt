@@ -33,9 +33,6 @@ import platform.Foundation.NSURL
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 
-// kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
-private val BITMAP_INFO: UInt = 2u or 8192u
-
 actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
     return try {
         val nsUrl = NSURL.fileURLWithPath(filePath)
@@ -112,7 +109,7 @@ private fun renderFirstPageThumbnail(
                 bitsPerComponent = 8u,
                 bytesPerRow = bytesPerRow.toULong(),
                 space = colorSpace,
-                bitmapInfo = BITMAP_INFO,
+                bitmapInfo = PDF_BITMAP_INFO,
             ) ?: return null
 
             CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)

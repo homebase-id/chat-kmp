@@ -1,8 +1,5 @@
 package id.homebase.core.ui.screens.vault.gallery
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,13 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.services.LocalAttachmentContext
-import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.pdf.PdfPageViewer
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -40,7 +32,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 
 private sealed interface PdfViewerState {
     data object Loading : PdfViewerState
@@ -87,21 +78,13 @@ fun PdfViewerPage(
         }
     }
 
-    var revealViewer by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state) {
-        if (state is PdfViewerState.Ready) {
-            kotlinx.coroutines.delay(600)
-            revealViewer = true
-        } else {
-            revealViewer = false
-        }
-    }
-
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when (val s = state) {
             is PdfViewerState.Loading -> {
-                PdfLoadingPreview(file = file)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(48.dp),
+                    color = MaterialTheme.colorScheme.inversePrimary,
+                )
             }
 
             is PdfViewerState.Ready -> {
@@ -110,13 +93,6 @@ fun PdfViewerPage(
                     onTap = onToggleUI,
                     modifier = Modifier.fillMaxSize(),
                 )
-                AnimatedVisibility(
-                    visible = !revealViewer,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                ) {
-                    PdfLoadingPreview(file = file)
-                }
             }
 
             is PdfViewerState.Error -> {
@@ -136,29 +112,5 @@ fun PdfViewerPage(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PdfLoadingPreview(file: VaultEntry) {
-    val store = koinInject<LocalAttachmentContextStore>()
-    val payloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
-    val localCtx by store.observe(file.uniqueId, payloadKey)
-        .collectAsStateWithLifecycle(initialValue = store.get(file.uniqueId, payloadKey))
-    val thumbPath = (localCtx as? LocalAttachmentContext.Image)?.localFilePath
-
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (thumbPath != null) {
-            AsyncImage(
-                model = thumbPath,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        CircularProgressIndicator(
-            modifier = Modifier.size(48.dp),
-            color = MaterialTheme.colorScheme.inversePrimary,
-        )
     }
 }
