@@ -1,6 +1,11 @@
 package id.homebase.core.pdf
 
+import android.content.Context
 import android.net.Uri
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -10,6 +15,29 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.pdf.viewer.fragment.PdfViewerFragment
 import java.io.File
+
+private class TapDetectingFrameLayout(
+    ctx: Context,
+    private val onSingleTap: (() -> Unit)?,
+) : FrameLayout(ctx) {
+
+    private val detector = onSingleTap?.let {
+        GestureDetector(
+            ctx,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    it()
+                    return true
+                }
+            },
+        )
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.pointerCount == 1) detector?.onTouchEvent(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+}
 
 @Composable
 actual fun PdfPageViewer(
@@ -23,18 +51,28 @@ actual fun PdfPageViewer(
 
     AndroidView(
         factory = { ctx ->
-            FragmentContainerView(ctx).apply {
-                id = android.view.View.generateViewId()
+            TapDetectingFrameLayout(ctx, onTap).apply {
+                val container = FragmentContainerView(ctx).apply {
+                    id = View.generateViewId()
+                }
+                addView(
+                    container,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    ),
+                )
             }
         },
-        update = { containerView ->
+        update = { frameLayout ->
             val activity = context as? FragmentActivity ?: return@AndroidView
             val fm = activity.supportFragmentManager
+            val container = frameLayout.getChildAt(0) as? FragmentContainerView ?: return@AndroidView
             val existing = fm.findFragmentByTag(fragmentTag) as? PdfViewerFragment
             if (existing == null) {
                 val fragment = PdfViewerFragment()
                 fm.beginTransaction()
-                    .replace(containerView.id, fragment, fragmentTag)
+                    .replace(container.id, fragment, fragmentTag)
                     .commitAllowingStateLoss()
                 fm.executePendingTransactions()
                 fragment.documentUri = uri
@@ -42,7 +80,7 @@ actual fun PdfPageViewer(
                 existing.documentUri = uri
             }
         },
-        onReset = { containerView ->
+        onReset = { frameLayout ->
             val activity = context as? FragmentActivity
             if (activity != null) {
                 val fm = activity.supportFragmentManager

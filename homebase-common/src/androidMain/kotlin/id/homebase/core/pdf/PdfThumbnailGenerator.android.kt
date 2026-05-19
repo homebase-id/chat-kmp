@@ -17,6 +17,7 @@ actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThu
                 val bitmapWidth = (page.width * scale).toInt()
                 val bitmapHeight = (page.height * scale).toInt()
                 val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.WHITE)
                 try {
                     page.render(bitmap, null, null, AndroidPdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 } finally {
@@ -54,6 +55,7 @@ actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailRe
                     val bitmapWidth = (page.width * scale).toInt()
                     val bitmapHeight = (page.height * scale).toInt()
                     val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(android.graphics.Color.WHITE)
                     try {
                         page.render(bitmap, null, null, AndroidPdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     } finally {

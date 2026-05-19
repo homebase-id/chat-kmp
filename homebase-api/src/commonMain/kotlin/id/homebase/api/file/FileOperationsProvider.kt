@@ -70,6 +70,14 @@ interface FileOperationsProvider {
      */
     suspend fun resolveToFilePath(path: String): String = path
 
+    /**
+     * Synchronous copy of a security-scoped or externally-provided file into the app
+     * sandbox. Must be called while the file picker's implicit access grant is active
+     * (i.e., on the same call stack as the picker callback, before any suspension).
+     * Returns the sandbox path on success, or the original [path] if no copy is needed.
+     */
+    fun copyToSandboxIfNeeded(path: String): String = path
+
     companion object {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024
     }

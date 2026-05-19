@@ -15,6 +15,7 @@ import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.closeFile
@@ -32,18 +33,29 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class IOSFileOperationsProvider : FileOperationsProvider {
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun readFileData(path: String): ByteArray {
+        val url = NSURL.fileURLWithPath(path)
+        val accessed = url.startAccessingSecurityScopedResource()
+        try {
+            val data = NSData.dataWithContentsOfFile(path)
+                ?: error("Unable to read file at $path")
+            val bytes = ByteArray(data.length.toInt())
+            bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+            return bytes
+        } finally {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+        }
+    }
+
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override fun openFileInput(path: String): InputProvider = InputProvider {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
             val bytes = runBlocking { readPhotoLibraryAsset(path) }
             return@InputProvider Buffer().apply { write(bytes) }
         }
-        val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
-
-        val bytes = ByteArray(data.length.toInt())
-        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
-
-        Buffer().apply { write(bytes) }
+        Buffer().apply { write(readFileData(path)) }
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -51,11 +63,27 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
             return readPhotoLibraryAsset(path)
         }
-        val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
+        return readFileData(path)
+    }
 
-        val bytes = ByteArray(data.length.toInt())
-        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
-        return bytes
+    @OptIn(ExperimentalForeignApi::class)
+    override fun copyToSandboxIfNeeded(path: String): String {
+        if (path.startsWith("ph://") || path.contains("/L0/")) return path
+        val fm = NSFileManager.defaultManager
+        if (fm.isReadableFileAtPath(path)) return path
+
+        val url = NSURL.fileURLWithPath(path)
+        val accessed = url.startAccessingSecurityScopedResource()
+        try {
+            val ext = url.pathExtension ?: "tmp"
+            val tempPath = "${NSTemporaryDirectory()}sandbox_${NSUUID().UUIDString}.$ext"
+            if (fm.copyItemAtPath(path, tempPath, null)) {
+                return tempPath
+            }
+        } finally {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+        }
+        return path
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -173,14 +201,33 @@ class IOSFileOperationsProvider : FileOperationsProvider {
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun resolveToFilePath(path: String): String {
-        if (!path.startsWith("ph://") && !path.contains("/L0/")) return path
-        val bytes = readPhotoLibraryAsset(path)
-        val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
-        val data = bytes.usePinned { pinned ->
-            NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            val bytes = readPhotoLibraryAsset(path)
+            val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
+            val data = bytes.usePinned { pinned ->
+                NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+            }
+            data.writeToFile(tmpPath, atomically = true)
+            return tmpPath
         }
-        data.writeToFile(tmpPath, atomically = true)
-        return tmpPath
+
+        if (path.contains("File Provider Storage") || path.contains("/Shared/AppGroup/")) {
+            val url = NSURL.fileURLWithPath(path)
+            val accessed = url.startAccessingSecurityScopedResource()
+            try {
+                val fm = NSFileManager.defaultManager
+                val ext = url.pathExtension ?: "tmp"
+                val tempPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.$ext"
+                val tempUrl = NSURL.fileURLWithPath(tempPath)
+                if (fm.copyItemAtURL(url, tempUrl, null)) {
+                    return tempPath
+                }
+            } finally {
+                if (accessed) url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        return path
     }
 
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)

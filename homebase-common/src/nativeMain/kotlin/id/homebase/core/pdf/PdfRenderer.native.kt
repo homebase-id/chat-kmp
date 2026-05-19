@@ -15,8 +15,11 @@ import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawPDFPage
+import platform.CoreGraphics.CGContextFillRect
 import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGContextScaleCTM
+import platform.CoreGraphics.CGContextSetRGBFillColor
+import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGPDFDocumentCreateWithURL
 import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
 import platform.CoreGraphics.CGPDFDocumentGetPage
@@ -33,14 +36,20 @@ actual class PdfRenderer actual constructor() {
 
     private var document: CGPDFDocumentRef? = null
 
+    private var accessedUrl: NSURL? = null
+
     actual fun open(filePath: String) {
         close()
-        val url = platform.Foundation.CFBridgingRetain(NSURL.fileURLWithPath(filePath))
+        val nsUrl = NSURL.fileURLWithPath(filePath)
+        val accessed = nsUrl.startAccessingSecurityScopedResource()
+        if (accessed) accessedUrl = nsUrl
+
+        val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
         try {
-            document = CGPDFDocumentCreateWithURL(url as platform.CoreFoundation.CFURLRef)
+            document = CGPDFDocumentCreateWithURL(cfUrl as platform.CoreFoundation.CFURLRef)
                 ?: throw IllegalArgumentException("Cannot open PDF: $filePath")
         } finally {
-            platform.CoreFoundation.CFRelease(url)
+            platform.CoreFoundation.CFRelease(cfUrl)
         }
     }
 
@@ -76,6 +85,8 @@ actual class PdfRenderer actual constructor() {
                     bitmapInfo = BITMAP_INFO,
                 ) ?: throw RuntimeException("Cannot create CGContext")
 
+                CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
+                CGContextFillRect(context, CGRectMake(0.0, 0.0, bitmapWidth.toDouble(), bitmapHeight.toDouble()))
                 CGContextScaleCTM(context, scale, scale)
                 CGContextDrawPDFPage(context, page)
                 CGContextRelease(context)
@@ -95,5 +106,7 @@ actual class PdfRenderer actual constructor() {
     actual fun close() {
         document?.let { CGPDFDocumentRelease(it) }
         document = null
+        accessedUrl?.stopAccessingSecurityScopedResource()
+        accessedUrl = null
     }
 }

@@ -12,8 +12,11 @@ import platform.CoreGraphics.CGBitmapContextCreateImage
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawPDFPage
+import platform.CoreGraphics.CGContextFillRect
 import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGContextScaleCTM
+import platform.CoreGraphics.CGContextSetRGBFillColor
+import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGDataProviderCreateWithData
 import platform.CoreGraphics.CGDataProviderRelease
 import platform.CoreGraphics.CGImageRelease
@@ -35,18 +38,24 @@ private val BITMAP_INFO: UInt = 2u or 8192u
 
 actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
     return try {
-        val url = platform.Foundation.CFBridgingRetain(NSURL.fileURLWithPath(filePath))
+        val nsUrl = NSURL.fileURLWithPath(filePath)
+        val accessed = nsUrl.startAccessingSecurityScopedResource()
         try {
-            val document = CGPDFDocumentCreateWithURL(
-                url as platform.CoreFoundation.CFURLRef,
-            ) ?: return null
+            val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
             try {
-                renderFirstPageThumbnail(document, maxWidth)
+                val document = CGPDFDocumentCreateWithURL(
+                    cfUrl as platform.CoreFoundation.CFURLRef,
+                ) ?: return null
+                try {
+                    renderFirstPageThumbnail(document, maxWidth)
+                } finally {
+                    CGPDFDocumentRelease(document)
+                }
             } finally {
-                CGPDFDocumentRelease(document)
+                platform.CoreFoundation.CFRelease(cfUrl)
             }
         } finally {
-            platform.CoreFoundation.CFRelease(url)
+            if (accessed) nsUrl.stopAccessingSecurityScopedResource()
         }
     } catch (_: Exception) {
         null
@@ -106,6 +115,8 @@ private fun renderFirstPageThumbnail(
                 bitmapInfo = BITMAP_INFO,
             ) ?: return null
 
+            CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
+            CGContextFillRect(context, CGRectMake(0.0, 0.0, bitmapWidth.toDouble(), bitmapHeight.toDouble()))
             CGContextScaleCTM(context, scale, scale)
             CGContextDrawPDFPage(context, page)
 

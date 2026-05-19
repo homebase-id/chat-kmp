@@ -31,6 +31,7 @@ actual class PdfRenderer actual constructor() {
         val bitmapWidth = (page.width * scale).toInt()
         val bitmapHeight = (page.height * scale).toInt()
         val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
         page.render(bitmap, null, null, AndroidPdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
         page.close()
         return bitmap.asImageBitmap()
