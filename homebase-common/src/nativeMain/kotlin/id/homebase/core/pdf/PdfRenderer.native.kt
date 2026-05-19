@@ -34,6 +34,7 @@ actual class PdfRenderer actual constructor() {
     private var document: CGPDFDocumentRef? = null
 
     actual fun open(filePath: String) {
+        close()
         val url = platform.Foundation.CFBridgingRetain(NSURL.fileURLWithPath(filePath))
         try {
             document = CGPDFDocumentCreateWithURL(url as platform.CoreFoundation.CFURLRef)

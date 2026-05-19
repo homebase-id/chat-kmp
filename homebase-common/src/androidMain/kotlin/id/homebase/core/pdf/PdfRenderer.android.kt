@@ -13,6 +13,7 @@ actual class PdfRenderer actual constructor() {
     private var nativeRenderer: AndroidPdfRenderer? = null
 
     actual fun open(filePath: String) {
+        close()
         val fd = ParcelFileDescriptor.open(File(filePath), ParcelFileDescriptor.MODE_READ_ONLY)
         fileDescriptor = fd
         nativeRenderer = AndroidPdfRenderer(fd)

@@ -36,6 +36,7 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
 import id.homebase.resources.vault_text_preview_error
 import id.homebase.resources.vault_text_truncated
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
@@ -76,6 +77,8 @@ fun TextViewerPage(
                 state = TextViewerState.Ready(displayBytes.decodeToString(), truncated)
                 try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) { }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             state = TextViewerState.Error
         }

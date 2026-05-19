@@ -420,6 +420,8 @@ class VaultViewModel(
                             LocalAttachmentContext.Image(localFilePath = thumbPath, aspectRatio = null),
                         )
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) { }
             }
 

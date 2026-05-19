@@ -31,6 +31,7 @@ kotlin {
     android {
         namespace = "id.homebase.common"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}

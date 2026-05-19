@@ -14,6 +14,7 @@ actual class PdfRenderer actual constructor() {
     private var boxRenderer: PdfBoxRenderer? = null
 
     actual fun open(filePath: String) {
+        close()
         val doc = Loader.loadPDF(File(filePath))
         document = doc
         boxRenderer = PdfBoxRenderer(doc)
