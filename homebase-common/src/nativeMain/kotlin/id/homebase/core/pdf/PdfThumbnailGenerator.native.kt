@@ -27,7 +27,8 @@ import platform.Foundation.NSData
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 
-private val BITMAP_INFO: UInt = 1u or 8192u
+// kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
+private val BITMAP_INFO: UInt = 2u or 8192u
 
 actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
     return try {

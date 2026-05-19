@@ -26,7 +26,8 @@ import platform.CoreGraphics.CGPDFPageGetBoxRect
 import platform.CoreGraphics.kCGPDFMediaBox
 import platform.Foundation.NSURL
 
-private val BITMAP_INFO: UInt = 1u or 8192u
+// kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
+private val BITMAP_INFO: UInt = 2u or 8192u
 
 actual class PdfRenderer actual constructor() {
 
@@ -83,7 +84,7 @@ actual class PdfRenderer actual constructor() {
         }
 
         val skiaImage = org.jetbrains.skia.Image.makeRaster(
-            imageInfo = ImageInfo(bitmapWidth, bitmapHeight, ColorType.RGBA_8888, ColorAlphaType.PREMUL),
+            imageInfo = ImageInfo(bitmapWidth, bitmapHeight, ColorType.BGRA_8888, ColorAlphaType.PREMUL),
             bytes = bitmapData,
             rowBytes = bytesPerRow,
         )
