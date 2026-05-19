@@ -49,7 +49,7 @@ class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
         super.onCreate()
 
-        if (!isMainProcess()) return
+        if (getProcessName() != packageName) return
 
         // Register the application Context up-front so components that only
         // need Context (cacheDir, ContentResolver — e.g. FFmpegUtils Android
@@ -195,14 +195,6 @@ class MainApplication : Application(), KoinComponent {
                 }
             )
         }
-    }
-
-    private fun isMainProcess(): Boolean {
-        val pid = android.os.Process.myPid()
-        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-        return am.runningAppProcesses?.any {
-            it.pid == pid && it.processName == packageName
-        } ?: true
     }
 
     private fun setupCrashHandler() {
