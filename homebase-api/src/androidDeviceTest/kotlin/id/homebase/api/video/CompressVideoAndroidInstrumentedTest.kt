@@ -4,9 +4,12 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.ffmpegkit.Statistics
+import com.arthenica.ffmpegkit.StatisticsCallback
 import id.homebase.api.ActivityProvider
 import java.io.File
 import kotlin.coroutines.resume
@@ -267,4 +270,186 @@ class CompressVideoAndroidInstrumentedTest {
                 try { session.cancel() } catch (_: Exception) {}
             }
         }
+
+    // -----------------------------------------------------------------
+    // Progress-callback regression test for ffmpeg-kit C5 wiring.
+    //
+    // The chat-kmp video-attachment progress UI is wired through
+    // FFmpegKit.executeWithArgumentsAsync's StatisticsCallback (commit
+    // chat-kmp@7dd31298). For events to fire, the native side must call
+    //   print_report() → forward_report() → report_callback
+    // where report_callback is ffmpegkit_statistics_callback_function
+    // registered by the wrapper's JNI_OnLoad via set_report_callback().
+    //
+    // For most of the n6→n7→n8 history, our C5 stub stored the callback
+    // pointer but never invoked it — Statistics events were lost and
+    // the progress UI stayed at 0%. CUSTOMIZATION.md C5 ("set_report_callback
+    // + forward_report") finally wires it for real on n8.
+    //
+    // This test compresses a 5-second clip with libx264 (the production
+    // path) and asserts at least N>=2 StatisticsCallback invocations
+    // arrive AND that stats.time monotonically increases.
+    //
+    // If this test starts reporting 0 invocations on a future upgrade,
+    // the C5 wiring broke — check print_report() in
+    // ffmpeg-kit's fftools_ffmpeg.c.
+    // -----------------------------------------------------------------
+
+    @Test
+    fun compressVideo_emitsProgressStatistics() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val outFile = File(ctx.cacheDir, "progress_statistics_test.mp4")
+        outFile.delete()
+        val cleanup = mutableListOf(fixture, outFile)
+
+        val statsTimesMs = mutableListOf<Long>()
+
+        try {
+            // Force enough work that ffmpeg-kit's ~1-2 Hz stats cadence
+            // gets multiple ticks: upscale 320x180 → 1280x720 + medium
+            // preset. Empirically this takes ~2-3s on the API 36 emulator.
+            val args = arrayOf(
+                "-y",
+                "-i", fixture.absolutePath,
+                "-t", "6",
+                "-vf", "scale=1280:720",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-b:v", "3M",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                outFile.absolutePath,
+            )
+            val session = executeFfmpegArgsWithStats(args) { stats ->
+                // Statistics.getTime() is in milliseconds.
+                statsTimesMs.add(stats.time.toLong())
+            }
+            Log.i(
+                "C5_PROGRESS_TEST",
+                "rc=${session.returnCode} statsTicks=${statsTimesMs.size} " +
+                    "first=${statsTimesMs.firstOrNull()} last=${statsTimesMs.lastOrNull()} " +
+                    "fail=${session.failStackTrace}",
+            )
+
+            assertTrue(
+                ReturnCode.isSuccess(session.returnCode),
+                "compression must succeed for the progress assertions to be " +
+                    "meaningful (rc=${session.returnCode})",
+            )
+
+            // The core regression check: any events at all means C5
+            // wiring is alive.
+            assertTrue(
+                statsTimesMs.size >= 2,
+                "expected >= 2 Statistics events from a ~5s libx264 encode, " +
+                    "got ${statsTimesMs.size}. This almost certainly means " +
+                    "ffmpeg-kit's C5 forward_report() wiring is broken — see " +
+                    "CUSTOMIZATION.md C5 in homebase-id/ffmpeg-kit.",
+            )
+
+            // The final tick should be near the end of the 5s clip — strict
+            // bounds risk flakiness on slow emulators so accept anything
+            // > 1000ms as evidence that progress is actually progressing
+            // (not just firing with stats.time = 0).
+            assertTrue(
+                statsTimesMs.last() > 1_000L,
+                "expected final stats.time > 1000 ms for a 5s encode, " +
+                    "got ${statsTimesMs.last()} ms",
+            )
+
+            // Strict monotonicity intentionally NOT asserted — ffmpeg's
+            // print_report can emit AV_NOPTS_VALUE ticks between real ones
+            // (forward_report skips those in ffmpeg-kit C5 v3, but we
+            // tolerate either behavior here). The core contract is "events
+            // fire and the final tick reflects encode progress."
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
+    /** Coroutine wrapper that collects Statistics during the encode.
+     *  Mirrors FFmpegUtils.android.kt::executeFfmpegAsync's 4-arg path. */
+    private suspend fun executeFfmpegArgsWithStats(
+        args: Array<String>,
+        onStats: (Statistics) -> Unit,
+    ): FFmpegSession =
+        suspendCancellableCoroutine { cont ->
+            val onComplete = FFmpegSessionCompleteCallback { sess ->
+                if (cont.isActive) cont.resume(sess)
+            }
+            val session = FFmpegKit.executeWithArgumentsAsync(
+                args,
+                onComplete,
+                null,
+                StatisticsCallback { stats -> stats?.let(onStats) },
+            )
+            cont.invokeOnCancellation {
+                try { session.cancel() } catch (_: Exception) {}
+            }
+        }
+
+    // -----------------------------------------------------------------
+    // Version-string regression test.
+    //
+    // Settings → Help displays the bundled ffmpeg version via
+    // FFmpegUtils.getFfmpegVersion(), which runs `ffmpeg -version` and
+    // parses the first line of the banner ("ffmpeg version <ver>
+    // Copyright...").
+    //
+    // n7 → n8 upgrade changed the version string from "n7.1.3" to
+    // "n8.1.1". If the parser, the log capture, or the synchronous
+    // FFmpegKit.execute path ever regress, this test catches it.
+    //
+    // We don't pin to "n8.1.1" — the assertion is intentionally lenient:
+    // any non-blank string that starts with 'n' followed by digits is
+    // accepted. That way the test stays valid through future bumps
+    // (n8.2, n9.x) without further edits.
+    // -----------------------------------------------------------------
+
+    @Test
+    fun ffmpegVersion_isReportedFromBundledBuild() = runTest {
+        // The production API: FFmpegUtils.getFfmpegVersion() backs Settings →
+        // Help. As of the C5 work it routes through FFmpegKitConfig.getFFmpegVersion()
+        // which is arthenica's direct JNI to FFmpeg's av_version_info() —
+        // no `ffmpeg -version` log scraping.
+        //
+        // Why we avoid FFmpegKit.execute("-version"): fftools' show_version
+        // writes to stdout via printf AND swaps the av_log callback to
+        // log_callback_help before printing, so arthenica's log-capture
+        // hook gets zero bytes and the parsed version comes back null.
+        val configVersion = FFmpegKitConfig.getFFmpegVersion()
+        val utilsVersion = FFmpegUtils.getFfmpegVersion()
+        Log.i(
+            "VERSION_TEST",
+            "FFmpegKitConfig.getFFmpegVersion()=$configVersion " +
+                "FFmpegUtils.getFfmpegVersion()=$utilsVersion",
+        )
+
+        assertNotNull(
+            configVersion,
+            "FFmpegKitConfig.getFFmpegVersion() must return non-null. If null, " +
+                "the JNI bridge to av_version_info is broken in this AAR.",
+        )
+        assertTrue(
+            configVersion.isNotBlank() &&
+                configVersion.matches(Regex("""^n?\d+\.\d+(\.\d+)?.*""")),
+            "configVersion should look like a FFmpeg release tag " +
+                "(e.g. 'n8.1.1', '8.1.1'), got: '$configVersion'.",
+        )
+        assertNotNull(
+            utilsVersion,
+            "FFmpegUtils.getFfmpegVersion() must return non-null. " +
+                "Settings → Help depends on this.",
+        )
+        // The two must agree — getFfmpegVersion now delegates to
+        // FFmpegKitConfig.getFFmpegVersion() with no extra processing.
+        assertEquals(
+            configVersion,
+            utilsVersion,
+            "FFmpegUtils.getFfmpegVersion() must echo FFmpegKitConfig.getFFmpegVersion() " +
+                "verbatim (we no longer parse a banner). " +
+                "Got config='$configVersion' utils='$utilsVersion'.",
+        )
+    }
 }

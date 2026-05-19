@@ -38,9 +38,19 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
     }
 
     func getFfmpegVersionBanner() -> String? {
-        guard let session = FFmpegKit.execute("-version") else { return nil }
-        guard ReturnCode.isSuccess(session.getReturnCode()) else { return nil }
-        return session.getAllLogsAsString()
+        // FFmpegKitConfig.getFFmpegVersion() returns the bare version
+        // string (e.g. "n8.1.1") via a direct JNI/native call to
+        // av_version_info(). The previous approach —
+        // FFmpegKit.execute("-version") + getAllLogsAsString() — doesn't
+        // work in n8 because fftools' show_version writes to stdout via
+        // printf AND swaps the log callback to log_callback_help before
+        // printing, so the captured log buffer comes back empty.
+        // Synthesize a single-line banner so the Kotlin parser
+        // (parseFfmpegVersionBanner) still works unchanged.
+        guard let v = FFmpegKitConfig.getFFmpegVersion(), !v.isEmpty else {
+            return nil
+        }
+        return "ffmpeg version \(v)\n"
     }
     
     func getMediaInformation(filePath: String) -> MediaInfo? {
