@@ -233,6 +233,7 @@ class ChatMessageActionServiceTestFixture(
             chatMessageSenderService = FakeStatusMessageSender(),
             optimisticWriter = optimisticWriter,
             conversationStream = FakeConversationLoader(),
+            participantLookup = participantLookup,
         )
 
         return ChatMessageActionService(

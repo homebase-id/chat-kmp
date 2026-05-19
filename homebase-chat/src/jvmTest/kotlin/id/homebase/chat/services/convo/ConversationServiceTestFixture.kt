@@ -72,6 +72,17 @@ class ConversationServiceTestFixture : AutoCloseable {
         private set
 
     /**
+     * In-memory participant lookup that the service's lastRead gate reads
+     * from. Tests that exercise the gate (mark-read rejection, peer-device
+     * advance) seed conversations via [FakeConversationParticipantLookup.setLastRead]
+     * with an explicit baseline; tests that only run monotonically-increasing
+     * advances can leave it empty — the gate then treats every candidate as
+     * "no prior known" and accepts.
+     */
+    val participantLookup: id.homebase.chat.services.FakeConversationParticipantLookup =
+        id.homebase.chat.services.FakeConversationParticipantLookup()
+
+    /**
      * Build the service for tests.
      *
      * @param lastReadDebounceMs The lastRead-writeback debounce window. Defaults
@@ -115,6 +126,7 @@ class ConversationServiceTestFixture : AutoCloseable {
             chatMessageSenderService = statusMessageSender,
             optimisticWriter = optimisticWriter,
             conversationStream = conversationLoader,
+            participantLookup = participantLookup,
             // Heal-payload-reuse helpers — null in tests, real instances in prod.
             // The fixture doesn't exercise the heal redistribute path, so a null
             // here just short-circuits reuseExistingPayloadsForResend to an

@@ -143,7 +143,21 @@ class ConversationServiceLastReadDebounceTest {
                 val service = fixture.build(scope = serviceScope)
                 val convoId = fixture.seedOneOnOne(other = "alice.test")
 
+                // Seed the in-memory gate at 0 so the first advance to 5000
+                // is accepted; then advance the in-memory model to 5000
+                // (simulating what UnreadCountEnricher.applyLocalAdvance
+                // does in production) so the second call's gate compares
+                // against the post-advance value.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    kotlin.time.Instant.fromEpochMilliseconds(0),
+                )
+
                 service.updateLocalLastReadTime(convoId, UnixTimeUtc(5_000L))
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+                )
                 service.flushLastReadNow()
 
                 val afterFirstFlushUpdatedMs = fixture.getConversationFile(convoId)!!
@@ -155,9 +169,8 @@ class ConversationServiceLastReadDebounceTest {
                     "ChatReadCount must reflect the first advance",
                 )
 
-                // Try to advance backwards — should be gated out before any
-                // state mutation. We still call flushLastReadNow after to prove
-                // the gate prevented even a deferred stamp.
+                // Try to advance backwards — gate compares against in-memory
+                // 5000 and rejects 4999.
                 service.updateLocalLastReadTime(convoId, UnixTimeUtc(4_999L))
                 service.flushLastReadNow()
 
@@ -175,6 +188,58 @@ class ConversationServiceLastReadDebounceTest {
                     afterFirstFlushOutbox,
                     fixture.outboxRowCount(),
                     "Rejected advance must not enqueue an outbox row",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun gateUsesInMemoryNotChatReadCount_rejectsLocalAdvanceBehindPeerValue() = runBlocking {
+        // Regression: the gate must read `conversation.lastRead` off the live
+        // in-memory model — not `ChatReadCount` — so a local mark-read that
+        // lands between a peer-device advance hitting in-memory and the
+        // enrichment mirror running cannot stamp the conv-file backwards.
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // The peer advanced to t=3000 — landed in the in-memory model
+                // (e.g. via processConversationBatchIncrementally), but the
+                // enrichment mirror that pushes peer values into ChatReadCount
+                // hasn't fired yet, so ChatReadCount is still at the older t=1000.
+                fixture.dbm.chatReadCount.upsertLastReadTime(convoId, UnixTimeUtc(1_000L))
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    kotlin.time.Instant.fromEpochMilliseconds(3_000L),
+                )
+
+                val initialUpdatedMs = fixture.getConversationFile(convoId)!!
+                    .fileMetadata.updated.milliseconds
+                val initialOutboxRows = fixture.outboxRowCount()
+
+                // Local user marks read at t=2000 — between the old (1000) and
+                // the peer's value (3000). A ChatReadCount-based gate would
+                // accept this (2000 > 1000) and regress the conv-file backwards.
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(2_000L))
+                service.flushLastReadNow()
+
+                assertEquals(
+                    1_000L,
+                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                    "ChatReadCount must NOT be advanced — the gate read in-memory (3000) " +
+                        "and rejected 2000 before any eager upsert ran",
+                )
+                assertEquals(
+                    initialUpdatedMs,
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
+                    "Gated-out advance must not stamp the conv-file",
+                )
+                assertEquals(
+                    initialOutboxRows,
+                    fixture.outboxRowCount(),
+                    "Gated-out advance must not enqueue an outbox row",
                 )
             }
         } finally { serviceScope.cancel() }

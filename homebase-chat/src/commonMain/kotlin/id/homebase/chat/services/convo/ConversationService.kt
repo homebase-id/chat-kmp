@@ -80,6 +80,18 @@ class ConversationService(
     private val chatMessageSenderService: StatusMessageSender,
     private val optimisticWriter: OptimisticWriter,
     private val conversationStream: ConversationLoader,
+    /**
+     * In-memory lookup over the live conversation list. Used by
+     * [updateLocalLastReadTime] so the only-increases gate
+     * sees the freshest known lastRead — including peer-device advances
+     * that landed via `processConversationBatchIncrementally` or the
+     * post-DriveSync `loadBasicConversations` reload but haven't yet been
+     * mirrored into `ChatReadCount` by the enrichment pass. Without this,
+     * a local mark-as-read at t2 between a peer's t3 landing in memory
+     * and the next enrichment mirror would slip the gate (ChatReadCount
+     * still at t1) and stamp the conversation file backwards.
+     */
+    private val participantLookup: ConversationParticipantLookup,
     /** Used by the heal redistribute path to pull existing payload bytes off our
      *  drive and re-attach them to the update request. Nullable so tests can
      *  pass null without standing up the full network stack — the
@@ -2249,29 +2261,30 @@ class ConversationService(
     }
 
     /**
-     * Current stored lastRead for [conversationId], or null if this device has
-     * not recorded one yet. Single source of truth — read from ChatReadCount,
-     * which is kept monotonic by the SQL `MAX(...)` upsert clause.
-     */
-    suspend fun getLastRead(conversationId: Uuid): UnixTimeUtc? {
-        val ms = dbm.chatReadCount.selectLastReadTimeMs(conversationId) ?: return null
-        return UnixTimeUtc(ms)
-    }
-
-    /**
      * Setter for conversation lastRead. Owns the only-increases rule for the
-     * whole codebase: every other caller goes through here. ChatReadCount is
-     * upserted eagerly so [UnreadCountEnricher.applyLocalAdvance] sees the
-     * fresh value when it queries `selectUnreadCountForConversation`. The
-     * conv-file optimistic stamp and outbox enqueue — the expensive parts
-     * (DB read + JSON serialize/encrypt + DB write + event emit) — are
-     * deferred to [flushDirtyLastRead] on a 1-second debounce so a burst of
-     * reads coalesces into a single stamp + push per conversation.
+     * whole codebase: every other caller goes through here. The gate reads
+     * `conversation.lastRead` straight off the live in-memory model — the
+     * field that already captures **both** local writes (via
+     * [UnreadCountEnricher.applyLocalAdvance], which fires right after this
+     * setter from `ChatMessageActionService`) and peer-device advances (via
+     * `processConversationBatchIncrementally` and the post-DriveSync
+     * `loadBasicConversations` reload). Going to any other source —
+     * `ChatReadCount`, the conv-file on disk — leaves a window in which the
+     * gate could miss a higher peer value and let a local advance regress
+     * the conv-file's `localAppData.lastReadTime` backwards.
+     *
+     * ChatReadCount is upserted eagerly here so
+     * [UnreadCountEnricher.applyLocalAdvance] sees the fresh value when it
+     * queries `selectUnreadCountForConversation`. The conv-file optimistic
+     * stamp and outbox enqueue — the expensive parts (DB read + JSON
+     * serialize/encrypt + DB write + event emit) — are deferred to
+     * [flushDirtyLastRead] on a 1-second debounce so a burst of reads
+     * coalesces into a single stamp + push per conversation.
      */
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
-        val current = getLastRead(conversationId)
-        val currentMs = current?.milliseconds
-        val willAdvance = current == null || newLastReadTime > current
+        val convo = participantLookup.getConversationById(conversationId)
+        val currentMs = convo?.lastRead?.toEpochMilliseconds()
+        val willAdvance = currentMs == null || newLastReadTime.milliseconds > currentMs
         Logger.d(tag = "MarkAsRead") {
             "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
                     "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
