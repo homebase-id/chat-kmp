@@ -114,16 +114,23 @@ class ConversationMapper(
                 // mapped. If a member is missing in the UI, the diff between this and the
                 // ParticipantsAudit lines from createConversation/writeConversationFile/
                 // updateConversationInternal pinpoints exactly which step lost it.
+                //
+                // The unconditional READ Logger.d below is COMMENTED OUT — it fires for every
+                // group on every cold load and on every recoverConversation reload, which
+                // floods the log (80+ lines per cold start). Re-enable when actively chasing
+                // a member-drop bug. The null / dup warnings stay on because they only fire
+                // when there's actually something to flag.
                 if (isAnyGroup) {
                     val nullCount = rawRecipients.count { it == null }
+                    @Suppress("UNUSED_VARIABLE")
                     val rawSize = rawRecipients.size
                     val droppedDistinct = rawRecipients.filterNotNull().size - participants.size
-                    Logger.d(tag = "ParticipantsAudit") {
-                        "ConversationMapper.mapToBasic READ for $conversationId: " +
-                            "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
-                            "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
-                            "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
-                    }
+                    // Logger.d(tag = "ParticipantsAudit") {
+                    //     "ConversationMapper.mapToBasic READ for $conversationId: " +
+                    //         "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
+                    //         "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
+                    //         "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
+                    // }
                     if (nullCount > 0) {
                         Logger.w(tag = "ParticipantsAudit") {
                             "ConversationMapper.mapToBasic for $conversationId: $nullCount null entries in recipients — " +
