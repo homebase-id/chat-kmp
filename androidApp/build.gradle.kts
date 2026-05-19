@@ -22,6 +22,7 @@ android {
     compileSdk {
         version = release(libs.versions.android.targetSdk.get().toInt())
     }
+    compileSdkExtension = 19
 
     defaultConfig {
         applicationId = "id.homebase.feed"

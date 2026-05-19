@@ -10,6 +10,7 @@ data class VaultFileContent(
     val name: String,
     val label: String? = null,
     val notes: String? = null,
+    val pdfPageCount: Int? = null,
 )
 
 @Serializable

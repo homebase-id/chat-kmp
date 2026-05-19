@@ -523,6 +523,125 @@ class VaultEntryTest {
     }
 
     // ---------------------------------------------------------------
+    // VaultEntry — isText property
+    // ---------------------------------------------------------------
+
+    @Test
+    fun isText_textPlain() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_applicationJson() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/json", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_applicationXml() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/xml", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_applicationYaml() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/x-yaml", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_applicationJavascript() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/javascript", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_applicationSh() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/x-sh", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isText_falseForImage() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "image/jpeg", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isText)
+    }
+
+    @Test
+    fun isText_falseForPdf() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/pdf", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isText)
+    }
+
+    // ---------------------------------------------------------------
+    // VaultEntry — pdfPageCount
+    // ---------------------------------------------------------------
+
+    @Test
+    fun pdfPageCount_usedWhenPresent() {
+        val file = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/pdf", bytesWritten = 100L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "doc.pdf", pdfPageCount = 7)),
+        )
+        val item = file.toVaultEntry()
+        assertNotNull(item)
+        assertEquals(7, item.pageCount)
+        assertTrue(item.hasMultiplePages)
+    }
+
+    @Test
+    fun pdfPageCount_fallsBackToPayloadCount() {
+        val file = buildHomebaseFile(
+            payloads = listOf(
+                PayloadDescriptor(key = "a", contentType = "image/jpeg", bytesWritten = 100L),
+                PayloadDescriptor(key = "b", contentType = "image/jpeg", bytesWritten = 100L),
+            ),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "img.jpg")),
+        )
+        val item = file.toVaultEntry()
+        assertNotNull(item)
+        assertNull(item.pdfPageCount)
+        assertEquals(2, item.pageCount)
+    }
+
+    @Test
+    fun pdfPageCount_singlePage_hasMultiplePagesFalse() {
+        val file = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/pdf", bytesWritten = 100L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "one.pdf", pdfPageCount = 1)),
+        )
+        val item = file.toVaultEntry()
+        assertNotNull(item)
+        assertEquals(1, item.pageCount)
+        assertFalse(item.hasMultiplePages)
+    }
+
+    // ---------------------------------------------------------------
     // detectContentTypeFromExtensionOrHint() — common extensions
     // ---------------------------------------------------------------
 

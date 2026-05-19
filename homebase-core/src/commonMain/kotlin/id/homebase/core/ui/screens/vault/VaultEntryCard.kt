@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.vault
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.core.image.decodeBitmap
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.remember
@@ -37,6 +39,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.image.HomebaseImage
+import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -82,8 +85,8 @@ fun VaultEntryCard(
                 .height(THUMBNAIL_HEIGHT),
             contentAlignment = Alignment.Center,
         ) {
-            // Stacked shadow layers (only for multi-page)
-            if (file.hasMultiplePages) {
+            // Stacked shadow layers (multi-payload entries like scans, not PDFs)
+            if (file.hasMultiplePages && !file.isPdf) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -118,71 +121,14 @@ fun VaultEntryCard(
                     ).value
                 val localImage = localCtx as? LocalAttachmentContext.Image
 
-                if (file.isImage && localImage != null) {
-                    var imageModifier: Modifier = Modifier.fillMaxSize()
-                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                        with(sharedTransitionScope) {
-                            imageModifier = imageModifier.sharedBounds(
-                                rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
-                                animatedVisibilityScope = animatedVisibilityScope,
-                            )
-                        }
-                    }
-                    AsyncImage(
-                        model = localImage.localFilePath,
-                        contentDescription = description,
-                        modifier = imageModifier,
-                        contentScale = ContentScale.Crop,
-                    )
-                } else if (file.isImage) {
-                    @OptIn(ExperimentalEncodingApi::class)
-                    val descriptor = file.payloadDescriptors.firstOrNull()
-                    val payloadIv = remember(descriptor?.iv) {
-                        descriptor?.iv?.let {
-                            try {
-                                Base64.decode(it)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                    }
-                    if (descriptor != null && payloadIv != null) {
-                        HomebaseImage(
-                            imageData = HomebaseImageData(
-                                driveId = file.driveId,
-                                fileId = file.fileId,
-                                payloadKey = descriptor.key,
-                                previewThumbnail = file.previewThumbnail,
-                                requestedSize = ImageSize.THUMB_MEDIUM,
-                                isEncrypted = file.isEncrypted,
-                                keyHeader = KeyHeader(
-                                    iv = payloadIv,
-                                    aesKey = file.keyHeader.aesKey
-                                ),
-                                lastModified = descriptor.lastModified,
-                            ),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = description,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Outlined.Image,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                } else {
-                    Icon(
-                        imageVector = fileTypeIcon(file.contentType),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(32.dp),
-                    )
-                }
+                VaultCardThumbnail(
+                    file = file,
+                    localImage = localImage,
+                    firstPayloadKey = firstPayloadKey,
+                    description = description,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
 
                 // Upload status overlay
                 when (val status = file.uploadStatus) {
@@ -220,8 +166,28 @@ fun VaultEntryCard(
                     else -> Unit
                 }
 
-                // Page count badge (only for multi-page)
-                if (file.hasMultiplePages) {
+                // PDF type badge
+                if (file.isPdf && (file.previewThumbnail?.content != null || localImage != null)) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.vault_pdf_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onError,
+                        )
+                    }
+                }
+
+                // Page count badge (multi-payload entries like scans, not PDFs)
+                if (file.hasMultiplePages && !file.isPdf) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -262,3 +228,88 @@ fun VaultEntryCard(
     }
 }
 
+@OptIn(ExperimentalEncodingApi::class)
+@Composable
+private fun VaultCardThumbnail(
+    file: VaultEntry,
+    localImage: LocalAttachmentContext.Image?,
+    firstPayloadKey: String,
+    description: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+) {
+    // 1. Local file available (pending upload or cached thumbnail)
+    if ((file.isImage || file.isPdf) && localImage != null) {
+        var imageModifier: Modifier = Modifier.fillMaxSize()
+        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                imageModifier = imageModifier.sharedBounds(
+                    rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+            }
+        }
+        AsyncImage(
+            model = localImage.localFilePath,
+            contentDescription = description,
+            modifier = imageModifier,
+            contentScale = ContentScale.Crop,
+        )
+        return
+    }
+
+    // 2. Encrypted server thumbnail (image or PDF — same HomebaseImage path)
+    val descriptor = file.payloadDescriptors.firstOrNull()
+    val payloadIv = remember(descriptor?.iv) {
+        descriptor?.iv?.let {
+            try { Base64.decode(it) } catch (_: Exception) { null }
+        }
+    }
+    if ((file.isImage || file.isPdf) && descriptor != null && payloadIv != null) {
+        HomebaseImage(
+            imageData = HomebaseImageData(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                payloadKey = descriptor.key,
+                previewThumbnail = file.previewThumbnail,
+                requestedSize = ImageSize.THUMB_MEDIUM,
+                isEncrypted = file.isEncrypted,
+                keyHeader = KeyHeader(
+                    iv = payloadIv,
+                    aesKey = file.keyHeader.aesKey,
+                ),
+                lastModified = descriptor.lastModified,
+            ),
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            contentDescription = description,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+        return
+    }
+
+    // 3. PDF embedded preview thumbnail (no encryption key available yet)
+    if (file.isPdf && file.previewThumbnail != null) {
+        val thumbBitmap = remember(file.previewThumbnail) {
+            file.previewThumbnail.decodeBitmap()
+        }
+        if (thumbBitmap != null) {
+            Image(
+                bitmap = thumbBitmap,
+                contentDescription = description,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            return
+        }
+    }
+
+    // 4. Fallback icon
+    Icon(
+        imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType),
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(32.dp),
+    )
+}

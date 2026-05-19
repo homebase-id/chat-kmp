@@ -441,6 +441,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
+            fileOperationsProvider = get(),
             driveSyncManager = get(),
         )
     }

@@ -46,7 +46,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
 import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
-import id.homebase.core.ui.screens.vault.components.VaultImageAddSheet
+import id.homebase.core.ui.screens.vault.components.VaultAddEntrySheet
 import id.homebase.core.ui.screens.vault.components.VaultNewSectionSheet
 import id.homebase.core.ui.screens.vault.gallery.VaultGalleryScreen
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -177,9 +177,27 @@ fun VaultScreen(
         }
     }
 
-    // File picker — dispatches to append or add based on fileForAppend
-    val filePicker = rememberFilePickerLauncher(
+    // Image picker — dispatches to append or add based on fileForAppend
+    val imagePicker = rememberFilePickerLauncher(
         type = FileKitType.Image,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        if (!files.isNullOrEmpty()) {
+            val appendFile = fileForAppend
+            if (appendFile != null) {
+                viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
+                fileForAppend = null
+            } else {
+                activeSectionForEntry?.let { section ->
+                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+                }
+            }
+        }
+    }
+
+    // File picker — all file types (PDFs get thumbnail + preview automatically)
+    val documentPicker = rememberFilePickerLauncher(
+        type = FileKitType.File(),
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
@@ -328,17 +346,21 @@ fun VaultScreen(
             }
             VaultPickerAction.Gallery -> {
                 isPickerActive = true
-                filePicker.launch()
+                imagePicker.launch()
+            }
+            VaultPickerAction.File -> {
+                isPickerActive = true
+                documentPicker.launch()
             }
             null -> {}
         }
         pendingPickerAction = null
     }
 
-    // Image add bottom sheet
+    // Entry add bottom sheet
     if (showImageAddSheet) {
         val sheetState = rememberModalBottomSheetState()
-        VaultImageAddSheet(
+        VaultAddEntrySheet(
             sheetState = sheetState,
             onTakePhoto = {
                 showImageAddSheet = false
@@ -347,6 +369,10 @@ fun VaultScreen(
             onChooseGallery = {
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.Gallery
+            },
+            onChooseFile = {
+                showImageAddSheet = false
+                pendingPickerAction = VaultPickerAction.File
             },
             onDismiss = {
                 showImageAddSheet = false
@@ -427,7 +453,7 @@ fun VaultScreen(
 
 }
 
-private enum class VaultPickerAction { Camera, Gallery }
+private enum class VaultPickerAction { Camera, Gallery, File }
 
 @Composable
 private fun resolveVaultError(error: VaultError): String = when (error) {
