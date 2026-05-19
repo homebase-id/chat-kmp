@@ -79,7 +79,13 @@ class PendingUpgradeManager(
         }
 
         val returnUrl = dataUpgradeReturnUrl()
-        val upgradeUrl = "https://${domain.domainName}/owner/data-upgrade?returnUrl=${returnUrl.encodeURLParameter()}"
+        val upgradeUrl = buildString {
+            append("https://${domain.domainName}/owner/data-upgrade")
+            if (returnUrl.isNotEmpty()) {
+                append("?returnUrl=")
+                append(returnUrl.encodeURLParameter())
+            }
+        }
         val nowMs = clock.now().toEpochMilliseconds()
         val elapsedDays = (nowMs - firstSeenMs) / (1000 * 60 * 60 * 24)
 

@@ -9,6 +9,7 @@ import id.homebase.api.storage.SharedPreferences
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -56,7 +57,7 @@ class PendingUpgradeManagerTest {
         manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
 
         val state = assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
-        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade?returnUrl="))
+        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade"))
     }
 
     @Test
@@ -71,7 +72,7 @@ class PendingUpgradeManagerTest {
         newManager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
 
         val state = assertIs<PendingUpgradeState.ShowDialog>(newManager.state.value)
-        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade?returnUrl="))
+        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade"))
     }
 
     @Test
@@ -120,7 +121,7 @@ class PendingUpgradeManagerTest {
 
         manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
         val state = assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
-        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade?returnUrl="))
+        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade"))
     }
 
     @Test
@@ -171,5 +172,28 @@ class PendingUpgradeManagerTest {
 
         manager.onUpgradeCheckResult(UpgradeStatus.RUNNING)
         assertIs<PendingUpgradeState.UpgradeRunning>(manager.state.value)
+    }
+
+    @Test
+    fun upgradeUrl_includesReturnUrl_whenProvided() = runTest {
+        val cm = createCredentialsManager()
+        val manager = PendingUpgradeManager(
+            cm, STUB_CHECK,
+            dataUpgradeReturnUrl = { "homebase-fchat://data-upgrade-callback" },
+        )
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+
+        val state = assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
+        assertTrue(state.upgradeUrl.contains("?returnUrl=homebase-fchat"))
+    }
+
+    @Test
+    fun upgradeUrl_omitsReturnUrl_whenEmpty() = runTest {
+        val cm = createCredentialsManager()
+        val manager = PendingUpgradeManager(cm, STUB_CHECK, dataUpgradeReturnUrl = { "" })
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+
+        val state = assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
+        assertEquals("https://test.homebase.id/owner/data-upgrade", state.upgradeUrl)
     }
 }
