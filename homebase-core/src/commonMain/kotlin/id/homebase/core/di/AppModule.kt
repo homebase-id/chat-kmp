@@ -254,7 +254,27 @@ val appModule = module {
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<UnreadCountEnricher> { get<ConversationStream>() }
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
-    singleOf(::ConversationService)
+    // Manual `single` (not `singleOf(::ConversationService)`) because the
+    // ctor carries a `lastReadDebounceMs: Long = 1_000L` test affordance
+    // that Koin's reflective binder would try to resolve as a Long
+    // singleton (`NoDefinitionFoundException` at app startup). Spelling
+    // the injections out lets the Long default through.
+    single {
+        ConversationService(
+            credentialsManager = get(),
+            payloadBundleEncryptionService = get(),
+            dbm = get(),
+            introductionProvider = get(),
+            scope = get(),
+            outboxSync = get(),
+            chatMessageSenderService = get(),
+            optimisticWriter = get(),
+            conversationStream = get(),
+            participantLookup = get(),
+            driveFileProvider = get(),
+            fileOperationsProvider = get(),
+        )
+    }
     single<LocalLastReadUpdater> { get<ConversationService>() }
     single<GroupHealConversationOps> { get<ConversationService>() }
     singleOf(::GroupHealService)
