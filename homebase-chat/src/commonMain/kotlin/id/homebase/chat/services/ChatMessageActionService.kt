@@ -142,11 +142,10 @@ class ChatMessageActionService(
             return
         }
 
-        // Optimistic local upsert — the read-receipt send is fire-and-forget via the outbox,
-        // so we can't gate this on a per-file server status. Local read state reflects what
-        // the user read locally; the outbox retries server-side receipt delivery independently.
-        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
-
+        // The setter owns the only-increases rule, the ChatReadCount upsert,
+        // the optimistic conv-file stamp, AND the debounced outbox enqueue.
+        // The read-receipt send above is fire-and-forget; local read state
+        // reflects what the user read locally regardless of receipt delivery.
         try {
             localLastReadUpdater.updateLocalLastReadTime(
                 conversationId,
@@ -185,7 +184,6 @@ class ChatMessageActionService(
         Logger.d(tag = TAG) {
             "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"
         }
-        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
         try {
             localLastReadUpdater.updateLocalLastReadTime(
                 conversationId,

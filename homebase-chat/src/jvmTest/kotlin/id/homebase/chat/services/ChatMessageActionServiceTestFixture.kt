@@ -210,7 +210,7 @@ class ChatMessageActionServiceTestFixture(
         ).also { it.setOnline(captureHttp) }
 
         messageLookup = FakeMessageLookup()
-        localLastReadUpdater = FakeLocalLastReadUpdater()
+        localLastReadUpdater = FakeLocalLastReadUpdater(dbm)
         unreadCountEnricher = FakeUnreadCountEnricher()
         participantLookup = FakeConversationParticipantLookup()
 
@@ -585,7 +585,16 @@ class FakeMessageLookup : MessageLookup {
         records.firstOrNull { it.id == messageId }?.fileId
 }
 
-class FakeLocalLastReadUpdater : LocalLastReadUpdater {
+/**
+ * Mirrors the production setter's only-increases + ChatReadCount-upsert
+ * contract so tests asserting `dbm.chatReadCount.selectLastReadTimeMs(...)`
+ * behave the same as production. The fake stops short of stamping the
+ * conversation file / enqueueing an outbox writeback — those paths aren't
+ * exercised by ChatMessageActionService tests.
+ */
+class FakeLocalLastReadUpdater(
+    private val dbm: id.homebase.api.sync.database.DatabaseManager? = null,
+) : LocalLastReadUpdater {
     data class Call(val conversationId: Uuid, val newLastReadTime: UnixTimeUtc)
     val calls = mutableListOf<Call>()
     override suspend fun updateLocalLastReadTime(
@@ -593,6 +602,9 @@ class FakeLocalLastReadUpdater : LocalLastReadUpdater {
         newLastReadTime: UnixTimeUtc,
     ) {
         calls += Call(conversationId, newLastReadTime)
+        // Mirror the production setter's eager ChatReadCount upsert so tests
+        // that assert against selectLastReadTimeMs see the same row.
+        dbm?.chatReadCount?.upsertLastReadTime(conversationId, newLastReadTime)
     }
 }
 

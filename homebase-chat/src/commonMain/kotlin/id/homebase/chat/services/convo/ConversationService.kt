@@ -45,6 +45,11 @@ import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
@@ -83,6 +88,25 @@ class ConversationService(
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
+
+    // region lastRead writeback (private state + getter/setter/clear-dirty)
+    // The "only-increases" gate for conversation lastRead lives in
+    // [updateLocalLastReadTime] below — nowhere else. Callers that previously
+    // gated on participantLookup.getConversationById(...).lastRead or upserted
+    // ChatReadCount themselves now go through this setter.
+    //
+    // Burst behavior: ChatReadCount is upserted eagerly inside the setter
+    // (so unreadCountEnricher.applyLocalAdvance, which reads it via SQL, sees
+    // the fresh value); the per-call optimistic conv-file stamp + outbox
+    // enqueue are deferred to a single 1-second-debounced flush that
+    // processes the latest target per conversation. Bursts of N reads cost
+    // N cheap SQL upserts + 1 expensive stamp (DB read + JSON serialize +
+    // AES encrypt + DB write + event emit) + 1 outbox enqueue.
+    private val lastReadMutex = Mutex()
+    private val pendingLastReadAdvances = mutableMapOf<Uuid, UnixTimeUtc>()
+    private var lastReadFlushJob: Job? = null
+    private val lastReadDebounceMs = 1_000L
+    // endregion
 
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
@@ -2217,15 +2241,30 @@ class ConversationService(
         }
     }
 
+    /**
+     * Current stored lastRead for [conversationId], or null if this device has
+     * not recorded one yet. Single source of truth — read from ChatReadCount,
+     * which is kept monotonic by the SQL `MAX(...)` upsert clause.
+     */
+    suspend fun getLastRead(conversationId: Uuid): UnixTimeUtc? {
+        val ms = dbm.chatReadCount.selectLastReadTimeMs(conversationId) ?: return null
+        return UnixTimeUtc(ms)
+    }
+
+    /**
+     * Setter for conversation lastRead. Owns the only-increases rule for the
+     * whole codebase: every other caller goes through here. ChatReadCount is
+     * upserted eagerly so [UnreadCountEnricher.applyLocalAdvance] sees the
+     * fresh value when it queries `selectUnreadCountForConversation`. The
+     * conv-file optimistic stamp and outbox enqueue — the expensive parts
+     * (DB read + JSON serialize/encrypt + DB write + event emit) — are
+     * deferred to [flushDirtyLastRead] on a 1-second debounce so a burst of
+     * reads coalesces into a single stamp + push per conversation.
+     */
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
-
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationService.updateLocalLastReadTime: enter convo=$conversationId newMs=${newLastReadTime.milliseconds}"
-        }
-
-        val convo = requireConversation(conversationId)
-        val currentMs = UnixTimeUtc(convo.lastRead).milliseconds
-        val willAdvance = newLastReadTime > UnixTimeUtc(convo.lastRead)
+        val current = getLastRead(conversationId)
+        val currentMs = current?.milliseconds
+        val willAdvance = current == null || newLastReadTime > current
         Logger.d(tag = "MarkAsRead") {
             "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
                     "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
@@ -2233,20 +2272,104 @@ class ConversationService(
 
         if (!willAdvance) return
 
-        val request = optimisticWriter.stampConversationLastReadTime(
-            driveId = chatDrive,
-            conversationId = conversationId,
-            newLastReadTime = newLastReadTime,
-        )
-        if (request == null) {
-            Logger.w(tag = "MarkAsRead") {
-                "ConversationService.updateLocalLastReadTime: stampConversationLastReadTime returned null — conversation file missing or optimistic write failed; convo=$conversationId"
-            }
-            return
-        }
-
-        outboxSync.tryEnqueue(request)
         dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
+
+        lastReadMutex.withLock {
+            // Keep the highest pending target — re-entrant advances within
+            // the debounce window collapse to a single stamp + enqueue.
+            val priorPending = pendingLastReadAdvances[conversationId]
+            if (priorPending == null || newLastReadTime > priorPending) {
+                pendingLastReadAdvances[conversationId] = newLastReadTime
+            }
+            lastReadFlushJob?.cancel()
+            lastReadFlushJob = scope.launch {
+                try {
+                    delay(lastReadDebounceMs)
+                    flushDirtyLastRead()
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // Expected when a subsequent advance reschedules — the
+                    // new job will handle the flush.
+                }
+            }
+        }
+    }
+
+    /**
+     * Drain every pending lastRead writeback: stamp the conversation file
+     * with the latest target lastReadTime (optimistic local write) and
+     * enqueue the resulting outbox request. Called by the debounce coroutine
+     * and by [flushLastReadNow].
+     */
+    private suspend fun flushDirtyLastRead() {
+        val snapshot = lastReadMutex.withLock {
+            if (pendingLastReadAdvances.isEmpty()) return
+            val copy = pendingLastReadAdvances.toMap()
+            pendingLastReadAdvances.clear()
+            copy
+        }
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.flushDirtyLastRead: flushing ${snapshot.size} pending writeback(s)"
+        }
+        for ((id, target) in snapshot) {
+            try {
+                val request = optimisticWriter.stampConversationLastReadTime(
+                    driveId = chatDrive,
+                    conversationId = id,
+                    newLastReadTime = target,
+                )
+                if (request == null) {
+                    Logger.w(tag = "MarkAsRead") {
+                        "ConversationService.flushDirtyLastRead: stamp returned null for convo=$id — " +
+                                "conversation file missing or optimistic write failed"
+                    }
+                    continue
+                }
+                // tryEnqueue returning false means an outbox row is already
+                // queued for this file — that row will pick up the latest
+                // localAppData when it drains, so the writeback still lands.
+                outboxSync.tryEnqueue(request)
+            } catch (t: Throwable) {
+                Logger.w(throwable = t, tag = "MarkAsRead") {
+                    "ConversationService.flushDirtyLastRead: stamp/enqueue threw for convo=$id — " +
+                            "will retry on next advance"
+                }
+                // Restore so the next advance reschedules a retry. Only put
+                // back if no newer target has landed since the snapshot.
+                lastReadMutex.withLock {
+                    val newer = pendingLastReadAdvances[id]
+                    if (newer == null || target > newer) pendingLastReadAdvances[id] = target
+                }
+            }
+        }
+    }
+
+    /**
+     * Cancel any pending debounce and synchronously flush all pending lastRead
+     * writebacks. Not wired into logout today — the dirty state is in-memory
+     * only and a logout within the 1s debounce window costs at most one
+     * window of writebacks, the same loss profile the user accepted for
+     * process kill. Kept public so callers (tests, future logout hook) can
+     * force a synchronous flush without waiting for the debounce.
+     */
+    suspend fun flushLastReadNow() {
+        val job = lastReadMutex.withLock {
+            val j = lastReadFlushJob
+            lastReadFlushJob = null
+            j
+        }
+        job?.cancel()
+        flushDirtyLastRead()
+    }
+
+    /**
+     * Test affordance + safety net — drop any pending writeback for a
+     * conversation that no longer makes sense (e.g. deleted locally). Most
+     * production code paths don't need to call this; successful enqueues
+     * already clear the entry via [flushDirtyLastRead].
+     */
+    @Suppress("unused")
+    private suspend fun clearLastReadDirty(conversationId: Uuid) {
+        lastReadMutex.withLock { pendingLastReadAdvances.remove(conversationId) }
     }
 
 }
