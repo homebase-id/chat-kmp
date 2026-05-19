@@ -144,9 +144,9 @@ kotlin {
             // type from the same source set's classpath.
             api(libs.kmpnotifier)
         }
-        // Uncomment in step 10 of the WASM pre-flight plan, paired with
-        // `wasmJs { browser() }`. ktor-client-js provides the browser
-        // engine (fetch/WebSocket) for the wasmJs target.
+        // Uncomment when enabling the wasmJs target (post-pre-flight),
+        // paired with the `wasmJs { browser() }` block above.
+        // ktor-client-js provides the browser engine (fetch/WebSocket).
 //        wasmJsMain.dependencies {
 //            implementation(libs.ktor.client.js)
 //        }
