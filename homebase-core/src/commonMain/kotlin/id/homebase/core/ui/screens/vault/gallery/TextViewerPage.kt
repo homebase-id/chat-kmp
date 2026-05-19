@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.util.trimToUtf8Boundary
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
@@ -75,7 +76,7 @@ fun TextViewerPage(
                 val truncated = fileSize > MAX_TEXT_BYTES
                 val bytes = withContext(Dispatchers.Default) {
                     val raw = fileOperationsProvider.readFileHeaderBytes(tempPath, MAX_TEXT_BYTES)
-                    if (truncated) trimToUtf8Boundary(raw) else raw
+                    if (truncated) raw.trimToUtf8Boundary() else raw
                 }
                 state = TextViewerState.Ready(bytes.decodeToString(), truncated)
                 try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) { }
@@ -144,26 +145,4 @@ fun TextViewerPage(
             }
         }
     }
-}
-
-private fun trimToUtf8Boundary(bytes: ByteArray): ByteArray {
-    var end = bytes.size
-    while (end > 0) {
-        val b = bytes[end - 1].toInt() and 0xFF
-        if (b and 0x80 == 0) break            // ASCII — clean boundary
-        if (b and 0xC0 == 0xC0) {             // start of a multi-byte sequence
-            val expectedLen = when {
-                b and 0xE0 == 0xC0 -> 2
-                b and 0xF0 == 0xE0 -> 3
-                b and 0xF8 == 0xF0 -> 4
-                else -> 1
-            }
-            val available = bytes.size - (end - 1)
-            if (available >= expectedLen) break // sequence is complete
-            end--                              // incomplete — drop this start byte too
-            break
-        }
-        end--                                  // continuation byte (10xxxxxx) — keep scanning
-    }
-    return if (end == bytes.size) bytes else bytes.copyOf(end)
 }
