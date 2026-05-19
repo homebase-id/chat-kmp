@@ -42,6 +42,30 @@ data class ConversationUiModel(
         return admins.contains(odinId)
     }
 
+    /**
+     * Mandatory gate for any caller about to advance lastRead. Returns
+     * [candidate] if the advance has semantic effect, or null when the
+     * write should be suppressed. Two suppression reasons:
+     *
+     *   1. **Monotonic** — lastRead never regresses. The candidate must
+     *      be strictly greater than the current [lastRead].
+     *   2. **Saturated** — [lastRead] is already at or past every known
+     *      message ([latestMessageTimestamp]). Advancing further has no
+     *      semantic effect: unread count is already 0, and peer devices
+     *      can't act on "even more read." The conv-file stamp + outbox
+     *      push that would follow would be pure noise.
+     *
+     * Callers MUST go through this — do NOT compare [candidate] to
+     * [lastRead] ad-hoc. Centralising the rule here is what keeps the
+     * mark-as-read flows (per-message, mark-all-as-read, future callers)
+     * from drifting.
+     */
+    fun resolveLastReadAdvance(candidate: Instant): Instant? = when {
+        lastRead >= latestMessageTimestamp -> null  // saturated
+        candidate <= lastRead -> null                // not advancing
+        else -> candidate
+    }
+
     /** True when this conversation is a group — either tagged or legacy (>2 participants). */
     val isGroupConversation: Boolean
         get() = isGroup || isLegacyGroup

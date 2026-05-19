@@ -143,20 +143,24 @@ class ConversationServiceLastReadDebounceTest {
                 val service = fixture.build(scope = serviceScope)
                 val convoId = fixture.seedOneOnOne(other = "alice.test")
 
-                // Seed the in-memory gate at 0 so the first advance to 5000
-                // is accepted; then advance the in-memory model to 5000
-                // (simulating what UnreadCountEnricher.applyLocalAdvance
-                // does in production) so the second call's gate compares
-                // against the post-advance value.
+                // Seed the in-memory gate with lastRead=0 and latestMessage
+                // somewhere ahead — so the first advance to 5000 is accepted
+                // (current 0 < latest 10_000, candidate 5000 > current).
+                // Then advance the in-memory model to 5000 (simulating what
+                // UnreadCountEnricher.applyLocalAdvance does in production)
+                // so the second call's gate compares against the post-advance
+                // value.
                 fixture.participantLookup.setLastRead(
                     convoId,
                     kotlin.time.Instant.fromEpochMilliseconds(0),
+                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
                 )
 
                 service.updateLocalLastReadTime(convoId, UnixTimeUtc(5_000L))
                 fixture.participantLookup.setLastRead(
                     convoId,
                     kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
                 )
                 service.flushLastReadNow()
 
@@ -209,10 +213,15 @@ class ConversationServiceLastReadDebounceTest {
                 // (e.g. via processConversationBatchIncrementally), but the
                 // enrichment mirror that pushes peer values into ChatReadCount
                 // hasn't fired yet, so ChatReadCount is still at the older t=1000.
+                // latestMessageTimestamp is set higher than 3000 so the
+                // saturation rule doesn't fire — this test isolates the
+                // *source of truth for current lastRead* (in-memory vs
+                // ChatReadCount), not the saturation behaviour.
                 fixture.dbm.chatReadCount.upsertLastReadTime(convoId, UnixTimeUtc(1_000L))
                 fixture.participantLookup.setLastRead(
                     convoId,
                     kotlin.time.Instant.fromEpochMilliseconds(3_000L),
+                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
                 )
 
                 val initialUpdatedMs = fixture.getConversationFile(convoId)!!
@@ -336,6 +345,56 @@ class ConversationServiceLastReadDebounceTest {
                     localAppData.content?.contains("\"lastReadTime\":3000") == true,
                     "Stamped conv-file must carry the latest target (3000), not the superseded 2000 — " +
                         "got localAppData.content=${localAppData.content}",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun saturatedConversation_suppressesAdvance() = runBlocking {
+        // ConversationUiModel.resolveLastReadAdvance returns null when
+        // lastRead is already at or past latestMessageTimestamp — the
+        // user has read everything, so further advances have no semantic
+        // effect (unread is already 0; peers can't act on "read past the
+        // end harder"). The setter must honour that and skip the eager
+        // ChatReadCount upsert + scheduled stamp/outbox push.
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // In-memory: lastRead == latestMessageTimestamp == 5000.
+                // FakeConversationParticipantLookup.setLastRead defaults
+                // latestMessageTimestamp to the same value as lastRead, so
+                // the explicit default is what we want here.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+                )
+
+                val initialUpdatedMs = fixture.getConversationFile(convoId)!!
+                    .fileMetadata.updated.milliseconds
+                val initialOutboxRows = fixture.outboxRowCount()
+
+                // Try to advance past the saturation point.
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(7_000L))
+                service.flushLastReadNow()
+
+                assertEquals(
+                    null,
+                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                    "Saturated convo: setter must not upsert ChatReadCount",
+                )
+                assertEquals(
+                    initialUpdatedMs,
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
+                    "Saturated convo: setter must not stamp the conv-file",
+                )
+                assertEquals(
+                    initialOutboxRows,
+                    fixture.outboxRowCount(),
+                    "Saturated convo: setter must not enqueue an outbox row",
                 )
             }
         } finally { serviceScope.cancel() }

@@ -128,16 +128,18 @@ class ChatMessageActionService(
             return
         }
 
-        // Gate the local-state work on the in-memory lastRead. The conversation
-        // file's appdata.lastReadTime (mirrored as ConversationUiModel.lastRead)
-        // is the source of truth here; ChatReadCount is just its SQL-queryable
-        // index. Re-entering the same conversation typically lands here with
-        // newReadTime == priorLastRead — skipping spares us a SQL upsert, an
-        // appdata round-trip, and a COUNT-based enrich on every visit.
-        val priorLastRead = participantLookup.getConversationById(conversationId)?.lastRead
-        if (priorLastRead != null && newReadTime <= priorLastRead) {
+        // Hot-path short-circuit. The entity-owned gate
+        // [ConversationUiModel.resolveLastReadAdvance] runs again inside
+        // the setter, but checking here spares us a SQL upsert, the
+        // appdata round-trip, and the COUNT-based enrich on every re-entry
+        // into a fully-read conversation.
+        val convo = participantLookup.getConversationById(conversationId)
+        if (convo != null && convo.resolveLastReadAdvance(newReadTime) == null) {
             Logger.d(tag = TAG) {
-                "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} <= priorLastRead(ms)=${priorLastRead.toEpochMilliseconds()} — skipping upsert + enrich; convo=$conversationId"
+                "convo=$conversationId resolveLastReadAdvance suppressed " +
+                    "(currentMs=${convo.lastRead.toEpochMilliseconds()} " +
+                    "latestMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
+                    "newMs=${newReadTime.toEpochMilliseconds()}) — skipping upsert + enrich"
             }
             return
         }
@@ -178,8 +180,7 @@ class ChatMessageActionService(
      */
     suspend fun markAllAsRead(conversationId: Uuid) {
         val convo = participantLookup.getConversationById(conversationId) ?: return
-        val newReadTime = convo.latestMessageTimestamp
-        if (newReadTime <= convo.lastRead) return
+        val newReadTime = convo.resolveLastReadAdvance(convo.latestMessageTimestamp) ?: return
 
         Logger.d(tag = TAG) {
             "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"

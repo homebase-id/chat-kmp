@@ -2261,19 +2261,25 @@ class ConversationService(
     }
 
     /**
-     * Setter for conversation lastRead. Owns the only-increases rule for the
-     * whole codebase: every other caller goes through here. The gate reads
-     * `conversation.lastRead` straight off the live in-memory model — the
-     * field that already captures **both** local writes (via
-     * [UnreadCountEnricher.applyLocalAdvance], which fires right after this
-     * setter from `ChatMessageActionService`) and peer-device advances (via
-     * `processConversationBatchIncrementally` and the post-DriveSync
-     * `loadBasicConversations` reload). Going to any other source —
-     * `ChatReadCount`, the conv-file on disk — leaves a window in which the
-     * gate could miss a higher peer value and let a local advance regress
-     * the conv-file's `localAppData.lastReadTime` backwards.
+     * Setter for conversation lastRead. The validity check (monotonic +
+     * saturation) lives on the entity at
+     * [ConversationUiModel.resolveLastReadAdvance] — this setter delegates
+     * to it, so every caller (this one, `onViewMessages`, `markAllAsRead`,
+     * future callers) shares one rule. If the entity hands back null we
+     * do nothing; otherwise we proceed with the eager ChatReadCount
+     * upsert + the 1s-debounced conv-file stamp / outbox enqueue.
      *
-     * ChatReadCount is upserted eagerly here so
+     * Why the gate reads from the live in-memory model and not from
+     * `ChatReadCount` or the on-disk conv-file: in-memory captures BOTH
+     * local writes (via [UnreadCountEnricher.applyLocalAdvance], which
+     * fires right after this setter from `ChatMessageActionService`) and
+     * peer-device advances (via `processConversationBatchIncrementally`
+     * and the post-DriveSync `loadBasicConversations` reload). Going to
+     * any other source leaves a window in which the gate could miss a
+     * higher peer value and let a local advance regress the conv-file's
+     * `localAppData.lastReadTime` backwards.
+     *
+     * ChatReadCount is upserted eagerly so
      * [UnreadCountEnricher.applyLocalAdvance] sees the fresh value when it
      * queries `selectUnreadCountForConversation`. The conv-file optimistic
      * stamp and outbox enqueue — the expensive parts (DB read + JSON
@@ -2283,14 +2289,19 @@ class ConversationService(
      */
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
         val convo = participantLookup.getConversationById(conversationId)
-        val currentMs = convo?.lastRead?.toEpochMilliseconds()
-        val willAdvance = currentMs == null || newLastReadTime.milliseconds > currentMs
+        val candidate = newLastReadTime.toInstant()
+        // No in-memory model yet (cold-load race) — proceed with the write;
+        // the downstream stamp's null-check will no-op if the conv-file isn't
+        // on disk either.
+        val advanceTo = if (convo == null) candidate else convo.resolveLastReadAdvance(candidate)
         Logger.d(tag = "MarkAsRead") {
-            "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
-                    "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
+            "ConversationService.updateLocalLastReadTime: convo=$conversationId " +
+                "currentMs=${convo?.lastRead?.toEpochMilliseconds()} " +
+                "latestMs=${convo?.latestMessageTimestamp?.toEpochMilliseconds()} " +
+                "newMs=${newLastReadTime.milliseconds} " +
+                "advanceTo=${advanceTo?.toEpochMilliseconds()}"
         }
-
-        if (!willAdvance) return
+        if (advanceTo == null) return
 
         dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
 
