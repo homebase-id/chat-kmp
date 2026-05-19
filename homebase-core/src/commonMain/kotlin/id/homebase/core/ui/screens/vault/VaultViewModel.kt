@@ -13,7 +13,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.pdf.generatePdfThumbnailFromFile
+
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
@@ -372,15 +372,13 @@ class VaultViewModel(
             )
         }
 
-        fileData.forEachIndexed { index, (path, contentType) ->
+        fileData.forEachIndexed { index, (path, _) ->
             val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
-            if (contentType != "application/pdf") {
-                localAttachmentStore.put(
-                    pendingId,
-                    payloadKey,
-                    LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-                )
-            }
+            localAttachmentStore.put(
+                pendingId,
+                payloadKey,
+                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
+            )
         }
 
         val pendingItem = VaultEntry(
@@ -401,28 +399,8 @@ class VaultViewModel(
             payloadDescriptors = placeholderDescriptors,
         )
 
-        vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
-
         viewModelScope.launch {
-            // Generate local JPEG thumbnail for PDFs so the card can show a preview via AsyncImage
-            if (firstContentType == "application/pdf") {
-                try {
-                    val pdfResult = generatePdfThumbnailFromFile(fileData.first().first, 320)
-                    val thumbBytes = pdfResult?.thumbnailBytes
-                    if (thumbBytes != null) {
-                        val thumbPath = fileOperationsProvider.writeBytesToTempFile(
-                            thumbBytes, "pdf_card_", ".jpg",
-                        )
-                        localAttachmentStore.put(
-                            pendingId,
-                            "vlt_pg_00",
-                            LocalAttachmentContext.Image(localFilePath = thumbPath, aspectRatio = null),
-                        )
-                    }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (_: Exception) { }
-            }
+            vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
 
             val uniqueId = vaultUploaderService.uploadFile(
                 entryName = firstName,
