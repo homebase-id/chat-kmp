@@ -30,6 +30,10 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.createImageThumbnail
+import id.homebase.api.image.tinyThumbSize
+import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -66,14 +70,15 @@ class VaultUploaderService(
                 convertHeicIfNeeded(resolved, contentType)
             }
 
-            val bundle = buildMultiPayloadBundle(resolvedFiles)
+            var pdfPageCount: Int? = null
+            val bundle = buildMultiPayloadBundle(resolvedFiles) { pdfPageCount = it }
 
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 uniqueId, bundle, keyHeader.aesKey, scope
             )
 
             val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = entryName, notes = notes)
+                VaultFileContent(name = entryName, notes = notes, pdfPageCount = pdfPageCount)
             )
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
@@ -270,6 +275,7 @@ class VaultUploaderService(
 
     private suspend fun buildMultiPayloadBundle(
         files: List<Pair<String, String>>,
+        onPdfPageCount: ((Int) -> Unit)? = null,
     ): PayloadBundle {
         val allPayloads = mutableListOf<PayloadFile>()
         val allThumbnails = mutableListOf<ThumbnailFile>()
@@ -289,6 +295,38 @@ class VaultUploaderService(
                     thumbnails = result.thumbnails
                 } catch (e: Exception) {
                     Logger.w(e, TAG) { "Thumbnail generation failed for payload $key" }
+                }
+            } else if (contentType == "application/pdf") {
+                try {
+                    val pdfResult = generatePdfThumbnailFromFile(filePath, 320)
+                    val thumbBytes = pdfResult?.thumbnailBytes
+                    if (thumbBytes != null) {
+                        // Tiny embedded preview for appData (must fit under MaxEmbeddedThumbBytes)
+                        val tinyThumb = createImageThumbnail(
+                            thumbBytes, key, tinyThumbSize, isTinyThumb = true,
+                        )
+                        previewThumbnail = EmbeddedThumb(
+                            pixelWidth = tinyThumb.pixelWidth,
+                            pixelHeight = tinyThumb.pixelHeight,
+                            contentType = tinyThumb.contentType,
+                            content = Base64.encode(tinyThumb.thumbnailBytes),
+                        )
+                        // Larger thumbnail for crisp card display
+                        val naturalSize = ImageUtils.getNaturalSize(thumbBytes)
+                        thumbnails = listOf(
+                            ThumbnailFile(
+                                pixelWidth = naturalSize.pixelWidth,
+                                pixelHeight = naturalSize.pixelHeight,
+                                thumbnailBytes = thumbBytes,
+                                key = key,
+                                contentType = "image/jpeg",
+                                quality = 80,
+                            ),
+                        )
+                    }
+                    if (pdfResult != null && index == 0) onPdfPageCount?.invoke(pdfResult.pageCount)
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "PDF thumbnail generation failed for payload $key" }
                 }
             }
 

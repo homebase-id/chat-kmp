@@ -31,6 +31,7 @@ kotlin {
     android {
         namespace = "id.homebase.common"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
@@ -113,6 +114,7 @@ kotlin {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.biometric)
             implementation(libs.androidx.browser)
+            implementation(libs.androidx.pdf.viewer)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)
             implementation(libs.firebase.crashlytics)
@@ -139,14 +141,15 @@ kotlin {
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
+            implementation(libs.pdfbox)
             // `api` so desktopApp's existing direct kmpnotifier dep stays
             // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
             // type from the same source set's classpath.
             api(libs.kmpnotifier)
         }
-        // Uncomment in step 10 of the WASM pre-flight plan, paired with
-        // `wasmJs { browser() }`. ktor-client-js provides the browser
-        // engine (fetch/WebSocket) for the wasmJs target.
+        // Uncomment when enabling the wasmJs target (post-pre-flight),
+        // paired with the `wasmJs { browser() }` block above.
+        // ktor-client-js provides the browser engine (fetch/WebSocket).
 //        wasmJsMain.dependencies {
 //            implementation(libs.ktor.client.js)
 //        }
