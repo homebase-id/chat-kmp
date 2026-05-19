@@ -18,17 +18,40 @@ import platform.CoreGraphics.CGDataProviderCreateWithData
 import platform.CoreGraphics.CGDataProviderRelease
 import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
+import platform.CoreGraphics.CGPDFDocumentCreateWithURL
 import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
 import platform.CoreGraphics.CGPDFDocumentGetPage
+import platform.CoreGraphics.CGPDFDocumentRef
 import platform.CoreGraphics.CGPDFDocumentRelease
 import platform.CoreGraphics.CGPDFPageGetBoxRect
 import platform.CoreGraphics.kCGPDFMediaBox
 import platform.Foundation.NSData
+import platform.Foundation.NSURL
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 
 // kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
 private val BITMAP_INFO: UInt = 2u or 8192u
+
+actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
+    return try {
+        val url = platform.Foundation.CFBridgingRetain(NSURL.fileURLWithPath(filePath))
+        try {
+            val document = CGPDFDocumentCreateWithURL(
+                url as platform.CoreFoundation.CFURLRef,
+            ) ?: return null
+            try {
+                renderFirstPageThumbnail(document, maxWidth)
+            } finally {
+                CGPDFDocumentRelease(document)
+            }
+        } finally {
+            platform.CoreFoundation.CFRelease(url)
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
 
 actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
     return try {
@@ -45,58 +68,64 @@ actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailRe
             document ?: return null
 
             try {
-                val pageCount = CGPDFDocumentGetNumberOfPages(document).toInt()
-                val page = CGPDFDocumentGetPage(document, 1u) ?: return null
-                val mediaBox = CGPDFPageGetBoxRect(page, kCGPDFMediaBox)
-                val pageWidth = mediaBox.useContents { size.width }
-                val scale = maxWidth.toDouble() / pageWidth
-                val bitmapWidth = (pageWidth * scale).toInt()
-                val bitmapHeight = (mediaBox.useContents { size.height } * scale).toInt()
-
-                val colorSpace = CGColorSpaceCreateDeviceRGB()
-                try {
-                    val bytesPerRow = bitmapWidth * 4
-                    val bitmapData = ByteArray(bytesPerRow * bitmapHeight)
-
-                    val result = bitmapData.usePinned { bmpPinned ->
-                        val context = CGBitmapContextCreate(
-                            data = bmpPinned.addressOf(0),
-                            width = bitmapWidth.toULong(),
-                            height = bitmapHeight.toULong(),
-                            bitsPerComponent = 8u,
-                            bytesPerRow = bytesPerRow.toULong(),
-                            space = colorSpace,
-                            bitmapInfo = BITMAP_INFO,
-                        ) ?: return null
-
-                        CGContextScaleCTM(context, scale, scale)
-                        CGContextDrawPDFPage(context, page)
-
-                        val cgImage = CGBitmapContextCreateImage(context)
-                        CGContextRelease(context)
-                        cgImage ?: return null
-
-                        val uiImage = UIImage(cGImage = cgImage)
-                        CGImageRelease(cgImage)
-
-                        val jpegData = UIImageJPEGRepresentation(uiImage, 0.8)
-                            ?: return null
-
-                        PdfThumbnailResult(
-                            thumbnailBytes = jpegData.toKotlinByteArray(),
-                            pageCount = pageCount,
-                        )
-                    }
-                    result
-                } finally {
-                    CGColorSpaceRelease(colorSpace)
-                }
+                renderFirstPageThumbnail(document, maxWidth)
             } finally {
                 CGPDFDocumentRelease(document)
             }
         }
     } catch (_: Exception) {
         null
+    }
+}
+
+private fun renderFirstPageThumbnail(
+    document: CGPDFDocumentRef,
+    maxWidth: Int,
+): PdfThumbnailResult? {
+    val pageCount = CGPDFDocumentGetNumberOfPages(document).toInt()
+    val page = CGPDFDocumentGetPage(document, 1u) ?: return null
+    val mediaBox = CGPDFPageGetBoxRect(page, kCGPDFMediaBox)
+    val pageWidth = mediaBox.useContents { size.width }
+    val scale = maxWidth.toDouble() / pageWidth
+    val bitmapWidth = (pageWidth * scale).toInt()
+    val bitmapHeight = (mediaBox.useContents { size.height } * scale).toInt()
+
+    val colorSpace = CGColorSpaceCreateDeviceRGB()
+    try {
+        val bytesPerRow = bitmapWidth * 4
+        val bitmapData = ByteArray(bytesPerRow * bitmapHeight)
+
+        return bitmapData.usePinned { bmpPinned ->
+            val context = CGBitmapContextCreate(
+                data = bmpPinned.addressOf(0),
+                width = bitmapWidth.toULong(),
+                height = bitmapHeight.toULong(),
+                bitsPerComponent = 8u,
+                bytesPerRow = bytesPerRow.toULong(),
+                space = colorSpace,
+                bitmapInfo = BITMAP_INFO,
+            ) ?: return null
+
+            CGContextScaleCTM(context, scale, scale)
+            CGContextDrawPDFPage(context, page)
+
+            val cgImage = CGBitmapContextCreateImage(context)
+            CGContextRelease(context)
+            cgImage ?: return null
+
+            val uiImage = UIImage(cGImage = cgImage)
+            CGImageRelease(cgImage)
+
+            val jpegData = UIImageJPEGRepresentation(uiImage, 0.8)
+                ?: return null
+
+            PdfThumbnailResult(
+                thumbnailBytes = jpegData.toKotlinByteArray(),
+                pageCount = pageCount,
+            )
+        }
+    } finally {
+        CGColorSpaceRelease(colorSpace)
     }
 }
 

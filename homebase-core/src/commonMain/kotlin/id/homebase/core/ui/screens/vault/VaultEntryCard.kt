@@ -205,6 +205,8 @@ fun VaultEntryCard(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                             contentDescription = description,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
                         )
                     } else if (file.previewThumbnail != null) {
                         val thumbBitmap = remember(file.previewThumbnail) {

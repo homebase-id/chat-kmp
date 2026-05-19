@@ -23,3 +23,5 @@ data class PdfThumbnailResult(
 }
 
 expect fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult?
+
+expect fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult?

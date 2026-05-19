@@ -33,7 +33,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
-import id.homebase.core.pdf.generatePdfThumbnail
+import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -298,8 +298,7 @@ class VaultUploaderService(
                 }
             } else if (contentType == "application/pdf") {
                 try {
-                    val pdfBytes = fileOperationsProvider.readFileBytes(filePath)
-                    val pdfResult = generatePdfThumbnail(pdfBytes, 320)
+                    val pdfResult = generatePdfThumbnailFromFile(filePath, 320)
                     val thumbBytes = pdfResult?.thumbnailBytes
                     if (thumbBytes != null) {
                         // Tiny embedded preview for appData (must fit under MaxEmbeddedThumbBytes)
