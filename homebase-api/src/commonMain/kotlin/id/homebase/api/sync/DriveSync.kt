@@ -46,6 +46,14 @@ class DriveSync(
     private var job: Job? = null
     private val killroy = atomic(false)
 
+    // True while a sync round is actively running (from acquiring the sync
+    // lock until performSync's finally releases it). Distinct from
+    // [isJobRunning], which can momentarily read false between a round's
+    // finally and a killroy-triggered recursive re-sync. Consumers that
+    // need "is the drive mid-sync right now" (e.g. deferring a write that
+    // would race the sync's DB writes) should read this.
+    private val syncing = atomic(false)
+
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
@@ -66,6 +74,9 @@ class DriveSync(
         return job != null
     }
 
+    /** True while this drive is actively syncing (a round is in flight). */
+    fun isSyncing(): Boolean = syncing.value
+
     fun cancel() {
         killroy.value = false
         job?.cancel()
@@ -79,11 +90,13 @@ class DriveSync(
             killroy.value = true // Atomic
             return null
         }
+        syncing.value = true // Atomic — mirrors the sync-lock lifetime below
         job = scope.launch {
             try {
                 performSync()
             } finally {
                 job = null
+                syncing.value = false
                 mutex.unlock()
             }
             if (killroy.value) {

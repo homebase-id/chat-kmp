@@ -20,7 +20,6 @@ import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
-import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
@@ -34,7 +33,6 @@ class ChatMessageActionService(
     private val conversationService: ConversationService,
     private val participantLookup: ConversationParticipantLookup,
     private val localLastReadUpdater: LocalLastReadUpdater,
-    private val unreadCountEnricher: UnreadCountEnricher,
     private val messageLookup: MessageLookup,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
@@ -145,24 +143,14 @@ class ChatMessageActionService(
         }
 
         // The setter owns the only-increases rule, the ChatReadCount upsert,
-        // the optimistic conv-file stamp, AND the debounced outbox enqueue.
-        // The read-receipt send above is fire-and-forget; local read state
-        // reflects what the user read locally regardless of receipt delivery.
-        try {
-            localLastReadUpdater.updateLocalLastReadTime(
-                conversationId,
-                UnixTimeUtc(newReadTime)
-            )
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) {
-                "localLastReadUpdater THREW — unreadCountEnricher will NOT run, UI may stay stale"
-            }
-            throw t
-        }
-
-        // Synchronously patch in-memory lastRead + unreadCount so the UI
-        // updates without waiting for the BatchReceived round-trip.
-        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
+        // the in-memory advance (lastRead + dirty + unreadCount), AND the
+        // debounced outbox enqueue. The read-receipt send above is
+        // fire-and-forget; local read state reflects what the user read
+        // locally regardless of receipt delivery.
+        localLastReadUpdater.updateLocalLastReadTime(
+            conversationId,
+            UnixTimeUtc(newReadTime)
+        )
     }
 
     /**
@@ -185,19 +173,12 @@ class ChatMessageActionService(
         Logger.d(tag = TAG) {
             "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"
         }
-        try {
-            localLastReadUpdater.updateLocalLastReadTime(
-                conversationId,
-                UnixTimeUtc(newReadTime),
-            )
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) {
-                "markAllAsRead localLastReadUpdater THREW — applyLocalAdvance will NOT run, " +
-                        "UI may stay stale; convo=$conversationId"
-            }
-            throw t
-        }
-        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
+        // The setter advances the in-memory model (lastRead + dirty + unread)
+        // as well as persisting and scheduling the writeback.
+        localLastReadUpdater.updateLocalLastReadTime(
+            conversationId,
+            UnixTimeUtc(newReadTime),
+        )
 
         // Sanity check: after advancing lastRead to the conversation's latest
         // message timestamp, the unread count should be 0. If not, there's a

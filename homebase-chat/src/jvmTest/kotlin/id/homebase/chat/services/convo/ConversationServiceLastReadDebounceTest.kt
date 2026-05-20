@@ -3,8 +3,9 @@ package id.homebase.chat.services.convo
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,39 +13,38 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 
 /**
- * Verifies the lastRead writeback path on [ConversationService]:
- *   - ChatReadCount upsert is eager (so UnreadCountEnricher.applyLocalAdvance,
- *     which queries it via SQL, sees fresh values on the same frame).
- *   - The conversation-file optimistic stamp and the outbox enqueue are
- *     deferred and coalesce to a single per-conversation flush.
+ * Verifies the lastRead writeback path on [ConversationService] after the
+ * pending-writeback state moved onto the in-memory conversation list (each
+ * ConversationUiModel carries its own `lastRead` + `dirty`):
+ *   - The setter ([ConversationService.updateLocalLastReadTime]) eagerly upserts
+ *     ChatReadCount and marks the conversation dirty — but only when the
+ *     candidate is a genuine advance (the entity's `resolveLastReadAdvance` gate).
+ *   - The flush walks the dirty conversations, stamps each with the value the
+ *     list holds, enqueues, and compare-and-clears the dirty flag.
  *
- * **Why `runBlocking` and not `runTest`.** The service's debounce is a
- * `scope.launch { delay(N); flushDirtyLastRead() }`. Under `runTest`/TestScope
- * the StandardTestDispatcher interleaves launched coroutines with the test
- * body in ways that let a fraction of those launched coroutines slip past
- * `cancel()` and execute their flush before the test's explicit drain runs,
- * contaminating the per-flush counters. `runBlocking` gives a real scope
- * with a real wall-clock `delay`, and the fixture passes
- * `Long.MAX_VALUE / 2` as the debounce so the timer cannot fire during
- * the test — every flush comes through [ConversationService.flushLastReadNow].
+ * **Test seam.** The fake `ConversationParticipantLookup.advancedLastRead`
+ * override runs the same entity transition the real ConversationStream does
+ * (move lastRead + set dirty), minus the unreadCount DB re-derive. So calling
+ * the setter advances the in-memory model exactly as production would; tests
+ * also seed starting state directly via the fake's `setLastRead`.
  *
- * Counts stamps via the `fileMetadata.updated` delta: every stamp bumps
- * `updated` by exactly 1 ms (see `OptimisticWriter.stampConversationLocalAppData` —
- * `existingFile.fileMetadata.updated.addMilliseconds(1)`).
+ * **Why `runBlocking` and not `runTest`.** The debounce is a
+ * `scope.launch { delay(N); flushDirtyLastRead() }`; under `runTest`'s
+ * StandardTestDispatcher launched coroutines interleave with the test body and
+ * slip past `cancel()`, contaminating per-flush counters. `runBlocking` gives a
+ * real scope + wall-clock `delay`, and the fixture passes `Long.MAX_VALUE / 2`
+ * as the debounce so the timer never fires — every flush comes through
+ * [ConversationService.flushLastReadNow].
+ *
+ * Stamp counting: every stamp bumps the conv-file's `fileMetadata.updated` by
+ * exactly 1 ms (`OptimisticWriter.stampConversationLocalAppData`).
  */
 class ConversationServiceLastReadDebounceTest {
 
-    /**
-     * Real scope wrapping the JVM's IO pool — explicitly NOT a TestScope. The
-     * test body uses `runBlocking` so suspend calls execute on real threads,
-     * and the service's `delay(Long.MAX_VALUE / 2)` parks the timer for the
-     * lifetime of the universe so nothing fires until the test explicitly
-     * calls `flushLastReadNow`. Cancelled at the end of each test.
-     */
     private fun newServiceScope() = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Test
-    fun burstOnOneConversation_coalescesToSingleStampAndEnqueue() = runBlocking {
+    fun flushStampsDirtyConversationAndClearsTheFlag() = runBlocking {
         val serviceScope = newServiceScope()
         try {
             ConversationServiceTestFixture().use { fixture ->
@@ -55,47 +55,43 @@ class ConversationServiceLastReadDebounceTest {
                     .fileMetadata.updated.milliseconds
                 val initialOutboxRows = fixture.outboxRowCount()
 
-                // 50 rapid monotonically-increasing advances. Each call should
-                // upsert ChatReadCount immediately and only schedule the deferred
-                // stamp + enqueue.
-                repeat(50) { i ->
-                    service.updateLocalLastReadTime(
-                        conversationId = convoId,
-                        newLastReadTime = UnixTimeUtc(1_000L + i.toLong()),
-                    )
-                }
-
-                // ChatReadCount must reflect the latest target immediately —
-                // eager upsert is the whole point of keeping it out of the
-                // debounce (so applyLocalAdvance's SQL read works).
-                assertEquals(
-                    1_049L,
-                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "ChatReadCount must reflect the latest advance immediately",
+                // A dirty conversation whose in-memory lastRead is 5000 — what
+                // advancedLastRead would have left after a local mark-read.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                    dirty = true,
                 )
 
-                // Drain the pending writeback synchronously.
                 service.flushLastReadNow()
 
-                val finalUpdatedMs = fixture.getConversationFile(convoId)!!
-                    .fileMetadata.updated.milliseconds
                 assertEquals(
                     1L,
-                    finalUpdatedMs - initialUpdatedMs,
-                    "Conversation-file must be stamped EXACTLY once across the burst — " +
-                        "expected a single 1ms `updated` bump (got delta=${finalUpdatedMs - initialUpdatedMs})",
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds -
+                        initialUpdatedMs,
+                    "flush must stamp the dirty conversation exactly once",
                 )
                 assertEquals(
                     initialOutboxRows + 1,
                     fixture.outboxRowCount(),
-                    "Burst of 50 advances must coalesce into exactly one outbox row",
+                    "flush must enqueue exactly one outbox row",
+                )
+                assertTrue(
+                    fixture.participantLookup.getDirtyConversationIds().isEmpty(),
+                    "flush must clear the dirty flag after a successful push",
+                )
+                assertTrue(
+                    fixture.getConversationFile(convoId)!!
+                        .fileMetadata.localAppData?.content?.contains("\"lastReadTime\":5000") == true,
+                    "stamped conv-file must carry the model's lastRead (5000)",
                 )
             }
         } finally { serviceScope.cancel() }
     }
 
     @Test
-    fun burstAcrossMultipleConversations_eachGetsOneStampAndEnqueue() = runBlocking {
+    fun flushStampsEachDirtyConversationOnce() = runBlocking {
         val serviceScope = newServiceScope()
         try {
             ConversationServiceTestFixture().use { fixture ->
@@ -109,11 +105,13 @@ class ConversationServiceLastReadDebounceTest {
                 }
                 val initialOutboxRows = fixture.outboxRowCount()
 
-                // Several advances per conversation, interleaved.
-                repeat(10) { i ->
-                    listOf(convoA, convoB, convoC).forEach { id ->
-                        service.updateLocalLastReadTime(id, UnixTimeUtc(1_000L + i.toLong()))
-                    }
+                listOf(convoA, convoB, convoC).forEach { id ->
+                    fixture.participantLookup.setLastRead(
+                        id,
+                        Instant.fromEpochMilliseconds(5_000L),
+                        latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                        dirty = true,
+                    )
                 }
 
                 service.flushLastReadNow()
@@ -121,141 +119,175 @@ class ConversationServiceLastReadDebounceTest {
                 listOf(convoA, convoB, convoC).forEach { id ->
                     val delta = fixture.getConversationFile(id)!!.fileMetadata.updated.milliseconds -
                         initials.getValue(id)
-                    assertEquals(
-                        1L, delta,
-                        "Each conversation must be stamped exactly once per flush; convo=$id delta=$delta",
-                    )
+                    assertEquals(1L, delta, "each dirty convo stamped once; convo=$id delta=$delta")
                 }
                 assertEquals(
                     initialOutboxRows + 3,
                     fixture.outboxRowCount(),
-                    "Three conversations × one flush should produce three outbox rows",
+                    "three dirty conversations → three outbox rows",
                 )
+                assertTrue(fixture.participantLookup.getDirtyConversationIds().isEmpty())
             }
         } finally { serviceScope.cancel() }
     }
 
     @Test
-    fun nonAdvancingCall_isNoOp() = runBlocking {
+    fun flushSkipsCleanConversations() = runBlocking {
         val serviceScope = newServiceScope()
         try {
             ConversationServiceTestFixture().use { fixture ->
                 val service = fixture.build(scope = serviceScope)
                 val convoId = fixture.seedOneOnOne(other = "alice.test")
-
-                // Seed the in-memory gate with lastRead=0 and latestMessage
-                // somewhere ahead — so the first advance to 5000 is accepted
-                // (current 0 < latest 10_000, candidate 5000 > current).
-                // Then advance the in-memory model to 5000 (simulating what
-                // UnreadCountEnricher.applyLocalAdvance does in production)
-                // so the second call's gate compares against the post-advance
-                // value.
-                fixture.participantLookup.setLastRead(
-                    convoId,
-                    kotlin.time.Instant.fromEpochMilliseconds(0),
-                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
-                )
-
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(5_000L))
-                fixture.participantLookup.setLastRead(
-                    convoId,
-                    kotlin.time.Instant.fromEpochMilliseconds(5_000L),
-                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
-                )
-                service.flushLastReadNow()
-
-                val afterFirstFlushUpdatedMs = fixture.getConversationFile(convoId)!!
-                    .fileMetadata.updated.milliseconds
-                val afterFirstFlushOutbox = fixture.outboxRowCount()
-                assertEquals(
-                    5_000L,
-                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "ChatReadCount must reflect the first advance",
-                )
-
-                // Try to advance backwards — gate compares against in-memory
-                // 5000 and rejects 4999.
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(4_999L))
-                service.flushLastReadNow()
-
-                assertEquals(
-                    5_000L,
-                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "Gate must reject candidate <= current; ChatReadCount must stay at 5000",
-                )
-                assertEquals(
-                    afterFirstFlushUpdatedMs,
-                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
-                    "Rejected advance must not bump conv-file `updated`",
-                )
-                assertEquals(
-                    afterFirstFlushOutbox,
-                    fixture.outboxRowCount(),
-                    "Rejected advance must not enqueue an outbox row",
-                )
-            }
-        } finally { serviceScope.cancel() }
-    }
-
-    @Test
-    fun gateUsesInMemoryNotChatReadCount_rejectsLocalAdvanceBehindPeerValue() = runBlocking {
-        // Regression: the gate must read `conversation.lastRead` off the live
-        // in-memory model — not `ChatReadCount` — so a local mark-read that
-        // lands between a peer-device advance hitting in-memory and the
-        // enrichment mirror running cannot stamp the conv-file backwards.
-        val serviceScope = newServiceScope()
-        try {
-            ConversationServiceTestFixture().use { fixture ->
-                val service = fixture.build(scope = serviceScope)
-                val convoId = fixture.seedOneOnOne(other = "alice.test")
-
-                // The peer advanced to t=3000 — landed in the in-memory model
-                // (e.g. via processConversationBatchIncrementally), but the
-                // enrichment mirror that pushes peer values into ChatReadCount
-                // hasn't fired yet, so ChatReadCount is still at the older t=1000.
-                // latestMessageTimestamp is set higher than 3000 so the
-                // saturation rule doesn't fire — this test isolates the
-                // *source of truth for current lastRead* (in-memory vs
-                // ChatReadCount), not the saturation behaviour.
-                fixture.dbm.chatReadCount.upsertLastReadTime(convoId, UnixTimeUtc(1_000L))
-                fixture.participantLookup.setLastRead(
-                    convoId,
-                    kotlin.time.Instant.fromEpochMilliseconds(3_000L),
-                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(10_000L),
-                )
 
                 val initialUpdatedMs = fixture.getConversationFile(convoId)!!
                     .fileMetadata.updated.milliseconds
                 val initialOutboxRows = fixture.outboxRowCount()
 
-                // Local user marks read at t=2000 — between the old (1000) and
-                // the peer's value (3000). A ChatReadCount-based gate would
-                // accept this (2000 > 1000) and regress the conv-file backwards.
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(2_000L))
+                // Present in memory but not dirty — flush must ignore it.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    dirty = false,
+                )
+
                 service.flushLastReadNow()
+
+                assertEquals(
+                    initialUpdatedMs,
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
+                    "clean conversation must not be stamped",
+                )
+                assertEquals(
+                    initialOutboxRows,
+                    fixture.outboxRowCount(),
+                    "clean conversation must not enqueue",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun setterUpsertsChatReadCountOnAdvance() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // lastRead behind the latest message → an advance to 5000 counts.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(1_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                )
+
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(5_000L))
+
+                assertEquals(
+                    5_000L,
+                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                    "the setter must eagerly upsert ChatReadCount on a genuine advance",
+                )
+                // The setter also advances the in-memory model (lastRead + dirty
+                // together) by calling participantLookup.advancedLastRead.
+                val advanced = fixture.participantLookup.getConversationById(convoId)!!
+                assertEquals(
+                    5_000L,
+                    advanced.lastRead.toEpochMilliseconds(),
+                    "the setter advances the in-memory lastRead",
+                )
+                assertTrue(advanced.dirty, "the setter marks the conversation dirty")
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun setterDoesNotUpsertOnNonAdvance() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                )
+
+                // Candidate is behind the current lastRead — gate rejects.
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(4_999L))
+
+                assertNull(
+                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                    "a non-advancing candidate must not upsert ChatReadCount",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun setterDoesNotUpsertWhenSaturated() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // lastRead == latestMessageTimestamp → already read everything.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(5_000L),
+                )
+
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(7_000L))
+
+                assertNull(
+                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                    "a saturated conversation must not upsert ChatReadCount",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun gateUsesInMemoryNotChatReadCount() = runBlocking {
+        // Regression: the setter's gate reads the in-memory model's lastRead,
+        // not ChatReadCount. A peer advance that landed in memory (t=3000) but
+        // hasn't been mirrored into ChatReadCount (still t=1000) must still
+        // reject a local advance to t=2000 — otherwise we'd advance + later
+        // stamp the conv-file backwards.
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                fixture.dbm.chatReadCount.upsertLastReadTime(convoId, UnixTimeUtc(1_000L))
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(3_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                )
+
+                service.updateLocalLastReadTime(convoId, UnixTimeUtc(2_000L))
 
                 assertEquals(
                     1_000L,
                     fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "ChatReadCount must NOT be advanced — the gate read in-memory (3000) " +
-                        "and rejected 2000 before any eager upsert ran",
-                )
-                assertEquals(
-                    initialUpdatedMs,
-                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
-                    "Gated-out advance must not stamp the conv-file",
-                )
-                assertEquals(
-                    initialOutboxRows,
-                    fixture.outboxRowCount(),
-                    "Gated-out advance must not enqueue an outbox row",
+                    "candidate 2000 <= in-memory 3000 → gate rejects, ChatReadCount unchanged",
                 )
             }
         } finally { serviceScope.cancel() }
     }
 
     @Test
-    fun flushLastReadNow_isIdempotentWhenNothingPending() = runBlocking {
+    fun burstOfAdvancesFlushesToOneStampOfTheLatestValue() = runBlocking {
+        // End-to-end of the production flow within the isolated test: the setter
+        // gates + upserts ChatReadCount and advances the in-memory model
+        // (lastRead + dirty, via participantLookup.advancedLastRead), and one
+        // flush stamps the final value and clears the flag.
         val serviceScope = newServiceScope()
         try {
             ConversationServiceTestFixture().use { fixture ->
@@ -266,136 +298,70 @@ class ConversationServiceLastReadDebounceTest {
                     .fileMetadata.updated.milliseconds
                 val initialOutboxRows = fixture.outboxRowCount()
 
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(7_000L))
-                service.flushLastReadNow()
-
-                assertEquals(
-                    1L,
-                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds -
-                        initialUpdatedMs,
-                    "flushLastReadNow must stamp once",
-                )
-                assertEquals(
-                    initialOutboxRows + 1,
-                    fixture.outboxRowCount(),
-                    "flushLastReadNow must enqueue once",
-                )
-
-                // Second + third call with nothing pending must be a clean no-op.
-                service.flushLastReadNow()
-                service.flushLastReadNow()
-                assertEquals(
-                    initialOutboxRows + 1,
-                    fixture.outboxRowCount(),
-                    "flushLastReadNow with empty pending must not enqueue anything",
-                )
-                assertEquals(
-                    1L,
-                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds -
-                        initialUpdatedMs,
-                    "flushLastReadNow with empty pending must not stamp anything",
-                )
-            }
-        } finally { serviceScope.cancel() }
-    }
-
-    @Test
-    fun multipleAdvancesBeforeFlush_writesLatestTargetIntoLocalAppData() = runBlocking {
-        val serviceScope = newServiceScope()
-        try {
-            ConversationServiceTestFixture().use { fixture ->
-                val service = fixture.build(scope = serviceScope)
-                val convoId = fixture.seedOneOnOne(other = "alice.test")
-
-                val initialUpdatedMs = fixture.getConversationFile(convoId)!!
-                    .fileMetadata.updated.milliseconds
-                val initialOutboxRows = fixture.outboxRowCount()
-
-                // Two distinct advances within the (notional) debounce window:
-                // each reschedules the timer, the second target is what should
-                // ultimately reach the conv-file.
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(2_000L))
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(3_000L))
-
-                service.flushLastReadNow()
-
-                val updated = fixture.getConversationFile(convoId)
-                assertNotNull(updated)
-                assertEquals(
-                    1L,
-                    updated.fileMetadata.updated.milliseconds - initialUpdatedMs,
-                    "Two advances followed by one flush must produce exactly one stamp",
-                )
-                assertEquals(
-                    initialOutboxRows + 1,
-                    fixture.outboxRowCount(),
-                    "Two advances followed by one flush must produce exactly one outbox row",
-                )
-                assertEquals(
-                    3_000L,
-                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "ChatReadCount must reflect the higher of the two advances",
-                )
-
-                // The conv-file's localAppData carries the higher target — the
-                // superseded 2000 never makes it to disk in this code path.
-                val localAppData = updated.fileMetadata.localAppData
-                assertNotNull(localAppData, "localAppData must be present after stamp")
-                assertTrue(
-                    localAppData.content?.contains("\"lastReadTime\":3000") == true,
-                    "Stamped conv-file must carry the latest target (3000), not the superseded 2000 — " +
-                        "got localAppData.content=${localAppData.content}",
-                )
-            }
-        } finally { serviceScope.cancel() }
-    }
-
-    @Test
-    fun saturatedConversation_suppressesAdvance() = runBlocking {
-        // ConversationUiModel.resolveLastReadAdvance returns null when
-        // lastRead is already at or past latestMessageTimestamp — the
-        // user has read everything, so further advances have no semantic
-        // effect (unread is already 0; peers can't act on "read past the
-        // end harder"). The setter must honour that and skip the eager
-        // ChatReadCount upsert + scheduled stamp/outbox push.
-        val serviceScope = newServiceScope()
-        try {
-            ConversationServiceTestFixture().use { fixture ->
-                val service = fixture.build(scope = serviceScope)
-                val convoId = fixture.seedOneOnOne(other = "alice.test")
-
-                // In-memory: lastRead == latestMessageTimestamp == 5000.
-                // FakeConversationParticipantLookup.setLastRead defaults
-                // latestMessageTimestamp to the same value as lastRead, so
-                // the explicit default is what we want here.
                 fixture.participantLookup.setLastRead(
                     convoId,
-                    kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+                    Instant.fromEpochMilliseconds(0L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
                 )
 
+                // Several rapid advances — the setter upserts ChatReadCount and
+                // advances the in-memory model each time (dirty stays a single
+                // bool), landing at 1004.
+                repeat(5) { i ->
+                    service.updateLocalLastReadTime(convoId, UnixTimeUtc(1_000L + i.toLong()))
+                }
+
+                assertEquals(
+                    listOf(convoId),
+                    fixture.participantLookup.getDirtyConversationIds(),
+                    "burst of advances collapses to one dirty conversation",
+                )
+
+                service.flushLastReadNow()
+
+                assertEquals(
+                    1L,
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds -
+                        initialUpdatedMs,
+                    "burst flushes to exactly one stamp",
+                )
+                assertEquals(
+                    initialOutboxRows + 1,
+                    fixture.outboxRowCount(),
+                    "burst flushes to exactly one outbox row",
+                )
+                assertTrue(
+                    fixture.getConversationFile(convoId)!!
+                        .fileMetadata.localAppData?.content?.contains("\"lastReadTime\":1004") == true,
+                    "stamped value must be the advanced model lastRead (1004)",
+                )
+                assertTrue(
+                    fixture.participantLookup.getDirtyConversationIds().isEmpty(),
+                    "flush clears the dirty flag",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun flushLastReadNow_isNoOpWhenNothingDirty() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
                 val initialUpdatedMs = fixture.getConversationFile(convoId)!!
                     .fileMetadata.updated.milliseconds
                 val initialOutboxRows = fixture.outboxRowCount()
 
-                // Try to advance past the saturation point.
-                service.updateLocalLastReadTime(convoId, UnixTimeUtc(7_000L))
+                service.flushLastReadNow()
                 service.flushLastReadNow()
 
                 assertEquals(
-                    null,
-                    fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                    "Saturated convo: setter must not upsert ChatReadCount",
-                )
-                assertEquals(
                     initialUpdatedMs,
                     fixture.getConversationFile(convoId)!!.fileMetadata.updated.milliseconds,
-                    "Saturated convo: setter must not stamp the conv-file",
                 )
-                assertEquals(
-                    initialOutboxRows,
-                    fixture.outboxRowCount(),
-                    "Saturated convo: setter must not enqueue an outbox row",
-                )
+                assertEquals(initialOutboxRows, fixture.outboxRowCount())
             }
         } finally { serviceScope.cancel() }
     }

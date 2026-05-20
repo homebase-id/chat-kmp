@@ -109,21 +109,21 @@ class ConversationService(
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
 
-    // region lastRead writeback (private state + getter/setter/clear-dirty)
+    // region lastRead writeback (debounce job — dirty state lives on the list)
     // The "only-increases" gate for conversation lastRead lives in
-    // [updateLocalLastReadTime] below — nowhere else. Callers that previously
-    // gated on participantLookup.getConversationById(...).lastRead or upserted
-    // ChatReadCount themselves now go through this setter.
+    // [updateLocalLastReadTime] below. The pending-writeback state is NOT held
+    // here anymore — the in-memory conversation list is the single source of
+    // truth (each ConversationUiModel carries its own lastRead + dirty flag).
+    // This setter advances the in-memory model (lastRead + dirty, together) via
+    // [ConversationParticipantLookup.advancedLastRead] and schedules the flush.
     //
     // Burst behavior: ChatReadCount is upserted eagerly inside the setter
-    // (so unreadCountEnricher.applyLocalAdvance, which reads it via SQL, sees
-    // the fresh value); the per-call optimistic conv-file stamp + outbox
-    // enqueue are deferred to a single 1-second-debounced flush that
-    // processes the latest target per conversation. Bursts of N reads cost
-    // N cheap SQL upserts + 1 expensive stamp (DB read + JSON serialize +
-    // AES encrypt + DB write + event emit) + 1 outbox enqueue.
+    // (so participantLookup.advancedLastRead, which reads it via SQL for the
+    // unread re-derive, sees the fresh value); the per-call optimistic conv-file
+    // stamp + outbox enqueue are deferred to a single 1-second-debounced flush
+    // that walks the dirty conversations. The mutex only guards the debounce job
+    // lifecycle.
     private val lastReadMutex = Mutex()
-    private val pendingLastReadAdvances = mutableMapOf<Uuid, UnixTimeUtc>()
     private var lastReadFlushJob: Job? = null
     // endregion
 
@@ -2271,17 +2271,17 @@ class ConversationService(
      *
      * Why the gate reads from the live in-memory model and not from
      * `ChatReadCount` or the on-disk conv-file: in-memory captures BOTH
-     * local writes (via [UnreadCountEnricher.applyLocalAdvance], which
-     * fires right after this setter from `ChatMessageActionService`) and
-     * peer-device advances (via `processConversationBatchIncrementally`
-     * and the post-DriveSync `loadBasicConversations` reload). Going to
-     * any other source leaves a window in which the gate could miss a
-     * higher peer value and let a local advance regress the conv-file's
-     * `localAppData.lastReadTime` backwards.
+     * local writes (via the [ConversationParticipantLookup.advancedLastRead]
+     * call this setter makes below) and peer-device advances (via
+     * `processConversationBatchIncrementally` and the post-DriveSync
+     * `loadBasicConversations` reload). Going to any other source leaves a
+     * window in which the gate could miss a higher peer value and let a
+     * local advance regress the conv-file's `localAppData.lastReadTime`
+     * backwards.
      *
-     * ChatReadCount is upserted eagerly so
-     * [UnreadCountEnricher.applyLocalAdvance] sees the fresh value when it
-     * queries `selectUnreadCountForConversation`. The conv-file optimistic
+     * ChatReadCount is upserted eagerly, before
+     * [ConversationParticipantLookup.advancedLastRead], so the advance sees the
+     * fresh value when it queries `selectUnreadCountForConversation`. The conv-file optimistic
      * stamp and outbox enqueue — the expensive parts (DB read + JSON
      * serialize/encrypt + DB write + event emit) — are deferred to
      * [flushDirtyLastRead] on a 1-second debounce so a burst of reads
@@ -2305,13 +2305,15 @@ class ConversationService(
 
         dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
 
+        // Advance the in-memory model now that ChatReadCount holds the fresh
+        // value: this moves lastRead + sets dirty together (the entity's
+        // advancedLastRead, applied to the live list) and re-derives unreadCount
+        // from the upsert above. Doing it here — before scheduling — means the
+        // flag is set by the time the flush runs, and the setter owns the whole
+        // local advance rather than the caller stitching a second call on.
+        participantLookup.advancedLastRead(conversationId, candidate)
+
         lastReadMutex.withLock {
-            // Keep the highest pending target — re-entrant advances within
-            // the debounce window collapse to a single stamp + enqueue.
-            val priorPending = pendingLastReadAdvances[conversationId]
-            if (priorPending == null || newLastReadTime > priorPending) {
-                pendingLastReadAdvances[conversationId] = newLastReadTime
-            }
             lastReadFlushJob?.cancel()
             lastReadFlushJob = scope.launch {
                 try {
@@ -2327,22 +2329,24 @@ class ConversationService(
     }
 
     /**
-     * Drain every pending lastRead writeback: stamp the conversation file
-     * with the latest target lastReadTime (optimistic local write) and
-     * enqueue the resulting outbox request. Called by the debounce coroutine
-     * and by [flushLastReadNow].
+     * Drain every dirty conversation's lastRead writeback: read the value off
+     * the in-memory list, stamp the conversation file (optimistic local
+     * write), and enqueue the resulting outbox request. Called by the debounce
+     * coroutine and by [flushLastReadNow].
      */
     private suspend fun flushDirtyLastRead() {
-        val snapshot = lastReadMutex.withLock {
-            if (pendingLastReadAdvances.isEmpty()) return
-            val copy = pendingLastReadAdvances.toMap()
-            pendingLastReadAdvances.clear()
-            copy
-        }
+        val ids = participantLookup.getDirtyConversationIds()
+        if (ids.isEmpty()) return
         Logger.d(tag = "MarkAsRead") {
-            "ConversationService.flushDirtyLastRead: flushing ${snapshot.size} pending writeback(s)"
+            "ConversationService.flushDirtyLastRead: flushing ${ids.size} dirty conversation(s)"
         }
-        for ((id, target) in snapshot) {
+        for (id in ids) {
+            // Read the value off the list WITHOUT clearing dirty. We only clear
+            // after a successful push (compare-and-clear below), so a push
+            // failure simply leaves the conversation dirty for the next round —
+            // no value-less re-flagging required.
+            val convo = participantLookup.getConversationById(id) ?: continue
+            val target = UnixTimeUtc(convo.lastRead.toEpochMilliseconds())
             try {
                 val request = optimisticWriter.stampConversationLastReadTime(
                     driveId = chatDrive,
@@ -2352,7 +2356,7 @@ class ConversationService(
                 if (request == null) {
                     Logger.w(tag = "MarkAsRead") {
                         "ConversationService.flushDirtyLastRead: stamp returned null for convo=$id — " +
-                                "conversation file missing or optimistic write failed"
+                                "conversation file missing or optimistic write failed (left dirty)"
                     }
                     continue
                 }
@@ -2360,17 +2364,16 @@ class ConversationService(
                 // queued for this file — that row will pick up the latest
                 // localAppData when it drains, so the writeback still lands.
                 outboxSync.tryEnqueue(request)
+                // Clear dirty only if nothing advanced lastRead while we were
+                // pushing — a concurrent advance leaves it dirty so the newer
+                // value goes out next round.
+                participantLookup.clearLastReadDirtyIfUnchanged(id, target)
             } catch (t: Throwable) {
                 Logger.w(throwable = t, tag = "MarkAsRead") {
                     "ConversationService.flushDirtyLastRead: stamp/enqueue threw for convo=$id — " +
-                            "will retry on next advance"
+                            "left dirty, will retry next flush"
                 }
-                // Restore so the next advance reschedules a retry. Only put
-                // back if no newer target has landed since the snapshot.
-                lastReadMutex.withLock {
-                    val newer = pendingLastReadAdvances[id]
-                    if (newer == null || target > newer) pendingLastReadAdvances[id] = target
-                }
+                // Leave dirty — the next debounce flush retries it.
             }
         }
     }

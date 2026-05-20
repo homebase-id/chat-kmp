@@ -24,6 +24,13 @@ data class ConversationUiModel(
     val participants: List<OdinId> = listOf(),
     val isPinned: Boolean = false,
     val lastRead: Instant,
+    /**
+     * True when [lastRead] has advanced locally but that advance hasn't been
+     * pushed to the server yet. The deferred lastRead writeback flush walks
+     * the conversation list, pushes the dirty ones, and clears the flag.
+     * Bookkeeping for the writeback — not rendered by the UI.
+     */
+    val dirty: Boolean = false,
     val avatarModel: ConversationAvatarModel,
     val lastMessageDeliveryStatus: Int? = null,
     val lastMessageIsDeleted: Boolean = false,
@@ -65,6 +72,43 @@ data class ConversationUiModel(
         candidate <= lastRead -> null                // not advancing
         else -> candidate
     }
+
+    /**
+     * if [candidate] is a genuine lastRead advance
+     * (per [resolveLastReadAdvance]), return this with `lastRead` moved up AND
+     * `dirty` set — together, so the flag and the value it represents can never
+     * drift. Otherwise, returns this unchanged. The entity owns the rule;
+     * immutable, so it returns the next state rather than mutating, and the
+     * list owner swaps it in. `unreadCount` is layered on by the caller (it
+     * needs a DB query the model can't do).
+     */
+    fun advancedLastRead(candidate: Instant): ConversationUiModel =
+        resolveLastReadAdvance(candidate)?.let { copy(lastRead = it, dirty = true) } ?: this
+
+    /**
+     * Clear the dirty flag when pushing an update to the server but only if
+     * its current [lastRead] still equals [pushedMs] (i.e. nothing advanced
+     * while the writeback was in flight). If a newer advance landed, it stays
+     * dirty so the newer value gets pushed next round. Compare-and-clear, expressed
+     * on the entity so the "still at the pushed value?" rule lives with the data.
+     */
+    fun clearedDirtyIfUnchanged(pushedMs: Long): ConversationUiModel =
+        if (dirty && lastRead.toEpochMilliseconds() == pushedMs) copy(dirty = false) else this
+
+    /**
+     * Reconcile this (local) model's [lastRead] + [dirty] against a
+     * [remoteLastRead] carried by a conversation file just received from the
+     * network (a peer device's mark-as-read, or our own pushed advance echoing
+     * back). [lastRead] never regresses — take the max. [dirty] (we still owe
+     * the server a push) is kept ONLY while our local read still leads the
+     * remote; once the remote catches up (remote >= local) the server already
+     * has our position, so the flag is stale — clear it.
+     */
+    fun reconciledWithRemoteLastRead(remoteLastRead: Instant): ConversationUiModel =
+        copy(
+            lastRead = maxOf(lastRead, remoteLastRead),
+            dirty = dirty && lastRead > remoteLastRead,
+        )
 
     /** True when this conversation is a group — either tagged or legacy (>2 participants). */
     val isGroupConversation: Boolean

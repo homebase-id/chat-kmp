@@ -48,7 +48,6 @@ import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
-import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
 import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
@@ -252,7 +251,6 @@ val appModule = module {
     singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
-    single<UnreadCountEnricher> { get<ConversationStream>() }
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     // Manual `single` (not `singleOf(::ConversationService)`) because the
     // ctor carries a `lastReadDebounceMs: Long = 1_000L` test affordance
