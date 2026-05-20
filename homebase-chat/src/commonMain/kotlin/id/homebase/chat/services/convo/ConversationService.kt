@@ -28,6 +28,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.sync.database.OutboxSync
@@ -106,6 +107,20 @@ class ConversationService(
      *  `runTest` (whose dispatcher behavior around `delay` + launched
      *  coroutines doesn't reliably hold the timer parked). */
     private val lastReadDebounceMs: Long = 1_000L,
+    /**
+     * Chat-drive sync-activity probe. The lastRead flush defers while a
+     * chat-drive sync round is in flight and for [syncQuietMs] after it stops,
+     * so it never stamps a stale in-memory lastRead over a peer advance the sync
+     * just pulled into DriveMainIndex — the post-Stopped reload
+     * ([ConversationStream.loadBasicConversations]) reconciles the in-memory
+     * list within that window. Nullable so tests omit it (no gating); production
+     * wires the real [DriveSyncManager].
+     */
+    private val driveSyncManager: DriveSyncManager? = null,
+    /** Quiet window after a chat-drive sync stops before the flush may push. */
+    private val syncQuietMs: Long = 2_000L,
+    /** Poll interval while waiting out an in-flight chat-drive sync. */
+    private val syncPollMs: Long = 100L,
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
 
@@ -2318,6 +2333,7 @@ class ConversationService(
             lastReadFlushJob = scope.launch {
                 try {
                     delay(lastReadDebounceMs)
+                    awaitSyncQuiet()
                     flushDirtyLastRead()
                 } catch (_: CancellationException) {
                     // Expected when a subsequent advance reschedules or
@@ -2325,6 +2341,29 @@ class ConversationService(
                     // will handle the flush.
                 }
             }
+        }
+    }
+
+    /**
+     * Defer the lastRead flush until the chat drive is sync-quiet: no round in
+     * flight, and at least [syncQuietMs] elapsed since the last one stopped so
+     * the post-Stopped reload ([ConversationStream.loadBasicConversations]) has
+     * reconciled the in-memory list against disk. Without this a flush firing
+     * mid-sync (or right after) could read a stale in-memory lastRead and stamp
+     * it over a peer advance the sync just pulled in. Returns immediately when
+     * no sync ran recently, and is a no-op when [driveSyncManager] is absent
+     * (tests). Only the debounce path waits — [flushLastReadNow] forces through.
+     */
+    private suspend fun awaitSyncQuiet() {
+        val mgr = driveSyncManager ?: return
+        while (true) {
+            while (mgr.isSyncing(chatDrive)) {
+                delay(syncPollMs)
+            }
+            val since = UnixTimeUtc().milliseconds - mgr.lastSyncStoppedAtMs(chatDrive)
+            if (since >= syncQuietMs) return
+            delay(syncQuietMs - since)
+            // Loop and re-check: a new round may have started during the wait.
         }
     }
 

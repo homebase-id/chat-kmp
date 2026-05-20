@@ -24,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.coroutines.sync.Mutex
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
@@ -54,6 +55,12 @@ class DriveSync(
     // would race the sync's DB writes) should read this.
     private val syncing = atomic(false)
 
+    // Epoch-ms when the last sync round finished (performSync's finally). 0 = no
+    // round has completed this session. Consumers gate "is the drive quiet yet"
+    // on this together with [syncing] (e.g. the lastRead flush waits a short
+    // window after a round so the post-Stopped reload has reconciled).
+    private val lastStoppedAt = atomic(0L)
+
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
@@ -77,6 +84,9 @@ class DriveSync(
     /** True while this drive is actively syncing (a round is in flight). */
     fun isSyncing(): Boolean = syncing.value
 
+    /** Epoch-ms when the last sync round finished, or 0 if none has this session. */
+    fun lastStoppedAtMs(): Long = lastStoppedAt.value
+
     fun cancel() {
         killroy.value = false
         job?.cancel()
@@ -97,6 +107,7 @@ class DriveSync(
             } finally {
                 job = null
                 syncing.value = false
+                lastStoppedAt.value = UnixTimeUtc().milliseconds
                 mutex.unlock()
             }
             if (killroy.value) {

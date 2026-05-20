@@ -1129,8 +1129,6 @@ class ConversationStream(
         // query.
         if (convo.advancedLastRead(candidate) === convo) return
 
-        // TODO: I am uncertain if we want to do this when we consolidate data
-        // from over the network / DriveSync
         val c = credentialsManager.requireActiveCredentials()
         val newCount = dbm.chatReadCount
             .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)

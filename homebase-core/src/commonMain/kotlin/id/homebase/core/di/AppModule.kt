@@ -269,6 +269,7 @@ val appModule = module {
             optimisticWriter = get(),
             conversationStream = get(),
             participantLookup = get(),
+            driveSyncManager = get(),
             driveFileProvider = get(),
             fileOperationsProvider = get(),
         )
