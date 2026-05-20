@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.storage
+package id.homebase.common.util
 
 import kotlin.math.abs
 
@@ -6,7 +6,12 @@ private const val KB = 1024.0
 private const val MB = KB * 1024.0
 private const val GB = MB * 1024.0
 
-internal fun formatBytes(bytes: Long): String {
+/**
+ * Renders a byte count as a short human-readable string like `"3.2 MB"`.
+ * Uses binary (1024-based) units and one fractional digit. Negative inputs
+ * are formatted with their sign preserved.
+ */
+fun formatBytes(bytes: Long): String {
     val absBytes = abs(bytes)
     return when {
         absBytes < KB -> "$bytes B"
