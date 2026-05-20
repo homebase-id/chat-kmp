@@ -268,6 +268,16 @@ class DatabaseManager(
     suspend fun wipeAndRecreate() = withContext(dispatcher) {
         val log = Logger.withTag("DatabaseManager")
 
+        // Pre-wipe snapshot of the SQLite-internal page state. Captured *before* the
+        // DROPs so we have a baseline to compare against after the VACUUM + checkpoint.
+        // See [readPragmaLong] / [readPragmaCheckpoint] for what each pragma reports.
+        val journalMode = readPragmaString("PRAGMA journal_mode") ?: "?"
+        val pagesBefore = readPragmaLong("PRAGMA page_count") ?: -1L
+        val freelistBefore = readPragmaLong("PRAGMA freelist_count") ?: -1L
+        log.i {
+            "wipeAndRecreate: pre-wipe journal_mode=$journalMode page_count=$pagesBefore freelist_count=$freelistBefore"
+        }
+
         TABLE_NAMES.forEach { table ->
             driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
         }
@@ -317,8 +327,100 @@ class DatabaseManager(
         // dbDispatcher has the single-writer slot so we're safe here.
         driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
 
+        // Force the WAL file to truncate to zero, so an on-disk `-wal` left over
+        // from before the wipe cannot carry pages forward into the next session.
+        // No-op when journal_mode != WAL (returns busy=0,log=0,ckpt=0 cleanly).
+        // The motivating bug: a user reported chat rows with corrupt timestamps
+        // surviving logout. wipeAndRecreate's tables were dropped, but if WAL
+        // mode was active and the WAL sidecar wasn't truncated, the next open
+        // could still see those pages. This is the cheapest probe that proves
+        // it didn't.
+        val checkpoint = readPragmaCheckpoint("PRAGMA wal_checkpoint(TRUNCATE)")
+        val pagesAfter = readPragmaLong("PRAGMA page_count") ?: -1L
+        val freelistAfter = readPragmaLong("PRAGMA freelist_count") ?: -1L
+        if (checkpoint != null) {
+            val (busy, logPages, ckptPages) = checkpoint
+            // busy=1 means another connection held the WAL — should never happen here
+            // because we're on the single-writer dbDispatcher with no other clients.
+            // logPages > 0 after wipe + VACUUM is the red flag: it means we VACUUMed
+            // into a fresh main DB but the WAL still holds pages that a future open
+            // would replay on top.
+            if (busy != 0L || logPages > 0L) {
+                log.e {
+                    "wipeAndRecreate: WAL checkpoint reports busy=$busy log_pages=$logPages " +
+                        "ckpt_pages=$ckptPages — WAL was non-empty after wipe, potential leak"
+                }
+            } else {
+                log.i {
+                    "wipeAndRecreate: WAL checkpoint clean (busy=0 log=0 ckpt=$ckptPages)"
+                }
+            }
+        }
+        log.i {
+            "wipeAndRecreate: post-wipe page_count=$pagesAfter freelist_count=$freelistAfter " +
+                "(was page_count=$pagesBefore freelist_count=$freelistBefore)"
+        }
+
         log.i { "wipeAndRecreate: completed (${TABLE_NAMES.size} tables)" }
     }
+
+    /**
+     * Read a single string from a PRAGMA that returns one row, one column
+     * (e.g. `PRAGMA journal_mode`). Returns `null` if the pragma fails or the
+     * cursor is empty — we never want a probe call to abort wipeAndRecreate.
+     */
+    private fun readPragmaString(sql: String): String? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) cursor.getString(0) else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
+
+    /**
+     * Read a single integer from a PRAGMA that returns one row, one column
+     * (e.g. `PRAGMA page_count`, `PRAGMA freelist_count`). Returns `null` on
+     * failure — probes must never throw.
+     */
+    private fun readPragmaLong(sql: String): Long? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) cursor.getLong(0) else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
+
+    /**
+     * Read the result of `PRAGMA wal_checkpoint(...)`, which returns a single
+     * row of three integers: (busy, log_frames, checkpoint_frames). Returns
+     * `null` if the pragma is unsupported (e.g. wasmJs's sql.js doesn't
+     * implement the WAL checkpoint pragma) or the call throws.
+     */
+    private fun readPragmaCheckpoint(sql: String): Triple<Long, Long, Long>? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) {
+                    Triple(
+                        cursor.getLong(0) ?: 0L,
+                        cursor.getLong(1) ?: 0L,
+                        cursor.getLong(2) ?: 0L,
+                    )
+                } else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
 
     // Reclaim space released by DELETE/DROP without nuking schema. Runs on the
     // single-writer [dispatcher] so it cannot race with other queries. Used by

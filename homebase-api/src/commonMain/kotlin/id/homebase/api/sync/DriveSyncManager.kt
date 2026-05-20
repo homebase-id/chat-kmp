@@ -195,6 +195,15 @@ class DriveSyncManager(
         // (AuthConnectionCoordinator and BackgroundSyncOrchestrator) already do this.
     }
 
+    /** True while [driveId] has a sync round in flight. False if not mounted. */
+    suspend fun isSyncing(driveId: Uuid): Boolean =
+        driveSyncsMutex.withLock { driveSyncs[driveId] }?.isSyncing() ?: false
+
+    /** Epoch-ms when [driveId]'s last sync round finished, or 0 if none has this
+     *  session (or the drive isn't mounted). */
+    suspend fun lastSyncStoppedAtMs(driveId: Uuid): Long =
+        driveSyncsMutex.withLock { driveSyncs[driveId] }?.lastStoppedAtMs() ?: 0L
+
     suspend fun syncAll() {
         if (!_isRunning) {
             Logger.w(tag = "DriveSync") {
