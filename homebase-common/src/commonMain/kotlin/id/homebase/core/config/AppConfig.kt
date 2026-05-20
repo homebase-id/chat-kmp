@@ -78,6 +78,13 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val momentsLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
+        type = Uuid.parse("4338d7d2-f217-486a-8790-a4982644c15f"),
+    ),
+    label = "Moments",
+)
 
 // Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
 val vaultLabeledDrive = LabeledDrive(
@@ -199,6 +206,33 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
         returnUrl = ::returnUrl
+    )
+}
+
+// Moments-specific permission config — drive-only, no extra app permissions.
+// React is required for the moment + comment reaction toggle endpoint
+// (`/group-reactions/toggle`), which the server gates on DrivePermission.React.
+val momentsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = momentsLabeledDrive.drive.alias.toString(),
+        type = momentsLabeledDrive.drive.type.toString(),
+        name = "Moments Drive",
+        description = "Drive which contains your saved moments",
+        permissions = listOf(
+            DrivePermission.Read,
+            DrivePermission.Write,
+            DrivePermission.React,
+        ),
+    ),
+)
+
+fun getMomentsPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = momentsTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
     )
 }
 

@@ -79,6 +79,8 @@ kotlin {
             implementation(libs.jetbrains.compose.ui.tooling.preview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs.compose)
             implementation(libs.atomicfu)
             implementation(libs.kotlinx.immutableCollections)
             implementation(libs.kotlinx.serialization.json)

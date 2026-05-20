@@ -71,6 +71,7 @@ playPublisher = "4.0.0"
 buildconfig = "6.0.9"
 play-app-update = "2.1.0"
 play-services-location = "21.3.0"
+metadataExtractor = "2.19.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -193,6 +194,7 @@ composenativewebview = { module = "io.github.kdroidfilter:composewebview", versi
 conveyor-control = { module = "dev.hydraulic.conveyor:conveyor-control", version.ref = "conveyorControl" }
 play-app-update = { module = "com.google.android.play:app-update-ktx", version.ref = "play-app-update" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
+metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
 nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }
 nucleus-notification-macos = { module = "io.github.kdroidfilter:nucleus.notification-macos", version.ref = "nucleus" }

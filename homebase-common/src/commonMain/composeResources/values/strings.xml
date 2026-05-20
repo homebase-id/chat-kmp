@@ -321,6 +321,69 @@
     <string name="permissions_missing_body">The %1$s app is missing permissions. Without the necessary permissions the functionality of %1$s will be limited.</string>
     <string name="permissions_extend">Extend Permissions</string>
 
+    <!-- Moments add-on -->
+    <string name="moments_label">Moments</string>
+    <string name="moments_onboarding_title">Moments worth remembering</string>
+    <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
+    <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
+    <string name="moments_onboarding_setup">Set it up</string>
+    <string name="moments_onboarding_dismiss">Not now</string>
+    <string name="moments_welcome">Moments worth remembering</string>
+    <string name="moments_settings_section">Moments</string>
+    <string name="moments_settings_open">Open Moments</string>
+    <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+    <string name="moments_create_action">Create a new moment</string>
+    <string name="moments_post_open">Open moment</string>
+    <string name="moments_reaction_like">Like</string>
+    <string name="moments_detail_no_description">No description added</string>
+    <string name="moments_detail_metadata_captured">Captured</string>
+    <string name="moments_detail_metadata_device">Device</string>
+    <string name="moments_detail_comments_section">Comments</string>
+    <string name="moments_detail_no_comments">No comments yet</string>
+    <string name="moments_detail_add_comment_hint">Add a comment</string>
+    <string name="moments_detail_send_comment">Send comment</string>
+    <string name="moments_detail_comment_you">You</string>
+    <string name="moments_detail_comment_edit">Edit</string>
+    <string name="moments_detail_comment_save">Save</string>
+    <string name="moments_detail_comment_cancel">Cancel</string>
+    <string name="moments_create_title">Send to</string>
+    <string name="moments_create_search_hint">Search contacts and groups</string>
+    <string name="moments_create_section_recent">Recent</string>
+    <string name="moments_create_section_quick">Quick options</string>
+    <string name="moments_create_section_groups">Groups</string>
+    <string name="moments_create_section_contacts">Contacts</string>
+    <string name="moments_create_new_group">New group</string>
+    <string name="moments_create_one_off">One-off</string>
+    <string name="moments_create_continue">Next</string>
+    <string name="moments_create_chat_group_label">Chat group</string>
+    <string name="moments_create_selected_count">%1$d selected</string>
+    <string name="moments_compose_title">New moment</string>
+    <string name="moments_compose_add_media">Add photo or video</string>
+    <string name="moments_compose_empty_hero">Tap to add a photo or video</string>
+    <string name="moments_compose_remove_media">Remove</string>
+    <string name="moments_compose_description_hint">Add a description</string>
+    <string name="moments_compose_comments_enabled">Allow reactions and comments</string>
+    <string name="moments_compose_continue">Next</string>
+    <string name="moments_chip_add_location">Add location</string>
+    <string name="moments_chip_location_included">Location</string>
+    <string name="cd_moment_photo_info_chip">Photo info</string>
+    <string name="cd_moment_toggle_include_location">Toggle including this photo&#8217;s location</string>
+    <string name="moments_chip_pick_date">Pick a date</string>
+    <string name="moments_chip_use_photo_date">Use photo date</string>
+    <string name="cd_moment_date_chip">Moment date</string>
+    <string name="moments_audience_title">Send to</string>
+    <string name="moments_audience_section_recent">Recent</string>
+    <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_contacts">Contacts</string>
+    <string name="moments_audience_post">Post</string>
+    <string name="moments_audience_save_privately">Save privately</string>
+    <string name="moments_audience_create_group">Create new group</string>
+    <string name="moments_audience_post_failed">Couldn\'t post moment. Please try again.</string>
+    <string name="moments_create_group_title">New group</string>
+    <string name="moments_create_group_name_hint">Group name</string>
+    <string name="moments_create_group_section_members">Members</string>
+    <string name="moments_create_group_create">Create</string>
+
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>
     <string name="system_conversation_title_updated_you">You updated the conversation title</string>
@@ -863,6 +926,7 @@
     <!-- Bottom navigation -->
     <string name="nav_chats">Chats</string>
     <string name="nav_feed">Feed</string>
+    <string name="nav_moments">Moments</string>
     <string name="nav_home">Home</string>
 
     <!-- Developer menu -->
