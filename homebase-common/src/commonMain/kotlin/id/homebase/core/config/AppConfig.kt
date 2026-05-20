@@ -45,6 +45,12 @@ object AppConfig {
  */
 expect fun returnUrl(): String
 
+/**
+ * Return URL the owner data-upgrade page redirects to once the upgrade completes.
+ * Same platform split as [returnUrl]: deep link on mobile, localhost loopback on desktop.
+ */
+expect fun dataUpgradeReturnUrl(): String
+
 // Circle IDs for connected identities
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
 const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"

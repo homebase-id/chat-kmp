@@ -186,7 +186,7 @@
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
     <string name="settings_logout">Log ud</string>
-    <string name="settings_logout_in_progress">Sletter alle dine krypterede data</string>
+    <string name="settings_logout_in_progress">Rydder denne enheds krypterede cache</string>
     <string name="settings_storage">Lagerplads</string>
     <string name="settings_delete_account">Slet min konto</string>
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
