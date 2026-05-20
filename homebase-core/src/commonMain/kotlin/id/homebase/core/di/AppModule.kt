@@ -49,7 +49,6 @@ import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
-import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
 import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
@@ -253,9 +252,29 @@ val appModule = module {
     singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
-    single<UnreadCountEnricher> { get<ConversationStream>() }
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
-    singleOf(::ConversationService)
+    // Manual `single` (not `singleOf(::ConversationService)`) because the
+    // ctor carries a `lastReadDebounceMs: Long = 1_000L` test affordance
+    // that Koin's reflective binder would try to resolve as a Long
+    // singleton (`NoDefinitionFoundException` at app startup). Spelling
+    // the injections out lets the Long default through.
+    single {
+        ConversationService(
+            credentialsManager = get(),
+            payloadBundleEncryptionService = get(),
+            dbm = get(),
+            introductionProvider = get(),
+            scope = get(),
+            outboxSync = get(),
+            chatMessageSenderService = get(),
+            optimisticWriter = get(),
+            conversationStream = get(),
+            participantLookup = get(),
+            driveSyncManager = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
+            fileOperationsProvider = get(),
+        )
+    }
     single<LocalLastReadUpdater> { get<ConversationService>() }
     single<GroupHealConversationOps> { get<ConversationService>() }
     singleOf(::GroupHealService)
@@ -351,7 +370,7 @@ val appModule = module {
             driveSyncManager = get(),
             credentialsManager = get(),
             databaseManager = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
             decodeMessageContentProbe = decodeMessageContentProbe,
@@ -384,7 +403,7 @@ val appModule = module {
             contactService = get(),
             connectionService = get(),
             connectionRequestService = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             shareContentProcessor = get(),
             localVideoContextStore = get(),
             pendingNotificationTap = get(),
@@ -443,6 +462,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
+            fileOperationsProvider = get(),
             driveSyncManager = get(),
         )
     }

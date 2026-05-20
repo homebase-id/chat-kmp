@@ -31,6 +31,7 @@ kotlin {
     android {
         namespace = "id.homebase.common"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
@@ -113,6 +114,7 @@ kotlin {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.biometric)
             implementation(libs.androidx.browser)
+            implementation(libs.androidx.pdf.viewer)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)
             implementation(libs.firebase.crashlytics)
@@ -139,6 +141,7 @@ kotlin {
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
             implementation(libs.kermit.io)
+            implementation(libs.pdfbox)
             // `api` so desktopApp's existing direct kmpnotifier dep stays
             // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
             // type from the same source set's classpath.

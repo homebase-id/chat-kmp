@@ -68,6 +68,9 @@
     <string name="label_sent">App sendte: %1$s</string>
     <string name="label_received">Modtaget: %1$s</string>
     <string name="label_edited">Redigeret: %1$s</string>
+    <string name="label_size">Størrelse: %1$s</string>
+    <string name="label_message_id">ID: %1$s</string>
+    <string name="copy_message_id">Kopiér besked-ID</string>
     <string name="error_server_not_responding">Serveren svarer ikke</string>
     <string name="error_access_denied">Adgang nægtet</string>
     <string name="error_too_many_attempts">For mange forsøg</string>

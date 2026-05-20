@@ -45,6 +45,9 @@
     <string name="label_sent">App sent: %1$s</string>
     <string name="label_received">Received: %1$s</string>
     <string name="label_edited">Edited: %1$s</string>
+    <string name="label_size">Size: %1$s</string>
+    <string name="label_message_id">ID: %1$s</string>
+    <string name="copy_message_id">Copy message ID</string>
     <string name="error_server_not_responding">Server not responding</string>
     <string name="error_access_denied">Access denied</string>
     <string name="error_too_many_attempts">Too many attempts</string>
@@ -747,8 +750,10 @@
     <string name="vault_entry_delete_confirm">Delete %1$s? This entry and all its images will be permanently deleted.</string>
 
     <string name="vault_image_add">Add Image</string>
+    <string name="vault_add_entry">Add Entry</string>
     <string name="vault_image_take_photo">Take Photo</string>
     <string name="vault_image_choose_gallery">Choose from Gallery</string>
+    <string name="vault_choose_file">Choose File</string>
     <string name="vault_image_replace">Replace</string>
     <string name="vault_image_delete">Delete Image</string>
 
@@ -802,6 +807,12 @@
     <string name="vault_error_download_page">Failed to download page for sharing</string>
     <string name="vault_error_outbox_upload">Upload failed</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>
+    <string name="vault_pdf_badge">PDF</string>
+    <string name="vault_pdf_preview_error">Unable to preview PDF</string>
+    <string name="vault_pdf_not_supported">PDF preview is not supported on web</string>
+    <string name="vault_pdf_page_content_description">PDF page %1$d of %2$d</string>
+    <string name="vault_text_preview_error">Unable to preview file</string>
+    <string name="vault_text_truncated">File is large — showing first 1 MB</string>
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>

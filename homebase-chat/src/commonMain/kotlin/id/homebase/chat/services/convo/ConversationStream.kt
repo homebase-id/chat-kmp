@@ -10,7 +10,6 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -34,7 +33,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -51,7 +49,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader, UnreadCountEnricher, ConversationParticipantLookup {
+) : ConversationLoader, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -720,6 +718,15 @@ class ConversationStream(
             else -> existing.exitedAt ?: incoming.exitedAt
         }
 
+        // Carries the conversation file's localAppData.lastReadTime forward — a
+        // peer device's mark-as-read (or our own pushed advance echoing back)
+        // advances it and syncs it. lastRead = max keeps it monotonic against a
+        // stale echo; dirty (we still owe a server push) is retired once the
+        // remote read reaches our local value — see reconciledWithRemoteLastRead.
+        // Must override dirty explicitly: the existing.copy base would otherwise
+        // preserve a now-stale flag.
+        val reconciled = existing.reconciledWithRemoteLastRead(incoming.lastRead)
+
         // Structural fields (membership, identity) always come from the conversation file,
         // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
         // is almost always newer than metadata.created, so a timestamp guard would silently
@@ -739,12 +746,8 @@ class ConversationStream(
             conversationState = resolvedState,
             exitedAt = resolvedExitedAt,
             fileUpdated = incoming.fileUpdated,
-            // Carries the conversation file's localAppData.lastReadTime forward —
-            // a peer device's mark-as-read advances it, syncs it, and we'd otherwise
-            // drop it here, which leaves enrichAllConversationsWithUnreadCounts
-            // mirroring modelMs=0 and skipping the ChatReadCount upsert. Max
-            // keeps it monotonic against a stale drive-sync echo.
-            lastRead = if (incoming.lastRead > existing.lastRead) incoming.lastRead else existing.lastRead,
+            lastRead = reconciled.lastRead,
+            dirty = reconciled.dirty,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
@@ -801,6 +804,14 @@ class ConversationStream(
             .map { it.id }
             .toSet()
 
+        // Snapshot the prior in-memory rows so the wholesale replace below stays
+        // non-destructive of derived state: an un-flushed local lastRead advance
+        // (+ its owe-push `dirty`) and the computed `unreadCount` live only in
+        // memory and would otherwise be reset to the disk row. We reconcile each
+        // reloaded row against its prior counterpart instead. Empty on cold
+        // start ⇒ no merge, rows come straight from disk.
+        val priorById = _conversations.value.items.associateBy { it.id }
+
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
@@ -810,11 +821,52 @@ class ConversationStream(
             // mapper would resurrect a "deleted conversation" placeholder for them
             // on every reload. See [onConversationDeleted].
             .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
-            .map { file ->
-                val ui = mapper.mapToBasic(file)
-                val finalUi = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+            .mapNotNull { file ->
+                // [ConversationMapper.mapToBasic] re-throws JVM `Error`s
+                // (NoClassDefFoundError, LinkageError, OOM, …) instead of
+                // routing them through the Invalid placeholder + recovery
+                // path, because those errors are environment problems —
+                // they have nothing to do with the file's content. Catch
+                // them here and SKIP the row: leave the conv-file on disk
+                // untouched, do not write a placeholder, do not delete it.
+                // The next reload (or app restart with the env fixed) will
+                // map it correctly. Surfacing a stale env error as "your
+                // data is corrupt" is what mass-overwrote real conv-files
+                // with placeholders during the missing-ImageSize incident.
+                val ui = try {
+                    mapper.mapToBasic(file)
+                } catch (e: Error) {
+                    Logger.e(throwable = e, tag = "ConvListPerf") {
+                        "loadBasicConversations: JVM error mapping fileId=${file.fileId} " +
+                            "uniqueId=${file.fileMetadata.appData.uniqueId} — SKIPPING this row " +
+                            "(file untouched on disk; recovery NOT triggered). " +
+                            "Likely a runtime/classpath issue, not file corruption."
+                    }
+                    return@mapNotNull null
+                }
+                val withLeft = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
+
+                // Reconcile the disk row against the prior in-memory row so the
+                // reload doesn't throw away local state:
+                //  - lastRead = max, dirty kept only while our local read still
+                //    leads disk (same rule as the WS receive merge), so an
+                //    un-flushed local advance survives and still flushes.
+                //  - unreadCount carried forward to avoid a flicker-to-0 (the
+                //    disk row is always 0); when lastRead actually changed vs.
+                //    the prior (a peer advance pulled to disk), mark it
+                //    unread-dirty so the Stopped pipeline's recount corrects it.
+                val prior = priorById[withLeft.id]
+                val finalUi = if (prior != null) {
+                    val reconciled = prior.reconciledWithRemoteLastRead(withLeft.lastRead)
+                    if (reconciled.lastRead != prior.lastRead) markUnreadDirty(withLeft.id)
+                    withLeft.copy(
+                        lastRead = reconciled.lastRead,
+                        dirty = reconciled.dirty,
+                        unreadCount = prior.unreadCount,
+                    )
+                } else withLeft
                 finalUi to file
             }
 
@@ -1054,35 +1106,40 @@ class ConversationStream(
     }
 
     /**
-     * Patch the in-memory entry for [conversationId] to reflect a successful
-     * mark-as-read advance: set lastRead to [newLastRead] and re-derive
-     * unreadCount from ChatReadCount. Single state emission so the UI sees both
-     * deltas at once. No-op if the conversation isn't in memory yet.
+     * The list-level counterpart of [ConversationUiModel.advancedLastRead]:
+     * runs that same entity transition on the in-memory entry for
+     * [conversationId] (move lastRead + set dirty, together) and commits the
+     * result back into the live list, re-deriving unreadCount from ChatReadCount
+     * in the same state emission. Same name as the entity method on purpose —
+     * the entity decides the next value, this applies it to the list. No-op if
+     * the conversation isn't in memory yet or [candidate] isn't a genuine
+     * advance.
      */
-    override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
-        val current = _conversations.value
-        val index = current.items.indexOfFirst { it.id == conversationId }
-        if (index < 0) {
+    override suspend fun advancedLastRead(conversationId: Uuid, candidate: Instant) {
+        val convo = getConversationById(conversationId) ?: run {
             Logger.w(tag = "MarkAsRead") {
-                "ConversationStream.applyLocalAdvance: convo=$conversationId NOT FOUND " +
-                        "in in-memory list (size=${current.items.size}) — UI badge will not update"
+                "ConversationStream.advancedLastRead: convo=$conversationId NOT FOUND " +
+                        "in in-memory list — UI badge will not update"
             }
             return
         }
+
+        // The entity's single advance transition decides + moves lastRead +
+        // sets dirty. If it's not a genuine advance, bail before the unread
+        // query.
+        if (convo.advancedLastRead(candidate) === convo) return
 
         val c = credentialsManager.requireActiveCredentials()
         val newCount = dbm.chatReadCount
             .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)
             .toInt()
 
-        val convo = current.items[index]
-        if (convo.lastRead == newLastRead && convo.unreadCount == newCount) return
-
-        Logger.d("ConversationStream: unreadSync convo=$conversationId ${convo.unreadCount}->$newCount")
-        val updated = current.items.toMutableList().apply {
-            this[index] = convo.copy(lastRead = newLastRead, unreadCount = newCount)
+        updateConversation(conversationId) { current ->
+            val advanced = current.advancedLastRead(candidate)
+            // Layer the freshly-computed unread on top of the advance (lastRead
+            // + dirty). `unreadCount` needs the DB so the model can't own it.
+            if (advanced === current) current else advanced.copy(unreadCount = newCount)
         }
-        _conversations.value = current.copy(items = updated)
     }
 
     // endregion
@@ -1151,6 +1208,34 @@ class ConversationStream(
     override fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
+
+    // region lastRead dirty tracking — the in-memory list is the source of
+    // truth; the entity (ConversationUiModel) owns the transitions (dirty is
+    // set by advancedLastRead, applied to the list by [advancedLastRead] above),
+    // this class only reads the flag and clears it after a push.
+    override fun getDirtyConversationIds(): List<Uuid> =
+        _conversations.value.items.filter { it.dirty }.map { it.id }
+
+    override suspend fun clearLastReadDirtyIfUnchanged(conversationId: Uuid, pushed: UnixTimeUtc) {
+        updateConversation(conversationId) { it.clearedDirtyIfUnchanged(pushed.milliseconds) }
+    }
+
+    /** Replace one conversation in the list via [transform] and emit. No-op if
+     *  the conversation isn't present or [transform] returns an unchanged model. */
+    private fun updateConversation(
+        conversationId: Uuid,
+        transform: (ConversationUiModel) -> ConversationUiModel,
+    ) {
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) return
+        val updated = transform(current.items[index])
+        if (updated == current.items[index]) return
+        _conversations.value = current.copy(
+            items = current.items.toMutableList().apply { this[index] = updated }
+        )
+    }
+    // endregion
 
     fun onConversationLeft(conversationId: Uuid) {
         _conversations.value = _conversations.value.copy(
