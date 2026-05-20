@@ -270,7 +270,7 @@ val appModule = module {
             conversationStream = get(),
             participantLookup = get(),
             driveSyncManager = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             fileOperationsProvider = get(),
         )
     }
@@ -368,7 +368,7 @@ val appModule = module {
             driveSyncManager = get(),
             credentialsManager = get(),
             databaseManager = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
             decodeMessageContentProbe = decodeMessageContentProbe,
@@ -401,7 +401,7 @@ val appModule = module {
             contactService = get(),
             connectionService = get(),
             connectionRequestService = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             shareContentProcessor = get(),
             localVideoContextStore = get(),
             pendingNotificationTap = get(),

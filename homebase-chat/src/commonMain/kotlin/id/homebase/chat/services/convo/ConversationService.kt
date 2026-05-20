@@ -93,11 +93,12 @@ class ConversationService(
      * still at t1) and stamp the conversation file backwards.
      */
     private val participantLookup: ConversationParticipantLookup,
-    /** Used by the heal redistribute path to pull existing payload bytes off our
-     *  drive and re-attach them to the update request. Nullable so tests can
-     *  pass null without standing up the full network stack — the
-     *  payload-reuse helper short-circuits to an empty manifest in that case. */
-    private val driveFileProvider: id.homebase.api.client.drives.files.DriveFileProvider? = null,
+    /** Used by the heal redistribute path to pull existing payload AND thumbnail
+     *  bytes off our drive and re-attach them to the update request. Narrowed to
+     *  [ResendPayloadByteSource] (implemented by DriveFileProvider) so tests can
+     *  pass a fake without standing up the full network stack — the payload-reuse
+     *  helper short-circuits to an empty manifest when null. */
+    private val driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
     /** Used by the heal redistribute path to spill the encrypted payload bytes
      *  to a temp file for upload. Same nullable-for-tests rationale as above. */
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
@@ -1294,22 +1295,23 @@ class ConversationService(
         Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
 
         // Full-shape log of what we're about to enqueue. Lets us read the
-        // log and see exactly which recipients are on this push, whether
-        // any payloads are being shipped (heal carries none today — see
-        // [healGroupDistribution] image gap), and what versionTag the
-        // server-side per-peer apply will check against. Tagged so it
-        // stands out in a sea of debug noise.
+        // log and see exactly which recipients are on this push, whether the
+        // payloads (and their thumbnails) are being shipped, and what
+        // versionTag the server-side per-peer apply will check against. With
+        // preserveExistingPayloads=true (heal) the existing payloads + thumbs
+        // are re-attached into the manifest below; payloadsCount/thumbsCount
+        // should be non-zero. Tagged so it stands out in a sea of debug noise.
         Logger.i(tag = "HealAudit") {
             val existingPayloadKeys = conversationFile.fileMetadata.payloads?.joinToString(",") { it.key } ?: "<none>"
             val manifestKeys = manifest.payloadDescriptors?.joinToString(",") { "${it.payloadKey}:${it.operationType}" } ?: "<empty>"
             "updateConversationInternal ENQUEUE conversationId=$conversationId " +
                 "versionTagIn=${conversationFile.fileMetadata.versionTag} " +
                 "distribute=$distribute distributeOnlyTo=${distributeOnlyTo?.map { it.domainName }} " +
+                "preserveExistingPayloads=$preserveExistingPayloads " +
                 "instructions.recipients=${instructions.recipients.map { it.domainName }} " +
                 "manifest.payloadDescriptors=[$manifestKeys] " +
                 "request.payloadsCount=${payloads.size} request.thumbsCount=${thumbs.size} " +
-                "existingFilePayloads=[$existingPayloadKeys] (these stay on OUR server but are " +
-                "NOT in the manifest, so peer transit may not ship them — see image-on-heal bug)"
+                "existingFilePayloads=[$existingPayloadKeys]"
         }
 
         val request =
@@ -2052,6 +2054,7 @@ class ConversationService(
         }
 
         val payloads = mutableListOf<PayloadFile>()
+        val thumbnails = mutableListOf<ThumbnailFile>()
         for (descriptor in existing) {
             try {
                 val bytes = dfp.getPayloadBytesEncrypted(chatDrive, file.fileId, descriptor.key)
@@ -2079,13 +2082,58 @@ class ConversationService(
                 payloads += PayloadFile(
                     key = descriptor.key,
                     filePath = tempPath,
+                    // Keep the payload's embedded preview thumbnail on the descriptor too.
+                    previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
                     contentType = descriptor.contentType ?: "",
                     isPreEncrypted = true,
                     iv = ivBytes,
                     descriptorContent = descriptor.descriptorContent,
                 )
+
+                // Re-attach the payload's thumbnails. The update ships an
+                // AppendOrOverwrite for this payload key, which REPLACES the
+                // payload AND its thumbnail set on the server. Re-attaching only
+                // the payload bytes (the previous behavior) wiped every
+                // server-side thumbnail, so the avatar loader 404'd on each size
+                // — the warning-triangle-over-tiny-thumb group-image bug. The
+                // thumbnails are encrypted with the SAME payload key + iv, so we
+                // ship the pre-encrypted bytes as-is (no re-encryption needed).
+                var reattachedThumbs = 0
+                for (thumb in descriptor.thumbnails.orEmpty()) {
+                    val w = thumb.pixelWidth
+                    val h = thumb.pixelHeight
+                    if (w == null || h == null) {
+                        Logger.w(tag = "HealAudit") {
+                            "reuseExistingPayloadsForResend: skipping thumbnail for key=${descriptor.key} — missing pixel dims (w=$w h=$h fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    val thumbBytes = dfp.getThumbBytesEncrypted(
+                        driveId = chatDrive,
+                        fileId = file.fileId,
+                        payloadKey = descriptor.key,
+                        width = w,
+                        height = h,
+                        lastModified = descriptor.lastModified,
+                    )
+                    if (thumbBytes == null || thumbBytes.isEmpty()) {
+                        Logger.w(tag = "HealAudit") {
+                            "reuseExistingPayloadsForResend: skipping thumbnail key=${descriptor.key} ${w}x$h — getThumbBytesEncrypted returned ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    thumbnails += ThumbnailFile(
+                        pixelWidth = w,
+                        pixelHeight = h,
+                        thumbnailBytes = thumbBytes,
+                        key = descriptor.key,
+                        contentType = thumb.contentType ?: "image/webp",
+                    )
+                    reattachedThumbs++
+                }
+
                 Logger.i(tag = "HealAudit") {
-                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} tempPath=$tempPath fileId=${file.fileId}"
+                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} thumbs=$reattachedThumbs/${descriptor.thumbnails?.size ?: 0} tempPath=$tempPath fileId=${file.fileId}"
                 }
             } catch (e: Exception) {
                 Logger.w(throwable = e, tag = "HealAudit") {
@@ -2093,7 +2141,7 @@ class ConversationService(
                 }
             }
         }
-        return payloads to emptyList()
+        return payloads to thumbnails
     }
 
     override suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
