@@ -63,7 +63,7 @@ public class DriveFileProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
     private val driveCache: DriveFileProviderCached
-) : OdinApiProviderBase(httpClient, credentialsManager), VideoPrefetchDriveAccess {
+) : OdinApiProviderBase(httpClient, credentialsManager), VideoPrefetchDriveAccess, ResendPayloadByteSource {
 
     companion object {
         private const val TAG = "DriveFileProvider"
@@ -205,12 +205,32 @@ public class DriveFileProvider(
      * receiving the heal'd file also receive the payload bytes (the manifest would
      * otherwise be empty and the payload wouldn't ship).
      */
-    suspend fun getPayloadBytesEncrypted(
+    override suspend fun getPayloadBytesEncrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
     ): ByteArray? {
         val response = driveCache.getPayloadBytesRaw(driveId, fileId, key)
+        if (response.status == 404) return null
+        return response.bytes
+    }
+
+    /**
+     * Fetch the FULL still-encrypted bytes of one of a payload's thumbnails, going
+     * through the disk cache. Returns null on 404. Counterpart to
+     * [getPayloadBytesEncrypted] for the heal-redistribute path: the thumbnails
+     * must be re-attached alongside the payload or the `updateFileByUniqueId`
+     * AppendOrOverwrite wipes them server-side (see [ResendPayloadByteSource]).
+     */
+    override suspend fun getThumbBytesEncrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        lastModified: Long?,
+    ): ByteArray? {
+        val response = driveCache.getThumbBytesRaw(driveId, fileId, payloadKey, width, height, lastModified)
         if (response.status == 404) return null
         return response.bytes
     }
