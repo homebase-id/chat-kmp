@@ -238,6 +238,55 @@ class ConversationServiceHealTest {
     }
 
     @Test
+    fun cleanupStatus_isSentLocalOnly_notFannedOutToPeers() = runTest {
+        // Regression: GroupHealLocalCleanup is a private "I cleaned up MY broken
+        // copy" marker. It must be written local-only (recipientOverride=emptyList).
+        // Previously it was sent with no override, so getRecipients fell back to
+        // ALL participants and fanned it out over the wire — landing back in the
+        // heal sender's chat as "Removed broken local copy…", as if the sender's
+        // own copy had auto-healed.
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val healService = fixture.buildHealService(service)
+            val convoId = Uuid.random()
+            val canonicalParticipants = listOf(
+                OdinId(canonicalAuthorDomain),
+                OdinId(fixture.testDomain),
+                OdinId("bob.test"),
+            )
+            // Both main and admin missing ⇒ cleanup path fires and posts the status.
+            val healMsg = stubStatusMessageFile(fixture.chatDriveId)
+
+            healService.handleIncomingHealRequest(
+                status = healStatus(
+                    conversationId = convoId,
+                    canonicalAuthor = canonicalAuthorDomain,
+                    canonicalParticipants = canonicalParticipants,
+                    canonicalAdmins = listOf(OdinId(canonicalAuthorDomain)),
+                ),
+                sender = OdinId(canonicalAuthorDomain),
+                messageFile = healMsg,
+            )
+
+            val cleanupCalls = fixture.statusMessageSender.calls.filter {
+                it.statusMessage.statusMessage == StatusMessage.GroupHealLocalCleanup
+            }
+            assertEquals(
+                1,
+                cleanupCalls.size,
+                "exactly one GroupHealLocalCleanup status should be posted on a cleanup; " +
+                    "got ${fixture.statusMessageSender.calls.map { it.statusMessage.statusMessage }}",
+            )
+            assertEquals(
+                emptyList(),
+                cleanupCalls.single().recipientOverride,
+                "GroupHealLocalCleanup must be local-only (recipientOverride=emptyList) so it is " +
+                    "never fanned out to peers — including back to the heal sender",
+            )
+        }
+    }
+
+    @Test
     fun adminMissing_withCanonicalAdmins_writesAdminPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)

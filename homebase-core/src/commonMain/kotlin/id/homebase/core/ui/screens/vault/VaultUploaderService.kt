@@ -18,6 +18,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.withResolvedFiles
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -61,13 +62,42 @@ class VaultUploaderService(
         groupId: Uuid? = null,
         notes: String? = null,
         uniqueId: Uuid = Uuid.random(),
+    ): Uuid? =
+        // Resolve the picked files (Android copies content:// picks into cacheDir
+        // as resolved_*) and reap those copies once the upload is enqueued — the
+        // shared resolve-then-delete scope, so this path can't strand them. See
+        // FileOperationsProvider.withResolvedFiles.
+        fileOperationsProvider.withResolvedFiles(files.map { it.first }) { resolvedPaths ->
+            uploadResolvedFiles(
+                entryName = entryName,
+                files = resolvedPaths.mapIndexed { i, resolved -> resolved to files[i].second },
+                scope = scope,
+                groupId = groupId,
+                notes = notes,
+                uniqueId = uniqueId,
+            )
+        }
+
+    private suspend fun uploadResolvedFiles(
+        entryName: String,
+        files: List<Pair<String, String>>,
+        scope: CoroutineScope,
+        groupId: Uuid?,
+        notes: String?,
+        uniqueId: Uuid,
     ): Uuid? {
+        // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
+        // call but are fully consumed once encryptBundle has read them into the
+        // encrypted payloads. Reap them in finally so they don't linger in
+        // cacheDir — same per-send discipline as the resolved copies.
+        val heicTemps = mutableListOf<String>()
         return try {
             val keyHeader = KeyHeader.newRandom16()
 
             val resolvedFiles = files.map { (path, contentType) ->
-                val resolved = fileOperationsProvider.resolveToFilePath(path)
-                convertHeicIfNeeded(resolved, contentType)
+                val converted = convertHeicIfNeeded(path, contentType)
+                if (converted.first != path) heicTemps += converted.first
+                converted
             }
 
             var pdfPageCount: Int? = null
@@ -139,6 +169,8 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -146,7 +178,23 @@ class VaultUploaderService(
         file: VaultEntry,
         newFiles: List<Pair<String, String>>,
         scope: CoroutineScope,
+    ): Boolean =
+        fileOperationsProvider.withResolvedFiles(newFiles.map { it.first }) { resolvedPaths ->
+            appendResolvedPages(
+                file = file,
+                newFiles = resolvedPaths.mapIndexed { i, resolved -> resolved to newFiles[i].second },
+                scope = scope,
+            )
+        }
+
+    private suspend fun appendResolvedPages(
+        file: VaultEntry,
+        newFiles: List<Pair<String, String>>,
+        scope: CoroutineScope,
     ): Boolean {
+        // See uploadResolvedFiles: reap the heic_converted_*.jpg temps once the
+        // bundle has been encrypted, so they don't linger in cacheDir.
+        val heicTemps = mutableListOf<String>()
         return try {
             val existingMaxIndex =
                 file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
@@ -154,8 +202,9 @@ class VaultUploaderService(
             val startIndex = existingMaxIndex + 1
 
             val resolvedFiles = newFiles.map { (path, contentType) ->
-                val resolved = fileOperationsProvider.resolveToFilePath(path)
-                convertHeicIfNeeded(resolved, contentType)
+                val converted = convertHeicIfNeeded(path, contentType)
+                if (converted.first != path) heicTemps += converted.first
+                converted
             }
 
             val allPayloads = mutableListOf<PayloadFile>()
@@ -212,6 +261,8 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
             false
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
