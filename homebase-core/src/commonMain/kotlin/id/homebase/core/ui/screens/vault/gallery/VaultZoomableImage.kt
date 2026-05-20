@@ -6,11 +6,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -20,13 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -38,6 +31,7 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.ZoomableContainer
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
@@ -55,9 +49,6 @@ fun VaultZoomableImage(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    var scale by remember(descriptor.key) { mutableStateOf(1f) }
-    var offset by remember(descriptor.key) { mutableStateOf(Offset.Zero) }
-
     val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
         .collectAsStateWithLifecycle(
             initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
@@ -84,53 +75,14 @@ fun VaultZoomableImage(
         )
     }
 
-    val zoomableModifier = Modifier.fillMaxSize().graphicsLayer(
-        scaleX = scale,
-        scaleY = scale,
-        translationX = offset.x,
-        translationY = offset.y,
-    )
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val viewportWidth = constraints.maxWidth.toFloat()
-        val viewportHeight = constraints.maxHeight.toFloat()
-
-        val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
-            scale = (scale * zoomChange).coerceIn(1f, 5f)
-            if (scale > 1f) {
-                val velocityFactor = 2f
-                val newOffset = offset + (offsetChange * velocityFactor)
-                val maxOffsetX = (viewportWidth * scale - viewportWidth) / 2f
-                val maxOffsetY = (viewportHeight * scale - viewportHeight) / 2f
-                offset = Offset(
-                    x = newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
-                    y = newOffset.y.coerceIn(-maxOffsetY, maxOffsetY),
-                )
-            } else {
-                offset = Offset.Zero
-            }
-        }
-
-        val gestureModifier = Modifier.transformable(
-            state = transformState,
-            canPan = { scale > 1f },
-        ).pointerInput(Unit) {
-            detectTapGestures(
-                onDoubleTap = {
-                    scale = if (scale > 1f) 1f else 2f
-                    if (scale == 1f) offset = Offset.Zero
-                },
-                onTap = { onToggleUI() },
-            )
-        }
-
-        val isPending = descriptor.iv == null
-        if (localFilePath != null) {
+    val isPending = descriptor.iv == null
+    if (localFilePath != null) {
+        ZoomableContainer(onTap = onToggleUI) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
                     model = localFilePath,
                     contentDescription = file.label?.ifBlank { null } ?: file.fileName,
-                    modifier = zoomableModifier.then(gestureModifier),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                 )
                 if (isPending) {
@@ -146,38 +98,40 @@ fun VaultZoomableImage(
                     }
                 }
             }
-        } else if (pageImageData != null) {
+        }
+    } else if (pageImageData != null) {
+        ZoomableContainer(onTap = onToggleUI) {
             HomebaseImage(
                 imageData = pageImageData,
-                modifier = zoomableModifier.then(gestureModifier),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
                 contentDescription = file.label?.ifBlank { null } ?: file.fileName,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTapGestures(onTap = { onToggleUI() })
-                },
-                contentAlignment = Alignment.Center,
+        }
+    } else {
+        Box(
+            modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                detectTapGestures(onTap = { onToggleUI() })
+            },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        imageVector = fileTypeIcon(descriptor.contentType ?: ""),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.size(64.dp),
-                    )
-                    Text(
-                        text = stringResource(MR.string.vault_error_image_unavailable),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    )
-                }
+                Icon(
+                    imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.size(64.dp),
+                )
+                Text(
+                    text = stringResource(MR.string.vault_error_image_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
             }
         }
     }
