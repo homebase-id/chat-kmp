@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.common.util.formatBytes
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
