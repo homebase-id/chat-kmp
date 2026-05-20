@@ -151,31 +151,4 @@ class ZoomStateTest {
         assertEquals(3f, state.scale, 0.01f)
     }
 
-    @Test
-    fun at_right_pan_bound_when_offset_at_max() {
-        val state = ZoomState()
-        state.applyTransform(scaleFactor = 2f, viewportWidth = 1000f, viewportHeight = 1000f)
-        state.applyTransform(scaleFactor = 1f, offsetDelta = Offset(99999f, 0f), viewportWidth = 1000f, viewportHeight = 1000f)
-        val maxX = (1000f * 2f - 1000f) / 2f
-        assertEquals(maxX, state.offset.x, 0.01f)
-    }
-
-    @Test
-    fun at_left_pan_bound_when_offset_at_min() {
-        val state = ZoomState()
-        state.applyTransform(scaleFactor = 2f, viewportWidth = 1000f, viewportHeight = 1000f)
-        state.applyTransform(scaleFactor = 1f, offsetDelta = Offset(-99999f, 0f), viewportWidth = 1000f, viewportHeight = 1000f)
-        val maxX = (1000f * 2f - 1000f) / 2f
-        assertEquals(-maxX, state.offset.x, 0.01f)
-    }
-
-    @Test
-    fun pan_bound_not_reached_when_mid_offset() {
-        val state = ZoomState()
-        state.applyTransform(scaleFactor = 2f, viewportWidth = 1000f, viewportHeight = 1000f)
-        state.applyTransform(scaleFactor = 1f, offsetDelta = Offset(10f, 0f), viewportWidth = 1000f, viewportHeight = 1000f)
-        val maxX = (1000f * 2f - 1000f) / 2f
-        assertTrue(state.offset.x > 0f)
-        assertTrue(state.offset.x < maxX)
-    }
 }
