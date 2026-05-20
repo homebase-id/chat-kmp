@@ -11,6 +11,8 @@ import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.Statistics
 import com.arthenica.ffmpegkit.StatisticsCallback
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.test.assertEquals
@@ -451,5 +453,120 @@ class CompressVideoAndroidInstrumentedTest {
                 "verbatim (we no longer parse a banner). " +
                 "Got config='$configVersion' utils='$utilsVersion'.",
         )
+    }
+
+    // -----------------------------------------------------------------
+    // HLS / remux coverage — the safety net for the B3 size trim.
+    //
+    // The compressVideo tests above only exercise libx264 + aac + scale.
+    // The size trim disables ~22 external libs; these tests cover the
+    // OTHER production ffmpeg paths a trim could silently break:
+    //   - HLS muxer + `-codec copy` (segmentVideo)
+    //   - HLS muxer + built-in AES-128 crypto (segmentAndEncryptVideo)
+    //   - `-c copy` + aac_adtstoasc BSF, mp4 mux (remuxHlsToMp4)
+    //
+    // NOTE: thumbnail extraction is intentionally NOT tested here —
+    // Android's grabThumbnail uses MediaMetadataRetriever, not ffmpeg
+    // (see FFmpegUtils.android.kt), so it's unaffected by the lib trim.
+    // -----------------------------------------------------------------
+
+    @Test
+    fun segmentVideo_producesHlsPlaylist() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val cleanup = mutableListOf(fixture)
+        try {
+            val result = FFmpegUtils.segmentVideo(fixture.absolutePath, null)
+            assertNotNull(result, "segmentVideo must produce an HLS playlist+segment pair")
+            val (playlistPath, segmentPath) = result
+            val playlist = File(playlistPath)
+            val segment = File(segmentPath)
+            cleanup += playlist
+            cleanup += segment
+            assertTrue(
+                playlist.exists() && playlist.length() > 0L,
+                "playlist .m3u8 must exist and be non-empty",
+            )
+            assertTrue(
+                playlist.name.endsWith(".m3u8"),
+                "playlist must be .m3u8, got ${playlist.name}",
+            )
+            assertTrue(
+                segment.exists() && segment.length() > 0L,
+                "segment must exist and be non-empty",
+            )
+            val playlistText = playlist.readText()
+            assertTrue(
+                playlistText.contains("#EXTM3U"),
+                "playlist must be valid HLS (#EXTM3U); got:\n${playlistText.take(300)}",
+            )
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
+    @Test
+    fun segmentAndEncryptVideo_producesEncryptedHls() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val cleanup = mutableListOf(fixture)
+        try {
+            // 16-byte IV + 16-byte AES-128 key, fixed for determinism.
+            val iv = ByteArray(16) { it.toByte() }
+            val key = ByteArray(16) { (it * 7 + 1).toByte() }
+            val keyHeader = KeyHeader(iv, SecureByteArray(key))
+
+            val result = FFmpegUtils.segmentAndEncryptVideo(fixture.absolutePath, keyHeader, null)
+            assertNotNull(result, "segmentAndEncryptVideo must produce a playlist+segment pair")
+            val (playlistPath, segmentPath) = result
+            val playlist = File(playlistPath)
+            val segment = File(segmentPath)
+            cleanup += playlist
+            cleanup += segment
+            assertTrue(
+                playlist.exists() && playlist.length() > 0L,
+                "encrypted playlist must exist and be non-empty",
+            )
+            assertTrue(
+                segment.exists() && segment.length() > 0L,
+                "encrypted segment must exist and be non-empty",
+            )
+            val playlistText = playlist.readText()
+            assertTrue(
+                playlistText.contains("#EXT-X-KEY", ignoreCase = true) ||
+                    playlistText.contains("AES-128", ignoreCase = true),
+                "encrypted playlist must declare EXT-X-KEY / AES-128 (built-in crypto path); " +
+                    "got:\n${playlistText.take(400)}",
+            )
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
+    @Test
+    fun remuxHlsToMp4_producesMp4() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val cleanup = mutableListOf(fixture)
+        try {
+            // Precondition: segment first, then remux that playlist back to MP4.
+            val seg = FFmpegUtils.segmentVideo(fixture.absolutePath, null)
+            assertNotNull(seg, "precondition: segmentVideo must succeed")
+            val (playlistPath, segmentPath) = seg
+            cleanup += File(playlistPath)
+            cleanup += File(segmentPath)
+
+            val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+            val outMp4 = File(ctx.cacheDir, "remuxed_${System.currentTimeMillis()}.mp4")
+            cleanup += outMp4
+
+            val ok = FFmpegUtils.remuxHlsToMp4(playlistPath, outMp4.absolutePath)
+            assertTrue(ok, "remuxHlsToMp4 must return true")
+            assertTrue(
+                outMp4.exists() && outMp4.length() > 0L,
+                "remuxed MP4 must exist and be non-empty",
+            )
+            val durMs = FFmpegUtils.getDurationMs(outMp4.absolutePath)
+            assertTrue(durMs > 0L, "remuxed MP4 must have a readable duration, got ${durMs}ms")
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
     }
 }
