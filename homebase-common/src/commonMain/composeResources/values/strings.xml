@@ -195,7 +195,7 @@
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
-    <string name="settings_logout_in_progress">Clearing this device\'s encrypted cache</string>
+    <string name="settings_logout_in_progress">Clearing this device's encrypted cache</string>
     <string name="settings_delete_account">Delete my account</string>
 
     <!-- Storage screen -->
@@ -378,7 +378,7 @@
     <string name="moments_audience_post">Post</string>
     <string name="moments_audience_save_privately">Save privately</string>
     <string name="moments_audience_create_group">Create new group</string>
-    <string name="moments_audience_post_failed">Couldn\'t post moment. Please try again.</string>
+    <string name="moments_audience_post_failed">Couldn't post moment. Please try again.</string>
     <string name="moments_create_group_title">New group</string>
     <string name="moments_create_group_name_hint">Group name</string>
     <string name="moments_create_group_section_members">Members</string>
@@ -507,12 +507,12 @@
     <string name="chat_group_main_peer_missing">Group file: not on peer</string>
     <string name="chat_group_main_peer_mine">Group file: on peer (yours)</string>
     <string name="chat_group_main_peer_other_author">Group file: on peer (third-party)</string>
-    <string name="chat_group_main_peer_error">Group file: couldn\'t reach peer</string>
+    <string name="chat_group_main_peer_error">Group file: couldn't reach peer</string>
     <string name="chat_group_main_peer_loading">Group file: checking peer…</string>
     <string name="chat_group_admin_peer_missing">Admin file: not on peer</string>
     <string name="chat_group_admin_peer_mine">Admin file: on peer (yours)</string>
     <string name="chat_group_admin_peer_other_author">Admin file: on peer (third-party)</string>
-    <string name="chat_group_admin_peer_error">Admin file: couldn\'t reach peer</string>
+    <string name="chat_group_admin_peer_error">Admin file: couldn't reach peer</string>
     <string name="chat_group_admin_peer_loading">Admin file: checking peer…</string>
     <string name="chat_group_member_sync_status">Sync status</string>
     <string name="chat_group_summary_all_ok">All in sync</string>
@@ -787,7 +787,7 @@
 
     <!-- Vault Sections -->
     <string name="vault_section_passports">Passports</string>
-    <string name="vault_section_drivers_licenses">Driver\'s Licenses</string>
+    <string name="vault_section_drivers_licenses">Driver's Licenses</string>
     <string name="vault_section_health_cards">Health Cards</string>
     <string name="vault_section_birth_certificates">Birth Certificates</string>
     <string name="vault_section_credit_cards">Credit Cards</string>
@@ -949,7 +949,7 @@
 
     <!-- Storage warnings -->
     <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
-    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil\'s default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil's default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>
