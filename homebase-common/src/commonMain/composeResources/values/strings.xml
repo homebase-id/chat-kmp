@@ -195,7 +195,7 @@
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
-    <string name="settings_logout_in_progress">Erasing all your encrypted data</string>
+    <string name="settings_logout_in_progress">Clearing this device\'s encrypted cache</string>
     <string name="settings_delete_account">Delete my account</string>
 
     <!-- Storage screen -->
