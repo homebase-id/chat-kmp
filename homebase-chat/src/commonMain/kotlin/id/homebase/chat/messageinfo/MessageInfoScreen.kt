@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -25,8 +28,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -34,11 +39,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.common.util.formatBytes
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
 import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.util.formateDateTime
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_info
@@ -47,12 +54,16 @@ import id.homebase.resources.details
 import id.homebase.resources.failed
 import id.homebase.resources.label_edited
 import id.homebase.resources.label_received
+import id.homebase.resources.copy_message_id
+import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
+import id.homebase.resources.label_size
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -161,6 +172,72 @@ fun MessageInfoUi(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     )
+                }
+
+                // One Size row per payload that has a known byte count. Useful
+                // for confirming transcode output sizes (e.g. CBR taking
+                // effect after the surface-bridge rewrite) and for users
+                // gauging how much data a message carries when there's no
+                // download button to peek at file properties.
+                //
+                // Per-payload (not summed) because messages can carry multiple
+                // payloads — video + HLS playlist + audio + image — and the
+                // per-payload breakdown is more diagnostic than a total.
+                val sizedPayloads = remember(uiState.message?.payloads) {
+                    uiState.message?.payloads
+                        ?.filter { (it.bytesWritten ?: 0L) > 0L }
+                        .orEmpty()
+                }
+                sizedPayloads.forEach { p ->
+                    // Label prefers the contentType (e.g. "video/mp2t") which
+                    // is more user-meaningful than the payload key. Falls back
+                    // to the key for typed payloads with no MIME.
+                    val label = p.contentType ?: p.key
+                    Text(
+                        text = stringResource(
+                            MR.string.label_size,
+                            "${formatBytes(p.bytesWritten ?: 0L)} ($label)",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
+
+                // Message uniqueId — diagnostic, deliberately discreet (small
+                // and muted) since it's meaningless to the average user. The
+                // tiny copy button puts the full UUID on the clipboard for bug
+                // reports / cross-referencing server logs.
+                uiState.message?.id?.let { messageId ->
+                    val clipboard = LocalClipboard.current
+                    val scope = rememberCoroutineScope()
+                    val idText = messageId.toString()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.label_message_id, idText),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    clipboard.setClipEntry(clipEntryOf(idText))
+                                }
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(MR.string.copy_message_id),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
 
                 // Recipients section grouped by status
