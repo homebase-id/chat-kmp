@@ -189,7 +189,14 @@ struct iOSApp: App {
         case "homebase-share":
             handleShareURL(url)
         case "homebase-fchat":
-            handlePermissionCallbackURL(url)
+            switch url.host {
+            case "permission-callback":
+                handlePermissionCallbackURL(url)
+            case "data-upgrade-callback":
+                handleDataUpgradeCallbackURL()
+            default:
+                break
+            }
         default:
             break
         }
@@ -203,6 +210,12 @@ struct iOSApp: App {
         else { return }
 
         ShareHandlerBridge.shared.handleIncomingShare(conversationId: conversationId)
+    }
+
+    /// Handles `homebase-fchat://data-upgrade-callback` URLs returned from the
+    /// owner-console data-upgrade page. Triggers an immediate upgrade status re-check.
+    private func handleDataUpgradeCallbackURL() {
+        DataUpgradeCallbackBridge.shared.handleDataUpgradeCallback()
     }
 
     /// Handles `homebase-fchat://permission-callback?status=...` URLs returned from the

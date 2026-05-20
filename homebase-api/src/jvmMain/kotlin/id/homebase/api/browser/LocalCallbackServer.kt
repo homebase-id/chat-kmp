@@ -45,6 +45,12 @@ object LocalCallbackServer {
         this.onPermissionCallback = handler
     }
 
+    private var onDataUpgradeCallback: (() -> Unit)? = null
+
+    fun setDataUpgradeCallback(handler: () -> Unit) {
+        this.onDataUpgradeCallback = handler
+    }
+
     fun start(onCallbackUrl: (String) -> Unit, preferredPort: Int = 0): Int {
         this.onCallbackUrl = onCallbackUrl
         if (server != null) return currentPort
@@ -94,6 +100,28 @@ object LocalCallbackServer {
                                     else PERMISSION_CALLBACK_HTML,
                                     contentType = ContentType.Text.Html
                                 )
+                            }
+
+                            /**
+                             * Owner-console data-upgrade return URL. Fires the registered
+                             * callback so the in-app side can re-check upgrade status and
+                             * clear the upgrade banner. Serves confirmation HTML.
+                             */
+                            get("/data-upgrade-callback") {
+                                Logger.d(tag = TAG) { "Data-upgrade return hit" }
+                                onDataUpgradeCallback?.invoke()
+                                call.respondText(
+                                    text = DATA_UPGRADE_CALLBACK_HTML,
+                                    contentType = ContentType.Text.Html
+                                )
+
+                                DesktopAppFocusManager.requestFocus()
+                                val toStop = server
+                                server = null
+                                currentPort = 0
+                                delay(750)
+                                toStop?.stop(1000, 2000)
+                                Logger.i(tag = TAG) { "Callback server stopped (data-upgrade)" }
                             }
 
                             /** Bring desktop app to foreground */
@@ -451,6 +479,68 @@ object LocalCallbackServer {
         openApp();
       }
     });
+  </script>
+</body>
+</html>
+"""
+
+    private const val DATA_UPGRADE_CALLBACK_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Homebase Chat — Data Upgrade Complete</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #ffffff;
+      color: #171717;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      border: 1px solid #eaeaea;
+      border-radius: 14px;
+      padding: 2.25rem;
+      text-align: center;
+      max-width: 440px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+    p {
+      color: #555;
+      margin: 0.5rem 0;
+      line-height: 1.5;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #777;
+      margin-top: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Data upgrade complete</h1>
+
+    <p>
+      Your <strong>Homebase</strong> identity has been upgraded successfully.
+    </p>
+
+    <p class="hint">
+      Returning to Homebase Chat&hellip; you may close this tab.
+    </p>
+  </div>
+
+  <script>
+    try { window.close(); } catch (_) {}
   </script>
 </body>
 </html>
