@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 
@@ -31,7 +32,7 @@ fun ZoomableContainer(
 ) {
     val currentOnTap by rememberUpdatedState(onTap)
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().clipToBounds()) {
         val viewportWidth = constraints.maxWidth.toFloat()
         val viewportHeight = constraints.maxHeight.toFloat()
 
@@ -52,11 +53,19 @@ fun ZoomableContainer(
                     scaleY = state.scale,
                     translationX = state.offset.x,
                     translationY = state.offset.y,
-                    clip = true,
                 )
                 .transformable(
                     state = transformState,
-                    canPan = { state.isZoomed },
+                    canPan = { panDelta ->
+                        if (!state.isZoomed) return@transformable false
+                        val maxX = (viewportWidth * state.scale - viewportWidth) / 2f
+                        val atBound = when {
+                            panDelta.x > 0 -> state.offset.x >= maxX - EDGE_TOLERANCE
+                            panDelta.x < 0 -> state.offset.x <= -maxX + EDGE_TOLERANCE
+                            else -> false
+                        }
+                        !atBound
+                    },
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -69,3 +78,5 @@ fun ZoomableContainer(
         }
     }
 }
+
+private const val EDGE_TOLERANCE = 0.5f
