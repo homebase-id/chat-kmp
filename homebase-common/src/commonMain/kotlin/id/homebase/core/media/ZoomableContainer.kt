@@ -52,6 +52,7 @@ fun ZoomableContainer(
                     scaleY = state.scale,
                     translationX = state.offset.x,
                     translationY = state.offset.y,
+                    clip = true,
                 )
                 .transformable(
                     state = transformState,
