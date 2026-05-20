@@ -12,6 +12,11 @@ class ZoomState(
     val minScale: Float = 1f,
     val maxScale: Float = 5f,
 ) {
+    init {
+        require(minScale > 0f) { "minScale must be positive, was $minScale" }
+        require(maxScale >= minScale) { "maxScale ($maxScale) must be >= minScale ($minScale)" }
+    }
+
     var scale by mutableFloatStateOf(minScale)
         private set
     var offset by mutableStateOf(Offset.Zero)

@@ -2,6 +2,7 @@ package id.homebase.core.media
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.first
 
 data class MediaRailItem(
     val key: String,
-    val label: String? = null,
 )
 
 @Composable
@@ -30,7 +30,7 @@ fun MediaRail(
     modifier: Modifier = Modifier,
     itemSize: Dp = 60.dp,
     itemSpacing: Dp = 8.dp,
-    itemContent: @Composable (item: MediaRailItem, isSelected: Boolean) -> Unit,
+    itemContent: @Composable (item: MediaRailItem, index: Int, isSelected: Boolean) -> Unit,
 ) {
     if (items.size <= 1) return
 
@@ -56,9 +56,9 @@ fun MediaRail(
             Box(
                 modifier = Modifier
                     .size(itemSize)
-                    .clickable { onItemSelected(index) },
+                    .clickable(role = Role.Tab) { onItemSelected(index) },
             ) {
-                itemContent(item, index == selectedIndex)
+                itemContent(item, index, index == selectedIndex)
             }
         }
     }

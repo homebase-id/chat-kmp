@@ -31,6 +31,7 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.ZoomState
 import id.homebase.core.media.ZoomableContainer
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -76,8 +77,9 @@ fun VaultZoomableImage(
     }
 
     val isPending = descriptor.iv == null
+    val zoomState = remember(descriptor.key) { ZoomState() }
     if (localFilePath != null) {
-        ZoomableContainer(onTap = onToggleUI) {
+        ZoomableContainer(state = zoomState, onTap = onToggleUI) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
                     model = localFilePath,
@@ -100,7 +102,7 @@ fun VaultZoomableImage(
             }
         }
     } else if (pageImageData != null) {
-        ZoomableContainer(onTap = onToggleUI) {
+        ZoomableContainer(state = zoomState, onTap = onToggleUI) {
             HomebaseImage(
                 imageData = pageImageData,
                 modifier = Modifier.fillMaxSize(),

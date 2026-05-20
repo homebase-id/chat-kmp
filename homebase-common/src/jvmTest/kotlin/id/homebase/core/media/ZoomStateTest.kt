@@ -3,6 +3,7 @@ package id.homebase.core.media
 import androidx.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -119,16 +120,17 @@ class ZoomStateTest {
     @Test
     fun offset_clamps_negative_direction() {
         val state = ZoomState()
-        state.applyTransform(scaleFactor = 2f, viewportWidth = 1000f, viewportHeight = 1000f)
+        state.applyTransform(scaleFactor = 2f, viewportWidth = 1000f, viewportHeight = 2000f)
         state.applyTransform(
             scaleFactor = 1f,
             offsetDelta = Offset(-99999f, -99999f),
             viewportWidth = 1000f,
-            viewportHeight = 1000f,
+            viewportHeight = 2000f,
         )
         val maxX = (1000f * 2f - 1000f) / 2f
+        val maxY = (2000f * 2f - 2000f) / 2f
         assertEquals(-maxX, state.offset.x, 0.01f)
-        assertEquals(-maxX, state.offset.y, 0.01f)
+        assertEquals(-maxY, state.offset.y, 0.01f)
     }
 
     @Test
@@ -149,6 +151,27 @@ class ZoomStateTest {
         state.applyTransform(scaleFactor = 1.5f)
         state.applyTransform(scaleFactor = 2f)
         assertEquals(3f, state.scale, 0.01f)
+    }
+
+    @Test
+    fun constructor_rejects_negative_minScale() {
+        assertFailsWith<IllegalArgumentException> { ZoomState(minScale = -1f) }
+    }
+
+    @Test
+    fun constructor_rejects_maxScale_less_than_minScale() {
+        assertFailsWith<IllegalArgumentException> { ZoomState(minScale = 2f, maxScale = 1f) }
+    }
+
+    @Test
+    fun offset_clamped_to_zero_with_zero_viewport() {
+        val state = ZoomState()
+        state.applyTransform(scaleFactor = 2f)
+        state.applyTransform(
+            scaleFactor = 1f,
+            offsetDelta = Offset(100f, 100f),
+        )
+        assertEquals(Offset.Zero, state.offset)
     }
 
 }

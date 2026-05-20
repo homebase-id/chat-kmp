@@ -1,6 +1,7 @@
 package id.homebase.core.media
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -12,10 +13,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -39,7 +44,6 @@ fun MediaPager(
 ) {
     if (swipeToDismiss && onDismiss != null) {
         SwipeToDismissMediaPager(
-            pageCount = pageCount,
             modifier = modifier,
             state = state,
             beyondViewportPageCount = beyondViewportPageCount,
@@ -63,7 +67,6 @@ fun MediaPager(
 
 @Composable
 private fun SwipeToDismissMediaPager(
-    pageCount: Int,
     modifier: Modifier,
     state: PagerState,
     beyondViewportPageCount: Int,
@@ -76,10 +79,12 @@ private fun SwipeToDismissMediaPager(
     val scope = rememberCoroutineScope()
     val dismissOffset = remember { Animatable(0f) }
     val dismissThresholdPx = with(LocalDensity.current) { DISMISS_THRESHOLD.toPx() }
+    var containerHeight by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onSizeChanged { containerHeight = it.height }
             .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
             .graphicsLayer {
                 val progress = (abs(dismissOffset.value) / dismissThresholdPx).coerceIn(0f, 1f)
@@ -96,6 +101,15 @@ private fun SwipeToDismissMediaPager(
                 onDragStopped = { velocity ->
                     scope.launch {
                         if (abs(dismissOffset.value) > dismissThresholdPx || abs(velocity) > DISMISS_VELOCITY_THRESHOLD) {
+                            val flyTarget = if (dismissOffset.value >= 0f) {
+                                containerHeight.toFloat()
+                            } else {
+                                -containerHeight.toFloat()
+                            }
+                            dismissOffset.animateTo(
+                                flyTarget,
+                                spring(stiffness = Spring.StiffnessMedium),
+                            )
                             onDismiss()
                         } else {
                             dismissOffset.animateTo(0f, spring())

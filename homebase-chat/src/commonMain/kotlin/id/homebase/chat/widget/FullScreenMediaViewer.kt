@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +93,10 @@ fun FullScreenMediaViewer(
     }
     val pagerState = rememberPagerState(initialPage = initialPage) { data.payloads.size }
 
+    LaunchedEffect(data.messageId) {
+        pagerState.scrollToPage(initialPage)
+    }
+
     val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
 
     // See ConversationItem.kt ConversationMessagePreview for why remember is required here
@@ -98,11 +104,13 @@ fun FullScreenMediaViewer(
         RichTextState().applyDefaultStyling().also { it.setMarkdown(data.content) }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
+        val maxCaptionHeight = (maxHeight * 0.15f).coerceAtLeast(60.dp)
+
         MediaPager(
             pageCount = data.payloads.size,
             modifier = Modifier.fillMaxSize(),
@@ -229,7 +237,7 @@ fun FullScreenMediaViewer(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 100.dp)
+                            .heightIn(max = maxCaptionHeight)
                             .verticalScroll(rememberScrollState())
                     )
                 }
@@ -244,9 +252,9 @@ fun FullScreenMediaViewer(
                         scope.launch { pagerState.animateScrollToPage(index) }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { item, isSelected ->
-                    val payload = data.payloads.firstOrNull { it.key == item.key }
-                    payload?.iv?.let { iv ->
+                ) { _, index, isSelected ->
+                    val payload = data.payloads[index]
+                    payload.iv?.let { iv ->
                         val thumbImageData = remember(
                             data.driveId,
                             data.fileId,
