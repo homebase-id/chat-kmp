@@ -3,10 +3,12 @@ package id.homebase.chat.services.convo
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 interface StatusMessageSender {
@@ -105,4 +107,36 @@ interface ConversationParticipantLookup {
          *  Lets the heal path address messages at a specific subset of peers. */
         recipientOverride: List<OdinId>? = null,
     ): List<OdinId>
+
+    // region lastRead dirty tracking
+    // The in-memory conversation list is the single source of truth for both
+    // the lastRead value and whether it still owes a server push (the `dirty`
+    // flag on ConversationUiModel). A local advance sets both together via
+    // [advancedLastRead] (which applies [ConversationUiModel.advancedLastRead]
+    // to the list); the deferred writeback flush in ConversationService reads
+    // and clears them here.
+
+    /**
+     * List-level counterpart of [ConversationUiModel.advancedLastRead] — same
+     * name on purpose. Runs the entity's advance transition (move lastRead +
+     * set dirty, together) on the in-memory entry for [conversationId] and
+     * commits it back into the live list, re-deriving unreadCount in the same
+     * emission. No-op if the conversation isn't in memory or [candidate] isn't
+     * a genuine advance. The setter calls this so the in-memory model, its
+     * dirty flag, and the flush it schedules all move as one.
+     */
+    suspend fun advancedLastRead(conversationId: Uuid, candidate: Instant)
+
+    /** Ids of conversations whose lastRead is dirty (owes a server push). */
+    fun getDirtyConversationIds(): List<Uuid>
+
+    /** Clear [conversationId]'s dirty flag, but only if its current lastRead
+     *  still equals [pushed] — i.e. nothing advanced it while the writeback was
+     *  in flight. If a newer advance landed, the flag stays set so the newer
+     *  value gets pushed next round. Called by the flush after a successful
+     *  push; on push failure the caller simply doesn't call this, leaving the
+     *  conversation dirty for retry. Compare-and-clear, so no value-less
+     *  re-flagging is ever needed. */
+    suspend fun clearLastReadDirtyIfUnchanged(conversationId: Uuid, pushed: UnixTimeUtc)
+    // endregion
 }
