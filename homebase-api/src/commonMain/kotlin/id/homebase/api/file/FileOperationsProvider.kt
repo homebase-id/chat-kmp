@@ -74,3 +74,52 @@ interface FileOperationsProvider {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024
     }
 }
+
+/**
+ * Resolve [path] (which may be an Android `content://` URI) to a real
+ * filesystem path, run [block] with it, and reap the resolved copy afterwards.
+ *
+ * [resolveToFilePath] COPIES a `content://` pick into cacheDir as
+ * `resolved_*.<ext>` — a plaintext copy the full size of the source. Callers
+ * that picked through the gallery (video send, vault upload) must delete that
+ * copy once they've consumed it, or it lingers in cacheDir until the next
+ * cold-start [CacheSweeper] run (observed: a 125 MB send leaving a 125 MB
+ * `resolved_*.mp4`). This is the one shared place that pairs the resolve with
+ * its delete, so no call site can forget — and on platforms where
+ * `resolveToFilePath` is a no-op the path is unchanged and nothing is deleted.
+ *
+ * The reap runs in `finally`, so it also covers the failure path; the startup
+ * sweep stays as the backstop if even that delete fails.
+ */
+suspend fun <T> FileOperationsProvider.withResolvedFile(
+    path: String,
+    block: suspend (resolvedPath: String) -> T,
+): T {
+    val resolved = resolveToFilePath(path)
+    return try {
+        block(resolved)
+    } finally {
+        if (resolved != path) deleteTempFile(resolved)
+    }
+}
+
+/**
+ * List form of [withResolvedFile]: resolve every path in [paths], run [block]
+ * with the resolved paths (positionally aligned with [paths]), and reap each
+ * resolved copy afterwards. Used by callers that pick several files at once
+ * (vault multi-upload). Same reap rule per entry — a path that resolved to
+ * itself (no copy made) is left alone.
+ */
+suspend fun <T> FileOperationsProvider.withResolvedFiles(
+    paths: List<String>,
+    block: suspend (resolvedPaths: List<String>) -> T,
+): T {
+    val resolved = paths.map { resolveToFilePath(it) }
+    return try {
+        block(resolved)
+    } finally {
+        for (i in paths.indices) {
+            if (resolved[i] != paths[i]) deleteTempFile(resolved[i])
+        }
+    }
+}

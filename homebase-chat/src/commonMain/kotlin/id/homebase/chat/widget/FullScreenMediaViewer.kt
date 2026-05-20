@@ -9,11 +9,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -24,12 +19,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
@@ -43,21 +36,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -66,12 +56,17 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.MediaPager
+import id.homebase.core.media.MediaRail
+import id.homebase.core.media.MediaRailItem
+import id.homebase.core.media.ZoomableContainer
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
@@ -89,34 +84,20 @@ fun FullScreenMediaViewer(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    var selectedKey by remember(data) { mutableStateOf(data.selectedPayloadKey) }
+    val scope = rememberCoroutineScope()
     var showUI by remember { mutableStateOf(true) }
     var showMenu by remember { mutableStateOf(false) }
 
-    // Store zoom state per payload
-    val zoomStates = remember(data) {
-        mutableMapOf<String, Pair<Float, Offset>>().apply {
-            data.payloads.forEach { payload ->
-                put(payload.key, 1f to Offset.Zero)
-            }
-        }
+    val initialPage = remember(data) {
+        data.payloads.indexOfFirst { it.key == data.selectedPayloadKey }.coerceAtLeast(0)
+    }
+    val pagerState = rememberPagerState(initialPage = initialPage) { data.payloads.size }
+
+    LaunchedEffect(data.messageId) {
+        pagerState.scrollToPage(initialPage)
     }
 
-    // Derive selected payload without causing recomposition
-    val selectedPayload = remember(data, selectedKey) {
-        data.payloads.firstOrNull { it.key == selectedKey }
-    }
-
-    val selectedPayloadIv = remember(selectedPayload) {
-        selectedPayload?.iv?.let { Base64.decode(it) }
-    }
-
-    var scale by remember(selectedKey) {
-        mutableStateOf(zoomStates[selectedKey]?.first ?: 1f)
-    }
-    var offset by remember(selectedKey) {
-        mutableStateOf(zoomStates[selectedKey]?.second ?: Offset.Zero)
-    }
+    val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
 
     // See ConversationItem.kt ConversationMessagePreview for why remember is required here
     val textState = remember(data.content) {
@@ -128,78 +109,46 @@ fun FullScreenMediaViewer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        val viewportWidth = constraints.maxWidth.toFloat()
-        val viewportHeight = constraints.maxHeight.toFloat()
+        val maxCaptionHeight = (maxHeight * 0.15f).coerceAtLeast(60.dp)
 
-        val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-            var currentScale = scale
-            var currentOffset = offset
+        MediaPager(
+            pageCount = data.payloads.size,
+            modifier = Modifier.fillMaxSize(),
+            state = pagerState,
+            swipeToDismiss = true,
+            onDismiss = onDismiss,
+        ) { page ->
+            val payload = data.payloads[page]
+            val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
 
-            currentScale = (currentScale * zoomChange).coerceIn(1f, 5f)
-
-            if (currentScale > 1f) {
-                val velocityFactor = 2f
-                val newOffset = currentOffset + (offsetChange * velocityFactor)
-
-                val maxOffsetX = (viewportWidth * currentScale - viewportWidth) / 2f
-                val maxOffsetY = (viewportHeight * currentScale - viewportHeight) / 2f
-
-                currentOffset = Offset(
-                    x = newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
-                    y = newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
-                )
-            } else {
-                currentOffset = Offset.Zero
-            }
-
-            scale = currentScale
-            offset = currentOffset
-            zoomStates[selectedKey] = currentScale to currentOffset
-        }
-
-        selectedPayload?.let { payload ->
-            val imageData = remember(data.driveId, data.fileId, selectedKey, selectedPayloadIv) {
-                HomebaseImageData(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = selectedKey,
-                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                    loadFullPayload = true,
-                    lastModified = payload.lastModified,
-                    keyHeader = KeyHeader(
-                        iv = selectedPayloadIv!!,
-                        aesKey = data.keyHeader.aesKey
-                    )
-                )
-            }
-            HomebaseImage(
-                imageData = imageData,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = offset.x,
-                        translationY = offset.y
-                    )
-                    .transformable(state = state)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                scale = if (scale > 1f) 1f else 2f
-                                if (scale == 1f) offset = Offset.Zero
-                                zoomStates[selectedKey] = scale to offset
-                            },
-                            onTap = {
-                                showUI = !showUI
-                            }
+            ZoomableContainer(
+                onTap = { showUI = !showUI },
+            ) {
+                payloadIv?.let { iv ->
+                    val imageData = remember(data.driveId, data.fileId, payload.key, iv) {
+                        HomebaseImageData(
+                            driveId = data.driveId,
+                            fileId = data.fileId,
+                            payloadKey = payload.key,
+                            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                            loadFullPayload = true,
+                            lastModified = payload.lastModified,
+                            keyHeader = KeyHeader(
+                                iv = iv,
+                                aesKey = data.keyHeader.aesKey
+                            )
                         )
-                    },
-                contentScale = ContentScale.Fit,
-                contentDescription = payload.descriptorContent,
-                animatedVisibilityScope = animatedVisibilityScope,
-                sharedTransitionScope = sharedTransitionScope,
-            )
+                    }
+                    HomebaseImage(
+                        imageData = imageData,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        contentDescription = payload.descriptorContent,
+                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
+                    )
+                }
+            }
         }
 
         if (isDownloading) {
@@ -252,7 +201,7 @@ fun FullScreenMediaViewer(
                             dismissMenu = { showMenu = false },
                             onSave = {
                                 showMenu = false
-                                onSave(data.messageId, data.selectedPayloadKey)
+                                onSave(data.messageId, currentPayloadKey)
                             },
                             onDelete = {
                                 showMenu = false
@@ -283,9 +232,6 @@ fun FullScreenMediaViewer(
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {
-                    val maxCaptionHeight = with(LocalDensity.current) {
-                        (viewportHeight * 0.15f).toDp().coerceAtLeast(60.dp)
-                    }
                     RichText(
                         state = textState,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -295,64 +241,63 @@ fun FullScreenMediaViewer(
                             .verticalScroll(rememberScrollState())
                     )
                 }
-                // Gallery row at bottom
-                if (data.payloads.size > 1) {
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(
-                            16.dp,
-                            Alignment.CenterHorizontally
-                        )
-                    ) {
-                        items(data.payloads) { payload ->
-                            payload.iv?.let { iv ->
-                                val thumbImageData = remember(
-                                    data.driveId,
-                                    data.fileId,
-                                    payload.key,
-                                    payload.lastModified
-                                ) {
-                                    val payloadIv = Base64.decode(iv)
-                                    HomebaseImageData(
-                                        driveId = data.driveId,
-                                        fileId = data.fileId,
-                                        payloadKey = payload.key,
-                                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                                        lastModified = payload.lastModified,
-                                        keyHeader = KeyHeader(
-                                            iv = payloadIv,
-                                            aesKey = data.keyHeader.aesKey
-                                        )
-                                    )
-                                }
-                                HomebaseImage(
-                                    imageData = thumbImageData,
-                                    modifier = Modifier
-                                        .size(60.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(
-                                            width = if (payload.key == selectedKey) 2.dp else 0.dp,
-                                            color = if (payload.key == selectedKey) Color.White else Color.Unspecified,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable {
-                                            selectedKey = payload.key
-                                        },
-                                    contentScale = ContentScale.Crop,
-                                    contentDescription = payload.descriptorContent,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                    sharedTransitionScope = null,
+                // Gallery rail at bottom
+                val railItems = remember(data.payloads) {
+                    data.payloads.map { MediaRailItem(key = it.key) }
+                }
+                MediaRail(
+                    items = railItems,
+                    selectedIndex = pagerState.currentPage,
+                    onItemSelected = { index ->
+                        scope.launch { pagerState.animateScrollToPage(index) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { _, index, isSelected ->
+                    val payload = data.payloads[index]
+                    payload.iv?.let { iv ->
+                        val thumbImageData = remember(
+                            data.driveId,
+                            data.fileId,
+                            payload.key,
+                            payload.lastModified
+                        ) {
+                            val payloadIv = Base64.decode(iv)
+                            HomebaseImageData(
+                                driveId = data.driveId,
+                                fileId = data.fileId,
+                                payloadKey = payload.key,
+                                previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                                lastModified = payload.lastModified,
+                                keyHeader = KeyHeader(
+                                    iv = payloadIv,
+                                    aesKey = data.keyHeader.aesKey
                                 )
-                            }
+                            )
                         }
+                        HomebaseImage(
+                            imageData = thumbImageData,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    width = if (isSelected) 2.dp else 0.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                ),
+                            contentScale = ContentScale.Crop,
+                            contentDescription = payload.descriptorContent,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            sharedTransitionScope = null,
+                        )
                     }
+                }
+                if (data.payloads.size > 1) {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    IconButton(onClick = { onShare(data.messageId, data.selectedPayloadKey) }) {
+                    IconButton(onClick = { onShare(data.messageId, currentPayloadKey) }) {
                         Icon(Icons.Default.Share, contentDescription = stringResource(MR.string.share))
                     }
                 }

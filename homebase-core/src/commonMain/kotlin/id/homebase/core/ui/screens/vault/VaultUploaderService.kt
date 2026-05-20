@@ -18,6 +18,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.withResolvedFiles
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -30,6 +31,10 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.createImageThumbnail
+import id.homebase.api.image.tinyThumbSize
+import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -57,23 +62,53 @@ class VaultUploaderService(
         groupId: Uuid? = null,
         notes: String? = null,
         uniqueId: Uuid = Uuid.random(),
+    ): Uuid? =
+        // Resolve the picked files (Android copies content:// picks into cacheDir
+        // as resolved_*) and reap those copies once the upload is enqueued — the
+        // shared resolve-then-delete scope, so this path can't strand them. See
+        // FileOperationsProvider.withResolvedFiles.
+        fileOperationsProvider.withResolvedFiles(files.map { it.first }) { resolvedPaths ->
+            uploadResolvedFiles(
+                entryName = entryName,
+                files = resolvedPaths.mapIndexed { i, resolved -> resolved to files[i].second },
+                scope = scope,
+                groupId = groupId,
+                notes = notes,
+                uniqueId = uniqueId,
+            )
+        }
+
+    private suspend fun uploadResolvedFiles(
+        entryName: String,
+        files: List<Pair<String, String>>,
+        scope: CoroutineScope,
+        groupId: Uuid?,
+        notes: String?,
+        uniqueId: Uuid,
     ): Uuid? {
+        // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
+        // call but are fully consumed once encryptBundle has read them into the
+        // encrypted payloads. Reap them in finally so they don't linger in
+        // cacheDir — same per-send discipline as the resolved copies.
+        val heicTemps = mutableListOf<String>()
         return try {
             val keyHeader = KeyHeader.newRandom16()
 
             val resolvedFiles = files.map { (path, contentType) ->
-                val resolved = fileOperationsProvider.resolveToFilePath(path)
-                convertHeicIfNeeded(resolved, contentType)
+                val converted = convertHeicIfNeeded(path, contentType)
+                if (converted.first != path) heicTemps += converted.first
+                converted
             }
 
-            val bundle = buildMultiPayloadBundle(resolvedFiles)
+            var pdfPageCount: Int? = null
+            val bundle = buildMultiPayloadBundle(resolvedFiles) { pdfPageCount = it }
 
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 uniqueId, bundle, keyHeader.aesKey, scope
             )
 
             val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = entryName, notes = notes)
+                VaultFileContent(name = entryName, notes = notes, pdfPageCount = pdfPageCount)
             )
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
@@ -134,6 +169,8 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -141,7 +178,23 @@ class VaultUploaderService(
         file: VaultEntry,
         newFiles: List<Pair<String, String>>,
         scope: CoroutineScope,
+    ): Boolean =
+        fileOperationsProvider.withResolvedFiles(newFiles.map { it.first }) { resolvedPaths ->
+            appendResolvedPages(
+                file = file,
+                newFiles = resolvedPaths.mapIndexed { i, resolved -> resolved to newFiles[i].second },
+                scope = scope,
+            )
+        }
+
+    private suspend fun appendResolvedPages(
+        file: VaultEntry,
+        newFiles: List<Pair<String, String>>,
+        scope: CoroutineScope,
     ): Boolean {
+        // See uploadResolvedFiles: reap the heic_converted_*.jpg temps once the
+        // bundle has been encrypted, so they don't linger in cacheDir.
+        val heicTemps = mutableListOf<String>()
         return try {
             val existingMaxIndex =
                 file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
@@ -149,8 +202,9 @@ class VaultUploaderService(
             val startIndex = existingMaxIndex + 1
 
             val resolvedFiles = newFiles.map { (path, contentType) ->
-                val resolved = fileOperationsProvider.resolveToFilePath(path)
-                convertHeicIfNeeded(resolved, contentType)
+                val converted = convertHeicIfNeeded(path, contentType)
+                if (converted.first != path) heicTemps += converted.first
+                converted
             }
 
             val allPayloads = mutableListOf<PayloadFile>()
@@ -207,6 +261,8 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
             false
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -270,6 +326,7 @@ class VaultUploaderService(
 
     private suspend fun buildMultiPayloadBundle(
         files: List<Pair<String, String>>,
+        onPdfPageCount: ((Int) -> Unit)? = null,
     ): PayloadBundle {
         val allPayloads = mutableListOf<PayloadFile>()
         val allThumbnails = mutableListOf<ThumbnailFile>()
@@ -289,6 +346,38 @@ class VaultUploaderService(
                     thumbnails = result.thumbnails
                 } catch (e: Exception) {
                     Logger.w(e, TAG) { "Thumbnail generation failed for payload $key" }
+                }
+            } else if (contentType == "application/pdf") {
+                try {
+                    val pdfResult = generatePdfThumbnailFromFile(filePath, 320)
+                    val thumbBytes = pdfResult?.thumbnailBytes
+                    if (thumbBytes != null) {
+                        // Tiny embedded preview for appData (must fit under MaxEmbeddedThumbBytes)
+                        val tinyThumb = createImageThumbnail(
+                            thumbBytes, key, tinyThumbSize, isTinyThumb = true,
+                        )
+                        previewThumbnail = EmbeddedThumb(
+                            pixelWidth = tinyThumb.pixelWidth,
+                            pixelHeight = tinyThumb.pixelHeight,
+                            contentType = tinyThumb.contentType,
+                            content = Base64.encode(tinyThumb.thumbnailBytes),
+                        )
+                        // Larger thumbnail for crisp card display
+                        val naturalSize = ImageUtils.getNaturalSize(thumbBytes)
+                        thumbnails = listOf(
+                            ThumbnailFile(
+                                pixelWidth = naturalSize.pixelWidth,
+                                pixelHeight = naturalSize.pixelHeight,
+                                thumbnailBytes = thumbBytes,
+                                key = key,
+                                contentType = "image/jpeg",
+                                quality = 80,
+                            ),
+                        )
+                    }
+                    if (pdfResult != null && index == 0) onPdfPageCount?.invoke(pdfResult.pageCount)
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "PDF thumbnail generation failed for payload $key" }
                 }
             }
 

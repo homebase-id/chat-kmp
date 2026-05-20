@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
@@ -26,12 +27,34 @@ class VideoPayloadProcessor(
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
-    ): VideoProcessResult {
+    ): VideoProcessResult =
+        // Resolve content URIs (Android copies the gallery pick into cacheDir as
+        // resolved_*; other platforms no-op) and reap that copy when we're done,
+        // so it can't linger at full video size. withResolvedFile is the shared
+        // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
+        fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
+            processResolved(
+                payload =
+                    if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
+                    else payload,
+                keyHeader = keyHeader,
+                onProgress = onProgress,
+                descriptorContentPayloadKey = descriptorContentPayloadKey,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs,
+                videoQuality = videoQuality,
+            )
+        }
 
-        // Resolve content URIs (Android) to real filesystem paths before FFmpeg work
-        val resolvedPath = fileOperationsProvider.resolveToFilePath(payload.filePath)
-        val payload =
-            if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath) else payload
+    private suspend fun processResolved(
+        payload: PayloadFile,
+        keyHeader: KeyHeader,
+        onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
+        descriptorContentPayloadKey: String,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
+        videoQuality: VideoQuality,
+    ): VideoProcessResult {
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 

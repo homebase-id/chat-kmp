@@ -49,6 +49,8 @@ class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
         super.onCreate()
 
+        if (getProcessName() != packageName) return
+
         // Register the application Context up-front so components that only
         // need Context (cacheDir, ContentResolver — e.g. FFmpegUtils Android
         // actuals, VideoThumbnailExtractor) can resolve it before MainActivity

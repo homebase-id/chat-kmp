@@ -654,11 +654,17 @@ class GroupHealService(
             }
         }
 
-        // Surface the cleanup to the user. Local-only status message — never
-        // sent to peers (additionalRecipients stays empty; the conversation
-        // recipients list is irrelevant because sendStatusMessage routes the
-        // optimistic write through the same path regardless of fan-out).
-        audit.step(3, "sendStatusMessage(GroupHealLocalCleanup mainNeedsHeal=$mainNeedsHeal adminNeedsHeal=$adminNeedsHeal)")
+        // Surface the cleanup to the user. This MUST be local-only: it's our
+        // private record that *we* cleaned up *our* broken copy, meaningless to
+        // peers. `recipientOverride = emptyList()` forces an empty recipient set
+        // (sendMessageInternal → getRecipients → isLocalOnly=true,
+        // allowDistribution=false, no transit), while the optimistic local write
+        // still surfaces the message in our own chat. Without the override,
+        // getRecipients falls back to ALL conversation participants and fans the
+        // cleanup status out over the wire — including back to the heal sender,
+        // who then renders "Removed broken local copy…" in *their* chat as if
+        // their own copy had auto-healed. (That was the bug.)
+        audit.step(3, "sendStatusMessage(GroupHealLocalCleanup mainNeedsHeal=$mainNeedsHeal adminNeedsHeal=$adminNeedsHeal recipientOverride=[] local-only)")
         runCatching {
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
@@ -670,6 +676,7 @@ class GroupHealService(
                         cleanedUpAdmin = adminNeedsHeal,
                     ),
                 ),
+                recipientOverride = emptyList(),
             )
             audit.checkPass("cleanupStatusSent")
         }.onFailure { e ->

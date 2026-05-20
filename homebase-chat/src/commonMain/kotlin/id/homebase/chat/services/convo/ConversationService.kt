@@ -28,6 +28,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.sync.database.OutboxSync
@@ -44,7 +45,14 @@ import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
@@ -73,16 +81,67 @@ class ConversationService(
     private val chatMessageSenderService: StatusMessageSender,
     private val optimisticWriter: OptimisticWriter,
     private val conversationStream: ConversationLoader,
-    /** Used by the heal redistribute path to pull existing payload bytes off our
-     *  drive and re-attach them to the update request. Nullable so tests can
-     *  pass null without standing up the full network stack — the
-     *  payload-reuse helper short-circuits to an empty manifest in that case. */
-    private val driveFileProvider: id.homebase.api.client.drives.files.DriveFileProvider? = null,
+    /**
+     * In-memory lookup over the live conversation list. Used by
+     * [updateLocalLastReadTime] so the only-increases gate
+     * sees the freshest known lastRead — including peer-device advances
+     * that landed via `processConversationBatchIncrementally` or the
+     * post-DriveSync `loadBasicConversations` reload but haven't yet been
+     * mirrored into `ChatReadCount` by the enrichment pass. Without this,
+     * a local mark-as-read at t2 between a peer's t3 landing in memory
+     * and the next enrichment mirror would slip the gate (ChatReadCount
+     * still at t1) and stamp the conversation file backwards.
+     */
+    private val participantLookup: ConversationParticipantLookup,
+    /** Used by the heal redistribute path to pull existing payload AND thumbnail
+     *  bytes off our drive and re-attach them to the update request. Narrowed to
+     *  [ResendPayloadByteSource] (implemented by DriveFileProvider) so tests can
+     *  pass a fake without standing up the full network stack — the payload-reuse
+     *  helper short-circuits to an empty manifest when null. */
+    private val driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
     /** Used by the heal redistribute path to spill the encrypted payload bytes
      *  to a temp file for upload. Same nullable-for-tests rationale as above. */
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
+    /** Coalescing window for the lastRead writeback. Production uses the 1s
+     *  default; tests pass a very large value and drive the flush explicitly
+     *  via [flushLastReadNow] to avoid virtual-time fragility under
+     *  `runTest` (whose dispatcher behavior around `delay` + launched
+     *  coroutines doesn't reliably hold the timer parked). */
+    private val lastReadDebounceMs: Long = 1_000L,
+    /**
+     * Chat-drive sync-activity probe. The lastRead flush defers while a
+     * chat-drive sync round is in flight and for [syncQuietMs] after it stops,
+     * so it never stamps a stale in-memory lastRead over a peer advance the sync
+     * just pulled into DriveMainIndex — the post-Stopped reload
+     * ([ConversationStream.loadBasicConversations]) reconciles the in-memory
+     * list within that window. Nullable so tests omit it (no gating); production
+     * wires the real [DriveSyncManager].
+     */
+    private val driveSyncManager: DriveSyncManager? = null,
+    /** Quiet window after a chat-drive sync stops before the flush may push. */
+    private val syncQuietMs: Long = 2_000L,
+    /** Poll interval while waiting out an in-flight chat-drive sync. */
+    private val syncPollMs: Long = 100L,
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
+
+    // region lastRead writeback (debounce job — dirty state lives on the list)
+    // The "only-increases" gate for conversation lastRead lives in
+    // [updateLocalLastReadTime] below. The pending-writeback state is NOT held
+    // here anymore — the in-memory conversation list is the single source of
+    // truth (each ConversationUiModel carries its own lastRead + dirty flag).
+    // This setter advances the in-memory model (lastRead + dirty, together) via
+    // [ConversationParticipantLookup.advancedLastRead] and schedules the flush.
+    //
+    // Burst behavior: ChatReadCount is upserted eagerly inside the setter
+    // (so participantLookup.advancedLastRead, which reads it via SQL for the
+    // unread re-derive, sees the fresh value); the per-call optimistic conv-file
+    // stamp + outbox enqueue are deferred to a single 1-second-debounced flush
+    // that walks the dirty conversations. The mutex only guards the debounce job
+    // lifecycle.
+    private val lastReadMutex = Mutex()
+    private var lastReadFlushJob: Job? = null
+    // endregion
 
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
@@ -1236,22 +1295,23 @@ class ConversationService(
         Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
 
         // Full-shape log of what we're about to enqueue. Lets us read the
-        // log and see exactly which recipients are on this push, whether
-        // any payloads are being shipped (heal carries none today — see
-        // [healGroupDistribution] image gap), and what versionTag the
-        // server-side per-peer apply will check against. Tagged so it
-        // stands out in a sea of debug noise.
+        // log and see exactly which recipients are on this push, whether the
+        // payloads (and their thumbnails) are being shipped, and what
+        // versionTag the server-side per-peer apply will check against. With
+        // preserveExistingPayloads=true (heal) the existing payloads + thumbs
+        // are re-attached into the manifest below; payloadsCount/thumbsCount
+        // should be non-zero. Tagged so it stands out in a sea of debug noise.
         Logger.i(tag = "HealAudit") {
             val existingPayloadKeys = conversationFile.fileMetadata.payloads?.joinToString(",") { it.key } ?: "<none>"
             val manifestKeys = manifest.payloadDescriptors?.joinToString(",") { "${it.payloadKey}:${it.operationType}" } ?: "<empty>"
             "updateConversationInternal ENQUEUE conversationId=$conversationId " +
                 "versionTagIn=${conversationFile.fileMetadata.versionTag} " +
                 "distribute=$distribute distributeOnlyTo=${distributeOnlyTo?.map { it.domainName }} " +
+                "preserveExistingPayloads=$preserveExistingPayloads " +
                 "instructions.recipients=${instructions.recipients.map { it.domainName }} " +
                 "manifest.payloadDescriptors=[$manifestKeys] " +
                 "request.payloadsCount=${payloads.size} request.thumbsCount=${thumbs.size} " +
-                "existingFilePayloads=[$existingPayloadKeys] (these stay on OUR server but are " +
-                "NOT in the manifest, so peer transit may not ship them — see image-on-heal bug)"
+                "existingFilePayloads=[$existingPayloadKeys]"
         }
 
         val request =
@@ -1994,6 +2054,7 @@ class ConversationService(
         }
 
         val payloads = mutableListOf<PayloadFile>()
+        val thumbnails = mutableListOf<ThumbnailFile>()
         for (descriptor in existing) {
             try {
                 val bytes = dfp.getPayloadBytesEncrypted(chatDrive, file.fileId, descriptor.key)
@@ -2021,13 +2082,58 @@ class ConversationService(
                 payloads += PayloadFile(
                     key = descriptor.key,
                     filePath = tempPath,
+                    // Keep the payload's embedded preview thumbnail on the descriptor too.
+                    previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
                     contentType = descriptor.contentType ?: "",
                     isPreEncrypted = true,
                     iv = ivBytes,
                     descriptorContent = descriptor.descriptorContent,
                 )
+
+                // Re-attach the payload's thumbnails. The update ships an
+                // AppendOrOverwrite for this payload key, which REPLACES the
+                // payload AND its thumbnail set on the server. Re-attaching only
+                // the payload bytes (the previous behavior) wiped every
+                // server-side thumbnail, so the avatar loader 404'd on each size
+                // — the warning-triangle-over-tiny-thumb group-image bug. The
+                // thumbnails are encrypted with the SAME payload key + iv, so we
+                // ship the pre-encrypted bytes as-is (no re-encryption needed).
+                var reattachedThumbs = 0
+                for (thumb in descriptor.thumbnails.orEmpty()) {
+                    val w = thumb.pixelWidth
+                    val h = thumb.pixelHeight
+                    if (w == null || h == null) {
+                        Logger.w(tag = "HealAudit") {
+                            "reuseExistingPayloadsForResend: skipping thumbnail for key=${descriptor.key} — missing pixel dims (w=$w h=$h fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    val thumbBytes = dfp.getThumbBytesEncrypted(
+                        driveId = chatDrive,
+                        fileId = file.fileId,
+                        payloadKey = descriptor.key,
+                        width = w,
+                        height = h,
+                        lastModified = descriptor.lastModified,
+                    )
+                    if (thumbBytes == null || thumbBytes.isEmpty()) {
+                        Logger.w(tag = "HealAudit") {
+                            "reuseExistingPayloadsForResend: skipping thumbnail key=${descriptor.key} ${w}x$h — getThumbBytesEncrypted returned ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    thumbnails += ThumbnailFile(
+                        pixelWidth = w,
+                        pixelHeight = h,
+                        thumbnailBytes = thumbBytes,
+                        key = descriptor.key,
+                        contentType = thumb.contentType ?: "image/webp",
+                    )
+                    reattachedThumbs++
+                }
+
                 Logger.i(tag = "HealAudit") {
-                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} tempPath=$tempPath fileId=${file.fileId}"
+                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} thumbs=$reattachedThumbs/${descriptor.thumbnails?.size ?: 0} tempPath=$tempPath fileId=${file.fileId}"
                 }
             } catch (e: Exception) {
                 Logger.w(throwable = e, tag = "HealAudit") {
@@ -2035,7 +2141,7 @@ class ConversationService(
                 }
             }
         }
-        return payloads to emptyList()
+        return payloads to thumbnails
     }
 
     override suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
@@ -2217,36 +2323,171 @@ class ConversationService(
         }
     }
 
+    /**
+     * Setter for conversation lastRead. The validity check (monotonic +
+     * saturation) lives on the entity at
+     * [ConversationUiModel.resolveLastReadAdvance] — this setter delegates
+     * to it, so every caller (this one, `onViewMessages`, `markAllAsRead`,
+     * future callers) shares one rule. If the entity hands back null we
+     * do nothing; otherwise we proceed with the eager ChatReadCount
+     * upsert + the 1s-debounced conv-file stamp / outbox enqueue.
+     *
+     * Why the gate reads from the live in-memory model and not from
+     * `ChatReadCount` or the on-disk conv-file: in-memory captures BOTH
+     * local writes (via the [ConversationParticipantLookup.advancedLastRead]
+     * call this setter makes below) and peer-device advances (via
+     * `processConversationBatchIncrementally` and the post-DriveSync
+     * `loadBasicConversations` reload). Going to any other source leaves a
+     * window in which the gate could miss a higher peer value and let a
+     * local advance regress the conv-file's `localAppData.lastReadTime`
+     * backwards.
+     *
+     * ChatReadCount is upserted eagerly, before
+     * [ConversationParticipantLookup.advancedLastRead], so the advance sees the
+     * fresh value when it queries `selectUnreadCountForConversation`. The conv-file optimistic
+     * stamp and outbox enqueue — the expensive parts (DB read + JSON
+     * serialize/encrypt + DB write + event emit) — are deferred to
+     * [flushDirtyLastRead] on a 1-second debounce so a burst of reads
+     * coalesces into a single stamp + push per conversation.
+     */
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
-
+        val convo = participantLookup.getConversationById(conversationId)
+        val candidate = newLastReadTime.toInstant()
+        // No in-memory model yet (cold-load race) — proceed with the write;
+        // the downstream stamp's null-check will no-op if the conv-file isn't
+        // on disk either.
+        val advanceTo = if (convo == null) candidate else convo.resolveLastReadAdvance(candidate)
         Logger.d(tag = "MarkAsRead") {
-            "ConversationService.updateLocalLastReadTime: enter convo=$conversationId newMs=${newLastReadTime.milliseconds}"
+            "ConversationService.updateLocalLastReadTime: convo=$conversationId " +
+                "currentMs=${convo?.lastRead?.toEpochMilliseconds()} " +
+                "latestMs=${convo?.latestMessageTimestamp?.toEpochMilliseconds()} " +
+                "newMs=${newLastReadTime.milliseconds} " +
+                "advanceTo=${advanceTo?.toEpochMilliseconds()}"
         }
+        if (advanceTo == null) return
 
-        val convo = requireConversation(conversationId)
-        val currentMs = UnixTimeUtc(convo.lastRead).milliseconds
-        val willAdvance = newLastReadTime > UnixTimeUtc(convo.lastRead)
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
-                    "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
-        }
-
-        if (!willAdvance) return
-
-        val request = optimisticWriter.stampConversationLastReadTime(
-            driveId = chatDrive,
-            conversationId = conversationId,
-            newLastReadTime = newLastReadTime,
-        )
-        if (request == null) {
-            Logger.w(tag = "MarkAsRead") {
-                "ConversationService.updateLocalLastReadTime: stampConversationLastReadTime returned null — conversation file missing or optimistic write failed; convo=$conversationId"
-            }
-            return
-        }
-
-        outboxSync.tryEnqueue(request)
         dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
+
+        // Advance the in-memory model now that ChatReadCount holds the fresh
+        // value: this moves lastRead + sets dirty together (the entity's
+        // advancedLastRead, applied to the live list) and re-derives unreadCount
+        // from the upsert above. Doing it here — before scheduling — means the
+        // flag is set by the time the flush runs, and the setter owns the whole
+        // local advance rather than the caller stitching a second call on.
+        participantLookup.advancedLastRead(conversationId, candidate)
+
+        lastReadMutex.withLock {
+            lastReadFlushJob?.cancel()
+            lastReadFlushJob = scope.launch {
+                try {
+                    delay(lastReadDebounceMs)
+                    awaitSyncQuiet()
+                    flushDirtyLastRead()
+                } catch (_: CancellationException) {
+                    // Expected when a subsequent advance reschedules or
+                    // flushLastReadNow drains synchronously — that path
+                    // will handle the flush.
+                }
+            }
+        }
+    }
+
+    /**
+     * Defer the lastRead flush until the chat drive is sync-quiet: no round in
+     * flight, and at least [syncQuietMs] elapsed since the last one stopped so
+     * the post-Stopped reload ([ConversationStream.loadBasicConversations]) has
+     * reconciled the in-memory list against disk. Without this a flush firing
+     * mid-sync (or right after) could read a stale in-memory lastRead and stamp
+     * it over a peer advance the sync just pulled in. Returns immediately when
+     * no sync ran recently, and is a no-op when [driveSyncManager] is absent
+     * (tests). Only the debounce path waits — [flushLastReadNow] forces through.
+     */
+    private suspend fun awaitSyncQuiet() {
+        val mgr = driveSyncManager ?: return
+        while (true) {
+            while (mgr.isSyncing(chatDrive)) {
+                delay(syncPollMs)
+            }
+            val since = UnixTimeUtc().milliseconds - mgr.lastSyncStoppedAtMs(chatDrive)
+            if (since >= syncQuietMs) return
+            delay(syncQuietMs - since)
+            // Loop and re-check: a new round may have started during the wait.
+        }
+    }
+
+    /**
+     * Drain every dirty conversation's lastRead writeback: read the value off
+     * the in-memory list, stamp the conversation file (optimistic local
+     * write), and enqueue the resulting outbox request. Called by the debounce
+     * coroutine and by [flushLastReadNow].
+     */
+    private suspend fun flushDirtyLastRead() {
+        val ids = participantLookup.getDirtyConversationIds()
+        if (ids.isEmpty()) return
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.flushDirtyLastRead: flushing ${ids.size} dirty conversation(s)"
+        }
+        for (id in ids) {
+            // Read the value off the list WITHOUT clearing dirty. We only clear
+            // after a successful push (compare-and-clear below), so a push
+            // failure simply leaves the conversation dirty for the next round —
+            // no value-less re-flagging required.
+            val convo = participantLookup.getConversationById(id) ?: continue
+            val target = UnixTimeUtc(convo.lastRead.toEpochMilliseconds())
+            try {
+                val request = optimisticWriter.stampConversationLastReadTime(
+                    driveId = chatDrive,
+                    conversationId = id,
+                    newLastReadTime = target,
+                )
+                if (request == null) {
+                    Logger.w(tag = "MarkAsRead") {
+                        "ConversationService.flushDirtyLastRead: stamp returned null for convo=$id — " +
+                                "conversation file missing or optimistic write failed (left dirty)"
+                    }
+                    continue
+                }
+                // tryEnqueue returning false means an outbox row is already
+                // queued for this file — that row will pick up the latest
+                // localAppData when it drains, so the writeback still lands.
+                outboxSync.tryEnqueue(request)
+                // Clear dirty only if nothing advanced lastRead while we were
+                // pushing — a concurrent advance leaves it dirty so the newer
+                // value goes out next round.
+                participantLookup.clearLastReadDirtyIfUnchanged(id, target)
+            } catch (t: Throwable) {
+                Logger.w(throwable = t, tag = "MarkAsRead") {
+                    "ConversationService.flushDirtyLastRead: stamp/enqueue threw for convo=$id — " +
+                            "left dirty, will retry next flush"
+                }
+                // Leave dirty — the next debounce flush retries it.
+            }
+        }
+    }
+
+    /**
+     * Cancel any pending debounce and synchronously flush all pending lastRead
+     * writebacks. Not wired into logout today — the dirty state is in-memory
+     * only and a logout within the 1s debounce window costs at most one
+     * window of writebacks, the same loss profile the user accepted for
+     * process kill. Kept public so callers (tests, future logout hook) can
+     * force a synchronous flush without waiting for the debounce.
+     */
+    suspend fun flushLastReadNow() {
+        // We use cancelAndJoin (not bare cancel) here because we're NOT
+        // inside lastReadMutex when we call it — the prior flush, if past
+        // its delay(), would otherwise race us into flushDirtyLastRead on
+        // the mutex and process an empty snapshot. The in-mutex cancel in
+        // updateLocalLastReadTime deliberately does NOT join: a prior
+        // flush parked on the same mutex would deadlock waiting for us to
+        // release it.
+        val job = lastReadMutex.withLock {
+            val j = lastReadFlushJob
+            lastReadFlushJob = null
+            j
+        }
+        job?.cancelAndJoin()
+        flushDirtyLastRead()
     }
 
 }

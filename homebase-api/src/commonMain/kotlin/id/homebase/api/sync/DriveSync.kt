@@ -24,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.coroutines.sync.Mutex
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
@@ -46,6 +47,20 @@ class DriveSync(
     private var job: Job? = null
     private val killroy = atomic(false)
 
+    // True while a sync round is actively running (from acquiring the sync
+    // lock until performSync's finally releases it). Distinct from
+    // [isJobRunning], which can momentarily read false between a round's
+    // finally and a killroy-triggered recursive re-sync. Consumers that
+    // need "is the drive mid-sync right now" (e.g. deferring a write that
+    // would race the sync's DB writes) should read this.
+    private val syncing = atomic(false)
+
+    // Epoch-ms when the last sync round finished (performSync's finally). 0 = no
+    // round has completed this session. Consumers gate "is the drive quiet yet"
+    // on this together with [syncing] (e.g. the lastRead flush waits a short
+    // window after a round so the post-Stopped reload has reconciled).
+    private val lastStoppedAt = atomic(0L)
+
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
@@ -66,6 +81,12 @@ class DriveSync(
         return job != null
     }
 
+    /** True while this drive is actively syncing (a round is in flight). */
+    fun isSyncing(): Boolean = syncing.value
+
+    /** Epoch-ms when the last sync round finished, or 0 if none has this session. */
+    fun lastStoppedAtMs(): Long = lastStoppedAt.value
+
     fun cancel() {
         killroy.value = false
         job?.cancel()
@@ -79,11 +100,14 @@ class DriveSync(
             killroy.value = true // Atomic
             return null
         }
+        syncing.value = true // Atomic — mirrors the sync-lock lifetime below
         job = scope.launch {
             try {
                 performSync()
             } finally {
                 job = null
+                syncing.value = false
+                lastStoppedAt.value = UnixTimeUtc().milliseconds
                 mutex.unlock()
             }
             if (killroy.value) {

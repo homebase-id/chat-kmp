@@ -5,27 +5,20 @@ package id.homebase.core.ui.screens.vault.gallery
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -56,14 +49,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.core.media.MediaPager
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -80,8 +73,6 @@ import id.homebase.resources.vault_gallery_save_page
 import id.homebase.resources.vault_gallery_share_page
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -103,6 +94,8 @@ fun VaultGalleryScreen(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
+    val uploaderService = koinInject<VaultUploaderService>()
+    val fileOperationsProvider = koinInject<FileOperationsProvider>()
     val pages = file.payloadDescriptors
     if (pages.isEmpty()) return
 
@@ -128,10 +121,6 @@ fun VaultGalleryScreen(
     val scaffoldState = rememberBottomSheetScaffoldState()
     val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
-
-    // Swipe-to-dismiss
-    val dismissOffset = remember { Animatable(0f) }
-    val dismissThresholdPx = with(LocalDensity.current) { 150.dp.toPx() }
 
     // Force dark theme — gallery always displays images on a dark background
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -179,39 +168,15 @@ fun VaultGalleryScreen(
             containerColor = MaterialTheme.colorScheme.scrim,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, dismissOffset.value.roundToInt()) }
-                    .graphicsLayer {
-                        val progress = (abs(dismissOffset.value) / dismissThresholdPx).coerceIn(0f, 1f)
-                        val s = 1f - (progress * 0.1f)
-                        scaleX = s
-                        scaleY = s
-                    }
-                    .draggable(
-                        state = rememberDraggableState { delta ->
-                            scope.launch { dismissOffset.snapTo(dismissOffset.value + delta) }
-                        },
-                        orientation = Orientation.Vertical,
-                        enabled = scaffoldState.bottomSheetState.currentValue != SheetValue.Expanded,
-                        onDragStopped = { velocity ->
-                            scope.launch {
-                                if (abs(dismissOffset.value) > dismissThresholdPx || abs(velocity) > 1500f) {
-                                    onDismiss()
-                                } else {
-                                    dismissOffset.animateTo(0f, spring())
-                                }
-                            }
-                        },
-                    ),
-            ) {
-                HorizontalPager(
+            Box(modifier = Modifier.fillMaxSize()) {
+                MediaPager(
+                    pageCount = pages.size,
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1,
+                    swipeToDismiss = true,
+                    swipeToDismissEnabled = scaffoldState.bottomSheetState.currentValue != SheetValue.Expanded,
+                    onDismiss = onDismiss,
                 ) { page ->
-                    if (pages.isEmpty()) return@HorizontalPager
+                    if (pages.isEmpty()) return@MediaPager
                     val descriptor = pages[page]
                     val isImage = descriptor.contentType?.startsWith("image/") == true
 
@@ -233,6 +198,20 @@ fun VaultGalleryScreen(
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
+                    } else if (file.isPdf) {
+                        PdfViewerPage(
+                            file = file,
+                            uploaderService = uploaderService,
+                            fileOperationsProvider = fileOperationsProvider,
+                            onToggleUI = onTapImage,
+                        )
+                    } else if (file.isText) {
+                        TextViewerPage(
+                            file = file,
+                            uploaderService = uploaderService,
+                            fileOperationsProvider = fileOperationsProvider,
+                            onToggleUI = onTapImage,
+                        )
                     } else {
                         GalleryPageNonImage(
                             descriptor = descriptor,
@@ -241,7 +220,6 @@ fun VaultGalleryScreen(
                     }
                 }
 
-                // Page indicator pill — visible when chrome is hidden
                 if (pages.size > 1) {
                     AnimatedVisibility(
                         visible = !showUI,
