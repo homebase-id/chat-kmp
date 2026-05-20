@@ -30,7 +30,7 @@ import platform.Security.SecItemUpdate
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
-import platform.Security.kSecAttrAccessibleAfterFirstUnlock
+import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
@@ -86,7 +86,7 @@ actual object SecureStorage {
         CFDictionarySetValue(attributesToUpdate, kSecValueData, valueDataCf)
 
         CFDictionarySetValue(
-            attributesToUpdate, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock
+            attributesToUpdate, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         )
         CFRelease(valueDataCf)
 
@@ -104,7 +104,7 @@ actual object SecureStorage {
             CFDictionarySetValue(addDict, kSecValueData, valueDataCfForAdd)
             CFRelease(valueDataCfForAdd)
 
-            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
 
             SecItemAdd(addDict, null)
             CFRelease(addDict)

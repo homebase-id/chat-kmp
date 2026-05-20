@@ -35,10 +35,11 @@ data class VaultEntry(
     val groupId: Uuid? = null,
     val payloadDescriptors: List<PayloadDescriptor> = emptyList(),
     val notes: String? = null,
+    val pdfPageCount: Int? = null,
 ) {
     val isPending: Boolean get() = pendingFileUri != null
 
-    val pageCount: Int get() = payloadDescriptors.size.coerceAtLeast(1)
+    val pageCount: Int get() = pdfPageCount ?: payloadDescriptors.size.coerceAtLeast(1)
     val hasMultiplePages: Boolean get() = pageCount > 1
 
     val isImage: Boolean get() = contentType.startsWith("image/")
@@ -48,6 +49,13 @@ data class VaultEntry(
     val isAudio: Boolean get() = contentType.startsWith("audio/")
 
     val isPdf: Boolean get() = contentType == "application/pdf"
+
+    val isText: Boolean get() = contentType.startsWith("text/") ||
+        contentType == "application/json" ||
+        contentType == "application/xml" ||
+        contentType == "application/x-yaml" ||
+        contentType == "application/javascript" ||
+        contentType == "application/x-sh"
 }
 
 /**
@@ -87,5 +95,6 @@ fun HomebaseFile.toVaultEntry(): VaultEntry? {
         groupId = fileMetadata.appData.groupId,
         payloadDescriptors = payloads,
         notes = vaultFileContent.notes,
+        pdfPageCount = vaultFileContent.pdfPageCount,
     )
 }
