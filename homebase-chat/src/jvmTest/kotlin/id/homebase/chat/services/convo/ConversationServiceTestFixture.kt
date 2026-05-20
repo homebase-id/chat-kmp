@@ -71,7 +71,30 @@ class ConversationServiceTestFixture : AutoCloseable {
     lateinit var optimisticWriter: OptimisticWriter
         private set
 
-    suspend fun build(scope: CoroutineScope = TestScope()): ConversationService {
+    /**
+     * In-memory participant lookup that the service's lastRead gate reads
+     * from. Tests that exercise the gate (mark-read rejection, peer-device
+     * advance) seed conversations via [FakeConversationParticipantLookup.setLastRead]
+     * with an explicit baseline; tests that only run monotonically-increasing
+     * advances can leave it empty — the gate then treats every candidate as
+     * "no prior known" and accepts.
+     */
+    val participantLookup: id.homebase.chat.services.FakeConversationParticipantLookup =
+        id.homebase.chat.services.FakeConversationParticipantLookup()
+
+    /**
+     * Build the service for tests.
+     *
+     * @param lastReadDebounceMs The lastRead-writeback debounce window. Defaults
+     *   to one hour so the timer effectively never fires during a test —
+     *   `runTest`'s scheduler can advance virtual time at points outside our
+     *   control, so tests that need to assert on the debounce drain must call
+     *   [ConversationService.flushLastReadNow] explicitly.
+     */
+    suspend fun build(
+        scope: CoroutineScope = TestScope(),
+        lastReadDebounceMs: Long = Long.MAX_VALUE / 2,
+    ): ConversationService {
         dbm = createInMemoryDbm()
         credentialsManager = createCredentialsManager(testDomain)
         eventBus = EventBus()
@@ -103,12 +126,14 @@ class ConversationServiceTestFixture : AutoCloseable {
             chatMessageSenderService = statusMessageSender,
             optimisticWriter = optimisticWriter,
             conversationStream = conversationLoader,
+            participantLookup = participantLookup,
             // Heal-payload-reuse helpers — null in tests, real instances in prod.
             // The fixture doesn't exercise the heal redistribute path, so a null
             // here just short-circuits reuseExistingPayloadsForResend to an
             // empty manifest (matches pre-image-fix behavior for tests).
             driveFileProvider = null,
             fileOperationsProvider = null,
+            lastReadDebounceMs = lastReadDebounceMs,
         )
     }
 

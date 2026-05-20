@@ -114,16 +114,23 @@ class ConversationMapper(
                 // mapped. If a member is missing in the UI, the diff between this and the
                 // ParticipantsAudit lines from createConversation/writeConversationFile/
                 // updateConversationInternal pinpoints exactly which step lost it.
+                //
+                // The unconditional READ Logger.d below is COMMENTED OUT — it fires for every
+                // group on every cold load and on every recoverConversation reload, which
+                // floods the log (80+ lines per cold start). Re-enable when actively chasing
+                // a member-drop bug. The null / dup warnings stay on because they only fire
+                // when there's actually something to flag.
                 if (isAnyGroup) {
                     val nullCount = rawRecipients.count { it == null }
+                    @Suppress("UNUSED_VARIABLE")
                     val rawSize = rawRecipients.size
                     val droppedDistinct = rawRecipients.filterNotNull().size - participants.size
-                    Logger.d(tag = "ParticipantsAudit") {
-                        "ConversationMapper.mapToBasic READ for $conversationId: " +
-                            "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
-                            "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
-                            "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
-                    }
+                    // Logger.d(tag = "ParticipantsAudit") {
+                    //     "ConversationMapper.mapToBasic READ for $conversationId: " +
+                    //         "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
+                    //         "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
+                    //         "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
+                    // }
                     if (nullCount > 0) {
                         Logger.w(tag = "ParticipantsAudit") {
                             "ConversationMapper.mapToBasic for $conversationId: $nullCount null entries in recipients — " +
@@ -224,8 +231,27 @@ class ConversationMapper(
                     exitedAt = exitedAt,
                     fileUpdated = metadata.updated.toInstant()
                 )
-            } catch (t: Throwable) {
-                logger.e(t) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Cooperative cancellation — never an indictment of file content.
+                throw e
+            } catch (e: Exception) {
+                // Content / validation failure — malformed JSON, missing
+                // uniqueId, empty participants list, schema drift, etc.
+                // This IS what the recovery path is for: surface as
+                // ConversationState.Invalid so [recoverConversation] can
+                // replace the broken local row with a placeholder and
+                // re-sync the real file from the server.
+                //
+                // NOTE: `Error` subclasses (NoClassDefFoundError, LinkageError,
+                // OutOfMemoryError, …) are NOT caught here — they're JVM /
+                // environment problems, not file-content problems, and we
+                // must not treat them as "this conversation is corrupt" or
+                // we'll mass-overwrite real conv-files with placeholders
+                // when, say, a class is missing at runtime. Those propagate
+                // out to [ConversationStream.loadBasicConversations], which
+                // catches them per row and skips (leaving the file on disk
+                // untouched).
+                logger.e(e) {
                     "FAILED map | fileId=${conversationFile.fileId}"
                 }
                 ConversationUiModel(
