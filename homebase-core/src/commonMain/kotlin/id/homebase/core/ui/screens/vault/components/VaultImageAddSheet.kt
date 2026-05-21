@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.vault_add_entry
+import id.homebase.resources.vault_add_note
 import id.homebase.resources.vault_choose_file
 import id.homebase.resources.vault_image_choose_gallery
 import id.homebase.resources.vault_image_take_photo
@@ -37,6 +39,7 @@ fun VaultAddEntrySheet(
     onTakePhoto: () -> Unit,
     onChooseGallery: () -> Unit,
     onChooseFile: () -> Unit,
+    onAddNote: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -114,6 +117,27 @@ fun VaultAddEntrySheet(
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
                     text = stringResource(MR.string.vault_choose_file),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clickable(onClick = onAddNote),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.NoteAdd,
+                    contentDescription = stringResource(MR.string.vault_add_note),
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = stringResource(MR.string.vault_add_note),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
