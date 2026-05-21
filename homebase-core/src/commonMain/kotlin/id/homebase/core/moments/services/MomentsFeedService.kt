@@ -30,11 +30,17 @@ import kotlin.uuid.Uuid
  *   1. On [start], do a one-shot cold-load via `QueryBatch.queryBatchAsync`
  *      with `filetypesAnyOf = [MomentPostFileType]` so the feed is populated
  *      immediately on app open from the local DB (no HTTP).
- *   2. Subscribe to `BackendEvent.DriveEvent.BatchReceived` for the moments
- *      drive and apply each batch incrementally — the event carries the
- *      list of `HomebaseFile`s that just landed, so we never re-read the DB
- *      on a sync update. Soft-deleted files are removed from the in-memory
- *      state on sight.
+ *   2. Subscribe to `BackendEvent.DataEvent.BatchReceived` for the moments
+ *      drive and apply each batch incrementally — these come from live
+ *      WebSocket pushes (per-file events from `DriveWebSocketUpsertWorker`).
+ *      Soft-deleted files are removed from the in-memory state on sight.
+ *   3. Subscribe to `BackendEvent.DriveEvent.Stopped(totalCount > 0)` and
+ *      re-cold-load — bulk `DriveSync.performSync` is *silent* (no per-batch
+ *      `BatchReceived`; see DriveSync.kt:199-204), so a freshly-mounted drive's
+ *      initial historical pull only surfaces via Stopped. Without this branch,
+ *      enabling Moments at runtime mounts the drive, the catch-up writes land
+ *      in `DriveMainIndex`, but the in-memory feed stays empty until next
+ *      app launch. Gate on `totalCount > 0` to match `ChatMessageStream`.
  */
 class MomentsFeedService(
     private val databaseManager: DatabaseManager,
@@ -71,10 +77,31 @@ class MomentsFeedService(
 
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DataEvent || event.driveId != drive) return@collect
                 when (event) {
-                    is BackendEvent.DataEvent.BatchReceived ->
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != drive) return@collect
                         processIncrementalBatch(event.batchData)
+                    }
+                    is BackendEvent.DriveEvent.Stopped -> {
+                        if (event.driveId != drive) return@collect
+                        // Silent-DriveSync contract: bulk catch-up just landed
+                        // `totalCount` rows in DriveMainIndex without emitting
+                        // BatchReceived. Re-read the DB to converge in-memory
+                        // state — this is what makes "enable Moments at runtime
+                        // → historical posts appear without restart" work.
+                        // Gate on totalCount > 0 (mirrors ChatMessageStream):
+                        // Stopped(Aborted, totalCount > 0) still means earlier
+                        // batches landed; totalCount == 0 means cursor at HEAD,
+                        // nothing to refresh.
+                        if (event.totalCount > 0) {
+                            Logger.d(tag = TAG) {
+                                "DriveEvent.Stopped(totalCount=${event.totalCount}, " +
+                                    "result=${event.result}) — re-cold-loading moments"
+                            }
+                            scope.launch { coldLoad() }
+                        }
+                    }
+                    else -> {}
                 }
             }
         }

@@ -293,7 +293,17 @@ class MomentDetailViewModel(
         // recipients but no source. Filter self so the receiver doesn't see
         // their own address listed.
         val flatRecipients = moment.recipients.filter { it != self }
-        if (flatRecipients.isEmpty()) return SharedWithDisplay.Private
+        if (flatRecipients.isEmpty()) {
+            // "Private" means the author kept this with no recipients. For a
+            // received moment (sender != self), an empty co-recipient list
+            // just means "1:1 share to you alone" — never private; emit
+            // [JustYou] so the receiver gets an explicit confirmation rather
+            // than an ambiguous missing row. Same "is mine" rule as the
+            // uiState combine (line 155) and the feed card's isPrivate().
+            val isMine = moment.senderOdinId == null ||
+                (self != null && moment.senderOdinId == self)
+            return if (isMine) SharedWithDisplay.Private else SharedWithDisplay.JustYou
+        }
         return SharedWithDisplay.Recipients(
             flatRecipients.map { SharedWithEntry.Individual(name = it.displayName(contacts)) },
         )

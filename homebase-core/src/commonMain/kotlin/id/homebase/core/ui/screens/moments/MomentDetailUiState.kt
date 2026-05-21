@@ -150,14 +150,18 @@ data class RecipientDeliveryUiModel(
  * render synchronously — the only thing left to the screen is layout +
  * localisation of the row label and any +N suffix.
  *
- * [Private] covers two cases that are indistinguishable to the user:
- *  - the moment has no recorded source (legacy posts pre-dating the field), and
- *  - the source explicitly carries an empty audience (a saved-just-for-me post).
+ * [Private] is author-side: the user kept this moment with no recipients.
+ *   Covers two indistinguishable cases — no recorded source (legacy posts),
+ *   or an explicitly empty audience (saved-just-for-me post).
+ * [JustYou] is receiver-side: an inbound 1:1 share where the active user is
+ *   the only recipient. Distinct from Private so the receiver isn't told
+ *   their own inbound post is "private" (it isn't — it was shared with them).
  * [Recipients.entries] is non-empty by construction — the VM emits null
- * instead of an empty Recipients while a lookup is still loading.
+ *   instead of an empty Recipients while a lookup is still loading.
  */
 sealed interface SharedWithDisplay {
     data object Private : SharedWithDisplay
+    data object JustYou : SharedWithDisplay
     data class Recipients(val entries: List<SharedWithEntry>) : SharedWithDisplay
 }
 
