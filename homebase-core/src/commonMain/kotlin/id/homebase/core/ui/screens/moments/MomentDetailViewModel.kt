@@ -25,6 +25,8 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.data.ConversationUiModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -181,6 +183,41 @@ class MomentDetailViewModel(
         SharingStarted.WhileSubscribed(5_000),
         MomentDetailUiState(initialPayloadKey = initialPayloadKey),
     )
+
+    /**
+     * Diagnostic: log every comment-list change observed on this VM's
+     * uiState. Pairs with the MomentCommentsService logs to triangulate a
+     * "comment didn't appear" report — if the service shows `added comment=…`
+     * but no corresponding `uiState comments=…` line fires here, the gap is
+     * in the combine/StateFlow plumbing. If both fire but the row doesn't
+     * appear on screen, the gap is in the composable's recomposition.
+     *
+     * Must live in a second init block placed AFTER [uiState] is declared.
+     * With `Dispatchers.Main.immediate` (the default for `viewModelScope`),
+     * `launch { ... }` can execute its body synchronously during init — if
+     * this ran in the first init block, `uiState` would still be null at
+     * that moment and the `.map { … }` operator would NPE.
+     */
+    init {
+        viewModelScope.launch {
+            uiState
+                .map {
+                    // Service emits newest-first, so [0] is the newest comment.
+                    // distinctUntilChanged-on-pair fires only when either the
+                    // count or the newest id changes, so an edit/reaction
+                    // re-emit of the same head doesn't spam the log.
+                    val newest = it.comments.firstOrNull()
+                    Triple(it.comments.size, newest?.id, newest?.senderOdinId?.domainName)
+                }
+                .distinctUntilChanged()
+                .collect { (size, newestId, newestSender) ->
+                    Logger.d(tag = TAG) {
+                        "uiState comments updated: moment=$momentId count=$size " +
+                            "newest=$newestId sender=${newestSender ?: "self"}"
+                    }
+                }
+        }
+    }
 
     private data class MomentWithSharedWith(
         val moment: MomentFeedItem?,

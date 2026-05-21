@@ -1237,6 +1237,8 @@ private fun CommentRow(
     onToggleReaction: (emoji: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val authorLabel = if (isMine) stringResource(MR.string.moments_detail_comment_you)
+    else comment.displayName
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1245,9 +1247,20 @@ private fun CommentRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Sender avatar — uses the same PublicAvatar widget the SharedWith
+            // surface uses, so the moment detail screen has one consistent
+            // identity-rendering style. Own comments fall back to the active
+            // user's domain when self isn't on the conversation's contact list.
+            val avatarOdinId = comment.senderOdinId
+            if (avatarOdinId != null) {
+                PublicAvatar(
+                    odinId = avatarOdinId,
+                    initials = authorLabel.firstOrNull()?.toString(),
+                    options = AvatarOptions(size = 24.dp),
+                )
+            }
             Text(
-                text = if (isMine) stringResource(MR.string.moments_detail_comment_you)
-                else comment.senderOdinId?.domainName ?: "",
+                text = authorLabel,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),

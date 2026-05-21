@@ -63,6 +63,10 @@ class MomentsFeedService(
         if (started) return
         started = true
 
+        Logger.i(tag = TAG) {
+            "start: cold-loading + subscribing to EventBus for moments drive=$drive"
+        }
+
         scope.launch { coldLoad() }
 
         scope.launch {
@@ -98,10 +102,23 @@ class MomentsFeedService(
             )
 
             byId.clear()
+            var skippedSoftDeleted = 0
+            var skippedUnparseable = 0
             for (file in result.records) {
-                if (file.isSoftDeleted()) continue
-                val item = file.toFeedItem() ?: continue
+                if (file.isSoftDeleted()) {
+                    skippedSoftDeleted++
+                    continue
+                }
+                val item = file.toFeedItem()
+                if (item == null) {
+                    skippedUnparseable++
+                    continue
+                }
                 byId[item.id] = item
+            }
+            Logger.i(tag = TAG) {
+                "coldLoad: rows=${result.records.size} loaded=${byId.size} " +
+                    "skippedSoftDeleted=$skippedSoftDeleted skippedUnparseable=$skippedUnparseable"
             }
             emitSorted()
         } catch (e: Exception) {
@@ -116,6 +133,18 @@ class MomentsFeedService(
      * already-landed `HomebaseFile`s; we never re-read the DB here.
      */
     private fun processIncrementalBatch(files: List<HomebaseFile>) {
+        // Per-batch histogram mirrors MomentCommentsService: lets us tell at
+        // a glance whether a batch even reached this collector and what was
+        // in it. A "remote moment didn't appear" report splits cleanly along
+        // this line — if no `processIncrementalBatch` entry fires after a
+        // remote send, the WS push isn't delivering to this client.
+        val fileTypeCounts = files.groupingBy {
+            it.fileMetadata.appData.fileType
+        }.eachCount()
+        Logger.d(tag = TAG) {
+            "processIncrementalBatch: drive=$drive files=${files.size} " +
+                "byFileType=$fileTypeCounts currentFeedSize=${byId.size}"
+        }
         val moments = files.filter {
             it.fileMetadata.appData.fileType == MomentsProtocol.MomentPostFileType
         }
@@ -123,14 +152,36 @@ class MomentsFeedService(
 
         var changed = false
         for (file in moments) {
-            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-            if (file.isSoftDeleted()) {
-                if (byId.remove(uniqueId) != null) changed = true
+            val uniqueId = file.fileMetadata.appData.uniqueId
+            if (uniqueId == null) {
+                Logger.w(tag = TAG) {
+                    "processIncrementalBatch: moment fileId=${file.fileId} missing uniqueId — dropped"
+                }
                 continue
             }
-            val item = file.toFeedItem() ?: continue
+            if (file.isSoftDeleted()) {
+                if (byId.remove(uniqueId) != null) {
+                    changed = true
+                    Logger.d(tag = TAG) {
+                        "processIncrementalBatch: soft-deleted moment=$uniqueId removed (feedSize=${byId.size})"
+                    }
+                }
+                continue
+            }
+            val item = file.toFeedItem() ?: run {
+                Logger.w(tag = TAG) {
+                    "processIncrementalBatch: toFeedItem returned null for uniqueId=$uniqueId fileId=${file.fileId}"
+                }
+                continue
+            }
+            val isUpdate = byId.containsKey(uniqueId)
             byId[uniqueId] = item
             changed = true
+            Logger.i(tag = TAG) {
+                "processIncrementalBatch: ${if (isUpdate) "updated" else "added"} moment=$uniqueId " +
+                    "sender=${item.senderOdinId?.domainName ?: "self"} " +
+                    "recipients=${item.recipients.size} feedSize=${byId.size}"
+            }
         }
         if (changed) emitSorted()
     }
