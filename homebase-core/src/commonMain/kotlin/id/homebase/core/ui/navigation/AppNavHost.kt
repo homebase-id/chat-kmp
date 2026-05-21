@@ -103,6 +103,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
@@ -271,6 +273,10 @@ fun AppNavHost(
 
                 VaultUiEvent.CloseOnboarding -> {
                     navController.popBackStack()
+                }
+
+                is VaultUiEvent.OpenNoteEditor -> {
+                    navController.navigate(Route.VaultNoteEditor(event.sectionId.toString(), event.entryId.toString()))
                 }
 
                 is VaultUiEvent.ShareFileReady,
@@ -1045,6 +1051,9 @@ fun AppNavHost(
                                                     inclusive = false
                                                 )
                                             },
+                                            onNavigateToNoteEditor = { sectionId, entryId ->
+                                                navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
                                         )
                                     }
                                 }
@@ -1067,6 +1076,21 @@ fun AppNavHost(
                         composable<Route.VaultEntryDetail> { _ ->
                             if (isAuthenticated) {
                                 LaunchedEffect(Unit) { navController.popBackStack() }
+                            }
+                        }
+
+                        composable<Route.VaultNoteEditor> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.VaultNoteEditor>()
+                                val sectionUuid = Uuid.parse(route.sectionId)
+                                val entryUuid = route.entryId?.let { Uuid.parse(it) }
+                                val noteViewModel: VaultNoteEditorViewModel = koinViewModel {
+                                    parametersOf(sectionUuid, entryUuid)
+                                }
+                                VaultNoteEditorScreen(
+                                    viewModel = noteViewModel,
+                                    onBackClick = { navController.popBackStack() },
+                                )
                             }
                         }
 

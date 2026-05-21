@@ -475,7 +475,13 @@ class VaultViewModel(
         val isUploading = file.uploadStatus is VaultUploadStatus.Preparing ||
             file.uploadStatus is VaultUploadStatus.Uploading
         if (file.isPending || isUploading) return
-        _overlayState.update { VaultOverlay.Gallery(file) }
+
+        if (file.isNote) {
+            val sectionId = file.groupId ?: return
+            _events.tryEmit(VaultUiEvent.OpenNoteEditor(sectionId, file.uniqueId))
+        } else {
+            _overlayState.update { VaultOverlay.Gallery(file) }
+        }
     }
 
     private fun handleShareFile(action: VaultUiAction.ShareFile) {

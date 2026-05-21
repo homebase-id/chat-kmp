@@ -140,6 +140,12 @@ fun VaultScreen(
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
                 }
+                is VaultUiEvent.OpenNoteEditor -> {
+                    onNavigateToNoteEditor(
+                        event.sectionId.toString(),
+                        event.entryId.toString(),
+                    )
+                }
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
