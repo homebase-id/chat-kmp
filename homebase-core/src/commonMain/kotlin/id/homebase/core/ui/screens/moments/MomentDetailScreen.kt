@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -28,10 +30,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,10 +47,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,14 +68,25 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
+import id.homebase.core.widget.DialogButtons
+import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.DialogTitle
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.chat_message_delete_for_everyone
+import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_detail_add_comment_hint
 import id.homebase.resources.moments_detail_comment_cancel
+import id.homebase.resources.moments_detail_comment_delete
 import id.homebase.resources.moments_detail_comment_edit
 import id.homebase.resources.moments_detail_comment_save
 import id.homebase.resources.moments_detail_comment_you
 import id.homebase.resources.moments_detail_comments_section
+import id.homebase.resources.moments_detail_delete_comment_dialog_title
+import id.homebase.resources.moments_detail_delete_dialog_title
+import id.homebase.resources.moments_detail_menu_delete
+import id.homebase.resources.moments_detail_menu_more
 import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
 import id.homebase.resources.moments_detail_no_description
@@ -91,14 +108,31 @@ import org.jetbrains.compose.resources.stringResource
  * → comments. Comments visibility is currently always-on (skeleton) —
  * `commentsEnabled` should round-trip through `MomentPostContent` and gate
  * the section once that schema lands.
+ *
+ * Named `Pane` because it's also embedded as the right pane of the desktop
+ * wide-screen feed (see `MomentsScreen`) — the route-based full-screen
+ * presentation and the embedded pane share this composable. The caller picks
+ * the VM (parameterized by `momentId`) and supplies `onNavigateBack`.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
-fun MomentDetailScreen(
+fun MomentDetailPane(
     viewModel: MomentDetailViewModel,
-    onNavigateBack: () -> Unit,
+    onNavigateBack: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Pop the detail screen as soon as the delete completes. The optimistic
+    // writer has already removed the moment from the feed by this point;
+    // navigating back avoids a brief flash of the empty loading state.
+    // Embedded (desktop wide) panes have no nav target, so the selection
+    // change driven by the feed itself takes care of removing the deleted
+    // moment from view.
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            if (event is MomentDetailUiEvent.MomentDeleted) onNavigateBack?.invoke()
+        }
+    }
 
     // SharedTransitionLayout + AnimatedContent mirrors `ConversationMessagesPane`:
     // when fullScreenOverlay is null we render the regular detail screen;
@@ -164,17 +198,35 @@ fun MomentDetailScreen(
 private fun DetailContent(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
-    onNavigateBack: () -> Unit,
+    onNavigateBack: (() -> Unit)?,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.moments_label)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
+                    // Embedded (desktop wide) pane: no nav target, so suppress
+                    // the back arrow rather than offering a tap that does
+                    // nothing meaningful.
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    // Show overflow only once the moment has loaded — there's
+                    // nothing actionable until then, and the menu would race
+                    // with the loading spinner.
+                    if (uiState.moment != null) {
+                        MomentOverflowMenu(
+                            isDeleting = uiState.isDeleting,
+                            onDeleteClick = {
+                                onAction(MomentDetailUiAction.RequestDeleteMoment)
+                            },
                         )
                     }
                 },
@@ -203,6 +255,142 @@ private fun DetailContent(
                     .consumeWindowInsets(innerPadding)
                     .padding(innerPadding),
             )
+        }
+    }
+
+    if (uiState.showDeleteDialog) {
+        DeleteMomentDialog(
+            allowDeleteForEveryone = uiState.isMine,
+            onDeleteForMe = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = false))
+            },
+            onDeleteForEveryone = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = true))
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteDialog) },
+        )
+    }
+
+    val deleteCommentTarget = uiState.deleteCommentDialogTarget
+    if (deleteCommentTarget != null) {
+        DeleteCommentDialog(
+            onDeleteForMe = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = false,
+                    ),
+                )
+            },
+            onDeleteForEveryone = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = true,
+                    ),
+                )
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteCommentDialog) },
+        )
+    }
+}
+
+@Composable
+private fun MomentOverflowMenu(
+    isDeleting: Boolean,
+    onDeleteClick: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        // While a delete is in flight the icon is swapped for a spinner.
+        // Same shape as the per-comment delete indicator: tells the user
+        // "something is happening" during the brief window between
+        // confirming the dialog and the optimistic write removing the
+        // moment from the feed (which triggers the nav-pop).
+        IconButton(onClick = { expanded = true }, enabled = !isDeleting) {
+            if (isDeleting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = stringResource(MR.string.moments_detail_menu_more),
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_menu_delete)) },
+                onClick = {
+                    expanded = false
+                    onDeleteClick()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeleteMomentDialog(
+    allowDeleteForEveryone: Boolean,
+    onDeleteForMe: () -> Unit,
+    onDeleteForEveryone: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        DialogCard(
+            buttons = {
+                DialogButtons(
+                    primaryText = stringResource(MR.string.chat_message_delete_for_me),
+                    onPrimaryClick = onDeleteForMe,
+                    secondaryText = if (allowDeleteForEveryone) {
+                        stringResource(MR.string.chat_message_delete_for_everyone)
+                    } else null,
+                    onSecondaryClick = {
+                        if (allowDeleteForEveryone) onDeleteForEveryone()
+                    },
+                    tertiaryText = stringResource(MR.string.cancel),
+                    onTertiaryClick = onDismiss,
+                    showButtonsVertically = true,
+                )
+            },
+        ) {
+            DialogTitle(text = stringResource(MR.string.moments_detail_delete_dialog_title))
+        }
+    }
+}
+
+/**
+ * Comment delete is currently only offered for own comments (placed next to
+ * Edit), so the "Delete for everyone" affordance is always available — same
+ * "for me / for everyone / cancel" shape as [DeleteMomentDialog].
+ */
+@Composable
+private fun DeleteCommentDialog(
+    onDeleteForMe: () -> Unit,
+    onDeleteForEveryone: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        DialogCard(
+            buttons = {
+                DialogButtons(
+                    primaryText = stringResource(MR.string.chat_message_delete_for_me),
+                    onPrimaryClick = onDeleteForMe,
+                    secondaryText = stringResource(MR.string.chat_message_delete_for_everyone),
+                    onSecondaryClick = onDeleteForEveryone,
+                    tertiaryText = stringResource(MR.string.cancel),
+                    onTertiaryClick = onDismiss,
+                    showButtonsVertically = true,
+                )
+            },
+        ) {
+            DialogTitle(text = stringResource(MR.string.moments_detail_delete_comment_dialog_title))
         }
     }
 }
@@ -236,8 +424,22 @@ private fun MomentDetailContent(
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         // Media — pager when there are multiple payloads, single MomentMediaItem otherwise.
+        // Constrain to ~60% of the pane width on wide layouts (the desktop
+        // embedded pane can be 800dp+) and cap at MediaMaxWidth. Below
+        // MediaWideBreakpoint the media stays full-width so phones/narrow
+        // tablets are unchanged.
         item {
-            Box(modifier = Modifier.fillMaxWidth()) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val mediaWidth = if (maxWidth >= MediaWideBreakpoint) {
+                    (maxWidth * MediaWidthFraction).coerceAtMost(MediaMaxWidth)
+                } else {
+                    maxWidth
+                }
+                Box(
+                    modifier = Modifier
+                        .width(mediaWidth)
+                        .align(Alignment.Center),
+                ) {
                 if (moment.payloads.isEmpty()) {
                     // Description-only moment — keep a square placeholder so the
                     // top-of-screen rhythm doesn't collapse.
@@ -282,6 +484,7 @@ private fun MomentDetailContent(
                                 .padding(bottom = 12.dp),
                         )
                     }
+                }
                 }
             }
         }
@@ -346,11 +549,15 @@ private fun MomentDetailContent(
                     isEditing = uiState.editingCommentId == comment.id,
                     editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
                     isSaving = uiState.isSavingCommentEdit,
+                    isDeleting = uiState.deletingCommentIds.contains(comment.id),
                     quickReactions = uiState.userDefaultReactions,
                     onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
                     onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
                     onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
                     onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                    onDeleteClick = {
+                        onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
+                    },
                     onToggleReaction = { emoji ->
                         onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
                     },
@@ -373,6 +580,14 @@ private fun MomentDetailContent(
         }
     }
 }
+
+// Width budget for the detail-pane media block. Below MediaWideBreakpoint the
+// media takes the full pane width (today's mobile behavior); at or above, the
+// media renders at MediaWidthFraction of the pane, capped at MediaMaxWidth so
+// it never feels overwhelming on a 1500dp+ desktop right pane.
+private val MediaWideBreakpoint = 600.dp
+private const val MediaWidthFraction = 0.6f
+private val MediaMaxWidth = 560.dp
 
 @Composable
 private fun PagerDots(
@@ -607,11 +822,13 @@ private fun CommentRow(
     isEditing: Boolean,
     editDraft: String,
     isSaving: Boolean,
+    isDeleting: Boolean,
     quickReactions: List<String>,
     onEditClick: () -> Unit,
     onEditDraftChanged: (String) -> Unit,
     onSaveEdit: () -> Unit,
     onCancelEdit: () -> Unit,
+    onDeleteClick: () -> Unit,
     onToggleReaction: (emoji: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -686,14 +903,37 @@ private fun CommentRow(
                 onToggle = onToggleReaction,
             )
 
-            // Action row: edit (own comments only, only once versionTag is
-            // confirmed). Sits next to the reactions so the controls cluster.
+            // Action row: edit + delete (own comments only, only once
+            // versionTag is confirmed). Sits next to the reactions so the
+            // controls cluster. While a delete is in flight both buttons
+            // disable and a small spinner sits at the end — the row is
+            // usually about to vanish (optimistic delete) but if the enqueue
+            // fails it stays around, so we need the disable state.
             if (isMine && comment.versionTag != null) {
-                TextButton(
-                    onClick = onEditClick,
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(stringResource(MR.string.moments_detail_comment_edit))
+                    TextButton(
+                        onClick = onEditClick,
+                        enabled = !isDeleting,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text(stringResource(MR.string.moments_detail_comment_edit))
+                    }
+                    TextButton(
+                        onClick = onDeleteClick,
+                        enabled = !isDeleting,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text(stringResource(MR.string.moments_detail_comment_delete))
+                    }
+                    if (isDeleting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
                 }
             }
         }

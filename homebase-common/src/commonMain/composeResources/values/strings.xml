@@ -346,6 +346,11 @@
     <string name="moments_detail_comment_edit">Edit</string>
     <string name="moments_detail_comment_save">Save</string>
     <string name="moments_detail_comment_cancel">Cancel</string>
+    <string name="moments_detail_menu_more">More options</string>
+    <string name="moments_detail_menu_delete">Delete</string>
+    <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
+    <string name="moments_detail_comment_delete">Delete</string>
+    <string name="moments_detail_delete_comment_dialog_title">Delete this comment?</string>
     <string name="moments_create_title">Send to</string>
     <string name="moments_create_search_hint">Search contacts and groups</string>
     <string name="moments_create_section_recent">Recent</string>

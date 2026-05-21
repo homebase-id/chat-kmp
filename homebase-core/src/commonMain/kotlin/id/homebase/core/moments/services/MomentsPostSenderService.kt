@@ -22,6 +22,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.builder.AttachmentInput
@@ -40,6 +41,7 @@ class MomentsPostSenderService(
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
     private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
     private val scope: CoroutineScope,
 ) {
     companion object {
@@ -469,8 +471,16 @@ class MomentsPostSenderService(
     ): UpdateMomentCommentResult {
         Logger.d(tag = TAG) { "updateComment: starting comment=$commentUniqueId" }
 
-        val existing = driveFileProvider.getFileHeaderByUid(drive, commentUniqueId)
-            ?: throw IllegalArgumentException("comment not found: $commentUniqueId")
+        // Read the existing comment from the local DriveMainIndex rather than
+        // via `driveFileProvider.getFileHeaderByUid`. Same blip-resilience
+        // argument as `resolveCommentRecipients`: the comment was authored on
+        // this device so its row is already local, and reading from the server
+        // turns a transient DNS hiccup into a lost edit (the throw beats the
+        // outbox enqueue and the optimistic write).
+        val credentials = credentialsManager.requireActiveCredentials()
+        val existing = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), drive, commentUniqueId,
+        ) ?: throw IllegalArgumentException("comment not found locally: $commentUniqueId")
 
         if (existing.fileMetadata.versionTag != versionTag) {
             error("VersionTag mismatch")
@@ -566,10 +576,23 @@ class MomentsPostSenderService(
      * full audience (`senderOdinId ∪ content.recipients`) minus the current
      * user. Returns empty when the moment was local-only — comment stays
      * local-only too.
+     *
+     * Reads the moment header from the local DriveMainIndex rather than via
+     * `driveFileProvider.getFileHeaderByUid` (a server GET). The moment is
+     * already in the local DB by the time the user can reach the comment
+     * composer, and routing this through HTTP turned a transient network
+     * blip (e.g. `UnresolvedAddressException` during DNS hiccup) into a
+     * lost comment — the throw aborted the function before the outbox
+     * enqueue or optimistic write ran, so the user typed text just vanished.
+     *
+     * Mirrors the same fix `MomentActionService.resolveAudienceLocal`
+     * already made for reaction toggles.
      */
     private suspend fun resolveCommentRecipients(momentId: Uuid): List<OdinId> {
-        val moment = driveFileProvider.getFileHeaderByUid(drive, momentId)
-            ?: throw IllegalArgumentException("moment not found: $momentId")
+        val credentials = credentialsManager.requireActiveCredentials()
+        val moment = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), drive, momentId,
+        ) ?: throw IllegalArgumentException("moment not found locally: $momentId")
 
         val momentContent = moment.fileMetadata.appData.content?.let { raw ->
             runCatching {
@@ -577,9 +600,7 @@ class MomentsPostSenderService(
             }.getOrNull()
         } ?: throw IllegalStateException("moment $momentId content unreadable")
 
-        val self = credentialsManager.getActiveCredentials()?.domain
-            ?: throw IllegalStateException("no active credentials")
-
+        val self = credentials.domain
         val audience = buildSet {
             moment.fileMetadata.senderOdinId?.let { add(it) }
             addAll(momentContent.recipients)

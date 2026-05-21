@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -161,6 +162,14 @@ data class MomentFeedItem(
      * BatchReceived stream this service already subscribes to.
      */
     val reactionPreview: ReactionSummary?,
+    /**
+     * Original sender on the receiving drive; null on the sender's own drive
+     * (the server populates this only for inbound transfers). Same convention
+     * as `MomentCommentItem.senderOdinId`. The detail screen uses this to
+     * decide whether to offer "delete for everyone" (sender only) vs just
+     * "delete for me" (recipient).
+     */
+    val senderOdinId: OdinId?,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -181,5 +190,6 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         userDateMs = sqlUserDateMs(),
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
+        senderOdinId = fileMetadata.senderOdinId,
     )
 }

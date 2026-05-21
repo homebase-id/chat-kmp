@@ -482,7 +482,18 @@ val appModule = module {
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
-    viewModelOf(::MomentDetailViewModel)
+    viewModel { params ->
+        MomentDetailViewModel(
+            momentId = params.get(),
+            initialPayloadKey = params.getOrNull(),
+            feedService = get(),
+            commentsService = get(),
+            postSender = get(),
+            actionService = get(),
+            credentialsManager = get(),
+            userPreferences = get(),
+        )
+    }
     viewModel(VaultPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
