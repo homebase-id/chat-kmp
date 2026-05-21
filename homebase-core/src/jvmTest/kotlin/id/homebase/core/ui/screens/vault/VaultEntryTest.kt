@@ -599,6 +599,48 @@ class VaultEntryTest {
     }
 
     // ---------------------------------------------------------------
+    // VaultEntry — isNote property
+    // ---------------------------------------------------------------
+
+    @Test
+    fun isNote_textMarkdown() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "My Note.md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isNote)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isNote_falseForTextPlain() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    @Test
+    fun isNote_falseForImage() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "image/jpeg", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    @Test
+    fun isNote_falseForPdf() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/pdf", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    // ---------------------------------------------------------------
     // VaultEntry — pdfPageCount
     // ---------------------------------------------------------------
 

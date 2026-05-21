@@ -56,6 +56,8 @@ data class VaultEntry(
         contentType == "application/x-yaml" ||
         contentType == "application/javascript" ||
         contentType == "application/x-sh"
+
+    val isNote: Boolean get() = contentType == "text/markdown"
 }
 
 /**
