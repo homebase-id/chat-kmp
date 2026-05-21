@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.vault
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Description
@@ -96,7 +97,7 @@ class VaultFileIconTest {
     @Test
     fun plainText_mimeTypes() {
         assertEquals(Icons.Outlined.Description, fileTypeIcon("text/plain"))
-        assertEquals(Icons.Outlined.Description, fileTypeIcon("text/markdown"))
+        assertEquals(Icons.AutoMirrored.Outlined.NoteAdd, fileTypeIcon("text/markdown"))
         assertEquals(Icons.Outlined.Description, fileTypeIcon("text/html"))
     }
 
