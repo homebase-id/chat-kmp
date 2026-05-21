@@ -5,11 +5,13 @@ package id.homebase.core.ui.screens.vault.model
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
+import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -57,7 +59,21 @@ data class VaultEntry(
         contentType == "application/javascript" ||
         contentType == "application/x-sh"
 
-    val isNote: Boolean get() = contentType == "text/markdown"
+    val isNote: Boolean get() = contentType == CONTENT_TYPE_MARKDOWN
+
+    val noteDisplayTitle: String?
+        get() = if (isNote) fileName.removeSuffix(".md").ifBlank { fileName } else null
+
+    val notePreview: String?
+        get() {
+            val descriptor = payloadDescriptors.firstOrNull { it.contentType == CONTENT_TYPE_MARKDOWN }
+                ?: return null
+            return (descriptor.descriptorInfo() as? DescriptorContent.NoteFile)?.preview
+        }
+
+    companion object {
+        const val DEFAULT_PAYLOAD_KEY = "vlt_pg_00"
+    }
 }
 
 /**

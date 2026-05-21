@@ -790,15 +790,15 @@
     <string name="vault_add_file">Add file</string>
     <string name="vault_more_options">More options</string>
     <string name="vault_add_note">Add Note</string>
-    <string name="vault_note_editor_title_new">New Note</string>
-    <string name="vault_note_editor_title_edit">Edit Note</string>
-    <string name="vault_note_title_placeholder">Note title</string>
+    <string name="vault_note_title_placeholder">Title</string>
     <string name="vault_note_body_placeholder">Start writing…</string>
     <string name="vault_note_title_required">Title is required</string>
     <string name="vault_note_save">Save</string>
     <string name="vault_note_loading">Loading note…</string>
     <string name="vault_note_save_failed">Failed to save note</string>
     <string name="vault_note_load_failed">Failed to load note</string>
+    <string name="vault_note_load_failed_preview">Could not load note preview</string>
+    <string name="vault_note_edit">Edit note</string>
 
     <!-- Vault Sections -->
     <string name="vault_section_passports">Passports</string>

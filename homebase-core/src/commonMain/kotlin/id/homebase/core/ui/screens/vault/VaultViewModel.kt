@@ -429,7 +429,7 @@ class VaultViewModel(
                             )
                             localAttachmentStore.put(
                                 pendingId,
-                                "vlt_pg_00",
+                                VaultEntry.DEFAULT_PAYLOAD_KEY,
                                 LocalAttachmentContext.Image(localFilePath = thumbPath, aspectRatio = null),
                             )
                         }
@@ -476,12 +476,7 @@ class VaultViewModel(
             file.uploadStatus is VaultUploadStatus.Uploading
         if (file.isPending || isUploading) return
 
-        if (file.isNote) {
-            val sectionId = file.groupId ?: return
-            _events.tryEmit(VaultUiEvent.OpenNoteEditor(sectionId, file.uniqueId))
-        } else {
-            _overlayState.update { VaultOverlay.Gallery(file) }
-        }
+        _overlayState.update { VaultOverlay.Gallery(file) }
     }
 
     private fun handleShareFile(action: VaultUiAction.ShareFile) {

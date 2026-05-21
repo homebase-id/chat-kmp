@@ -51,17 +51,15 @@ class VaultNoteEditorViewModelTest {
     }
 
     @Test
-    fun titleFromFileName_stripsExtension() {
-        val fileName = "Shopping List.md"
-        val displayTitle = fileName.removeSuffix(".md")
-        assertEquals("Shopping List", displayTitle)
+    fun loadedMarkdown_nullByDefault() {
+        val state = VaultNoteEditorUiState()
+        assertEquals(null, state.loadedMarkdown)
     }
 
     @Test
-    fun titleFromFileName_noExtension() {
-        val fileName = "Note Without Extension"
-        val displayTitle = fileName.removeSuffix(".md")
-        assertEquals("Note Without Extension", displayTitle)
+    fun loadedMarkdown_preservedInState() {
+        val state = VaultNoteEditorUiState(loadedMarkdown = "# Hello\nworld")
+        assertEquals("# Hello\nworld", state.loadedMarkdown)
     }
 
     @Test

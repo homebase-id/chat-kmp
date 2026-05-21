@@ -641,6 +641,49 @@ class VaultEntryTest {
     }
 
     // ---------------------------------------------------------------
+    // VaultEntry — noteDisplayTitle
+    // ---------------------------------------------------------------
+
+    @Test
+    fun noteDisplayTitle_stripsExtension() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "Shopping List.md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals("Shopping List", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_noExtension() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "Note Without Extension")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals("Note Without Extension", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_blankAfterStrip_fallsBackToFileName() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = ".md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals(".md", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_nullForNonNote() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertNull(item.noteDisplayTitle)
+    }
+
+    // ---------------------------------------------------------------
     // VaultEntry — pdfPageCount
     // ---------------------------------------------------------------
 

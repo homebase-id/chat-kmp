@@ -5,7 +5,9 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -1076,7 +1078,32 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.VaultNoteEditor> { backStackEntry ->
+                        composable<Route.VaultNoteEditor>(
+                            enterTransition = {
+                                slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            exitTransition = {
+                                slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            popEnterTransition = {
+                                slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            popExitTransition = {
+                                slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                        ) { backStackEntry ->
                             if (isAuthenticated) {
                                 val route = backStackEntry.toRoute<Route.VaultNoteEditor>()
                                 val sectionUuid = Uuid.parse(route.sectionId)

@@ -23,6 +23,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
@@ -60,6 +61,7 @@ import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
@@ -71,6 +73,7 @@ import id.homebase.resources.vault_gallery_delete_page_confirm
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_gallery_save_page
 import id.homebase.resources.vault_gallery_share_page
+import id.homebase.resources.vault_note_edit
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import kotlinx.coroutines.launch
@@ -90,6 +93,7 @@ fun VaultGalleryScreen(
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
+    onEditNote: () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -198,6 +202,13 @@ fun VaultGalleryScreen(
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
+                    } else if (descriptor.contentType == CONTENT_TYPE_MARKDOWN) {
+                        NoteViewerPage(
+                            file = file,
+                            uploaderService = uploaderService,
+                            fileOperationsProvider = fileOperationsProvider,
+                            onToggleUI = onTapImage,
+                        )
                     } else if (file.isPdf) {
                         PdfViewerPage(
                             file = file,
@@ -249,7 +260,9 @@ fun VaultGalleryScreen(
                         title = {
                             Column {
                                 Text(
-                                    text = labelText.ifBlank { null } ?: file.fileName,
+                                    text = labelText.ifBlank { null }
+                                        ?: file.noteDisplayTitle
+                                        ?: file.fileName,
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -276,6 +289,14 @@ fun VaultGalleryScreen(
                             }
                         },
                         actions = {
+                            if (currentDescriptor?.contentType == CONTENT_TYPE_MARKDOWN) {
+                                IconButton(onClick = onEditNote) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = stringResource(MR.string.vault_note_edit),
+                                    )
+                                }
+                            }
                             if (currentDescriptor != null) {
                                 IconButton(onClick = { onSharePage(currentDescriptor.key) }) {
                                     Icon(

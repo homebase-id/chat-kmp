@@ -66,9 +66,7 @@ fun VaultEntryCard(
 ) {
     val cardShape = RoundedCornerShape(CARD_CORNER)
     val description = file.label?.ifBlank { null } ?: file.fileName
-    val noteTitle = if (file.isNote) {
-        file.fileName.removeSuffix(".md").ifBlank { file.fileName }
-    } else null
+    val noteTitle = file.noteDisplayTitle
 
     Column(
         modifier = modifier
@@ -117,7 +115,7 @@ fun VaultEntryCard(
                 contentAlignment = Alignment.Center,
             ) {
                 val localStore = localAttachmentStore
-                val firstPayloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
+                val firstPayloadKey = file.payloadDescriptors.firstOrNull()?.key ?: VaultEntry.DEFAULT_PAYLOAD_KEY
                 val localCtx = localStore.observe(file.uniqueId, firstPayloadKey)
                     .collectAsStateWithLifecycle(
                         initialValue = localStore.get(file.uniqueId, firstPayloadKey),
@@ -308,7 +306,21 @@ private fun VaultCardThumbnail(
         }
     }
 
-    // 4. Fallback icon
+    // 4. Note preview snippet
+    val preview = file.notePreview
+    if (preview != null) {
+        Text(
+            text = preview,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+        )
+        return
+    }
+
+    // 5. Fallback icon
     Icon(
         imageVector = if (file.isImage) Icons.Outlined.Image else fileTypeIcon(file.contentType),
         contentDescription = null,

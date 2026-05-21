@@ -30,6 +30,7 @@ import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
+import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.createImageThumbnail
@@ -61,6 +62,7 @@ class VaultUploaderService(
         scope: CoroutineScope,
         groupId: Uuid? = null,
         notes: String? = null,
+        notePreview: String? = null,
         uniqueId: Uuid = Uuid.random(),
     ): Uuid? =
         // Resolve the picked files (Android copies content:// picks into cacheDir
@@ -74,6 +76,7 @@ class VaultUploaderService(
                 scope = scope,
                 groupId = groupId,
                 notes = notes,
+                notePreview = notePreview,
                 uniqueId = uniqueId,
             )
         }
@@ -84,6 +87,7 @@ class VaultUploaderService(
         scope: CoroutineScope,
         groupId: Uuid?,
         notes: String?,
+        notePreview: String?,
         uniqueId: Uuid,
     ): Uuid? {
         // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
@@ -101,7 +105,7 @@ class VaultUploaderService(
             }
 
             var pdfPageCount: Int? = null
-            val bundle = buildMultiPayloadBundle(resolvedFiles) { pdfPageCount = it }
+            val bundle = buildMultiPayloadBundle(resolvedFiles, { pdfPageCount = it }, notePreview)
 
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 uniqueId, bundle, keyHeader.aesKey, scope
@@ -327,6 +331,7 @@ class VaultUploaderService(
     private suspend fun buildMultiPayloadBundle(
         files: List<Pair<String, String>>,
         onPdfPageCount: ((Int) -> Unit)? = null,
+        notePreview: String? = null,
     ): PayloadBundle {
         val allPayloads = mutableListOf<PayloadFile>()
         val allThumbnails = mutableListOf<ThumbnailFile>()
@@ -386,6 +391,7 @@ class VaultUploaderService(
                 filePath = filePath,
                 contentType = contentType,
                 previewThumbnail = previewThumbnail,
+                descriptorContent = if (contentType == CONTENT_TYPE_MARKDOWN) notePreview else null,
             )
             allThumbnails += thumbnails
             if (previewThumbnail != null) allPreviews += previewThumbnail

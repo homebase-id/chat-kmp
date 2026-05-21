@@ -1,5 +1,7 @@
 package id.homebase.core.util
 
+const val CONTENT_TYPE_MARKDOWN = "text/markdown"
+
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
     val ext = nameOrPath?.substringAfterLast('.')?.lowercase()?.takeIf { it.isNotBlank() }
         ?: return "application/octet-stream"
