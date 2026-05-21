@@ -80,9 +80,11 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
+import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
+import kotlinx.io.files.Path
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_for_everyone
@@ -147,6 +149,7 @@ fun MomentDetailPane(
     onNavigateBack: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val fileSystemHandler = getUriHandler()
 
     // Pop the detail screen as soon as the delete completes. The optimistic
     // writer has already removed the moment from the feed by this point;
@@ -156,7 +159,12 @@ fun MomentDetailPane(
     // moment from view.
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
-            if (event is MomentDetailUiEvent.MomentDeleted) onNavigateBack?.invoke()
+            when (event) {
+                is MomentDetailUiEvent.MomentDeleted -> onNavigateBack?.invoke()
+                is MomentDetailUiEvent.ShareFileReady ->
+                    fileSystemHandler.shareFile(Path(event.filePath))
+                else -> Unit
+            }
         }
     }
 
@@ -188,8 +196,10 @@ fun MomentDetailPane(
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                     data = overlay,
                     isDownloading = false,
-                    // TODO: wire share / save / delete to a moments action service.
-                    onShare = { _, _ -> },
+                    // TODO: wire save / delete to a moments action service.
+                    onShare = { _, key ->
+                        viewModel.onAction(MomentDetailUiAction.ShareMedia(key))
+                    },
                     onSave = { _, _ -> },
                     onDelete = { },
                     onDismiss = {

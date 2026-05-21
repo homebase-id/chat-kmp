@@ -496,6 +496,7 @@ val appModule = module {
             conversationStream = get(),
             contactService = get(),
             driveFileProvider = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {
