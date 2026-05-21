@@ -760,6 +760,12 @@
     <string name="upload_uploading">Uploading\u2026</string>
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
+    <string name="upload_retrying">Retrying\u2026</string>
+    <string name="upload_failed">Upload failed</string>
+    <string name="upload_failed_sheet_title">Upload failed</string>
+    <string name="upload_failed_sheet_body">This moment couldn\'t be uploaded. Recipients didn\'t receive it.</string>
+    <string name="upload_failed_action_delete">Delete moment</string>
+    <string name="upload_failed_action_dismiss">Dismiss</string>
 
     <!-- Vault -->
     <string name="vault_label">Vault</string>
@@ -917,6 +923,7 @@
     <string name="cd_gallery_thumbnail">Gallery thumbnail</string>
     <string name="cd_send_to">Send to %1$s</string>
     <string name="cd_upload_complete">Upload complete</string>
+    <string name="cd_upload_failed">Upload failed</string>
     <string name="cd_location_pin">Location</string>
     <string name="cd_link_preview_image">Link preview image</string>
     <string name="cd_reply_thumbnail">Reply thumbnail</string>
