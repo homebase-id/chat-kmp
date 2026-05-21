@@ -221,7 +221,13 @@ writing or modifying any screen/composable, verify:
 
 - Use `Icons.AutoMirrored.*` for directional icons (back arrows, forward) — never `Icons.Default.ChevronLeft`
 - Use `collectAsStateWithLifecycle()` — never `collectAsState()` for ViewModel StateFlows
-- All user-facing strings must use `stringResource()` from compose resources — never hardcode text
+- All user-facing strings must use `stringResource()` from compose resources — never hardcode text.
+  This includes overflow chips and badges (e.g. `"+$n"`, `"$count items"`) — `homebase-common`'s
+  `ArchitectureTest.kt` runs Konsist against every Composable on JVM CI and fails the build if it
+  sees a `Text("…")` / `Text(text = "…")` literal, regardless of `$` interpolation. Build the
+  string outside the composable (e.g. `stringResource(MR.string.foo_more, n)`) or pass a variable
+  in. The pre-existing `moments_detail_shared_with_more` (`+%1$d`) is the canonical resource for
+  the "+N" overflow case if you need another.
 - Use `start`/`end` padding, not `left`/`right` (RTL support)
 - Use Material 3 color roles from `MaterialTheme.colorScheme` — never hardcode colors
 - Use Material 3 typography from `MaterialTheme.typography` — never hardcode text styles
