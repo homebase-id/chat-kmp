@@ -89,7 +89,8 @@ import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
-import id.homebase.core.ui.screens.moments.MomentDetailScreen
+import id.homebase.core.ui.screens.moments.MomentDetailPane
+import id.homebase.core.ui.screens.moments.MomentDetailViewModel
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
@@ -123,7 +124,9 @@ import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import id.homebase.resources.MR
 import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
@@ -903,10 +906,20 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.MomentDetail> {
+                        composable<Route.MomentDetail> { backStackEntry ->
                             if (isAuthenticated) {
-                                MomentDetailScreen(
-                                    viewModel = koinViewModel(),
+                                // Detail VM no longer reads SavedStateHandle —
+                                // extract route args here and pass them
+                                // through koin parameters. The wide-desktop
+                                // moments screen instantiates the same VM the
+                                // same way for its embedded pane.
+                                val route = backStackEntry.toRoute<Route.MomentDetail>()
+                                val momentId = Uuid.parse(route.momentId)
+                                val detailVm: MomentDetailViewModel = koinViewModel(
+                                    key = "moment-detail-route-${route.momentId}",
+                                ) { parametersOf(momentId, route.initialPayloadKey) }
+                                MomentDetailPane(
+                                    viewModel = detailVm,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }

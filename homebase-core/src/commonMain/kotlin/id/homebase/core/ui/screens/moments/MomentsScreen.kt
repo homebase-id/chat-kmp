@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -29,9 +32,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,19 +53,24 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.window.core.layout.WindowSizeClass
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.util.isDesktop
 import id.homebase.resources.MR
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import id.homebase.resources.moments_create_action
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
 import id.homebase.resources.moments_reaction_like
 import id.homebase.resources.moments_welcome
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 /**
  * Page 1 — Main Feed / Timeline.
@@ -75,11 +90,14 @@ fun MomentsScreen(
      * item the user tapped (so the detail carousel can land on that page);
      * `null` for taps that aren't on a specific cell (e.g. the indicator
      * row), which fall back to page 0.
+     *
+     * Only invoked on compact layouts. On wide desktop the screen renders an
+     * embedded detail pane and updates internal selection state instead of
+     * navigating.
      */
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit = { _, _ -> },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val openLabel = stringResource(MR.string.moments_post_open)
 
     // Permission-drift detection: re-check on every screen entry. The
     // moments-qualified ExtendPermissionViewModel runs an initial check on
@@ -103,6 +121,38 @@ fun MomentsScreen(
     // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
+    // Desktop wide-screen split: feed on the left, embedded detail pane on the
+    // right. Gated on `isDesktop()` so wide phones/tablets stay on the single
+    // column — the touch targets and FAB placement on mobile assume one
+    // viewport, and the chat module gates its split the same way.
+    val adaptiveInfo = currentWindowAdaptiveInfo()
+    val isWide = isDesktop() &&
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
+            WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+        )
+
+    if (isWide) {
+        WideMomentsLayout(
+            moments = uiState.moments,
+            onCreateMoment = onCreateMoment,
+        )
+    } else {
+        CompactMomentsLayout(
+            moments = uiState.moments,
+            onCreateMoment = onCreateMoment,
+            onOpenMoment = onOpenMoment,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactMomentsLayout(
+    moments: List<MomentFeedItem>,
+    onCreateMoment: () -> Unit,
+    onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+) {
+    val openLabel = stringResource(MR.string.moments_post_open)
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
@@ -116,7 +166,7 @@ fun MomentsScreen(
             }
         },
     ) { innerPadding ->
-        if (uiState.moments.isEmpty()) {
+        if (moments.isEmpty()) {
             EmptyMomentsState(
                 modifier = Modifier
                     .fillMaxSize()
@@ -124,30 +174,166 @@ fun MomentsScreen(
                     .padding(innerPadding),
             )
         } else {
-            LazyColumn(
+            MomentsFeedList(
+                moments = moments,
+                onOpenMoment = onOpenMoment,
+                openLabel = openLabel,
+                selectedMomentId = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .consumeWindowInsets(innerPadding)
                     .padding(innerPadding),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                // Chat-style: feed is sorted newest-first by the service, and
-                // reverseLayout pins the newest item to the bottom of the
-                // viewport. Initial scroll lands on the newest moment; older
-                // moments are reached by scrolling up.
-                reverseLayout = true,
-            ) {
-                items(uiState.moments, key = { it.id.toString() }) { moment ->
-                    MomentPostCard(
-                        moment = moment,
-                        onCardClick = { onOpenMoment(moment.id.toString(), null) },
-                        onMediaClick = { payloadKey ->
-                            onOpenMoment(moment.id.toString(), payloadKey)
-                        },
-                        onClickLabel = openLabel,
+            )
+        }
+    }
+}
+
+/**
+ * Wide-screen Row: feed on the left in a fixed-width column, detail pane on
+ * the right filling the rest. The left column gets its own Scaffold (top bar
+ * + FAB); the detail pane brings its own Scaffold internally. A
+ * VerticalDivider separates the two so the boundary reads cleanly against
+ * busy media thumbnails.
+ *
+ * Selection state is screen-local — the route never changes on wide desktop,
+ * so taps just flip `selectedMomentId` and the detail-pane VM (keyed on the
+ * id) recomputes from the feed flow. We auto-select the newest moment on
+ * first composition so the right pane is never empty when there are moments
+ * to show.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WideMomentsLayout(
+    moments: List<MomentFeedItem>,
+    onCreateMoment: () -> Unit,
+) {
+    val openLabel = stringResource(MR.string.moments_post_open)
+
+    var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
+
+    // Auto-select the newest moment whenever (a) we don't have a selection yet
+    // and (b) moments are available. Also re-resolves if the current selection
+    // disappears (e.g. it was deleted — fall back to the newest survivor
+    // rather than showing an empty pane).
+    val newestId by remember(moments) {
+        derivedStateOf { moments.firstOrNull()?.id }
+    }
+    LaunchedEffect(newestId, moments) {
+        val current = selectedMomentId
+        if (current == null || moments.none { it.id == current }) {
+            selectedMomentId = newestId
+        }
+    }
+
+    // Scale the feed pane with window width — 380dp feels stingy on big
+    // external monitors (1920dp+) where it shrinks below 20% of the viewport.
+    // Cap at FeedPaneMaxWidth so list rows (small thumbnails + meta) don't
+    // grow past the point where extra width is just whitespace per row; the
+    // detail pane absorbs any remaining space via weight(1f).
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val feedPaneWidth = (maxWidth * FeedPaneWidthFraction)
+            .coerceIn(FeedPaneMinWidth, FeedPaneMaxWidth)
+    Row(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier
+                .width(feedPaneWidth)
+                .fillMaxHeight(),
+            topBar = {
+                TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = onCreateMoment) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.moments_create_action),
                     )
                 }
+            },
+        ) { innerPadding ->
+            if (moments.isEmpty()) {
+                EmptyMomentsState(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .consumeWindowInsets(innerPadding)
+                        .padding(innerPadding),
+                )
+            } else {
+                MomentsFeedList(
+                    moments = moments,
+                    onOpenMoment = { id, _ ->
+                        selectedMomentId = Uuid.parse(id)
+                    },
+                    openLabel = openLabel,
+                    selectedMomentId = selectedMomentId,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .consumeWindowInsets(innerPadding)
+                        .padding(innerPadding),
+                )
             }
+        }
+
+        VerticalDivider()
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        ) {
+            val current = selectedMomentId
+            if (current != null) {
+                // Keying koinViewModel on the moment id gives us a fresh VM
+                // every time the user picks a different moment — the existing
+                // VM has momentId as an immutable val (it reads
+                // commentsService.commentsFor(momentId) once at construction),
+                // so swapping ids requires a new instance, not a re-bind.
+                val detailVm: MomentDetailViewModel = koinViewModel(
+                    key = "moment-detail-pane-$current",
+                ) { parametersOf(current, null) }
+                MomentDetailPane(
+                    viewModel = detailVm,
+                    onNavigateBack = null,
+                )
+            } else if (moments.isEmpty()) {
+                EmptyMomentsState(modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+    }
+}
+
+private const val FeedPaneWidthFraction = 0.28f
+private val FeedPaneMinWidth = 380.dp
+private val FeedPaneMaxWidth = 480.dp
+
+@Composable
+private fun MomentsFeedList(
+    moments: List<MomentFeedItem>,
+    onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    openLabel: String,
+    selectedMomentId: Uuid?,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // Chat-style: feed is sorted newest-first by the service, and
+        // reverseLayout pins the newest item to the bottom of the
+        // viewport. Initial scroll lands on the newest moment; older
+        // moments are reached by scrolling up.
+        reverseLayout = true,
+    ) {
+        items(moments, key = { it.id.toString() }) { moment ->
+            MomentPostCard(
+                moment = moment,
+                isSelected = selectedMomentId != null && moment.id == selectedMomentId,
+                onCardClick = { onOpenMoment(moment.id.toString(), null) },
+                onMediaClick = { payloadKey ->
+                    onOpenMoment(moment.id.toString(), payloadKey)
+                },
+                onClickLabel = openLabel,
+            )
         }
     }
 }
@@ -155,6 +341,7 @@ fun MomentsScreen(
 @Composable
 private fun MomentPostCard(
     moment: MomentFeedItem,
+    isSelected: Boolean,
     onCardClick: () -> Unit,
     onMediaClick: (payloadKey: String) -> Unit,
     onClickLabel: String,
@@ -164,6 +351,13 @@ private fun MomentPostCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(MaterialTheme.shapes.large)
+            // Selected ring shows up in wide-screen mode where the right pane
+            // mirrors this card's contents. In compact mode `isSelected` is
+            // always false, so the background stays transparent.
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                else Color.Transparent,
+            )
             // Card-level clickable handles taps that aren't on a media cell
             // (overlay indicators, padding, description-only tiles). The
             // gallery's per-cell onMediaClick consumes cell taps and routes

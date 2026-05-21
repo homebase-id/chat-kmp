@@ -3,6 +3,7 @@ package id.homebase.core.moments.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -134,6 +135,123 @@ class MomentActionService(
         }
 
         return ToggleReactionResult(resultType = resultType)
+    }
+
+    // -------------------- DELETE --------------------
+
+    /**
+     * Soft-delete a moment. Mirrors [id.homebase.chat.services.ChatMessageActionService.deleteMessage]:
+     *  - Optimistic local soft-delete via [OptimisticWriter.writeDelete] so the
+     *    moment disappears from the feed immediately (MomentsFeedService drops
+     *    soft-deleted files on the next BatchReceived).
+     *  - Outbox enqueues a [DeleteLocalFilesByFileIdRequest]; recipients are
+     *    the full moment audience minus self when [deleteForEveryone], or null
+     *    for a local-only delete.
+     *  - Rollback on enqueue failure restores the original local row.
+     *
+     * The caller is responsible for gating "for everyone" on whether the user
+     * actually sent the moment — the service does not re-check that here
+     * (mirrors the chat surface, where the message-bubble overflow menu
+     * decides which options to offer).
+     */
+    /**
+     * Soft-delete a comment. Same shape as [deleteMoment], with one extra
+     * step: a comment's recipient audience is the *parent moment's* audience
+     * minus self (a comment routes wherever the moment did), so we read the
+     * comment file's `appData.groupId` to find the parent before resolving.
+     *
+     * The caller is responsible for gating "for everyone" on whether the
+     * user authored the comment — the service does not re-check that here.
+     */
+    suspend fun deleteComment(commentId: Uuid, deleteForEveryone: Boolean) {
+        val parentMomentId: Uuid? = if (deleteForEveryone) {
+            // Read the comment locally to find its parent moment (groupId).
+            // Same blip-resilience argument as elsewhere: never gate this
+            // path on a server round-trip.
+            val credentials = credentialsManager.requireActiveCredentials()
+            val comment = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                credentials.getIdentityId(), drive, commentId,
+            )
+            if (comment == null) {
+                Logger.w(tag = TAG) { "deleteComment: comment $commentId not found locally" }
+                return
+            }
+            val groupId = comment.fileMetadata.appData.groupId
+            if (groupId == null) {
+                Logger.w(tag = TAG) {
+                    "deleteComment: comment $commentId missing groupId; treating as local-only"
+                }
+                null
+            } else {
+                groupId
+            }
+        } else {
+            null
+        }
+
+        val recipients: List<OdinId>? = if (deleteForEveryone && parentMomentId != null) {
+            runCatching { resolveAudienceLocal(parentMomentId) }
+                .getOrElse { t ->
+                    Logger.e(throwable = t, tag = TAG) {
+                        "deleteComment audience resolve failed: ${t.message}"
+                    }
+                    return
+                }
+        } else {
+            null
+        }
+
+        val original = optimisticWriter.writeDelete(drive, commentId) ?: return
+
+        try {
+            val enqueued = outboxSync.tryEnqueue(
+                request = DeleteLocalFilesByFileIdRequest(
+                    driveId = drive,
+                    fileIds = listOf(original.fileId),
+                    recipients = recipients,
+                    hardDelete = false,
+                ),
+            )
+            if (!enqueued) {
+                optimisticWriter.rollbackWrite(drive, original)
+            }
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) { "deleteComment failed to enqueue: ${t.message}" }
+            runCatching { optimisticWriter.rollbackWrite(drive, original) }
+        }
+    }
+
+    suspend fun deleteMoment(momentId: Uuid, deleteForEveryone: Boolean) {
+        val recipients: List<OdinId>? = if (deleteForEveryone) {
+            runCatching { resolveAudienceLocal(momentId) }
+                .getOrElse { t ->
+                    Logger.e(throwable = t, tag = TAG) {
+                        "deleteMoment audience resolve failed: ${t.message}"
+                    }
+                    return
+                }
+        } else {
+            null
+        }
+
+        val original = optimisticWriter.writeDelete(drive, momentId) ?: return
+
+        try {
+            val enqueued = outboxSync.tryEnqueue(
+                request = DeleteLocalFilesByFileIdRequest(
+                    driveId = drive,
+                    fileIds = listOf(original.fileId),
+                    recipients = recipients,
+                    hardDelete = false,
+                ),
+            )
+            if (!enqueued) {
+                optimisticWriter.rollbackWrite(drive, original)
+            }
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) { "deleteMoment failed to enqueue: ${t.message}" }
+            runCatching { optimisticWriter.rollbackWrite(drive, original) }
+        }
     }
 
     // -------------------- LIST --------------------
