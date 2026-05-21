@@ -897,6 +897,9 @@ fun AppNavHost(
                                     onCreateMoment = {
                                         navController.navigate(Route.MomentCompose)
                                     },
+                                    onProfileClick = {
+                                        navController.navigate(Route.Settings)
+                                    },
                                     onOpenMoment = { id, payloadKey ->
                                         navController.navigate(
                                             Route.MomentDetail(id, payloadKey)

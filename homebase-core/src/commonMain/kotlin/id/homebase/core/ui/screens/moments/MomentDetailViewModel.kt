@@ -7,11 +7,19 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCommentsService
+import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentGroup
+import id.homebase.core.moments.services.MomentGroupService
+import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.chat.data.ConversationUiModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -53,6 +61,9 @@ class MomentDetailViewModel(
     private val actionService: MomentActionService,
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
+    momentGroupService: MomentGroupService,
+    conversationStream: ConversationStream,
+    contactService: ContactService,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -98,14 +109,35 @@ class MomentDetailViewModel(
         }
     }
 
-    val uiState: StateFlow<MomentDetailUiState> = combine(
+    /**
+     * Resolve the moment + its shared-with audience in one flow so the main
+     * uiState combine stays within the 5-typed-overload limit. We need groups
+     * + conversations to translate `MomentSource` ids into human-readable
+     * labels; doing it here keeps the downstream combine focused on screen
+     * state.
+     */
+    private val momentWithSharedWith: kotlinx.coroutines.flow.Flow<MomentWithSharedWith> = combine(
         feedService.feed,
+        momentGroupService.groups,
+        conversationStream.conversations,
+        contactService.contacts,
+        _selfOdinId,
+    ) { feed, groups, conversationsData, contacts, self ->
+        val match = feed.firstOrNull { it.id == momentId }
+        val sharedWith = match?.let {
+            resolveSharedWith(it, groups, conversationsData.items, contacts, self)
+        }
+        MomentWithSharedWith(match, sharedWith)
+    }
+
+    val uiState: StateFlow<MomentDetailUiState> = combine(
+        momentWithSharedWith,
         _overlay,
         commentsService.commentsFor(momentId),
         _screenLocal,
         _selfOdinId,
-    ) { feed, overlay, comments, local, self ->
-        val match = feed.firstOrNull { it.id == momentId }
+    ) { momentBundle, overlay, comments, local, self ->
+        val match = momentBundle.moment
         // Owner-side moment files have a null senderOdinId (the server only
         // populates it on the receiving drive). A match on the active
         // identity catches the edge case where the file was sent to self.
@@ -129,12 +161,81 @@ class MomentDetailViewModel(
             isDeleting = local.isDeletingMoment,
             deletingCommentIds = local.deletingCommentIds,
             deleteCommentDialogTarget = local.deleteCommentDialogTarget,
+            sharedWith = momentBundle.sharedWith,
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         MomentDetailUiState(initialPayloadKey = initialPayloadKey),
     )
+
+    private data class MomentWithSharedWith(
+        val moment: MomentFeedItem?,
+        val sharedWith: SharedWithDisplay?,
+    )
+
+    private fun resolveSharedWith(
+        moment: MomentFeedItem,
+        groups: List<MomentGroup>,
+        conversations: List<ConversationUiModel>,
+        contacts: List<ContactUiModel>,
+        self: OdinId?,
+    ): SharedWithDisplay? {
+        val source = moment.source
+
+        // Chat-conversation source: one entry, conversation title (with a
+        // localised fallback when the conversation list hasn't loaded yet).
+        if (source is MomentSource.Conversation) {
+            val convo = conversations.firstOrNull { it.id == source.conversationId }
+            return SharedWithDisplay.Recipients(
+                listOf(SharedWithEntry.Conversation(name = convo?.getDisplayName())),
+            )
+        }
+
+        // Structured audience source: render the breakdown of groups +
+        // individuals. Only used when the picker actually selected a group —
+        // `MomentAudienceViewModel` deliberately drops this field on
+        // individuals-only posts to avoid duplicating the recipients list.
+        if (source is MomentSource.Audience &&
+            (source.groupIds.isNotEmpty() || source.individuals.isNotEmpty())
+        ) {
+            val groupEntries = source.groupIds.mapNotNull { id ->
+                val group = groups.firstOrNull { it.id == id } ?: return@mapNotNull null
+                SharedWithEntry.Group(name = group.title, memberCount = group.members.size)
+            }
+            val individualEntries = source.individuals
+                .filter { it != self }
+                .map { SharedWithEntry.Individual(name = it.displayName(contacts)) }
+            val entries = groupEntries + individualEntries
+            // Mid-load: source has IDs but nothing resolved yet. Hide the row
+            // transiently rather than flashing "Private" or an empty list.
+            return entries.takeIf { it.isNotEmpty() }
+                ?.let { SharedWithDisplay.Recipients(it) }
+        }
+
+        // No structured source (null, or empty Audience). Fall back to the
+        // flat recipient list the writer always populates — this is the path
+        // for individuals-only posts and for legacy moments that still carry
+        // recipients but no source. Filter self so the receiver doesn't see
+        // their own address listed.
+        val flatRecipients = moment.recipients.filter { it != self }
+        if (flatRecipients.isEmpty()) return SharedWithDisplay.Private
+        return SharedWithDisplay.Recipients(
+            flatRecipients.map { SharedWithEntry.Individual(name = it.displayName(contacts)) },
+        )
+    }
+
+    /**
+     * Friendly display name from the user's contacts when one is on file;
+     * falls back to the raw domain. Mirrors the lookup pattern used in
+     * `MessageInfoViewModel` and `MomentsRecipientLookupService`. Blank
+     * contact names are skipped so a contact saved with no name doesn't
+     * render as an empty pill.
+     */
+    private fun OdinId.displayName(contacts: List<ContactUiModel>): String {
+        val contact = contacts.firstOrNull { it.odinId == this }
+        return contact?.name?.takeIf { it.isNotBlank() } ?: domainName
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun onAction(action: MomentDetailUiAction) {

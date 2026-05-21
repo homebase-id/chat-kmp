@@ -78,7 +78,44 @@ data class MomentDetailUiState(
      * dialog (for me / for everyone / cancel).
      */
     val deleteCommentDialogTarget: Uuid? = null,
+
+    /**
+     * Audience the moment was shared with — group titles and individual
+     * domains, resolved by the VM from the moment's `MomentSource`. Null when
+     * the moment has no recorded source (legacy posts, local-only) or when
+     * the lookup tables haven't loaded yet. Empty list inside the wrapper is
+     * not a valid state — the VM emits null in that case.
+     */
+    val sharedWith: SharedWithDisplay? = null,
 )
+
+/**
+ * Already-resolved audience presentation for the detail screen. Group titles
+ * and individual domains are pre-resolved by the VM so the composable can
+ * render synchronously — the only thing left to the screen is layout +
+ * localisation of the row label and any +N suffix.
+ *
+ * [Private] covers two cases that are indistinguishable to the user:
+ *  - the moment has no recorded source (legacy posts pre-dating the field), and
+ *  - the source explicitly carries an empty audience (a saved-just-for-me post).
+ * [Recipients.entries] is non-empty by construction — the VM emits null
+ * instead of an empty Recipients while a lookup is still loading.
+ */
+sealed interface SharedWithDisplay {
+    data object Private : SharedWithDisplay
+    data class Recipients(val entries: List<SharedWithEntry>) : SharedWithDisplay
+}
+
+sealed interface SharedWithEntry {
+    data class Group(val name: String, val memberCount: Int) : SharedWithEntry
+    data class Individual(val name: String) : SharedWithEntry
+    /**
+     * Conversation-sourced moment. `name` is null when the conversation list
+     * hasn't loaded yet (cold start) so the composable can fall back to a
+     * generic localised label rather than showing a blank row.
+     */
+    data class Conversation(val name: String?) : SharedWithEntry
+}
 
 sealed interface MomentDetailUiAction {
     /**
