@@ -5,11 +5,17 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import co.touchlab.kermit.Logger
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
+import id.homebase.api.ActivityProvider
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.sweepShareOutbound
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
@@ -30,6 +36,7 @@ import id.homebase.feed.share.ShareShortcutPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
 import org.koin.android.ext.koin.androidContext
@@ -41,6 +48,15 @@ import org.koin.core.context.GlobalContext.startKoin
 class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
         super.onCreate()
+
+        if (getProcessName() != packageName) return
+
+        // Register the application Context up-front so components that only
+        // need Context (cacheDir, ContentResolver — e.g. FFmpegUtils Android
+        // actuals, VideoThumbnailExtractor) can resolve it before MainActivity
+        // exists, and instrumented tests can register a test Context the same
+        // way. Activity-scoped access still goes through ActivityProvider.initialize.
+        ActivityProvider.initializeApplicationContext(this)
 
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)
@@ -111,6 +127,29 @@ class MainApplication : Application(), KoinComponent {
 
         // Publish share shortcuts when conversations change
         initShareShortcuts()
+
+        // Reap cleartext share-OUT temps every time the app reaches the
+        // foreground. The chat "Share to other app" flow writes decrypted
+        // copies of E2EE Homebase payloads into <cacheDir>/share_outbound/
+        // and hands the URI to Intent.ACTION_SEND via FileProvider; the
+        // receiving app reads it through the URI grant. Once we're back in
+        // foreground, the receiving app has had its read window — we delete
+        // the cleartext so it doesn't sit on disk indefinitely.
+        // Cold-start is covered by StartupCacheAudit; this is the bound on
+        // a same-process share's on-disk lifetime.
+        registerShareOutboundForegroundSweep()
+    }
+
+    private fun registerShareOutboundForegroundSweep() {
+        val fileOps = get<FileOperationsProvider>()
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                appScope.launch {
+                    runCatching { sweepShareOutbound(fileOps.getCacheDirectory()) }
+                        .onFailure { Logger.w("share_outbound foreground sweep failed", it) }
+                }
+            }
+        })
     }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

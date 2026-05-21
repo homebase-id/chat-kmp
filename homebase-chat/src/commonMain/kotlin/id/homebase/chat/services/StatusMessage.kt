@@ -27,6 +27,8 @@ enum class StatusMessage() {
 
     /** Local-only marker written by the receive-side heal handler when it actually
      *  hard-deleted broken local copies. Surfaces the cleanup to the user instead of
-     *  letting it happen silently. Never sent over peer. */
+     *  letting it happen silently. Never sent over peer — the sender enforces this by
+     *  passing `recipientOverride = emptyList()` (see GroupHealService.handleIncomingHealRequest);
+     *  a peer-authored copy of this status must NOT be rendered (see MessageMapper). */
     GroupHealLocalCleanup,
 }

@@ -208,15 +208,21 @@ fun ConversationListScreen(
                     file = Path(event.filePath),
                     suggestedName = event.suggestedName,
                     onSuccess = { location ->
-                        val msg = TranslationUtil.getString(MR.string.file_saved_to, location)
-                        scope.launch { snackbarHostState.showSnackbar(msg) }
+                        scope.launch {
+                            val msg = TranslationUtil.getString(MR.string.file_saved_to, location)
+                            snackbarHostState.showSnackbar(msg)
+                        }
                     },
                     onError = { error ->
-                        val msg = TranslationUtil.getString(
-                            MR.string.file_save_failed,
-                            error.message ?: TranslationUtil.getString(MR.string.error_unknown)
-                        )
-                        scope.launch { snackbarHostState.showSnackbar(msg) }
+                        scope.launch {
+                            val fallback = error.message
+                                ?: TranslationUtil.getString(MR.string.error_unknown)
+                            val msg = TranslationUtil.getString(
+                                MR.string.file_save_failed,
+                                fallback,
+                            )
+                            snackbarHostState.showSnackbar(msg)
+                        }
                     },
                 )
             }

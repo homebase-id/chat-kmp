@@ -171,6 +171,16 @@ suspend fun mapToMessageData(
         when {
             isStatusMessage -> {
                 val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                // GroupHealLocalCleanup is a private "I cleaned up MY broken copy"
+                // marker — only meaningful to the receiver that did the cleanup. A
+                // fixed sender writes it local-only, but a peer still on an older
+                // build fans it out over the wire. Drop any peer-authored copy so it
+                // never lands in our chat as if our own copy had auto-healed.
+                if (status.statusMessage == StatusMessage.GroupHealLocalCleanup &&
+                    metadata.originalAuthor != domain
+                ) {
+                    return null
+                }
                 val rendered = renderStatusMessage(
                     author = metadata.originalAuthor,
                     status = status,
@@ -320,7 +330,7 @@ suspend fun mapToMessageData(
     }
 }
 
-internal fun renderStatusMessage(
+internal suspend fun renderStatusMessage(
     author: OdinId?,
     status: StatusMessageData,
     currentUser: OdinId? = null

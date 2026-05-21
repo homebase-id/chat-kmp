@@ -211,6 +211,116 @@ class DiceRollDescriptorTest {
         assertEquals("Rolled 29 (3d12)", content.displayLabel)
     }
 
+    // ---- Open-ended d100 ----
+
+    @Test
+    fun parser_accepts_legacy_json_without_mode_field() {
+        // Hand-crafted JSON exactly as a pre-OE client would have produced it
+        // (no `mode` key). The deserializer must apply the default
+        // `DiceRollMode.Standard` and the descriptor must still pass isValid()
+        // — otherwise the long-press menu's Duel entry would disappear on
+        // every pre-existing roll.
+        val legacyJson = """
+            {
+              "faces": 20,
+              "rolls": [
+                {
+                  "messageId": "11111111-1111-1111-1111-111111111111",
+                  "odinId": "alice.test",
+                  "results": [15, 12],
+                  "rolledAtUtcMs": 1700000000000,
+                  "source": "LocalRandom"
+                }
+              ],
+              "schemaVersion": 1
+            }
+        """.trimIndent()
+        val parsed = MessageContentParser.parse(
+            ChatProtocol.ChatDiceRollMessageDataType,
+            legacyJson,
+        )
+        val diceRoll = assertIs<MessageContent.DiceRoll>(parsed)
+        val descriptor = assertNotNull(diceRoll.descriptor)
+        assertEquals(DiceRollMode.Standard, descriptor.mode)
+        assertTrue(descriptor.isValid())
+        assertEquals(27, descriptor.sum)
+    }
+
+    @Test
+    fun summary_line_for_oe_standalone_says_1d100OE() {
+        // 10,10 → 100 (UP), 4,7 → 47 (stops). Sum = 100 + 47 = 147.
+        val descriptor = oeStandalone(results = listOf(10, 10, 4, 7))
+        assertEquals(147, descriptor.sum)
+        assertEquals("Rolled 147 (1d100OE)", descriptor.summaryLine())
+    }
+
+    @Test
+    fun summary_line_for_negative_oe_is_signed() {
+        // 0,3 → 3 (DOWN), 5,0 → 50. Sum = 3 - 50 = -47.
+        val descriptor = oeStandalone(results = listOf(10, 3, 5, 10))
+        assertEquals(-47, descriptor.sum)
+        assertEquals("Rolled -47 (1d100OE)", descriptor.summaryLine())
+    }
+
+    @Test
+    fun isValid_accepts_oe_chain_with_differing_per_entry_sizes() {
+        // alice rolled 1 pair (47), bob rolled a 3-pair chain (200).
+        val descriptor = DiceRollDescriptor(
+            faces = 10,
+            mode = DiceRollMode.OpenEndedD100,
+            rolls = listOf(
+                chainRoll(messageId = Uuid.random(), odinId = "alice.test", results = listOf(4, 7), rolledAtUtcMs = 1L),
+                chainRoll(messageId = Uuid.random(), odinId = "bob.test", results = listOf(10, 10, 9, 8, 10, 2), rolledAtUtcMs = 2L),
+            ),
+        )
+        assertTrue(descriptor.isValid())
+    }
+
+    @Test
+    fun isValid_rejects_oe_with_odd_length_results() {
+        val descriptor = oeStandalone(results = listOf(10, 10, 5))
+        assertFalse(descriptor.isValid())
+    }
+
+    @Test
+    fun isValid_rejects_oe_with_faces_not_ten() {
+        val descriptor = DiceRollDescriptor(
+            faces = 20,
+            mode = DiceRollMode.OpenEndedD100,
+            rolls = listOf(chainRoll(messageId = Uuid.random(), odinId = "alice.test", results = listOf(5, 5))),
+        )
+        assertFalse(descriptor.isValid())
+    }
+
+    @Test
+    fun isValid_rejects_oe_with_zero_in_results() {
+        // Storage is 1..10; a literal `0` is not a legal d10 face value.
+        val descriptor = oeStandalone(results = listOf(0, 2))
+        assertFalse(descriptor.isValid())
+    }
+
+    @Test
+    fun parser_round_trips_oe_descriptor() {
+        val original = oeStandalone(results = listOf(10, 10, 9, 8, 10, 2))
+        val serialized = MessageContentParser.serialize(MessageContent.DiceRoll(original))
+        val parsed = MessageContentParser.parse(
+            ChatProtocol.ChatDiceRollMessageDataType,
+            serialized,
+        )
+        val diceRoll = assertIs<MessageContent.DiceRoll>(parsed)
+        val descriptor = assertNotNull(diceRoll.descriptor)
+        assertEquals(DiceRollMode.OpenEndedD100, descriptor.mode)
+        assertEquals(original, descriptor)
+        assertEquals(200, descriptor.sum)
+        assertEquals("Rolled 200 (1d100OE)", descriptor.summaryLine())
+    }
+
+    private fun oeStandalone(results: List<Int>): DiceRollDescriptor = DiceRollDescriptor(
+        faces = 10,
+        mode = DiceRollMode.OpenEndedD100,
+        rolls = listOf(chainRoll(messageId = Uuid.random(), odinId = "alice.test", results = results)),
+    )
+
     // ---- helpers ----
 
     private fun chainRoll(

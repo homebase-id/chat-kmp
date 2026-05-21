@@ -451,5 +451,66 @@ actual object ImageUtils {
     }
 
     private const val BLUR_RADIUS: Int = 25
+
+    actual suspend fun rasterizeSvg(
+        svgBytes: ByteArray,
+        maxDim: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val dom = org.jetbrains.skia.svg.SVGDOM(org.jetbrains.skia.Data.makeFromBytes(svgBytes))
+
+        // SVGDOM exposes the document container; intrinsic size comes from its width/height
+        // (or viewBox via containerSize when width/height are unset). Fallback to a regex on the
+        // raw bytes (mirrors getSvgDimensions in ThumbnailGenerator) and finally to a 320×320
+        // square so we always produce a thumb of the requested maxDim.
+        val root = dom.root ?: throw IllegalArgumentException("SVG has no root element")
+        val intrinsicW = root.width.value.toInt().takeIf { it > 0 }
+        val intrinsicH = root.height.value.toInt().takeIf { it > 0 }
+        val (naturalW, naturalH) = when {
+            intrinsicW != null && intrinsicH != null -> intrinsicW to intrinsicH
+            else -> {
+                val fallback = parseSvgDimensions(svgBytes) ?: (320 to 320)
+                fallback
+            }
+        }
+        // Set container size so viewBox-only SVGs scale to the intrinsic box.
+        dom.setContainerSize(naturalW.toFloat(), naturalH.toFloat())
+
+        // Vector → always upscale or downscale to fit exactly the requested
+        // maxDim box. calculateTargetDimensions refuses to upscale (correct
+        // for rasters where upscaling produces blurry pixels; wrong here —
+        // a vector at 192×192 intrinsic but a 320×320 thumbnail target
+        // should render at exactly 320×320).
+        val scale = maxDim.toFloat() / maxOf(naturalW, naturalH)
+        val targetW = (naturalW * scale).toInt().coerceAtLeast(1)
+        val targetH = (naturalH * scale).toInt().coerceAtLeast(1)
+
+        val surface = Surface.makeRasterN32Premul(targetW, targetH)
+        val canvas = surface.canvas
+        canvas.scale(targetW.toFloat() / naturalW, targetH.toFloat() / naturalH)
+        dom.render(canvas)
+
+        val rendered = surface.makeImageSnapshot()
+        val encoded = rendered.encodeToData(encodedFormatFor(outputFormat), quality)
+            ?: throw IllegalStateException("Failed to encode rasterized SVG to ${outputFormat.name}")
+
+        return ImageResult(
+            bytes = encoded.bytes,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(targetW, targetH)
+        )
+    }
+}
+
+// Last-resort dimension parser when SVGDOM doesn't expose intrinsic width/height
+// (viewBox-only SVGs commonly do this). Same regex shape as ThumbnailGenerator's
+// getSvgDimensions helper — duplicated here to keep ImageUtils platform-free of
+// commonMain dependencies that aren't already imported.
+private fun parseSvgDimensions(svgBytes: ByteArray): Pair<Int, Int>? {
+    val text = svgBytes.decodeToString()
+    val w = Regex("""width\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+    val h = Regex("""height\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+    return if (w != null && h != null) w to h else null
 }
 

@@ -174,7 +174,9 @@ class ChatMessageActionServiceTest {
 
             service.markAsReadByFiles(convoId, listOf(id))
 
-            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
+            // ChatMessageActionService delegates to the setter; the in-memory
+            // advance itself is the setter's job, verified in the
+            // ConversationService tests.
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
         }
     }
@@ -220,7 +222,6 @@ class ChatMessageActionServiceTest {
             // updater call, no enrich emission.
             assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
-            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
         }
     }
 
@@ -404,7 +405,9 @@ class ChatMessageActionServiceTest {
 
             // But we did view the message, so local read state must advance.
             assertEquals(100L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
-            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
+            // ChatMessageActionService delegates to the setter; the in-memory
+            // advance itself is the setter's job, verified in the
+            // ConversationService tests.
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
         }
     }
@@ -427,13 +430,12 @@ class ChatMessageActionServiceTest {
 
             // Local read pointer advanced to the conversation's latest message.
             assertEquals(5_000L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            // markAllAsRead delegates to the setter with the latest message
+            // timestamp; the in-memory advance is the setter's job (verified in
+            // the ConversationService tests).
             assertEquals(
-                listOf(convoId to latest),
-                fixture.unreadCountEnricher.calls.map { it.conversationId to it.newLastRead },
-            )
-            assertEquals(
-                listOf(convoId),
-                fixture.localLastReadUpdater.calls.map { it.conversationId },
+                listOf(convoId to 5_000L),
+                fixture.localLastReadUpdater.calls.map { it.conversationId to it.newLastReadTime.milliseconds },
             )
             // Bulk dismiss must NOT impersonate per-message read receipts.
             assertTrue(fixture.drainOutbox().isEmpty())
@@ -454,7 +456,6 @@ class ChatMessageActionServiceTest {
             service.markAllAsRead(convoId)
 
             assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
-            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
             assertTrue(fixture.drainOutbox().isEmpty())
         }
@@ -470,7 +471,6 @@ class ChatMessageActionServiceTest {
             service.markAllAsRead(convoId)
 
             assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
-            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
             assertTrue(fixture.drainOutbox().isEmpty())
         }

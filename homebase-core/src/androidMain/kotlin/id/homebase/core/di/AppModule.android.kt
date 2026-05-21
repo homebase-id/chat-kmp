@@ -23,6 +23,8 @@ import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
+import id.homebase.core.notifications.KMPNotifierBackend
+import id.homebase.core.notifications.NotificationBackend
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.AndroidUpdateAppManager
@@ -65,6 +67,7 @@ actual fun platformModule(): Module = module {
     single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
     single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
     single<ShakeDetector> { AndroidShakeDetector(androidContext()) }
+    single<NotificationBackend> { KMPNotifierBackend() }
     single(createdAtStart = true) {
         ImageLoader.Builder(androidContext())
                 .components {

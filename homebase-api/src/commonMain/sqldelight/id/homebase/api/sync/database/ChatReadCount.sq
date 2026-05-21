@@ -57,7 +57,14 @@ WHERE d.identityId = ?
   AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
   AND d.originalAuthor IS NOT NULL
   AND d.originalAuthor != ?
-  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  -- Exclude soft-deleted messages. We check BOTH markers because
+  -- HomebaseFile.isSoftDeleted() returns true for either, and the defragmenter
+  -- has documented drift between them (SoftDeleteArchivalMismatch).
+  --   fileState != 0      → canonical FileState.Deleted marker (SQL column).
+  --   archivalStatus != 2 → legacy ArchivalStatus.Removed marker (kept for
+  --                          rows written before the fileState column existed
+  --                          and for the drift case the defragmenter repairs).
+  AND d.fileState != 0
   AND d.archivalStatus != 2;
 
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
@@ -94,10 +101,60 @@ WHERE d.identityId = ?
   -- unread to yourself would be wrong.
   AND d.originalAuthor IS NOT NULL
   AND d.originalAuthor != ?
-  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  -- Exclude soft-deleted messages. We check BOTH markers because
+  -- HomebaseFile.isSoftDeleted() returns true for either, and the defragmenter
+  -- has documented drift between them (SoftDeleteArchivalMismatch).
+  --   fileState != 0      → canonical FileState.Deleted marker (SQL column).
+  --   archivalStatus != 2 → legacy ArchivalStatus.Removed marker (kept for
+  --                          rows written before the fileState column existed
+  --                          and for the drift case the defragmenter repairs).
+  AND d.fileState != 0
   AND d.archivalStatus != 2
 GROUP BY d.groupId;
 
+
+-- Conversations that have at least one live (non-deleted) message in the local
+-- index but NO conversation header (fileType=8888) — "orphaned at rest". The
+-- header-anchored boot list (selectAllConversationPlusLastMessage) is built FROM
+-- fileType=8888 rows, so these groups are invisible until a fresh message
+-- arrives and the live orphan path kicks in. This message-anchored scan finds
+-- them at rest.
+--
+-- Returns a best-effort counterparty (the most recent non-self message author)
+-- so a 1:1 can be rebuilt with its real participant instead of as a self-only
+-- "1:1 repair". Soft-deleted messages are excluded (both markers, matching
+-- selectAllUnreadCount) so a fully-deleted conversation isn't treated as orphaned.
+--
+-- Intended to run once per cold start, after the chat drive's initial sync
+-- settles; the result is empty in the normal case.
+selectOrphanedAtRestConversations:
+SELECT
+  m.groupId AS groupId,
+  COUNT(*) AS messageCount,
+  (
+    SELECT m2.originalAuthor
+    FROM DriveMainIndex m2
+    WHERE m2.identityId = m.identityId
+      AND m2.groupId = m.groupId
+      AND m2.fileType = 7878 AND m2.dataType = 0
+      AND m2.fileState != 0 AND m2.archivalStatus != 2
+      AND m2.originalAuthor IS NOT NULL
+      AND m2.originalAuthor != :selfDomain
+    ORDER BY m2.userDate DESC
+    LIMIT 1
+  ) AS counterpartyAuthor
+FROM DriveMainIndex m
+WHERE m.identityId = :identityId
+  AND m.fileType = 7878 AND m.dataType = 0
+  AND m.groupId IS NOT NULL
+  AND m.fileState != 0 AND m.archivalStatus != 2
+  AND NOT EXISTS (
+    SELECT 1 FROM DriveMainIndex h
+    WHERE h.identityId = m.identityId
+      AND h.fileType = 8888
+      AND h.uniqueId = m.groupId
+  )
+GROUP BY m.groupId;
 
 -- Raw lastReadTime for a conversation (test affordance + debugging).
 selectLastReadTime:

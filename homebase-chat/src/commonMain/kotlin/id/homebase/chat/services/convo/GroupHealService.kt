@@ -51,14 +51,16 @@ sealed interface HealPhase {
  * - [resendMainTo] / [resendAdminTo]: peers reported Missing for that file → push it.
  *   A null list means "we have no per-recipient signal for this file" — the heal
  *   service falls back to redistribution-to-all-participants (legacy behavior).
- *   An empty list means "every peer is InSync (or Error/Stale) — skip this file."
- * - [healMessageMainTo] / [healMessageAdminTo]: peers reported Stale for the
- *   main / admin file respectively → ask them to clean up their copy of THAT file
- *   via [StatusMessage.GroupHealRequested]. Mechanically the heal-message is a
- *   single status carrying both canonical versionTags, so heal only sends one
- *   message addressed to the *union* of these two sets — the split lets callers
- *   render one progress row per (peer, file). Null lists mean "broadcast"
- *   (legacy); empty means "skip the message".
+ *   An empty list means "every peer is PresentAuthoredByMe (or filtered out as
+ *   Error/Loading) — skip this file."
+ * - [healMessageMainTo] / [healMessageAdminTo]: peers reported PresentAuthoredByOther
+ *   for the main / admin file respectively → ask them to drop the third-party
+ *   copy via [StatusMessage.GroupHealRequested], so the next heal cycle can push
+ *   a clean copy. Mechanically the heal-message is a single status carrying both
+ *   canonical versionTags, so heal only sends one message addressed to the
+ *   *union* of these two sets — the split lets callers render one progress row
+ *   per (peer, file). Null lists mean "broadcast" (legacy); empty means "skip
+ *   the message".
  *
  * Peers with `MemberFileExistsStatus.Error` / `MemberFileExistsStatus.Loading`
  * MUST be filtered out by the caller before constructing the plan.
@@ -247,8 +249,8 @@ class GroupHealService(
             Logger.d { "healGroupDistribution: skipping status broadcast — caller is not the original author of main file" }
             onPhase?.invoke(HealPhase.HealMessageSkipped(healMessageAudience, "not-author"))
         } else {
-            Logger.d { "healGroupDistribution: skipping status broadcast — heal message recipient set is empty (no Stale peers)" }
-            onPhase?.invoke(HealPhase.HealMessageSkipped(emptyList(), "no-stale-peers"))
+            Logger.d { "healGroupDistribution: skipping status broadcast — heal message recipient set is empty (no peers reported PresentAuthoredByOther)" }
+            onPhase?.invoke(HealPhase.HealMessageSkipped(emptyList(), "no-other-author-peers"))
         }
 
         // Main conversation file
@@ -264,8 +266,8 @@ class GroupHealService(
                 Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
                 onPhase?.invoke(HealPhase.MainSkipped(mainTargets, "not-author"))
             } else if (mainTargets.isEmpty()) {
-                Logger.d { "healGroupDistribution: skipping main — no peers need the file (all InSync)" }
-                onPhase?.invoke(HealPhase.MainSkipped(emptyList(), "all-in-sync"))
+                Logger.d { "healGroupDistribution: skipping main — no peers reported Missing for the main file" }
+                onPhase?.invoke(HealPhase.MainSkipped(emptyList(), "no-missing-peers"))
             } else {
                 onPhase?.invoke(HealPhase.MainSending(mainTargets))
                 try {
@@ -304,8 +306,8 @@ class GroupHealService(
                 Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
                 onPhase?.invoke(HealPhase.AdminSkipped(adminTargets, "not-author"))
             } else if (adminTargets.isEmpty()) {
-                Logger.d { "healGroupDistribution: skipping admin — no peers need the file (all InSync)" }
-                onPhase?.invoke(HealPhase.AdminSkipped(emptyList(), "all-in-sync"))
+                Logger.d { "healGroupDistribution: skipping admin — no peers reported Missing for the admin file" }
+                onPhase?.invoke(HealPhase.AdminSkipped(emptyList(), "no-missing-peers"))
             } else {
                 onPhase?.invoke(HealPhase.AdminSending(adminTargets))
                 try {
@@ -334,7 +336,7 @@ class GroupHealService(
         audit.check(
             "anythingHealed",
             mainHealed || adminHealed || healMessageRecipientCount > 0,
-            "neither main nor admin file was redistributed and no heal message was sent — heal was a no-op (caller not the author of either, or every peer was already InSync)",
+            "neither main nor admin file was redistributed and no heal message was sent — heal was a no-op (caller not the author of either, or every peer was already PresentAuthoredByMe)",
         )
         audit.finish()
         // ---- end DEBUG ----
@@ -652,11 +654,17 @@ class GroupHealService(
             }
         }
 
-        // Surface the cleanup to the user. Local-only status message — never
-        // sent to peers (additionalRecipients stays empty; the conversation
-        // recipients list is irrelevant because sendStatusMessage routes the
-        // optimistic write through the same path regardless of fan-out).
-        audit.step(3, "sendStatusMessage(GroupHealLocalCleanup mainNeedsHeal=$mainNeedsHeal adminNeedsHeal=$adminNeedsHeal)")
+        // Surface the cleanup to the user. This MUST be local-only: it's our
+        // private record that *we* cleaned up *our* broken copy, meaningless to
+        // peers. `recipientOverride = emptyList()` forces an empty recipient set
+        // (sendMessageInternal → getRecipients → isLocalOnly=true,
+        // allowDistribution=false, no transit), while the optimistic local write
+        // still surfaces the message in our own chat. Without the override,
+        // getRecipients falls back to ALL conversation participants and fans the
+        // cleanup status out over the wire — including back to the heal sender,
+        // who then renders "Removed broken local copy…" in *their* chat as if
+        // their own copy had auto-healed. (That was the bug.)
+        audit.step(3, "sendStatusMessage(GroupHealLocalCleanup mainNeedsHeal=$mainNeedsHeal adminNeedsHeal=$adminNeedsHeal recipientOverride=[] local-only)")
         runCatching {
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
@@ -668,6 +676,7 @@ class GroupHealService(
                         cleanedUpAdmin = adminNeedsHeal,
                     ),
                 ),
+                recipientOverride = emptyList(),
             )
             audit.checkPass("cleanupStatusSent")
         }.onFailure { e ->

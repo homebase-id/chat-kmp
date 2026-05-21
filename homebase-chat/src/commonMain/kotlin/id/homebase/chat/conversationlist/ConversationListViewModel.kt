@@ -15,6 +15,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -59,7 +60,6 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +86,22 @@ private data class ConnectionStatusContext(
     val outgoingRecipients: Set<id.homebase.api.common.OdinId>,
     val statusKnown: Boolean,
 )
+
+/**
+ * What triggered a conversation to be opened/loaded. Logged on every [ConversationListViewModel.selectConversation]
+ * / loadMessagesForConversation so a burst of opens in the log can be attributed to a cause
+ * (a real user tap vs. a deep link vs. a recomposition/restore loop) instead of guessed at.
+ */
+enum class ConversationLoadTrigger {
+    /** User picked a conversation from the list, or a deep link routed through navigation. */
+    Navigation,
+
+    /** A notification tap resolved to a now-loaded conversation. */
+    NotificationResolved,
+
+    /** Caller did not specify — investigate if these show up in a burst. */
+    Unknown,
+}
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -536,6 +552,7 @@ class ConversationListViewModel(
                         conversationId = resolved.conversationId,
                         messageId = resolved.messageId,
                         scrollToBottom = true,
+                        trigger = ConversationLoadTrigger.NotificationResolved,
                     )
                     pendingNotificationTap.clearIfMatches(resolved.conversationId)
                 }
@@ -553,7 +570,7 @@ class ConversationListViewModel(
         // full ConversationStream.start() enrichment pipeline (or, on a
         // warm VM, for the next sync batch) — which is what made
         // notification taps feel like they were gated on the drive-sync
-        // spinner. Dispatchers.IO so the kick can't be queued behind
+        // spinner. ioDispatcher so the kick can't be queued behind
         // enrichAllConversationsWithUnreadCounts on Main.
         viewModelScope.launch {
             pendingNotificationTap.state.collect { tap ->
@@ -562,7 +579,7 @@ class ConversationListViewModel(
                 val alreadyLoaded = conversationStream.conversations.value.items
                     .any { it.id == convoId }
                 if (alreadyLoaded) return@collect
-                launch(Dispatchers.IO) {
+                launch(ioDispatcher) {
                     conversationStream.loadConversation(convoId)
                 }
             }
@@ -582,10 +599,11 @@ class ConversationListViewModel(
     fun selectConversation(
         conversationId: Uuid,
         messageId: Uuid? = null,
-        scrollToBottom: Boolean = false
+        scrollToBottom: Boolean = false,
+        trigger: ConversationLoadTrigger = ConversationLoadTrigger.Navigation
     ) {
         Logger.i(tag = "ConversationListViewModel") {
-            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom"
+            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom trigger=$trigger"
         }
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
@@ -593,7 +611,7 @@ class ConversationListViewModel(
         }
 
         ActiveConversation.selectConversation(conversationId)
-        loadMessagesForConversation(conversationId, messageId, scrollToBottom)
+        loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
     fun eventConsumed() {
@@ -612,7 +630,11 @@ class ConversationListViewModel(
                 // to a different one.
                 pendingNotificationTap.clear()
                 ActiveConversation.selectConversation(action.conversationId)
-                loadMessagesForConversation(action.conversationId, action.messageId)
+                loadMessagesForConversation(
+                    action.conversationId,
+                    action.messageId,
+                    trigger = ConversationLoadTrigger.Navigation,
+                )
             }
 
             is ConversationListUiAction.BackClicked -> {
@@ -1007,13 +1029,14 @@ class ConversationListViewModel(
     private fun loadMessagesForConversation(
         conversationId: Uuid,
         messageIdForScroll: Uuid?,
-        scrollToBottom: Boolean = false
+        scrollToBottom: Boolean = false,
+        trigger: ConversationLoadTrigger = ConversationLoadTrigger.Unknown
     ) {
         val loadStart = TimeSource.Monotonic.markNow()
 
         val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
         Logger.i(tag = "ConversationListViewModel") {
-            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
+            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages trigger=$trigger"
         }
 
         // Always mark loading here, even when hasCachedMessages == true.
@@ -1054,7 +1077,7 @@ class ConversationListViewModel(
         // already shows isLoadingMessages = true above; messages will fill in via
         // the collect block below.
         Logger.i(tag = "ConversationListViewModel") {
-            "selectedConversationId set id=$conversationId (pending messages)"
+            "selectedConversationId set id=$conversationId (pending messages) trigger=$trigger"
         }
         _uiState.update { it.copy(selectedConversationId = conversationId) }
 
@@ -1106,15 +1129,17 @@ class ConversationListViewModel(
                             val window = messageState.window
                             val windowMessages = window.messages
                             val messagesModels = withContext(Dispatchers.Default) {
-                                val filteredByExit = if (exitedAt != null)
+                                // Soft-delete display lives at the SQL layer now (see
+                                // ChatMessageStream.fetchMessages): note-to-self filters
+                                // tombstones out, regular conversations keep them. We let
+                                // the in-memory window mirror SQL on the next page load —
+                                // a just-deleted note-to-self message remains visible as a
+                                // "Deleted File" tombstone briefly and disappears on the
+                                // next visit. Single source of truth.
+                                val messages = if (exitedAt != null)
                                     windowMessages.filter { it.userDate <= exitedAt }
                                 else
                                     windowMessages
-                                val messages =
-                                    if (conversationId == ChatProtocol.ConversationWithYourselfId)
-                                        filteredByExit.filter { !it.isDeleted }
-                                    else
-                                        filteredByExit
                                 val timezone = TimeZone.currentSystemDefault()
                                 val groupedMessages =
                                     messages.sortedBy { it.userDate }.groupBy { message ->

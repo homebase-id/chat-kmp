@@ -3,14 +3,16 @@ package id.homebase.core.di
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
+import id.homebase.api.file.CacheAudit
+import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
+import id.homebase.core.config.dataUpgradeReturnUrl
 
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.youauth.YouAuthFlowManager
-import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -47,7 +49,6 @@ import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
-import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
 import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
@@ -65,8 +66,19 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.config.getFeedPermissionExtensionConfig
+import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
+import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentActionService
+import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.moments.services.MomentCommentsService
+import id.homebase.core.moments.services.MomentGroupService
+import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
+import id.homebase.core.moments.services.MomentsPostSenderService
+import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentsRecipientMruStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -86,6 +98,12 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
+import id.homebase.core.ui.screens.moments.MomentComposeViewModel
+import id.homebase.core.ui.screens.moments.MomentDetailViewModel
+import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
+import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
+import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
@@ -106,9 +124,36 @@ import id.homebase.core.config.getVaultPermissionExtensionConfig
 val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
+val MomentsPermissionQualifier = named("momentsPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { MomentsPreferences(get()) }
+    singleOf(::MomentsPostSenderService)
+    // MRU store mirrors DriveRegistry's wiring — narrow lambda deps for the
+    // write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
+    // for uploadFile/updateFileByUniqueId) so tests can swap in fakes.
+    single {
+        val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
+        val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+        MomentsRecipientMruStore(
+            credentialsManager = get(),
+            databaseManager = get(),
+            getFileHeaderByUid = { driveId, uniqueId ->
+                files.getFileHeaderByUid(driveId, uniqueId)
+            },
+            uploadFile = { request -> uploader.uploadFile(request) },
+            updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
+            eventBus = get(),
+            scope = get(),
+        )
+    }
+    singleOf(::MomentsRecipientLookupService)
+    singleOf(::MomentsFeedService)
+    singleOf(::MomentCommentsService)
+    singleOf(::MomentActionService)
+    singleOf(::MomentGroupService)
+    single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
@@ -158,7 +203,6 @@ val appModule = module {
     single {
         val imageLoader: ImageLoader = get()
         val fileOps: FileOperationsProvider = get()
-        val fileSystem = FileSystem.SYSTEM
         val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
             driveSyncManager = get(),
@@ -167,20 +211,23 @@ val appModule = module {
             driveFileProviderCached = get(),
             publicProfileProviderCached = get(),
             clearPlatformCaches = {
+                // Logout sweep. In dry-run for the broader cleanup; the orphan
+                // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
+                // the role the standalone safeDeleteRecursively("coil3_disk_cache") line
+                // used to play here.
+                runCatching {
+                    CacheSweeper.sweepAll(CacheAudit.audit(fileOps.getCacheDirectory()))
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "logout cache sweep failed"
+                    }
+                }
                 runCatching { imageLoader.memoryCache?.clear() }
                     .onFailure {
                         Logger.w(tag = "YouAuthFlowManager", throwable = it) {
                             "coil memory cache clear failed on logout"
                         }
                     }
-                runCatching {
-                    val orphan = "${fileOps.getCacheDirectory()}/coil3_disk_cache".toPath()
-                    if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
-                }.onFailure {
-                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
-                        "orphan coil disk cache delete failed on logout"
-                    }
-                }
                 pendingUpgradeManager.reset()
             },
         )
@@ -203,6 +250,13 @@ val appModule = module {
                 conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
+                // MRU store before lookup: lookup's combine() reads
+                // mruStore.stableKeys, and started-first means the cold-load
+                // emits before the lookup builds its first list.
+                get<MomentsRecipientMruStore>().start()
+                get<MomentsRecipientLookupService>().start()
+                get<MomentsFeedService>().start()
+                get<MomentGroupService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -249,9 +303,29 @@ val appModule = module {
     singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
-    single<UnreadCountEnricher> { get<ConversationStream>() }
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
-    singleOf(::ConversationService)
+    // Manual `single` (not `singleOf(::ConversationService)`) because the
+    // ctor carries a `lastReadDebounceMs: Long = 1_000L` test affordance
+    // that Koin's reflective binder would try to resolve as a Long
+    // singleton (`NoDefinitionFoundException` at app startup). Spelling
+    // the injections out lets the Long default through.
+    single {
+        ConversationService(
+            credentialsManager = get(),
+            payloadBundleEncryptionService = get(),
+            dbm = get(),
+            introductionProvider = get(),
+            scope = get(),
+            outboxSync = get(),
+            chatMessageSenderService = get(),
+            optimisticWriter = get(),
+            conversationStream = get(),
+            participantLookup = get(),
+            driveSyncManager = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
+            fileOperationsProvider = get(),
+        )
+    }
     single<LocalLastReadUpdater> { get<ConversationService>() }
     single<GroupHealConversationOps> { get<ConversationService>() }
     singleOf(::GroupHealService)
@@ -277,7 +351,8 @@ val appModule = module {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
             credentialsManager = get(),
-            isUpgradeRequired = { upgradeProvider.isUpgradeRequired() },
+            checkUpgradeStatus = { upgradeProvider.checkUpgradeStatus() },
+            dataUpgradeReturnUrl = ::dataUpgradeReturnUrl,
         )
     }
     singleOf(::ConnectionRequestService)
@@ -346,7 +421,7 @@ val appModule = module {
             driveSyncManager = get(),
             credentialsManager = get(),
             databaseManager = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
             decodeMessageContentProbe = decodeMessageContentProbe,
@@ -379,7 +454,7 @@ val appModule = module {
             contactService = get(),
             connectionService = get(),
             connectionRequestService = get(),
-            driveFileProvider = get(),
+            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             shareContentProcessor = get(),
             localVideoContextStore = get(),
             pendingNotificationTap = get(),
@@ -399,6 +474,30 @@ val appModule = module {
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
+    viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
+    viewModel(MomentsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getMomentsPermissionExtensionConfig()) }
+    viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
+    viewModelOf(::MomentsSettingsViewModel)
+    viewModelOf(::MomentComposeViewModel)
+    viewModelOf(::MomentAudienceViewModel)
+    viewModelOf(::CreateMomentGroupViewModel)
+    viewModelOf(::MomentsFeedViewModel)
+    viewModel { params ->
+        MomentDetailViewModel(
+            momentId = params.get(),
+            initialPayloadKey = params.getOrNull(),
+            feedService = get(),
+            commentsService = get(),
+            postSender = get(),
+            actionService = get(),
+            credentialsManager = get(),
+            userPreferences = get(),
+            momentGroupService = get(),
+            conversationStream = get(),
+            contactService = get(),
+            driveFileProvider = get(),
+        )
+    }
     viewModel(VaultPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -438,6 +537,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
+            fileOperationsProvider = get(),
             driveSyncManager = get(),
         )
     }

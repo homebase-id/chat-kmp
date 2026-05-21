@@ -78,6 +78,16 @@ class JvmFileOperationsProvider : FileOperationsProvider {
             file.absolutePath
         }
 
+    override suspend fun writeBytesToShareOutboundFile(
+        bytes: ByteArray,
+        suffix: String,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME).apply { mkdirs() }
+        val file = File.createTempFile("share_", suffix, dir)
+        file.writeBytes(bytes)
+        file.absolutePath
+    }
+
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>

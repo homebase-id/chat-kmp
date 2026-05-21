@@ -71,7 +71,32 @@ class ConversationServiceTestFixture : AutoCloseable {
     lateinit var optimisticWriter: OptimisticWriter
         private set
 
-    suspend fun build(scope: CoroutineScope = TestScope()): ConversationService {
+    /**
+     * In-memory participant lookup that the service's lastRead gate reads
+     * from. Tests that exercise the gate (mark-read rejection, peer-device
+     * advance) seed conversations via [FakeConversationParticipantLookup.setLastRead]
+     * with an explicit baseline; tests that only run monotonically-increasing
+     * advances can leave it empty — the gate then treats every candidate as
+     * "no prior known" and accepts.
+     */
+    val participantLookup: id.homebase.chat.services.FakeConversationParticipantLookup =
+        id.homebase.chat.services.FakeConversationParticipantLookup()
+
+    /**
+     * Build the service for tests.
+     *
+     * @param lastReadDebounceMs The lastRead-writeback debounce window. Defaults
+     *   to one hour so the timer effectively never fires during a test —
+     *   `runTest`'s scheduler can advance virtual time at points outside our
+     *   control, so tests that need to assert on the debounce drain must call
+     *   [ConversationService.flushLastReadNow] explicitly.
+     */
+    suspend fun build(
+        scope: CoroutineScope = TestScope(),
+        lastReadDebounceMs: Long = Long.MAX_VALUE / 2,
+        driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
+        fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
+    ): ConversationService {
         dbm = createInMemoryDbm()
         credentialsManager = createCredentialsManager(testDomain)
         eventBus = EventBus()
@@ -103,12 +128,14 @@ class ConversationServiceTestFixture : AutoCloseable {
             chatMessageSenderService = statusMessageSender,
             optimisticWriter = optimisticWriter,
             conversationStream = conversationLoader,
-            // Heal-payload-reuse helpers — null in tests, real instances in prod.
-            // The fixture doesn't exercise the heal redistribute path, so a null
-            // here just short-circuits reuseExistingPayloadsForResend to an
-            // empty manifest (matches pre-image-fix behavior for tests).
-            driveFileProvider = null,
-            fileOperationsProvider = null,
+            participantLookup = participantLookup,
+            // Heal-payload-reuse helpers — null by default, but tests exercising
+            // the heal redistribute path (image preservation) pass fakes. A null
+            // here short-circuits reuseExistingPayloadsForResend to an empty
+            // manifest.
+            driveFileProvider = driveFileProvider,
+            fileOperationsProvider = fileOperationsProvider,
+            lastReadDebounceMs = lastReadDebounceMs,
         )
     }
 
@@ -315,6 +342,7 @@ class ConversationServiceTestFixture : AutoCloseable {
         title: String = "",
         archivalStatus: Int = 0,
         localTags: List<Uuid> = emptyList(),
+        payloadsJson: String = "[]",
     ) {
         val now = Clock.System.now().epochSeconds
         val recipientsJson = participants.joinToString(",") { "\"$it\"" }
@@ -365,7 +393,7 @@ class ConversationServiceTestFixture : AutoCloseable {
                 "referencedFile": null,
                 "reactionPreview": null,
                 "versionTag": "${Uuid.random()}",
-                "payloads": [],
+                "payloads": $payloadsJson,
                 "dataSource": null
               },
               "serverMetadata": {
@@ -385,6 +413,45 @@ class ConversationServiceTestFixture : AutoCloseable {
               "fileByteCount": 100
             }"""
         )
+    }
+
+    /**
+     * Seed a group conversation whose conversation file carries a `convo_img`
+     * payload descriptor WITH a set of thumbnails — the shape the group-heal
+     * redistribute path reuses. Used to assert that the resend re-attaches those
+     * thumbnails (otherwise the AppendOrOverwrite wipes them and the avatar 404s).
+     */
+    suspend fun seedGroupWithImagePayload(
+        conversationId: Uuid = Uuid.random(),
+        others: List<String>,
+        thumbnailSizes: List<Int> = listOf(72, 320),
+        imagePayloadIvBase64: String = "AAAAAAAAAAAAAAAAAAAAAA==", // 16 zero bytes
+        title: String = "",
+    ): Uuid {
+        val participants = listOf(testDomain) + others
+        val thumbsJson = thumbnailSizes.joinToString(",") { s ->
+            """{"pixelWidth":$s,"pixelHeight":$s,"contentType":"image/webp"}"""
+        }
+        val payloadsJson = """[
+            {
+              "key": "${ChatProtocol.ConversationImageKey}",
+              "contentType": "image/jpeg",
+              "iv": "$imagePayloadIvBase64",
+              "lastModified": 1779276955816,
+              "thumbnails": [$thumbsJson]
+            }
+        ]"""
+        insertConversationFile(
+            fileId = Uuid.random(),
+            uniqueId = conversationId,
+            participants = participants,
+            originalAuthor = testDomain,
+            isGroup = true,
+            adminDataJson = """{"admins":["$testDomain"]}""",
+            title = title,
+            payloadsJson = payloadsJson,
+        )
+        return conversationId
     }
 
     private suspend fun insertAdminFile(
@@ -535,6 +602,64 @@ class FakeStatusMessageSender : StatusMessageSender {
         )
         return SendMessageResult(messageUniqueId)
     }
+}
+
+/**
+ * Fake [id.homebase.api.client.drives.files.ResendPayloadByteSource] for the heal
+ * redistribute path. Returns fixed non-empty encrypted bytes for any payload /
+ * thumbnail request and records what was asked for so tests can assert the
+ * resend pulled the payload's thumbnails (not just the payload bytes).
+ */
+class FakeResendPayloadByteSource(
+    private val payloadBytes: ByteArray = ByteArray(2048) { 1 },
+    private val thumbBytes: ByteArray = ByteArray(256) { 2 },
+) : id.homebase.api.client.drives.files.ResendPayloadByteSource {
+    val payloadRequests = mutableListOf<String>()
+    val thumbRequests = mutableListOf<Triple<String, Int, Int>>()
+
+    override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray {
+        payloadRequests += key
+        return payloadBytes
+    }
+
+    override suspend fun getThumbBytesEncrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        lastModified: Long?,
+    ): ByteArray {
+        thumbRequests += Triple(payloadKey, width, height)
+        return thumbBytes
+    }
+}
+
+/**
+ * Minimal [id.homebase.api.file.FileOperationsProvider]. Only [writeBytesToTempFile]
+ * is exercised by the heal resend path (it spills encrypted payload bytes to a
+ * temp file); everything else errors so an unexpected call is caught.
+ */
+class FakeFileOperationsProvider : id.homebase.api.file.FileOperationsProvider {
+    private var counter = 0
+    val writtenPaths = mutableListOf<String>()
+
+    override fun openFileInput(path: String): io.ktor.client.request.forms.InputProvider =
+        error("FakeFileOperationsProvider.openFileInput should not be called in tests")
+    override suspend fun readFileBytes(path: String): ByteArray =
+        error("FakeFileOperationsProvider.readFileBytes should not be called in tests")
+    override fun deleteTempFile(path: String): Boolean = true
+    override fun getCacheDirectory(): String = "/tmp"
+    override fun getFileSize(path: String): Long = 0L
+    override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String {
+        val path = "/tmp/${prefix}${counter++}$suffix"
+        writtenPaths += path
+        return path
+    }
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
+        error("FakeFileOperationsProvider.writeBytesToShareOutboundFile should not be called in tests")
+    override suspend fun writeStream(path: String, data: kotlinx.coroutines.flow.Flow<ByteArray>) =
+        error("FakeFileOperationsProvider.writeStream should not be called in tests")
 }
 
 class FakeConversationLoader : ConversationLoader {

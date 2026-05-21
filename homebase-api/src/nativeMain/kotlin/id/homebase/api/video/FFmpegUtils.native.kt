@@ -1,10 +1,12 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import kotlin.coroutines.resume
 import kotlin.math.roundToLong
 import kotlinx.cinterop.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.AVFoundation.*
 import platform.CoreMedia.CMTimeGetSeconds
@@ -35,6 +37,22 @@ actual object FFmpegUtils {
 
     private val bridge: FFmpegKitBridge
         get() = FFmpegKitBridgeHolder.getBridge()
+
+    private var cachedFfmpegVersion: String? = null
+    private var ffmpegVersionProbed: Boolean = false
+
+    actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
+        if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        val v = try {
+            parseFfmpegVersionBanner(bridge.getFfmpegVersionBanner())
+        } catch (e: Exception) {
+            println("Docs: getFfmpegVersion failed: ${e.message}")
+            null
+        }
+        cachedFfmpegVersion = v
+        ffmpegVersionProbed = true
+        v
+    }
 
     actual fun getUniqueId(filePath: String): String {
         // Match Android/Desktop: use file name + size for consistent ID generation
@@ -98,95 +116,93 @@ actual object FFmpegUtils {
                 }
             }
 
-    private val MAX_BITRATE = 3_000_000L
-    private val MAX_WIDTH = 1280
-
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
-    ): String? =
-            withContext(Dispatchers.IO) {
-                val fileManager = NSFileManager.defaultManager
+        quality: VideoQuality,
+    ): String? = withContext(Dispatchers.IO) {
+        val fileManager = NSFileManager.defaultManager
+        if (!fileManager.fileExistsAtPath(inputPath)) {
+            println("Docs: Input file not found: $inputPath")
+            return@withContext null
+        }
 
-                // Validate input file exists
-                if (!fileManager.fileExistsAtPath(inputPath)) {
-                    println("Docs: Input file not found: $inputPath")
-                    return@withContext null
-                }
+        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
+        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
-                val hasTrim = trimStartMs != null || trimEndMs != null
+        val cacheDir = getCacheDirectory()
+        val outputPath = "$cacheDir/compressed_${getUniqueId(inputPath)}.mp4"
+        if (fileManager.fileExistsAtPath(outputPath)) {
+            fileManager.removeItemAtPath(outputPath, null)
+        }
 
-                if (!hasTrim && isAlreadyOptimal(inputPath)) {
-                    println("Docs: Video already optimal — skipping compression")
-                    return@withContext null
-                }
+        // Probe via the Swift FFmpegKit bridge.
+        val mediaInfo = bridge.getMediaInformation(inputPath)
+        val videoStream = mediaInfo?.streams?.firstOrNull { it.type == "video" }
+        val widthPx = videoStream?.width ?: 0
+        val heightPx = videoStream?.height ?: 0
+        val codecMime = videoStream?.codec  // ffprobe short form, e.g. "h264"
 
-                val cacheDir = getCacheDirectory()
-                val outputPath = "$cacheDir/compressed_${getUniqueId(inputPath)}.mp4"
+        val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
+        val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
+        val durationMs = getDurationMs(inputPath)
 
-                // Remove existing file if any
-                if (fileManager.fileExistsAtPath(outputPath)) {
-                    fileManager.removeItemAtPath(outputPath, null)
-                }
+        // Try hardware encoder first; fall back to libx264 if it fails. The
+        // planner takes the encoder name and emits libx264-only flags
+        // (-preset veryfast) only when appropriate.
+        for ((index, encoder) in listOf("h264_videotoolbox", "libx264").withIndex()) {
+            val plan = FfmpegCompressPlanner.plan(
+                inputPath = inputPath,
+                outputPath = outputPath,
+                quality = quality,
+                trimStartMs = effectiveTrimStart,
+                trimEndMs = effectiveTrimEnd,
+                probedWidthPx = widthPx,
+                probedHeightPx = heightPx,
+                probedCodecMime = codecMime,
+                inputDurationMs = durationMs,
+                inputBytes = inputBytes,
+                encoder = encoder,
+            )
 
-                // Build optional trim args. -ss before -i for fast input seek; -t for duration.
-                val trimPre = if (trimStartMs != null && trimStartMs > 0) {
-                    "-ss ${formatSecondsForCli(trimStartMs)} "
-                } else ""
-
-                val trimDurMs = if (trimEndMs != null) {
-                    (trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)
-                } else null
-                val trimMid = if (trimDurMs != null) {
-                    "-t ${formatSecondsForCli(trimDurMs)} "
-                } else ""
-
-                // Use hardware encoder (VideoToolbox) for speed, fall back to libx264
-                val command =
-                        "-y ${trimPre}-i \"$inputPath\" ${trimMid}-c:v h264_videotoolbox -b:v 3000k -vf scale=min(1280\\,iw):-2 \"$outputPath\""
-
-                val result = bridge.executeFFmpeg(command)
-
-                if (result.isSuccess) {
-                    outputPath
-                } else {
-                    // Fall back to software encoder if hardware fails
-                    println("Docs: Hardware encoder failed, falling back to libx264: ${result.failStackTrace}")
-                    val fallbackCommand =
-                            "-y ${trimPre}-i \"$inputPath\" ${trimMid}-c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
-                    val fallbackResult = bridge.executeFFmpeg(fallbackCommand)
-                    if (fallbackResult.isSuccess) outputPath else null
-                }
+            if (plan.skipReason != null) {
+                println("Docs: compressVideo: AlreadyOptimal — ${plan.skipReason}")
+                return@withContext null
             }
 
-    /**
-     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
-     * Bitrate is computed from fileSize / duration. The bridge's
-     * `videoStream.bitrate` is optional in the underlying ffprobe output and was
-     * not always populated, which used to force unnecessary re-encodes.
-     */
-    private suspend fun isAlreadyOptimal(inputPath: String): Boolean {
-        val mediaInfo = bridge.getMediaInformation(inputPath) ?: return false
-        val videoStream = mediaInfo.streams.firstOrNull { it.type == "video" }
-            ?: return false
-        val codec = videoStream.codec?.lowercase() ?: return false
-        val width = videoStream.width ?: return false
+            // When using a VideoToolbox encoder, also HW-decode the input.
+            // Without this, HEVC sources are software-decoded which is 3-4x
+            // slower on iPhone (18s → 5s for a 15s 1080p60 HEVC clip).
+            val args = if (encoder.contains("videotoolbox")) {
+                val mutable = plan.args.toMutableList()
+                val iIdx = mutable.indexOf("-i")
+                if (iIdx >= 0) {
+                    mutable.add(iIdx, "videotoolbox")
+                    mutable.add(iIdx, "-hwaccel")
+                }
+                mutable
+            } else {
+                plan.args
+            }
 
-        val attrs = NSFileManager.defaultManager.attributesOfItemAtPath(inputPath, null)
-        val sizeBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
-        val durationMs = getDurationMs(inputPath)
-        if (sizeBytes <= 0L || durationMs <= 0L) return false
-        val avgBitrate = sizeBytes * 8L * 1000L / durationMs
+            val command = args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
 
-        return codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
-    }
+            val result = executeFfmpegWithProgress(command, durationMs, onProgress)
+            if (result.isSuccess) {
+                return@withContext outputPath
+            }
+            if (index == 0) {
+                println("Docs: Hardware encoder $encoder failed, trying next: ${result.failStackTrace}")
+            } else {
+                println("Docs: Software encoder $encoder also failed: ${result.failStackTrace}")
+            }
+        }
 
-    private fun formatSecondsForCli(ms: Long): String {
-        val whole = ms / 1000
-        val frac = ms % 1000
-        return "$whole.${frac.toString().padStart(3, '0')}"
+        // Both encoders failed — delete the partial/empty output (see #5).
+        deleteFailedFfmpegOutput(outputPath)
+        null
     }
 
     actual suspend fun segmentVideo(
@@ -225,9 +241,40 @@ actual object FFmpegUtils {
                     Pair(indexPath, segmentPath)
                 } else {
                     println("Docs: Error segmenting video: ${result.failStackTrace}")
+                    // Delete the leftover hls_<uuid>/ dir (see #5).
+                    deleteFailedFfmpegOutput(outputDir)
                     null
                 }
             }
+
+    private fun progressFraction(timeMs: Long, durationMs: Long): Float =
+        if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
+
+    /**
+     * Bridges the Swift async ffmpeg API to a suspending coroutine and converts
+     * ffmpeg-kit's elapsed media time (ms) into a 0..1 progress fraction via
+     * [progressFraction]. Cancellation calls the bridge-wide cancel — fine for
+     * the current single-job flow (see [FFmpegKitBridge.cancelAllFFmpegSessions]
+     * docs for the per-session follow-up).
+     */
+    private suspend fun executeFfmpegWithProgress(
+        command: String,
+        durationMs: Long,
+        onProgress: ((Float) -> Unit)?,
+    ): FFmpegResult = suspendCancellableCoroutine { cont ->
+        bridge.executeFFmpegAsync(
+            command = command,
+            onProgress = { timeMs ->
+                onProgress?.invoke(progressFraction(timeMs, durationMs))
+            },
+            onComplete = { result ->
+                if (cont.isActive) cont.resume(result)
+            },
+        )
+        cont.invokeOnCancellation {
+            try { bridge.cancelAllFFmpegSessions() } catch (_: Exception) {}
+        }
+    }
 
     private fun getCacheDirectory(): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
@@ -294,12 +341,22 @@ actual object FFmpegUtils {
                 val command =
                         "$baseCommand -hls_time 6 -hls_list_size 0 -hls_flags single_file -hls_key_info_file \"$keyInfoFilePath\" -f hls -hls_segment_filename \"$segmentPath\" \"$indexPath\""
 
-                val result = bridge.executeFFmpeg(command)
+                // Re-probe on the segmentation input — the upstream compressor
+                // may have trimmed, so the original input's duration is no
+                // longer the denominator for progress scaling.
+                val durationMs = getDurationMs(inputPath)
+
+                val result = executeFfmpegWithProgress(command, durationMs, onProgress)
 
                 if (result.isSuccess) {
+                    // Segmentation done — FFmpeg has consumed the key material. Delete it now
+                    // so the plaintext AES key doesn't linger in the cache dir (see #7).
+                    deleteHlsKeyMaterial(outputDir)
                     Pair(indexPath, segmentPath)
                 } else {
                     println("Docs: Error segment+encrypt video: ${result.failStackTrace}")
+                    // Delete the whole hls_<uuid>/ dir — partial segments + key material (see #5).
+                    deleteFailedFfmpegOutput(outputDir)
                     null
                 }
             }

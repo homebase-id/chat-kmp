@@ -23,7 +23,7 @@ import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
 import platform.Security.errSecItemNotFound
 import platform.Security.kSecAttrAccessible
-import platform.Security.kSecAttrAccessibleAfterFirstUnlock
+import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
@@ -72,7 +72,7 @@ actual object ShareAuthBridge {
         )
         val valueCf = CFBridgingRetain(valueData)
         CFDictionarySetValue(attrs, kSecValueData, valueCf)
-        CFDictionarySetValue(attrs, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+        CFDictionarySetValue(attrs, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
         CFRelease(valueCf)
 
         val status = SecItemUpdate(query, attrs)
@@ -84,7 +84,7 @@ actual object ShareAuthBridge {
             val addValueCf = CFBridgingRetain(valueData)
             CFDictionarySetValue(addDict, kSecValueData, addValueCf)
             CFRelease(addValueCf)
-            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
             SecItemAdd(addDict, null)
             CFRelease(addDict)
         }

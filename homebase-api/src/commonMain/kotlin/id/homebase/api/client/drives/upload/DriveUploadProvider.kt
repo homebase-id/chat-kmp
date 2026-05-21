@@ -220,6 +220,35 @@ class DriveUploadProvider(
 
         val creds = requireCreds()
         val sharedSecret = creds.secret.unsafeBytes
+
+        // DRAIN-TIME payload integrity check (HealAudit). Payload bytes (e.g. the
+        // reused `convo_img` group image on a group heal) are staged to a temp
+        // file at ENQUEUE time but read lazily HERE, at outbox-drain time. On
+        // Android that staging dir is cacheDir, which the OS can reclaim while the
+        // row waits in the outbox: getFileSize() returns 0 for a missing file and
+        // openFileInput() then streams 0 bytes, so an AppendOrOverwrite can
+        // silently replace a good payload with an EMPTY one — the file header (and
+        // its previewThumbnail) survive while the full payload becomes unreadable
+        // (warning triangle over the tiny thumb). The upload still reports
+        // "success", so without this log the corruption is invisible. Logged WARN
+        // when a payload is missing/zero so a heal repro shows exactly which
+        // payload shipped empty.
+        request.payloads?.forEach { p ->
+            val size = runCatching { fileOperationsProvider.getFileSize(p.filePath) }.getOrDefault(-1L)
+            if (size <= 0L) {
+                Logger.w(tag = "HealAudit") {
+                    "$TAG.updateFileByUniqueId: payload key=${p.key} size=$size at drain " +
+                        "(uniqueId=${request.uniqueId} path=${p.filePath} preEncrypted=${p.isPreEncrypted}) — " +
+                        "AppendOrOverwrite may ship an EMPTY payload and clobber the existing one"
+                }
+            } else {
+                Logger.d(tag = "HealAudit") {
+                    "$TAG.updateFileByUniqueId: payload key=${p.key} size=$size at drain " +
+                        "(uniqueId=${request.uniqueId} preEncrypted=${p.isPreEncrypted})"
+                }
+            }
+        }
+
         // Build encrypted descriptor
         val sharedSecretEncryptedDescriptor =
             buildSharedSecretEncryptedUpdateDescriptor(
@@ -559,5 +588,12 @@ class DriveUploadProvider(
                 Logger.w(tag = TAG) { "Temp file could not be deleted (best-effort): $path" }
             }
         }
+
+        // The per-file loop above only kills the single payload file (e.g. the
+        // HLS `index.ts`). For HLS sends we also want the parent `hls_<uuid>/`
+        // dir gone — otherwise `index.m3u8` and any FFmpeg `.tmp` leftovers
+        // accumulate (the cache leak chased in #6). cleanupHlsScratch is a
+        // no-op for non-HLS payloads.
+        cleanupHlsScratch(payloads)
     }
 }

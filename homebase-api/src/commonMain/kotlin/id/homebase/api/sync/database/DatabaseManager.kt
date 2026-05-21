@@ -7,7 +7,29 @@ import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+
+/**
+ * One-shot signal that the local DB was just wiped because the on-disk schema
+ * version was older than [DatabaseManager.DATABASE_VERSION]. The UI consumes this
+ * (see `AppNavHost`) to show a snackbar so the user understands why their data
+ * appears to have vanished while DriveSync repopulates it from the server.
+ *
+ * Only emitted from [DatabaseManager.initialize] — the logout-driven wipe in
+ * `DriveSyncManager.clearStorage` calls `wipeAndRecreate` directly and is NOT
+ * an "upgrade".
+ *
+ * Sticky: stays in [JustUpgraded] until [DatabaseManager.markUpgradeConsumed]
+ * is called, so a consumer that subscribes after the synchronous wipe finished
+ * still sees the signal.
+ */
+sealed interface DatabaseUpgradeState {
+    data object Idle : DatabaseUpgradeState
+    data class JustUpgraded(val fromVersion: Int) : DatabaseUpgradeState
+}
 
 // Adapters as top-level constants (stateless, shared)
 private val appNotificationsAdapter = AppNotifications.Adapter(
@@ -71,13 +93,42 @@ class DatabaseManager(
             outboxAdapter
         )
         logger.i { "Database initialized" }
+
+        // One-time audit of the effective SQLite mode, so each platform's actual
+        // journal mode / busy timeout is visible in homebase.log. WAL + a non-zero
+        // busy_timeout are what keep concurrent reads/writes from throwing
+        // SQLITE_BUSY (which knocked the desktop WebSocket offline). synchronous is
+        // 0=OFF 1=NORMAL 2=FULL 3=EXTRA.
+        val journalMode = readPragmaString("PRAGMA journal_mode") ?: "?"
+        val busyTimeoutMs = readPragmaLong("PRAGMA busy_timeout") ?: -1L
+        val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
+        logger.i {
+            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms synchronous=$synchronous"
+        }
     }
 
     companion object {
         private const val DATABASE_VERSION =
-            1  // Increase to wipe the database and rebuild all tables
+            5  // Increase to wipe the database and rebuild all tables
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
+
+        // Companion-scoped so consumers (AppNavHost) can observe an upgrade even when
+        // they subscribe *after* initialize() finished. The state is sticky until
+        // markUpgradeConsumed() is called explicitly.
+        private val _databaseUpgradeState =
+            MutableStateFlow<DatabaseUpgradeState>(DatabaseUpgradeState.Idle)
+        val databaseUpgradeState: StateFlow<DatabaseUpgradeState> =
+            _databaseUpgradeState.asStateFlow()
+
+        /**
+         * Called by the UI once it has shown the upgrade snackbar so the sticky
+         * [DatabaseUpgradeState.JustUpgraded] is cleared. Without this, recomposition
+         * would keep re-firing the snackbar effect.
+         */
+        fun markUpgradeConsumed() {
+            _databaseUpgradeState.value = DatabaseUpgradeState.Idle
+        }
 
         // Single source of truth for every table in OdinDatabase. If a new table is
         // added to the schema, add it here or wipeAndRecreate() will silently skip it
@@ -104,6 +155,8 @@ class DatabaseManager(
                 Logger.withTag("DatabaseManager")
                     .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
                 instance.wipeAndRecreate()
+                _databaseUpgradeState.value =
+                    DatabaseUpgradeState.JustUpgraded(fromVersion = version.toInt())
             }
         }
 
@@ -227,6 +280,16 @@ class DatabaseManager(
     suspend fun wipeAndRecreate() = withContext(dispatcher) {
         val log = Logger.withTag("DatabaseManager")
 
+        // Pre-wipe snapshot of the SQLite-internal page state. Captured *before* the
+        // DROPs so we have a baseline to compare against after the VACUUM + checkpoint.
+        // See [readPragmaLong] / [readPragmaCheckpoint] for what each pragma reports.
+        val journalMode = readPragmaString("PRAGMA journal_mode") ?: "?"
+        val pagesBefore = readPragmaLong("PRAGMA page_count") ?: -1L
+        val freelistBefore = readPragmaLong("PRAGMA freelist_count") ?: -1L
+        log.i {
+            "wipeAndRecreate: pre-wipe journal_mode=$journalMode page_count=$pagesBefore freelist_count=$freelistBefore"
+        }
+
         TABLE_NAMES.forEach { table ->
             driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
         }
@@ -276,8 +339,100 @@ class DatabaseManager(
         // dbDispatcher has the single-writer slot so we're safe here.
         driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
 
+        // Force the WAL file to truncate to zero, so an on-disk `-wal` left over
+        // from before the wipe cannot carry pages forward into the next session.
+        // No-op when journal_mode != WAL (returns busy=0,log=0,ckpt=0 cleanly).
+        // The motivating bug: a user reported chat rows with corrupt timestamps
+        // surviving logout. wipeAndRecreate's tables were dropped, but if WAL
+        // mode was active and the WAL sidecar wasn't truncated, the next open
+        // could still see those pages. This is the cheapest probe that proves
+        // it didn't.
+        val checkpoint = readPragmaCheckpoint("PRAGMA wal_checkpoint(TRUNCATE)")
+        val pagesAfter = readPragmaLong("PRAGMA page_count") ?: -1L
+        val freelistAfter = readPragmaLong("PRAGMA freelist_count") ?: -1L
+        if (checkpoint != null) {
+            val (busy, logPages, ckptPages) = checkpoint
+            // busy=1 means another connection held the WAL — should never happen here
+            // because we're on the single-writer dbDispatcher with no other clients.
+            // logPages > 0 after wipe + VACUUM is the red flag: it means we VACUUMed
+            // into a fresh main DB but the WAL still holds pages that a future open
+            // would replay on top.
+            if (busy != 0L || logPages > 0L) {
+                log.e {
+                    "wipeAndRecreate: WAL checkpoint reports busy=$busy log_pages=$logPages " +
+                        "ckpt_pages=$ckptPages — WAL was non-empty after wipe, potential leak"
+                }
+            } else {
+                log.i {
+                    "wipeAndRecreate: WAL checkpoint clean (busy=0 log=0 ckpt=$ckptPages)"
+                }
+            }
+        }
+        log.i {
+            "wipeAndRecreate: post-wipe page_count=$pagesAfter freelist_count=$freelistAfter " +
+                "(was page_count=$pagesBefore freelist_count=$freelistBefore)"
+        }
+
         log.i { "wipeAndRecreate: completed (${TABLE_NAMES.size} tables)" }
     }
+
+    /**
+     * Read a single string from a PRAGMA that returns one row, one column
+     * (e.g. `PRAGMA journal_mode`). Returns `null` if the pragma fails or the
+     * cursor is empty — we never want a probe call to abort wipeAndRecreate.
+     */
+    private fun readPragmaString(sql: String): String? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) cursor.getString(0) else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
+
+    /**
+     * Read a single integer from a PRAGMA that returns one row, one column
+     * (e.g. `PRAGMA page_count`, `PRAGMA freelist_count`). Returns `null` on
+     * failure — probes must never throw.
+     */
+    private fun readPragmaLong(sql: String): Long? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) cursor.getLong(0) else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
+
+    /**
+     * Read the result of `PRAGMA wal_checkpoint(...)`, which returns a single
+     * row of three integers: (busy, log_frames, checkpoint_frames). Returns
+     * `null` if the pragma is unsupported (e.g. wasmJs's sql.js doesn't
+     * implement the WAL checkpoint pragma) or the call throws.
+     */
+    private fun readPragmaCheckpoint(sql: String): Triple<Long, Long, Long>? = runCatching {
+        driver.executeQuery(
+            identifier = null,
+            sql = sql,
+            mapper = { cursor ->
+                val value = if (cursor.next().value) {
+                    Triple(
+                        cursor.getLong(0) ?: 0L,
+                        cursor.getLong(1) ?: 0L,
+                        cursor.getLong(2) ?: 0L,
+                    )
+                } else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+    }.getOrNull()
 
     // Reclaim space released by DELETE/DROP without nuking schema. Runs on the
     // single-writer [dispatcher] so it cannot race with other queries. Used by

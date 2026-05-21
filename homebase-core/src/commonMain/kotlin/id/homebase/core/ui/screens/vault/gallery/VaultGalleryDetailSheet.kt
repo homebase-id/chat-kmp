@@ -132,7 +132,8 @@ fun VaultGalleryDetailSheet(
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isImage) {
+                    val isPdf = descriptor.contentType == "application/pdf"
+                    if (isImage || isPdf) {
                         val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
                             .collectAsStateWithLifecycle(
                                 initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),

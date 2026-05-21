@@ -10,6 +10,25 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+// Output shape (per createThumbnails call) is the same for every input
+// format: a tiny embedded webp + N additional webp thumbnail files,
+// sorted by increasing size. The N differs by input characteristics:
+//
+//   • Raster (JPEG/PNG/WebP/HEIC): N is whatever getRevisedThumbs keeps
+//     after filtering baseThumbSizes against the source's natural size.
+//     Sizes >= source are dropped (or collapsed into a single synthetic
+//     thumb at source size) because upscaling rasters just amplifies
+//     pixels without adding detail.
+//   • GIF: N = 0. The animated original travels as the payload; we only
+//     produce the embedded tiny so receivers have an instant blurred
+//     preview. The receiver's HomebaseImageLoader keeps "image/gif" in
+//     THUMBLESS_CONTENT_TYPES and loads the full payload.
+//   • SVG: N = baseThumbSizes.size (currently 4). Vector data is
+//     resolution-independent, so rendering at sizes above the SVG's
+//     declared intrinsic is free quality — we ship the full ladder so
+//     hi-DPI viewers always get a crisp render regardless of whether
+//     the author declared the SVG as 16×16, 192×192, or viewBox-only.
+//
 // Thumb presets
 val baseThumbSizes = listOf(
     ThumbnailInstruction(quality = 84, maxPixelDimension = 320, maxBytes = 26 * 1024),
@@ -59,12 +78,20 @@ fun getRevisedThumbs(sourceSize: ImageSize, thumbs: List<ThumbnailInstruction>):
 
 /**
  * Main entry — mirrors createThumbnails in JS
+ *
+ * The second slot is nullable: SVG inputs return `null` (no embedded
+ * thumb, no additional raster thumbs) because none of the per-platform
+ * [ImageUtils] actuals can decode SVG today. Receivers gate the bubble
+ * image block on a `hasImage` flag in the descriptor, so a missing
+ * thumb cleanly renders as "no image" rather than a warning triangle.
+ * A future SVG → bitmap rasterizer (in [ImageUtils]) would route SVG
+ * through the regular raster path and restore real thumbs.
  */
 suspend fun createThumbnails(
     imageBytes: ByteArray,
     payloadKey: String,
     thumbSizes: List<ThumbnailInstruction>? = null
-): Triple<ImageSize, EmbeddedThumb, List<ThumbnailFile>> = withContext(Dispatchers.Default) {
+): Triple<ImageSize, EmbeddedThumb?, List<ThumbnailFile>> = withContext(Dispatchers.Default) {
 
     // GIF and SVG handling: for SVG files we expect bytes to be svg xml; for GIFs we treat them specially
     // Check these FIRST before trying to decode, as Skia can't decode SVG
@@ -73,26 +100,63 @@ suspend fun createThumbnails(
     val isGif = imageBytes.size >= 3 && imageBytes[0] == 0x47.toByte() /* G */ && imageBytes[1] == 0x49.toByte() /* I */ && imageBytes[2] == 0x46.toByte() /* F */
 
     if (isSvg) {
-        // For SVG, we return the original vector format
-        // Try to get dimensions from SVG, fallback to default
-        val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
+        // Rasterize SVG into the same shape of result the non-SVG path
+        // produces: a tiny embedded webp + the regular 320/640/1080/1600
+        // px webp set. The previous "drop everything" branch (Phase 1)
+        // stopped the URL-preview outbox stall but left link previews
+        // image-less; this restores real thumbs while keeping the safety
+        // net — if rasterization throws (malformed SVG, decoder gives
+        // up) we fall back to the Phase 1 no-thumb result so we never
+        // re-stall the outbox.
+        //
+        // Unlike rasters we don't filter through getRevisedThumbs:
+        // vector data is resolution-independent, so rendering above the
+        // SVG's declared intrinsic size is free quality (no pixel
+        // amplification artifacts). Producing the full ladder means a
+        // 192×192-declared Google Calendar logo or a 16×16 favicon-style
+        // SVG still gets a crisp 1600px thumb for hi-DPI viewers.
+        return@withContext try {
+            val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
 
-        val vectorThumb = ThumbnailFile(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            thumbnailBytes = imageBytes,
-            key = payloadKey,
-            contentType = "image/svg+xml",
-            quality = 100
-        )
-        val embedded = EmbeddedThumb(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            contentType = "image/svg+xml",
-            content = toBase64(vectorThumb.thumbnailBytes)
-        )
+            val tinyResult = ImageUtils.rasterizeSvg(
+                svgBytes = imageBytes,
+                maxDim = tinyThumbSize.maxPixelDimension,
+                outputFormat = ImageFormat.WEBP,
+                quality = tinyThumbSize.quality,
+            )
+            val embeddedTiny = EmbeddedThumb(
+                pixelWidth = tinyResult.size.pixelWidth,
+                pixelHeight = tinyResult.size.pixelHeight,
+                contentType = "image/webp",
+                content = toBase64(tinyResult.bytes),
+            )
 
-        return@withContext Triple(naturalSize, embedded, listOf(vectorThumb))
+            val instructions = thumbSizes ?: baseThumbSizes
+            val additional = instructions.map { instr ->
+                val r = ImageUtils.rasterizeSvg(
+                    svgBytes = imageBytes,
+                    maxDim = instr.maxPixelDimension,
+                    outputFormat = ImageFormat.WEBP,
+                    quality = instr.quality,
+                )
+                ThumbnailFile(
+                    pixelWidth = r.size.pixelWidth,
+                    pixelHeight = r.size.pixelHeight,
+                    thumbnailBytes = r.bytes,
+                    key = payloadKey,
+                    contentType = "image/webp",
+                    quality = instr.quality,
+                )
+            }
+
+            Triple(naturalSize, embeddedTiny, additional)
+        } catch (e: Exception) {
+            // Phase 1 safety net: no thumb is better than a stuck outbox.
+            // The receiver's LinkPreviewCard gates on hasImage (set false
+            // by LinkPreviewPayloadBuilder when previewThumbnail is null).
+            val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
+            Triple(naturalSize, null, emptyList())
+        }
     }
 
     // Determine natural size using ImageUtils (for non-SVG images)

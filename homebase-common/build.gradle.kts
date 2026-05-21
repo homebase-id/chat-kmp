@@ -31,6 +31,7 @@ kotlin {
     android {
         namespace = "id.homebase.common"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
@@ -69,6 +70,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":homebase-api"))
+            api(project(":homebase-notifshared"))
 
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
@@ -93,11 +95,9 @@ kotlin {
             api(libs.coil3.network)
             api(libs.coil3.svg)
             implementation(libs.kermit)
-            implementation(libs.kermit.io)
             api(libs.filekit.core)
             api(libs.koin.core)
             api(libs.koin.compose)
-            api(libs.kmpnotifier)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -114,13 +114,24 @@ kotlin {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.biometric)
             implementation(libs.androidx.browser)
+            implementation(libs.androidx.pdf.viewer)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)
             implementation(libs.firebase.crashlytics)
             api(libs.coil3.video)
+            implementation(libs.kermit.io)
+            // kmpnotifier has no wasmJs artifact — must stay off commonMain.
+            // `api` so the dep cascades transitively to androidApp (which
+            // imports NotifierManager in MainApplication/MainActivity).
+            api(libs.kmpnotifier)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.kermit.io)
+            // `api` so the iOS framework `export(libs.kmpnotifier)` block above
+            // resolves the symbols for Swift consumption (iOSApp.swift calls
+            // `NotifierManager.shared.initialize(...)`).
+            api(libs.kmpnotifier)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -129,7 +140,19 @@ kotlin {
             implementation(libs.nucleus.notification.windows)
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
+            implementation(libs.kermit.io)
+            implementation(libs.pdfbox)
+            // `api` so desktopApp's existing direct kmpnotifier dep stays
+            // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
+            // type from the same source set's classpath.
+            api(libs.kmpnotifier)
         }
+        // Uncomment when enabling the wasmJs target (post-pre-flight),
+        // paired with the `wasmJs { browser() }` block above.
+        // ktor-client-js provides the browser engine (fetch/WebSocket).
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//        }
     }
 
     targets.all {

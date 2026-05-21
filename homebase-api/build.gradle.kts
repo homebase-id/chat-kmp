@@ -32,6 +32,11 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
+        // Enables `src/androidInstrumentedTest/` for emulator-on-device tests
+        // (currently used by CompressVideoAndroidInstrumentedTest, which is
+        // @Ignore'd until CI emulator infra lands). Locally runnable with:
+        //   ./gradlew homebase-api:connectedAndroidTest
+        withDeviceTest {}
     }
 
     jvm() {
@@ -40,7 +45,6 @@ kotlin {
         }
     }
 
-    // REMOVED so we could support FileKache
 //    @OptIn(ExperimentalWasmDsl::class)
 //    wasmJs {
 //        browser()
@@ -91,8 +95,6 @@ kotlin {
             implementation(libs.filekit.dialogs.compose)
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.immutableCollections)
-            implementation(libs.kache)
-            implementation(libs.kache.file)
             implementation(libs.coil3)
             implementation(libs.okio)
         }
@@ -100,6 +102,7 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
+            implementation(libs.okio.fakefilesystem)
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
@@ -114,11 +117,27 @@ kotlin {
             implementation(libs.android.database.sqlcipher)
             implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
+            // MP4 atom-tree manipulation. Used by Mp4LocationStripper to drop
+            // EXIF / GPS location atoms from camera-recorded MP4s when the
+            // input passes through compressVideo's already-optimal check
+            // without re-encoding (re-encode naturally drops the atoms).
+            implementation(libs.mp4parser.isoparser)
+            implementation(libs.androidsvg)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
         }
+
+        // Uncomment when enabling the wasmJs target (post-pre-flight),
+        // paired with the `wasmJs { browser() }` block above. ktor-client-js
+        // provides the browser engine (fetch/WebSocket); WebWorkerDriver
+        // runs sql.js (SQLite-compiled-to-WASM) inside a Web Worker — see
+        // `DatabaseDriverFactory.web.kt` for the constructor shape.
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//            implementation(libs.sqldelight.web.worker.driver)
+//        }
 
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -133,6 +152,7 @@ kotlin {
 
             implementation(libs.kotlinx.html.jvm)
 
+            implementation(libs.metadata.extractor)
         }
 
         // Provide Skia native binaries for JVM image tests (platform-specific)
@@ -156,6 +176,21 @@ kotlin {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }
             implementation(libs.sqlite.jdbc.crypt)
+        }
+        // Android instrumented (on-device) tests for things that need real
+        // platform implementations — e.g. CompressVideoAndroidInstrumentedTest
+        // exercises the MediaCodec transcode path, which needs real codec
+        // hardware to load. Currently @Ignore'd until CI emulator infra is
+        // wired up. Source set named `androidDeviceTest` per AGP 9 KMP
+        // convention (vs the older `androidInstrumentedTest`).
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.junit)
         }
     }
 

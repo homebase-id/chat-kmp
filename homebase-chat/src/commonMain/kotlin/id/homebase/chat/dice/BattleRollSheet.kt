@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
@@ -59,11 +60,9 @@ import id.homebase.resources.chat_dice_roll
 import id.homebase.resources.chat_dice_rolling
 import id.homebase.resources.chat_dice_shake_hint
 import id.homebase.resources.menu_back
-import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -122,12 +121,15 @@ private fun BattleRollSheetContent(
         findChainNewest(parentDescriptor, chainDescriptors)
     }
     val faces = newest.faces
-    val count = newest.latest.results.size
+    val mode = newest.mode
+    // In OE mode the challenger always starts from 2 d10 placeholders — their
+    // chain may extend independently of the parent's.
+    val initialCount = if (mode == DiceRollMode.OpenEndedD100) 2 else newest.latest.results.size
 
     val ownerOdinId = ownerSession.user.collectAsStateWithLifecycle().value?.odinId
 
-    val displayValues: SnapshotStateList<Int?> = remember(count) {
-        List<Int?>(count) { null }.toMutableStateList()
+    val displayValues: SnapshotStateList<Int?> = remember(initialCount) {
+        List<Int?>(initialCount) { null }.toMutableStateList()
     }
 
     var rolling by remember { mutableStateOf(false) }
@@ -143,15 +145,21 @@ private fun BattleRollSheetContent(
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         rolling = true
         val seed = if (shakeTriggered) shakeSamples else null
-        val finalResults = roll(count = count, faces = faces, shakeSamples = seed)
+        val finalResults = if (mode == DiceRollMode.OpenEndedD100) {
+            rollOpenEndedD100(seed)
+        } else {
+            roll(count = initialCount, faces = faces, shakeSamples = seed)
+        }
         scope.launch {
-            for (frame in 0 until TUMBLE_FRAMES) {
-                for (i in 0 until count) {
-                    displayValues[i] = Random.nextInt(1, faces + 1)
-                }
-                delay(TUMBLE_FRAME_MS)
-            }
-            for (i in 0 until count) displayValues[i] = finalResults[i]
+            runTumble(
+                frames = TUMBLE_FRAMES,
+                count = initialCount,
+                faces = faces,
+                displayValues = displayValues,
+                frameDelayMs = TUMBLE_FRAME_MS,
+            )
+            while (displayValues.size < finalResults.size) displayValues.add(null)
+            for (i in finalResults.indices) displayValues[i] = finalResults[i]
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             rolling = false
             sending = true
@@ -170,6 +178,7 @@ private fun BattleRollSheetContent(
             )
             val descriptor = DiceRollDescriptor(
                 faces = faces,
+                mode = mode,
                 rolls = newest.rolls + newEntry,
             )
             runCatching {
@@ -187,12 +196,17 @@ private fun BattleRollSheetContent(
         }
     }
 
+    // See note in DiceRollComposerSheet — without rememberUpdatedState, the
+    // long-running collect captures the first composition's `doRoll`, whose
+    // `initialCount` snapshot can disagree with `displayValues.size` after a
+    // chainDescriptors update re-keys `displayValues`.
+    val currentDoRoll by rememberUpdatedState(doRoll)
     LaunchedEffect(shakeDetector.isAvailable) {
         if (!shakeDetector.isAvailable) return@LaunchedEffect
         shakeDetector.events().collect { event ->
             shakeSamples = event.accelSamples
             shakeTriggered = true
-            doRoll()
+            currentDoRoll()
         }
     }
 
@@ -221,10 +235,11 @@ private fun BattleRollSheetContent(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // Header — beat the chain's current leader. Read directly from
-            // newest's embedded history.
-            val leaderSum = newest.rolls.maxOf { it.sum }
+            // newest's embedded history. For OE, leader uses scored (signed)
+            // sums, so a -49 doesn't beat a +12.
+            val leaderSum = newest.rolls.maxOf { newest.scoredSumOf(it) }
             val leaderName = newest.rolls
-                .firstOrNull { it.sum == leaderSum }
+                .firstOrNull { newest.scoredSumOf(it) == leaderSum }
                 ?.odinId?.domainName
                 ?.substringBefore('.')
                 ?.ifBlank { null }
@@ -244,18 +259,12 @@ private fun BattleRollSheetContent(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    for (v in newest.latest.results) {
-                        DiceFaceImage(
-                            faces = newest.faces,
-                            value = v,
-                            modifier = Modifier.size(40.dp),
-                        )
-                    }
-                }
+                DicePreviewArea(
+                    mode = mode,
+                    faces = newest.faces,
+                    values = newest.latest.results,
+                    cellSize = 40.dp,
+                )
             }
 
             // Our roll preview row (placeholders until rolled).
@@ -263,19 +272,11 @@ private fun BattleRollSheetContent(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    for (i in 0 until count) {
-                        DiceFaceImage(
-                            faces = faces,
-                            value = displayValues.getOrNull(i),
-                            modifier = Modifier.size(56.dp),
-                        )
-                    }
-                }
+                DicePreviewArea(
+                    mode = mode,
+                    faces = faces,
+                    values = displayValues,
+                )
             }
 
             Spacer(Modifier.height(4.dp))

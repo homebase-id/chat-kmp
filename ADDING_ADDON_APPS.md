@@ -1083,6 +1083,27 @@ Copy this into your PR description and tick off each wiring point:
 
 ## Known gotchas
 
+- **`ExtendPermissionDialog` auto-prompts unless gated.** If your onboarding
+  flow uses the shared `ExtendPermissionDialog` / `ExtendPermissionViewModel`
+  pair (rather than an inline dialog), `ExtendPermissionViewModel.init` runs
+  `checkPermissions()` eagerly. As soon as `FooViewModel` is constructed —
+  which `AppNavHost` does at the top of composition via `koinViewModel()` —
+  the qualified permission VM checks the server, sees the new drive isn't
+  granted, and flips its state to `ShowDialog`. The dialog then appears the
+  moment the user lands on the onboarding screen, before they tap *Set it up*.
+  Add a `setupInitiated: Boolean` to `FooUiState`, flip it to `true` only on
+  the *Set it up* click (and call `recheckPermissions()` there), and gate
+  both the dialog render and the `ON_RESUME` recheck observer behind it.
+- **Cancelling the dialog must reset `setupInitiated`.** After the user taps
+  Cancel, `ExtendPermissionViewModel` stays at `Dismissed` until the next
+  recheck. If `setupInitiated` is still `true`, navigating back to onboarding
+  fires the `ON_RESUME` observer → `recheckPermissions()` → `ShowDialog` again,
+  re-prompting a user who already said no. In `FooViewModel.init`, observe
+  `fooPermissionViewModel.uiState.filter { it is ExtendPermissionUiState.Dismissed }`
+  and reset `setupInitiated` to `false`. This catches all three cancel paths:
+  the dialog's Cancel button, tap-outside dismissal, and the owner-console
+  `PermissionsExtensionCanceled` event. Also reset it on successful
+  activation so the flag never lingers.
 - **Activation briefly drops the WebSocket.** `authConnectionCoordinator.mountDrive()`
   debounces by ~500ms and then close+reopens the WS so the new drive joins the
   subscription. The user sees the online indicator blink. Coalescing means two rapid

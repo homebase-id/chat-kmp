@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.FFmpegUtils
@@ -21,8 +22,6 @@ import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -75,8 +74,12 @@ internal class MediaDownloadHandler(
                         "jpeg" -> "jpg"
                         else -> extension
                     }
-                    val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                        bytes, "share_", ".$extension"
+                    // Cleartext copy of an end-to-end-encrypted Homebase
+                    // payload — sequestered into the share_outbound subdir so
+                    // the cold-start + foreground sweepers can reap it as a
+                    // single unit, bounding its on-disk lifetime.
+                    val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
+                        bytes, ".$extension"
                     )
                     sendEvent(ShareFile(tempPath))
                 } else {
@@ -148,7 +151,7 @@ internal class MediaDownloadHandler(
                 val filePath =
                     "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
-                val success = withContext(Dispatchers.IO) {
+                val success = withContext(ioDispatcher) {
                     driveFileProvider.streamPayloadDecryptedToPath(
                         driveId = chatTargetDrive.alias,
                         fileId = message.fileId,
@@ -191,7 +194,7 @@ internal class MediaDownloadHandler(
                 )
 
                 if (hlsMetadata != null) {
-                    val (mp4Path, mp4Name) = withContext(Dispatchers.IO) {
+                    val (mp4Path, mp4Name) = withContext(ioDispatcher) {
                         downloadAndRemuxHlsToMp4(
                             fileId = action.fileId,
                             payloadKey = action.payloadKey,
@@ -211,7 +214,7 @@ internal class MediaDownloadHandler(
                     val filePath =
                         "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
-                    val success = withContext(Dispatchers.IO) {
+                    val success = withContext(ioDispatcher) {
                         driveFileProvider.streamPayloadDecryptedToPath(
                             driveId = chatTargetDrive.alias,
                             fileId = action.fileId,

@@ -22,6 +22,7 @@ android {
     compileSdk {
         version = release(libs.versions.android.targetSdk.get().toInt())
     }
+    compileSdkExtension = 19
 
     defaultConfig {
         applicationId = "id.homebase.feed"
@@ -156,6 +157,7 @@ dependencies {
     implementation(libs.kermit)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.sharetarget)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
 

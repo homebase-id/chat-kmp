@@ -29,10 +29,8 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
-import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.convo.FakeConversationLoader
 import id.homebase.chat.services.convo.FakeIntroductionSender
 import id.homebase.chat.services.convo.FakePayloadBundleEncryptor
@@ -68,8 +66,10 @@ import kotlin.uuid.Uuid
  *   - Real OutboxSync with setOnline(false) by default — enqueued rows stay in
  *     the DB for inspection, never uploaded. The stub uploader throws if
  *     something tries.
- *   - FakeMessageLookup, FakeLocalLastReadUpdater, FakeUnreadCountEnricher — the
- *     three narrow seams the service under test depends on.
+ *   - FakeMessageLookup, FakeLocalLastReadUpdater — the narrow seams the
+ *     service under test depends on. The in-memory advance is the setter's job
+ *     now (via [FakeConversationParticipantLookup.advancedLastRead]), verified
+ *     in the ConversationService tests rather than here.
  *   - Real ConversationService is still passed to the ctor but markAsReadByFiles
  *     doesn't touch it.
  *
@@ -114,8 +114,6 @@ class ChatMessageActionServiceTestFixture(
     lateinit var messageLookup: FakeMessageLookup
         private set
     lateinit var localLastReadUpdater: FakeLocalLastReadUpdater
-        private set
-    lateinit var unreadCountEnricher: FakeUnreadCountEnricher
         private set
     lateinit var participantLookup: FakeConversationParticipantLookup
         private set
@@ -210,8 +208,7 @@ class ChatMessageActionServiceTestFixture(
         ).also { it.setOnline(captureHttp) }
 
         messageLookup = FakeMessageLookup()
-        localLastReadUpdater = FakeLocalLastReadUpdater()
-        unreadCountEnricher = FakeUnreadCountEnricher()
+        localLastReadUpdater = FakeLocalLastReadUpdater(dbm)
         participantLookup = FakeConversationParticipantLookup()
 
         val optimisticWriter = OptimisticWriter(
@@ -233,13 +230,13 @@ class ChatMessageActionServiceTestFixture(
             chatMessageSenderService = FakeStatusMessageSender(),
             optimisticWriter = optimisticWriter,
             conversationStream = FakeConversationLoader(),
+            participantLookup = participantLookup,
         )
 
         return ChatMessageActionService(
             conversationService = conversationService,
             participantLookup = participantLookup,
             localLastReadUpdater = localLastReadUpdater,
-            unreadCountEnricher = unreadCountEnricher,
             messageLookup = messageLookup,
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
@@ -547,6 +544,7 @@ private class NoopFileOperationsProvider : FileOperationsProvider {
     override fun getCacheDirectory(): String = uniqueCacheDir
     override fun getFileSize(path: String) = nope()
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = nope()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()
 }
 
@@ -584,7 +582,16 @@ class FakeMessageLookup : MessageLookup {
         records.firstOrNull { it.id == messageId }?.fileId
 }
 
-class FakeLocalLastReadUpdater : LocalLastReadUpdater {
+/**
+ * Mirrors the production setter's only-increases + ChatReadCount-upsert
+ * contract so tests asserting `dbm.chatReadCount.selectLastReadTimeMs(...)`
+ * behave the same as production. The fake stops short of stamping the
+ * conversation file / enqueueing an outbox writeback — those paths aren't
+ * exercised by ChatMessageActionService tests.
+ */
+class FakeLocalLastReadUpdater(
+    private val dbm: id.homebase.api.sync.database.DatabaseManager? = null,
+) : LocalLastReadUpdater {
     data class Call(val conversationId: Uuid, val newLastReadTime: UnixTimeUtc)
     val calls = mutableListOf<Call>()
     override suspend fun updateLocalLastReadTime(
@@ -592,17 +599,9 @@ class FakeLocalLastReadUpdater : LocalLastReadUpdater {
         newLastReadTime: UnixTimeUtc,
     ) {
         calls += Call(conversationId, newLastReadTime)
-    }
-}
-
-class FakeUnreadCountEnricher : UnreadCountEnricher {
-    data class Call(val conversationId: Uuid, val newLastRead: kotlin.time.Instant)
-    val calls = mutableListOf<Call>()
-    override suspend fun applyLocalAdvance(
-        conversationId: Uuid,
-        newLastRead: kotlin.time.Instant,
-    ) {
-        calls += Call(conversationId, newLastRead)
+        // Mirror the production setter's eager ChatReadCount upsert so tests
+        // that assert against selectLastReadTimeMs see the same row.
+        dbm?.chatReadCount?.upsertLastReadTime(conversationId, newLastReadTime)
     }
 }
 
@@ -627,6 +626,7 @@ class FakeConversationParticipantLookup :
         conversationId: Uuid,
         lastRead: kotlin.time.Instant,
         latestMessageTimestamp: kotlin.time.Instant = lastRead,
+        dirty: Boolean = false,
     ) {
         conversations[conversationId] = id.homebase.chat.data.ConversationUiModel(
             id = conversationId,
@@ -636,11 +636,24 @@ class FakeConversationParticipantLookup :
             avatarInitials = "",
             avatarTiny = null,
             lastRead = lastRead,
+            dirty = dirty,
             avatarModel = id.homebase.core.avatars.ConversationAvatarModel(
                 type = id.homebase.core.avatars.ConversationAvatarModel.Type.GroupFallback
             ),
             admins = emptySet(),
         )
+    }
+
+    /**
+     * Production override: the list-level [ConversationParticipantLookup.advancedLastRead].
+     * Runs the entity's single advance transition (gate → move lastRead → set
+     * dirty) on the in-memory entry. Skips the unreadCount re-derive the real
+     * ConversationStream does (no DB here) — the tests that use this assert on
+     * lastRead/dirty, not the badge.
+     */
+    override suspend fun advancedLastRead(conversationId: Uuid, candidate: kotlin.time.Instant) {
+        val convo = conversations[conversationId] ?: return
+        conversations[conversationId] = convo.advancedLastRead(candidate)
     }
 
     override fun getConversationById(conversationId: Uuid):
@@ -651,6 +664,21 @@ class FakeConversationParticipantLookup :
         additionalRecipients: List<id.homebase.api.common.OdinId>,
         recipientOverride: List<id.homebase.api.common.OdinId>?,
     ): List<id.homebase.api.common.OdinId> = emptyList()
+
+    // lastRead dirty tracking — delegates the transitions to the entity, same
+    // as ConversationStream does in production. `dirty` is set via the entity's
+    // advancedLastRead (through the [advancedLastRead] override / [setLastRead]);
+    // this fake only reads + clears it.
+    override fun getDirtyConversationIds(): List<Uuid> =
+        conversations.values.filter { it.dirty }.map { it.id }
+
+    override suspend fun clearLastReadDirtyIfUnchanged(
+        conversationId: Uuid,
+        pushed: id.homebase.api.common.time.UnixTimeUtc,
+    ) {
+        val convo = conversations[conversationId] ?: return
+        conversations[conversationId] = convo.clearedDirtyIfUnchanged(pushed.milliseconds)
+    }
 }
 
 private object ThrowingOutboxUploader : OutboxUploader {

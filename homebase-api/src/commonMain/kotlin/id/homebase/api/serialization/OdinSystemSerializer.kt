@@ -35,6 +35,12 @@ object OdinSystemSerializer {
      * - prettyPrint = false → compact JSON output (minified)
      * - explicitNulls = false → exclude null values from output for compactness
      * - coerceInputValues = true → coerce unknown enum values and nulls to defaults
+     * - decodeEnumsCaseInsensitive = true → match C# JsonStringEnumConverter,
+     *   which reads enum names case-insensitively. The server emits camelCase
+     *   (e.g. `"recipientIdentityReturnedAccessDenied"`) while our `@SerialName`
+     *   annotations are lowercase; without this flag the decoder throws on the
+     *   first such value and `getTransferHistory` (and any other endpoint that
+     *   returns `TransferStatus`/`TransferUploadStatus`) fails to deserialize.
      */
     val json = Json {
         ignoreUnknownKeys = true
@@ -45,6 +51,7 @@ object OdinSystemSerializer {
         prettyPrint = false
         explicitNulls = false
         coerceInputValues = true
+        decodeEnumsCaseInsensitive = true
 
         serializersModule = SerializersModule {
             contextual(Uuid::class, UuidSerializer)

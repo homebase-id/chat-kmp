@@ -10,6 +10,7 @@ import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.crypto.EccKeyPair
 import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
@@ -23,8 +24,6 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,7 +85,7 @@ class YouAuthFlowManager(
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Initializing)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
 
-    private val scope = CoroutineScope(Job() + Dispatchers.IO)
+    private val scope = CoroutineScope(Job() + ioDispatcher)
 
     // Registry for callback routing
     private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()

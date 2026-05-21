@@ -7,21 +7,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okio.FileSystem
-import okio.Path.Companion.toPath
-import okio.SYSTEM
 import kotlin.uuid.Uuid
 
 class VideoPreloader(
     private val driveFileProvider: VideoPrefetchDriveAccess,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
-    private val fileSystem = FileSystem.SYSTEM
     private val mutexMap = mutableMapOf<String, Mutex>()
     private val progressMap = mutableMapOf<String, MutableStateFlow<Float>>()
     private val mapLock = Mutex()
 
-    private val preloadDir get() = "${fileOperationsProvider.getCacheDirectory()}/hbvid_preload"
     private fun cacheKey(fileId: Uuid, payloadKey: String) = "$fileId/$payloadKey"
 
     /**
@@ -136,14 +131,5 @@ class VideoPreloader(
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
         mutex.withLock {}  // wait for any in-progress download to finish
         return null
-    }
-
-    /** Deletes any legacy pre-decrypted files written by older builds. */
-    fun clearCache() {
-        try {
-            fileSystem.deleteRecursively(preloadDir.toPath())
-        } catch (e: Exception) {
-            Logger.w(tag = "VideoIO") { "VideoPreloader.clearCache failed: ${e.message}" }
-        }
     }
 }

@@ -12,6 +12,7 @@ kotlin {
     android {
         namespace = "id.homebase.auth"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
     }
@@ -77,6 +78,12 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
         }
+        // Uncomment when enabling the wasmJs target (post-pre-flight),
+        // paired with the `wasmJs { browser() }` block above.
+        // ktor-client-js provides the browser engine (fetch/WebSocket).
+//        wasmJsMain.dependencies {
+//            implementation(libs.ktor.client.js)
+//        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.jetbrains.compose.ui.test)

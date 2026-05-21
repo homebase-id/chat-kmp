@@ -256,6 +256,27 @@ class SeedableConversationLookup(private val testDomain: String) : ConversationP
             .filter { it.domainName != testDomain }
             .distinct()
     }
+
+    // lastRead dirty tracking — these chain-shape tests don't exercise the
+    // writeback, but the interface requires them.
+    override suspend fun advancedLastRead(
+        conversationId: Uuid,
+        candidate: kotlin.time.Instant,
+    ) {
+        val convo = conversations[conversationId] ?: return
+        conversations[conversationId] = convo.advancedLastRead(candidate)
+    }
+
+    override fun getDirtyConversationIds(): List<Uuid> =
+        conversations.values.filter { it.dirty }.map { it.id }
+
+    override suspend fun clearLastReadDirtyIfUnchanged(
+        conversationId: Uuid,
+        pushed: id.homebase.api.common.time.UnixTimeUtc,
+    ) {
+        val convo = conversations[conversationId] ?: return
+        conversations[conversationId] = convo.clearedDirtyIfUnchanged(pushed.milliseconds)
+    }
 }
 
 private class SenderNoopFileOperationsProvider : FileOperationsProvider {
@@ -272,6 +293,7 @@ private class SenderNoopFileOperationsProvider : FileOperationsProvider {
     override fun getCacheDirectory(): String = uniqueCacheDir
     override fun getFileSize(path: String) = nope()
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = nope()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()
 }
 

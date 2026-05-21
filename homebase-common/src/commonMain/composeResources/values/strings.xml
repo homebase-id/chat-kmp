@@ -45,6 +45,9 @@
     <string name="label_sent">App sent: %1$s</string>
     <string name="label_received">Received: %1$s</string>
     <string name="label_edited">Edited: %1$s</string>
+    <string name="label_size">Size: %1$s</string>
+    <string name="label_message_id">ID: %1$s</string>
+    <string name="copy_message_id">Copy message ID</string>
     <string name="error_server_not_responding">Server not responding</string>
     <string name="error_access_denied">Access denied</string>
     <string name="error_too_many_attempts">Too many attempts</string>
@@ -64,6 +67,7 @@
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
     <string name="not_connected">Not connected</string>
     <string name="loading">Loading...</string>
+    <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
@@ -107,6 +111,7 @@
     <string name="pending_upgrade_title">Data upgrade required</string>
     <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
     <string name="pending_upgrade_confirm">Upgrade Now</string>
+    <string name="upgrade_running_message">Upgrading your identity…</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>
@@ -190,7 +195,7 @@
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
-    <string name="settings_logout_in_progress">Erasing all your encrypted data</string>
+    <string name="settings_logout_in_progress">Clearing this device's encrypted cache</string>
     <string name="settings_delete_account">Delete my account</string>
 
     <!-- Storage screen -->
@@ -215,6 +220,7 @@
     <string name="storage_cache_unhealthy_body">One or more on-disk caches failed to initialise. Tap \"Clear caches\" to reset them — cached bytes will be lost but no primary data is affected.</string>
     <string name="storage_other_header">Other</string>
     <string name="storage_database">Database</string>
+    <string name="storage_other_cache_files">Other cached files</string>
 
     <!-- Defragmenter -->
     <string name="storage_defragment_button">Defragment</string>
@@ -268,6 +274,7 @@
     <string name="help_enable_error_collection">Allow automatic error collection</string>
     <string name="help_debug_log_description">Debug logs can help Homebase fix issues and crashes.</string>
     <string name="help_version">Version</string>
+    <string name="help_ffmpeg_version">FFmpeg</string>
     <string name="help_terms_privacy">Terms &amp; Privacy Policy</string>
     <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
@@ -313,6 +320,81 @@
     <string name="permissions_missing_title">Missing Permissions</string>
     <string name="permissions_missing_body">The %1$s app is missing permissions. Without the necessary permissions the functionality of %1$s will be limited.</string>
     <string name="permissions_extend">Extend Permissions</string>
+
+    <!-- Moments add-on -->
+    <string name="moments_label">Moments</string>
+    <string name="moments_onboarding_title">Moments worth remembering</string>
+    <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
+    <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
+    <string name="moments_onboarding_setup">Set it up</string>
+    <string name="moments_onboarding_dismiss">Not now</string>
+    <string name="moments_welcome">Moments worth remembering</string>
+    <string name="moments_settings_section">Moments</string>
+    <string name="moments_settings_open">Open Moments</string>
+    <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+    <string name="moments_create_action">Create a new moment</string>
+    <string name="moments_post_open">Open moment</string>
+    <string name="moments_reaction_like">Like</string>
+    <string name="moments_detail_no_description">No description added</string>
+    <string name="moments_detail_metadata_captured">Captured</string>
+    <string name="moments_detail_metadata_device">Device</string>
+    <string name="moments_detail_comments_section">Comments</string>
+    <string name="moments_detail_no_comments">No comments yet</string>
+    <string name="moments_detail_add_comment_hint">Add a comment</string>
+    <string name="moments_detail_send_comment">Send comment</string>
+    <string name="moments_detail_comment_you">You</string>
+    <string name="moments_detail_comment_edit">Edit</string>
+    <string name="moments_detail_comment_save">Save</string>
+    <string name="moments_detail_comment_cancel">Cancel</string>
+    <string name="moments_detail_menu_more">More options</string>
+    <string name="moments_detail_menu_delete">Delete</string>
+    <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
+    <string name="moments_detail_comment_delete">Delete</string>
+    <string name="moments_detail_delete_comment_dialog_title">Delete this comment?</string>
+    <string name="moments_detail_shared_with">Shared with</string>
+    <string name="moments_detail_shared_with_conversation_fallback">Conversation</string>
+    <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_detail_shared_with_show">Show recipients</string>
+    <string name="moments_detail_shared_with_hide">Hide recipients</string>
+    <string name="moments_detail_shared_with_private">Private</string>
+    <string name="moments_feed_indicator_private">Private moment</string>
+    <string name="moments_create_title">Send to</string>
+    <string name="moments_create_search_hint">Search contacts and groups</string>
+    <string name="moments_create_section_recent">Recent</string>
+    <string name="moments_create_section_quick">Quick options</string>
+    <string name="moments_create_section_groups">Groups</string>
+    <string name="moments_create_section_contacts">Contacts</string>
+    <string name="moments_create_new_group">New group</string>
+    <string name="moments_create_one_off">One-off</string>
+    <string name="moments_create_continue">Next</string>
+    <string name="moments_create_chat_group_label">Chat group</string>
+    <string name="moments_create_selected_count">%1$d selected</string>
+    <string name="moments_compose_title">New moment</string>
+    <string name="moments_compose_add_media">Add photo or video</string>
+    <string name="moments_compose_empty_hero">Tap to add a photo or video</string>
+    <string name="moments_compose_remove_media">Remove</string>
+    <string name="moments_compose_description_hint">Add a description</string>
+    <string name="moments_compose_comments_enabled">Allow reactions and comments</string>
+    <string name="moments_compose_continue">Next</string>
+    <string name="moments_chip_add_location">Add location</string>
+    <string name="moments_chip_location_included">Location</string>
+    <string name="cd_moment_photo_info_chip">Photo info</string>
+    <string name="cd_moment_toggle_include_location">Toggle including this photo&#8217;s location</string>
+    <string name="moments_chip_pick_date">Pick a date</string>
+    <string name="moments_chip_use_photo_date">Use photo date</string>
+    <string name="cd_moment_date_chip">Moment date</string>
+    <string name="moments_audience_title">Send to</string>
+    <string name="moments_audience_section_recent">Recent</string>
+    <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_contacts">Contacts</string>
+    <string name="moments_audience_post">Post</string>
+    <string name="moments_audience_save_privately">Save privately</string>
+    <string name="moments_audience_create_group">Create new group</string>
+    <string name="moments_audience_post_failed">Couldn't post moment. Please try again.</string>
+    <string name="moments_create_group_title">New group</string>
+    <string name="moments_create_group_name_hint">Group name</string>
+    <string name="moments_create_group_section_members">Members</string>
+    <string name="moments_create_group_create">Create</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>
@@ -434,22 +516,16 @@
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
-    <string name="chat_group_main_file_delivered">Group file delivered</string>
-    <string name="chat_group_main_file_problem">Group file delivery problem</string>
-    <string name="chat_group_admin_file_delivered">Admin file delivered</string>
-    <string name="chat_group_admin_file_problem">Admin file delivery problem</string>
-    <string name="chat_group_main_peer_in_sync">Group file in sync on peer</string>
-    <string name="chat_group_main_peer_missing">Group file not yet on peer</string>
-    <string name="chat_group_main_peer_stale">Group file version mismatch on peer</string>
-    <string name="chat_group_main_peer_error">Couldn\'t reach peer for group file</string>
-    <string name="chat_group_admin_peer_in_sync">Admin file in sync on peer</string>
-    <string name="chat_group_admin_peer_missing">Admin file not yet on peer</string>
-    <string name="chat_group_admin_peer_stale">Admin file version mismatch on peer</string>
-    <string name="chat_group_admin_peer_error">Couldn\'t reach peer for admin file</string>
-    <string name="chat_group_main_file_loading">Checking group file delivery…</string>
-    <string name="chat_group_admin_file_loading">Checking admin file delivery…</string>
-    <string name="chat_group_main_peer_loading">Checking peer for group file…</string>
-    <string name="chat_group_admin_peer_loading">Checking peer for admin file…</string>
+    <string name="chat_group_main_peer_missing">Group file: not on peer</string>
+    <string name="chat_group_main_peer_mine">Group file: on peer (yours)</string>
+    <string name="chat_group_main_peer_other_author">Group file: on peer (third-party)</string>
+    <string name="chat_group_main_peer_error">Group file: couldn't reach peer</string>
+    <string name="chat_group_main_peer_loading">Group file: checking peer…</string>
+    <string name="chat_group_admin_peer_missing">Admin file: not on peer</string>
+    <string name="chat_group_admin_peer_mine">Admin file: on peer (yours)</string>
+    <string name="chat_group_admin_peer_other_author">Admin file: on peer (third-party)</string>
+    <string name="chat_group_admin_peer_error">Admin file: couldn't reach peer</string>
+    <string name="chat_group_admin_peer_loading">Admin file: checking peer…</string>
     <string name="chat_group_member_sync_status">Sync status</string>
     <string name="chat_group_summary_all_ok">All in sync</string>
     <string name="chat_group_summary_problem">Sync issue — tap for details</string>
@@ -457,6 +533,7 @@
     <string name="chat_group_heal_completed">Re-distributing group files…</string>
     <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn't author the group files).</string>
     <string name="chat_group_heal_already_in_sync">Group is already in sync on every peer</string>
+    <string name="chat_group_heal_checking_peers">Checking peers…</string>
     <string name="chat_group_heal_progress_title">Healing group</string>
     <string name="chat_group_heal_progress_subtitle_running">Working through the per-recipient plan…</string>
     <string name="chat_group_heal_progress_subtitle_finished">Done. You can close this dialog.</string>
@@ -631,6 +708,8 @@
     <string name="chat_dice_battle_tie_winner_self">%1$s tied for the win with %2$d</string>
     <string name="chat_dice_battle_tie_winner_other">%1$s tied for the win with %2$d</string>
     <string name="chat_dice_battle_and">and</string>
+    <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
+    <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
@@ -720,7 +799,7 @@
 
     <!-- Vault Sections -->
     <string name="vault_section_passports">Passports</string>
-    <string name="vault_section_drivers_licenses">Driver\'s Licenses</string>
+    <string name="vault_section_drivers_licenses">Driver's Licenses</string>
     <string name="vault_section_health_cards">Health Cards</string>
     <string name="vault_section_birth_certificates">Birth Certificates</string>
     <string name="vault_section_credit_cards">Credit Cards</string>
@@ -746,8 +825,10 @@
     <string name="vault_entry_delete_confirm">Delete %1$s? This entry and all its images will be permanently deleted.</string>
 
     <string name="vault_image_add">Add Image</string>
+    <string name="vault_add_entry">Add Entry</string>
     <string name="vault_image_take_photo">Take Photo</string>
     <string name="vault_image_choose_gallery">Choose from Gallery</string>
+    <string name="vault_choose_file">Choose File</string>
     <string name="vault_image_replace">Replace</string>
     <string name="vault_image_delete">Delete Image</string>
 
@@ -801,6 +882,12 @@
     <string name="vault_error_download_page">Failed to download page for sharing</string>
     <string name="vault_error_outbox_upload">Upload failed</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>
+    <string name="vault_pdf_badge">PDF</string>
+    <string name="vault_pdf_preview_error">Unable to preview PDF</string>
+    <string name="vault_pdf_not_supported">PDF preview is not supported on web</string>
+    <string name="vault_pdf_page_content_description">PDF page %1$d of %2$d</string>
+    <string name="vault_text_preview_error">Unable to preview file</string>
+    <string name="vault_text_truncated">File is large — showing first 1 MB</string>
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
@@ -851,6 +938,7 @@
     <!-- Bottom navigation -->
     <string name="nav_chats">Chats</string>
     <string name="nav_feed">Feed</string>
+    <string name="nav_moments">Moments</string>
     <string name="nav_home">Home</string>
 
     <!-- Developer menu -->
@@ -873,7 +961,7 @@
 
     <!-- Storage warnings -->
     <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
-    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil\'s default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+    <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil's default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>

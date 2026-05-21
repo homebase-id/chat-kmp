@@ -28,6 +28,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.di.allModules
+import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
@@ -72,9 +73,15 @@ fun main() {
 
     // Set up crash handler
     setupCrashHandler()
+    StartupLogger.checkpoint("main() entered, file logger online")
+
+    // Detect UI-thread (AWT EDT) stalls and log the EDT stack to homebase.log. Desktop has no
+    // OS-level ANR, so without this a freeze leaves no evidence at all.
+    MainThreadWatchdog().start()
 
     // Initialize Koin first
     startKoin { modules(allModules) }
+    StartupLogger.checkpoint("Koin DI graph built")
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
@@ -89,6 +96,11 @@ fun main() {
                 if (canceled) BackendEvent.PermissionsExtensionCanceled
                 else BackendEvent.PermissionsExtensionReturned
             )
+        }
+    }
+    LocalCallbackServer.setDataUpgradeCallback {
+        runBlocking {
+            eventBus.emit(BackendEvent.DataUpgradeReturned)
         }
     }
 
@@ -110,6 +122,7 @@ fun main() {
     val userPreferences = koin.get<UserPreferences>()
 
     runBlocking { applyStoredLocale(userPreferences) }
+    StartupLogger.checkpoint("locale applied")
 
     val minWidth = 480
     val minHeight = 400
@@ -120,7 +133,9 @@ fun main() {
     }
 
     application {
+        remember { StartupLogger.checkpoint("Compose application{} entered") }
         val viewModel = koin.get<DesktopViewModel>()
+        remember { StartupLogger.checkpoint("DesktopViewModel resolved") }
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }

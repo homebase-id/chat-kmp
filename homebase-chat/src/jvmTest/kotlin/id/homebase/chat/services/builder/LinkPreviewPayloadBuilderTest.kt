@@ -6,13 +6,23 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalEncodingApi::class)
 class LinkPreviewPayloadBuilderTest {
+
+    private fun svgBase64FromBugLog(): String {
+        val bytes = this::class.java.getResourceAsStream("/google_calendar_logo.svg")
+            ?.readBytes() ?: error("google_calendar_logo.svg test resource missing")
+        return Base64.encode(bytes)
+    }
+
 
     /**
      * Real server response for `https://diku.dk/` captured from
@@ -71,6 +81,87 @@ class LinkPreviewPayloadBuilderTest {
         assertEquals(null, descriptor.imageWidth)
         assertEquals(null, descriptor.imageHeight)
     }
+
+    /**
+     * Real server response for the bug-report URL
+     * `https://services.msgsndr.com/urls/l/veRVz_mXd`, captured verbatim
+     * from /home/seifert/odin/chat-kmp/homebase.log at 2026-05-17T17:34:19.
+     * `imageUrl` is a 2180-char `data:image/svg+xml;base64,…` data URI
+     * (Google Calendar's SVG logo, 1634 raw bytes after decode).
+     *
+     * Phase 1 dropped the thumb to keep the outbox unblocked. Phase 3
+     * rasterizes the SVG through ImageUtils.rasterizeSvg so the builder
+     * produces a real bitmap previewThumbnail (≤ MaxEmbeddedThumbBytes)
+     * and the bubble shows the image — no warning triangle, no stall.
+     */
+    @Test
+    fun build_rasterizesSvg_intoBitmapThumb_andFlipsHasImageTrue() = runTest {
+        val svgDataUri = "data:image/svg+xml;base64," + svgBase64FromBugLog()
+        val preview = LinkPreview(
+            title = "Google Calendar",
+            url = "https://services.msgsndr.com/urls/l/veRVz_mXd",
+            description = "Easier Time Management",
+            imageUrl = svgDataUri,
+            imageWidth = null,
+            imageHeight = null,
+        )
+        val fakeFileOps = RecordingFileOperationsProvider()
+
+        val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
+
+        val payload = bundle.payloads.single()
+        val thumb = payload.previewThumbnail
+        assertNotNull(thumb, "SVG should rasterize into a real embedded thumb")
+        assertEquals("image/webp", thumb.contentType)
+        val content = thumb.content
+        assertNotNull(content)
+        // Decoded raw size must stay under the server cap so the upload
+        // succeeds on attempt=1.
+        val decodedSize = (content.length / 4) * 3
+        assertTrue(
+            decodedSize <= 1024,
+            "rasterized SVG tiny is ~$decodedSize raw bytes, server cap is 1024"
+        )
+        assertEquals(1, bundle.previewThumbs.size, "exactly one embedded tiny thumb")
+
+        val descriptor = OdinSystemSerializer
+            .deserialize<List<LinkPreviewDescriptor>>(payload.descriptorContent!!)
+            .single()
+        assertTrue(
+            descriptor.hasImage,
+            "hasImage must be true so LinkPreviewCard renders the bubble image"
+        )
+    }
+
+    @Test
+    fun build_truncatesTitleAndDescription_whenDescriptorExceedsByteLimit() = runTest {
+        val longText = "A".repeat(800)
+        val preview = LinkPreview(
+            title = longText,
+            url = "https://example.com",
+            description = longText,
+            imageUrl = null,
+            imageHeight = null,
+            imageWidth = null,
+        )
+        val fakeFileOps = RecordingFileOperationsProvider()
+
+        val bundle = LinkPreviewPayloadBuilder.build(preview, fakeFileOps)
+        val descriptorJson = bundle.payloads.single().descriptorContent
+        assertNotNull(descriptorJson)
+        val descriptor = OdinSystemSerializer
+            .deserialize<List<LinkPreviewDescriptor>>(descriptorJson)
+            .single()
+
+        assertTrue(
+            descriptor.title.length <= 100,
+            "Title should be truncated when descriptor overflows"
+        )
+        assertTrue(
+            descriptor.description.length <= 100,
+            "Description should be truncated when descriptor overflows"
+        )
+    }
 }
 
 /**
@@ -93,6 +184,9 @@ private class RecordingFileOperationsProvider : FileOperationsProvider {
         writes[path] = bytes
         return path
     }
+
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
+        error("not used in this test — share-outbound is for chat ShareMedia only")
 
     // Unused by LinkPreviewPayloadBuilder; throw so any future drift is loud.
     override fun openFileInput(path: String): InputProvider = error("not used in this test")

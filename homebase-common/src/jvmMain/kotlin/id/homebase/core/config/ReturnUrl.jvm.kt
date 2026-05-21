@@ -23,6 +23,11 @@ actual fun returnUrl(): String {
     return "http://localhost:$port/permission-callback"
 }
 
+actual fun dataUpgradeReturnUrl(): String {
+    val port = ensureCallbackServer()
+    return "http://localhost:$port/data-upgrade-callback"
+}
+
 private fun ensureCallbackServer(): Int {
     if (LocalCallbackServer.isRunning()) {
         return LocalCallbackServer.getPort()

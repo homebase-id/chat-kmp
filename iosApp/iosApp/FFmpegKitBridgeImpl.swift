@@ -12,6 +12,46 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         let failStackTrace = session?.getFailStackTrace()
         return FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace)
     }
+
+    func executeFFmpegAsync(
+        command: String,
+        onProgress: @escaping (KotlinLong) -> Void,
+        onComplete: @escaping (FFmpegResult) -> Void
+    ) {
+        FFmpegKit.executeAsync(
+            command,
+            withCompleteCallback: { session in
+                let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+                let failStackTrace = session?.getFailStackTrace()
+                onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                let timeMs = Int64(stats?.getTime() ?? 0)
+                onProgress(KotlinLong(value: timeMs))
+            }
+        )
+    }
+
+    func cancelAllFFmpegSessions() {
+        FFmpegKit.cancel()
+    }
+
+    func getFfmpegVersionBanner() -> String? {
+        // FFmpegKitConfig.getFFmpegVersion() returns the bare version
+        // string (e.g. "n8.1.1") via a direct JNI/native call to
+        // av_version_info(). The previous approach —
+        // FFmpegKit.execute("-version") + getAllLogsAsString() — doesn't
+        // work in n8 because fftools' show_version writes to stdout via
+        // printf AND swaps the log callback to log_callback_help before
+        // printing, so the captured log buffer comes back empty.
+        // Synthesize a single-line banner so the Kotlin parser
+        // (parseFfmpegVersionBanner) still works unchanged.
+        guard let v = FFmpegKitConfig.getFFmpegVersion(), !v.isEmpty else {
+            return nil
+        }
+        return "ffmpeg version \(v)\n"
+    }
     
     func getMediaInformation(filePath: String) -> MediaInfo? {
         guard let session = FFprobeKit.getMediaInformation(filePath) else {

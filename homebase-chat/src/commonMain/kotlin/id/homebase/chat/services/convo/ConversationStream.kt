@@ -10,7 +10,6 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -29,16 +28,25 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+// Persisted, version-gated marker for the one-time orphaned-at-rest sweep. Stored
+// in the encrypted KeyValue table (UUID namespace 0b01 = recovery/maintenance), so
+// it's scoped to the DB/account lifecycle — wiped on logout, gone on reinstall — and
+// the sweep correctly re-runs whenever the DB is rebuilt. Bump
+// ORPHAN_AT_REST_SWEEP_VERSION to force existing installs to re-sweep exactly once.
+private val ORPHAN_SWEEP_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0101")
+private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
+private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -51,7 +59,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader, UnreadCountEnricher, ConversationParticipantLookup {
+) : ConversationLoader, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -119,6 +127,12 @@ class ConversationStream(
     // Within a session the set prevents a recovery → reload → recovery loop
     // if the placeholder write somehow fails silently.
     private val recoveryAttemptedIds = mutableSetOf<Uuid>()
+
+    // One-shot latch for the orphaned-at-rest scan (conversations with messages
+    // but no header). Flipped only inside the sequential eventBus.events.collect
+    // (the Stopped handler), so a plain var is safe — no atomic needed. Runs once
+    // per process, on the first clean chat-drive sync completion.
+    private var orphanedAtRestScanDone = false
     // endregion
 
     // region Auto-unarchive: incoming message for archived conversation
@@ -225,6 +239,21 @@ class ConversationStream(
                                     }
                                 }
                             }
+                        }
+
+                        // One-shot, once per process: after the chat drive's initial sync
+                        // has cleanly drained (so a missing header is genuinely missing, not
+                        // mid-download), scan for conversations that have messages but no
+                        // header — "orphaned at rest" (e.g. a 1:1 whose header is gone from
+                        // both the server and local DB; it has no broken row for the
+                        // Invalid-row path to flag, and no incoming message for the live
+                        // orphan path to catch, so it falls through every other net).
+                        // Deliberately NOT gated on totalCount > 0: such orphans are
+                        // pre-existing, and the common cold-start case is a no-op (cursor
+                        // already at HEAD, totalCount == 0). Fire-and-forget; never blocks.
+                        if (event.result is BackendEvent.DriveResult.Completed && !orphanedAtRestScanDone) {
+                            orphanedAtRestScanDone = true
+                            sweepOrphanedAtRestOnce()
                         }
                     }
 
@@ -720,6 +749,15 @@ class ConversationStream(
             else -> existing.exitedAt ?: incoming.exitedAt
         }
 
+        // Carries the conversation file's localAppData.lastReadTime forward — a
+        // peer device's mark-as-read (or our own pushed advance echoing back)
+        // advances it and syncs it. lastRead = max keeps it monotonic against a
+        // stale echo; dirty (we still owe a server push) is retired once the
+        // remote read reaches our local value — see reconciledWithRemoteLastRead.
+        // Must override dirty explicitly: the existing.copy base would otherwise
+        // preserve a now-stale flag.
+        val reconciled = existing.reconciledWithRemoteLastRead(incoming.lastRead)
+
         // Structural fields (membership, identity) always come from the conversation file,
         // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
         // is almost always newer than metadata.created, so a timestamp guard would silently
@@ -739,12 +777,8 @@ class ConversationStream(
             conversationState = resolvedState,
             exitedAt = resolvedExitedAt,
             fileUpdated = incoming.fileUpdated,
-            // Carries the conversation file's localAppData.lastReadTime forward —
-            // a peer device's mark-as-read advances it, syncs it, and we'd otherwise
-            // drop it here, which leaves enrichAllConversationsWithUnreadCounts
-            // mirroring modelMs=0 and skipping the ChatReadCount upsert. Max
-            // keeps it monotonic against a stale drive-sync echo.
-            lastRead = if (incoming.lastRead > existing.lastRead) incoming.lastRead else existing.lastRead,
+            lastRead = reconciled.lastRead,
+            dirty = reconciled.dirty,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
@@ -801,6 +835,14 @@ class ConversationStream(
             .map { it.id }
             .toSet()
 
+        // Snapshot the prior in-memory rows so the wholesale replace below stays
+        // non-destructive of derived state: an un-flushed local lastRead advance
+        // (+ its owe-push `dirty`) and the computed `unreadCount` live only in
+        // memory and would otherwise be reset to the disk row. We reconcile each
+        // reloaded row against its prior counterpart instead. Empty on cold
+        // start ⇒ no merge, rows come straight from disk.
+        val priorById = _conversations.value.items.associateBy { it.id }
+
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
@@ -810,11 +852,52 @@ class ConversationStream(
             // mapper would resurrect a "deleted conversation" placeholder for them
             // on every reload. See [onConversationDeleted].
             .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
-            .map { file ->
-                val ui = mapper.mapToBasic(file)
-                val finalUi = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+            .mapNotNull { file ->
+                // [ConversationMapper.mapToBasic] re-throws JVM `Error`s
+                // (NoClassDefFoundError, LinkageError, OOM, …) instead of
+                // routing them through the Invalid placeholder + recovery
+                // path, because those errors are environment problems —
+                // they have nothing to do with the file's content. Catch
+                // them here and SKIP the row: leave the conv-file on disk
+                // untouched, do not write a placeholder, do not delete it.
+                // The next reload (or app restart with the env fixed) will
+                // map it correctly. Surfacing a stale env error as "your
+                // data is corrupt" is what mass-overwrote real conv-files
+                // with placeholders during the missing-ImageSize incident.
+                val ui = try {
+                    mapper.mapToBasic(file)
+                } catch (e: Error) {
+                    Logger.e(throwable = e, tag = "ConvListPerf") {
+                        "loadBasicConversations: JVM error mapping fileId=${file.fileId} " +
+                            "uniqueId=${file.fileMetadata.appData.uniqueId} — SKIPPING this row " +
+                            "(file untouched on disk; recovery NOT triggered). " +
+                            "Likely a runtime/classpath issue, not file corruption."
+                    }
+                    return@mapNotNull null
+                }
+                val withLeft = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
+
+                // Reconcile the disk row against the prior in-memory row so the
+                // reload doesn't throw away local state:
+                //  - lastRead = max, dirty kept only while our local read still
+                //    leads disk (same rule as the WS receive merge), so an
+                //    un-flushed local advance survives and still flushes.
+                //  - unreadCount carried forward to avoid a flicker-to-0 (the
+                //    disk row is always 0); when lastRead actually changed vs.
+                //    the prior (a peer advance pulled to disk), mark it
+                //    unread-dirty so the Stopped pipeline's recount corrects it.
+                val prior = priorById[withLeft.id]
+                val finalUi = if (prior != null) {
+                    val reconciled = prior.reconciledWithRemoteLastRead(withLeft.lastRead)
+                    if (reconciled.lastRead != prior.lastRead) markUnreadDirty(withLeft.id)
+                    withLeft.copy(
+                        lastRead = reconciled.lastRead,
+                        dirty = reconciled.dirty,
+                        unreadCount = prior.unreadCount,
+                    )
+                } else withLeft
                 finalUi to file
             }
 
@@ -868,6 +951,105 @@ class ConversationStream(
             }
         }
     }
+
+    /**
+     * Once-ever gate for the orphaned-at-rest recovery. Runs the sweep a single
+     * time per DB lifetime: deferred past the contended boot window, gated on a
+     * persisted KeyValue version flag (so it re-runs only if the DB is rebuilt —
+     * KeyValue is wiped on logout — or if [ORPHAN_AT_REST_SWEEP_VERSION] is bumped).
+     * Fire-and-forget; never blocks. All orphan logic lives here, not in the
+     * [BackendEvent.DriveEvent.Stopped] handler.
+     */
+    private fun sweepOrphanedAtRestOnce() {
+        val recover = onRecoverConversation ?: return
+        scope.launch {
+            try {
+                // Off the boot window: the initial list mapping + WS connect both
+                // hit the single SQLite connection (see the SQLITE_BUSY / WS-drop at
+                // startup). Orphan recovery isn't urgent.
+                delay(ORPHAN_SWEEP_BOOT_DELAY_MS)
+
+                val storedVersion = readOrphanSweepVersion()
+                if (storedVersion >= ORPHAN_AT_REST_SWEEP_VERSION) {
+                    Logger.d(tag = "OrphanAtRest") {
+                        "sweep already done (storedVersion=$storedVersion) — skipping"
+                    }
+                    return@launch
+                }
+
+                val recovered = recoverOrphanedAtRestConversations(recover)
+
+                // Mark done ONLY after a clean sweep, so a failure retries next launch.
+                dbm.keyValue.upsertValue(
+                    ORPHAN_SWEEP_KEY,
+                    encodeOrphanSweepVersion(ORPHAN_AT_REST_SWEEP_VERSION),
+                )
+                Logger.i(tag = "OrphanAtRest") {
+                    "sweep complete: recovered=$recovered, marked version=$ORPHAN_AT_REST_SWEEP_VERSION"
+                }
+            } catch (e: Exception) {
+                Logger.e(e) {
+                    "ConversationStream: orphaned-at-rest sweep FAILED (will retry next launch): ${e.message}"
+                }
+            }
+        }
+    }
+
+    /**
+     * Scans for conversations that have live messages but no header, and recovers
+     * each via [recover] — rebuilding a real 1:1 when a non-self counterparty is
+     * known (otherwise recoverConversation falls back to a "1:1 repair" group).
+     * Returns the number recovered. The scan's NOT-EXISTS-header filter naturally
+     * skips any conversation the live orphan path already healed this session.
+     */
+    private suspend fun recoverOrphanedAtRestConversations(
+        recover: suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit,
+    ): Int {
+        val c = credentialsManager.requireActiveCredentials()
+        val selfDomain = credentialsManager.requireActiveDomain().domainName
+        val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(c.getIdentityId(), selfDomain)
+        if (orphans.isEmpty()) {
+            Logger.i(tag = "OrphanAtRest") { "orphaned-at-rest scan: none found" }
+            return 0
+        }
+        Logger.w(tag = "OrphanAtRest") {
+            "orphaned-at-rest scan: ${orphans.size} conversation(s) have messages but no header — recovering: " +
+                orphans.joinToString(separator = "; ") {
+                    "convoId=${it.conversationId} msgs=${it.messageCount} " +
+                        "counterparty=${it.counterpartyAuthor ?: "unknown(self-only)"}"
+                }
+        }
+        var recovered = 0
+        for (orphan in orphans) {
+            val counterparty = orphan.counterpartyAuthor?.let { runCatching { OdinId(it) }.getOrNull() }
+            try {
+                recover(orphan.conversationId, counterparty)
+                recovered++
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = "OrphanAtRest") {
+                    "recover failed for convoId=${orphan.conversationId}: ${t.message}"
+                }
+            }
+        }
+        return recovered
+    }
+
+    /** Reads the persisted orphaned-at-rest sweep version (0 when never run). */
+    private fun readOrphanSweepVersion(): Int {
+        val bytes = runCatching { dbm.keyValue.selectByKey(ORPHAN_SWEEP_KEY)?.data_ }.getOrNull() ?: return 0
+        if (bytes.size != 4) return 0
+        return (bytes[0].toInt() and 0xFF shl 24) or
+            (bytes[1].toInt() and 0xFF shl 16) or
+            (bytes[2].toInt() and 0xFF shl 8) or
+            (bytes[3].toInt() and 0xFF)
+    }
+
+    private fun encodeOrphanSweepVersion(value: Int): ByteArray = byteArrayOf(
+        (value ushr 24).toByte(),
+        (value ushr 16).toByte(),
+        (value ushr 8).toByte(),
+        value.toByte(),
+    )
 
     /**
      * ENRICHMENT — patches `lastMessage*` fields on the already-loaded
@@ -1054,35 +1236,40 @@ class ConversationStream(
     }
 
     /**
-     * Patch the in-memory entry for [conversationId] to reflect a successful
-     * mark-as-read advance: set lastRead to [newLastRead] and re-derive
-     * unreadCount from ChatReadCount. Single state emission so the UI sees both
-     * deltas at once. No-op if the conversation isn't in memory yet.
+     * The list-level counterpart of [ConversationUiModel.advancedLastRead]:
+     * runs that same entity transition on the in-memory entry for
+     * [conversationId] (move lastRead + set dirty, together) and commits the
+     * result back into the live list, re-deriving unreadCount from ChatReadCount
+     * in the same state emission. Same name as the entity method on purpose —
+     * the entity decides the next value, this applies it to the list. No-op if
+     * the conversation isn't in memory yet or [candidate] isn't a genuine
+     * advance.
      */
-    override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
-        val current = _conversations.value
-        val index = current.items.indexOfFirst { it.id == conversationId }
-        if (index < 0) {
+    override suspend fun advancedLastRead(conversationId: Uuid, candidate: Instant) {
+        val convo = getConversationById(conversationId) ?: run {
             Logger.w(tag = "MarkAsRead") {
-                "ConversationStream.applyLocalAdvance: convo=$conversationId NOT FOUND " +
-                        "in in-memory list (size=${current.items.size}) — UI badge will not update"
+                "ConversationStream.advancedLastRead: convo=$conversationId NOT FOUND " +
+                        "in in-memory list — UI badge will not update"
             }
             return
         }
+
+        // The entity's single advance transition decides + moves lastRead +
+        // sets dirty. If it's not a genuine advance, bail before the unread
+        // query.
+        if (convo.advancedLastRead(candidate) === convo) return
 
         val c = credentialsManager.requireActiveCredentials()
         val newCount = dbm.chatReadCount
             .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)
             .toInt()
 
-        val convo = current.items[index]
-        if (convo.lastRead == newLastRead && convo.unreadCount == newCount) return
-
-        Logger.d("ConversationStream: unreadSync convo=$conversationId ${convo.unreadCount}->$newCount")
-        val updated = current.items.toMutableList().apply {
-            this[index] = convo.copy(lastRead = newLastRead, unreadCount = newCount)
+        updateConversation(conversationId) { current ->
+            val advanced = current.advancedLastRead(candidate)
+            // Layer the freshly-computed unread on top of the advance (lastRead
+            // + dirty). `unreadCount` needs the DB so the model can't own it.
+            if (advanced === current) current else advanced.copy(unreadCount = newCount)
         }
-        _conversations.value = current.copy(items = updated)
     }
 
     // endregion
@@ -1151,6 +1338,34 @@ class ConversationStream(
     override fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
+
+    // region lastRead dirty tracking — the in-memory list is the source of
+    // truth; the entity (ConversationUiModel) owns the transitions (dirty is
+    // set by advancedLastRead, applied to the list by [advancedLastRead] above),
+    // this class only reads the flag and clears it after a push.
+    override fun getDirtyConversationIds(): List<Uuid> =
+        _conversations.value.items.filter { it.dirty }.map { it.id }
+
+    override suspend fun clearLastReadDirtyIfUnchanged(conversationId: Uuid, pushed: UnixTimeUtc) {
+        updateConversation(conversationId) { it.clearedDirtyIfUnchanged(pushed.milliseconds) }
+    }
+
+    /** Replace one conversation in the list via [transform] and emit. No-op if
+     *  the conversation isn't present or [transform] returns an unchanged model. */
+    private fun updateConversation(
+        conversationId: Uuid,
+        transform: (ConversationUiModel) -> ConversationUiModel,
+    ) {
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) return
+        val updated = transform(current.items[index])
+        if (updated == current.items[index]) return
+        _conversations.value = current.copy(
+            items = current.items.toMutableList().apply { this[index] = updated }
+        )
+    }
+    // endregion
 
     fun onConversationLeft(conversationId: Uuid) {
         _conversations.value = _conversations.value.copy(
