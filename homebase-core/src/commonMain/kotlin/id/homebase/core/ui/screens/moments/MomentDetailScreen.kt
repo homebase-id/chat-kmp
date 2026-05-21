@@ -110,6 +110,7 @@ import id.homebase.resources.moments_detail_shared_with_conversation_fallback
 import id.homebase.resources.moments_detail_shared_with_group_members
 import id.homebase.resources.moments_detail_shared_with_hide
 import id.homebase.resources.moments_detail_shared_with_more
+import id.homebase.resources.moments_detail_shared_with_just_you
 import id.homebase.resources.moments_detail_shared_with_private
 import id.homebase.resources.moments_detail_shared_with_show
 import id.homebase.resources.moments_label
@@ -822,6 +823,7 @@ private fun SharedWithRow(
 ) {
     when (sharedWith) {
         SharedWithDisplay.Private -> PrivateRow()
+        SharedWithDisplay.JustYou -> JustYouRow()
         is SharedWithDisplay.Recipients -> RecipientsRow(
             entries = sharedWith.entries,
             recipientAvatars = recipientAvatars,
@@ -848,6 +850,26 @@ private fun PrivateRow() {
         )
         Text(
             text = stringResource(MR.string.moments_detail_shared_with_private),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun JustYouRow() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = stringResource(MR.string.moments_detail_shared_with_just_you),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1237,6 +1259,8 @@ private fun CommentRow(
     onToggleReaction: (emoji: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val authorLabel = if (isMine) stringResource(MR.string.moments_detail_comment_you)
+    else comment.displayName
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1245,9 +1269,20 @@ private fun CommentRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Sender avatar — uses the same PublicAvatar widget the SharedWith
+            // surface uses, so the moment detail screen has one consistent
+            // identity-rendering style. Own comments fall back to the active
+            // user's domain when self isn't on the conversation's contact list.
+            val avatarOdinId = comment.senderOdinId
+            if (avatarOdinId != null) {
+                PublicAvatar(
+                    odinId = avatarOdinId,
+                    initials = authorLabel.firstOrNull()?.toString(),
+                    options = AvatarOptions(size = 24.dp),
+                )
+            }
             Text(
-                text = if (isMine) stringResource(MR.string.moments_detail_comment_you)
-                else comment.senderOdinId?.domainName ?: "",
+                text = authorLabel,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
@@ -1257,6 +1292,19 @@ private fun CommentRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Own-comment overflow menu — Edit + Delete live here so the
+            // actions cluster on the header row next to the timestamp,
+            // matching MomentOverflowMenu's placement on the moment card.
+            // Hidden during inline edit (the Save/Cancel row covers exit)
+            // and until versionTag is confirmed (optimistic write before
+            // server ack has no tag to update against).
+            if (isMine && comment.versionTag != null && !isEditing) {
+                CommentOverflowMenu(
+                    isDeleting = isDeleting,
+                    onEditClick = onEditClick,
+                    onDeleteClick = onDeleteClick,
+                )
+            }
         }
 
         if (isEditing) {
@@ -1307,40 +1355,49 @@ private fun CommentRow(
                 quickReactions = quickReactions,
                 onToggle = onToggleReaction,
             )
+        }
+    }
+}
 
-            // Action row: edit + delete (own comments only, only once
-            // versionTag is confirmed). Sits next to the reactions so the
-            // controls cluster. While a delete is in flight both buttons
-            // disable and a small spinner sits at the end — the row is
-            // usually about to vanish (optimistic delete) but if the enqueue
-            // fails it stays around, so we need the disable state.
-            if (isMine && comment.versionTag != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton(
-                        onClick = onEditClick,
-                        enabled = !isDeleting,
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                    ) {
-                        Text(stringResource(MR.string.moments_detail_comment_edit))
-                    }
-                    TextButton(
-                        onClick = onDeleteClick,
-                        enabled = !isDeleting,
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                    ) {
-                        Text(stringResource(MR.string.moments_detail_comment_delete))
-                    }
-                    if (isDeleting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                }
+@Composable
+private fun CommentOverflowMenu(
+    isDeleting: Boolean,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = !isDeleting) {
+            if (isDeleting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = stringResource(MR.string.moments_detail_menu_more),
+                )
             }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_comment_edit)) },
+                onClick = {
+                    expanded = false
+                    onEditClick()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_comment_delete)) },
+                onClick = {
+                    expanded = false
+                    onDeleteClick()
+                },
+            )
         }
     }
 }

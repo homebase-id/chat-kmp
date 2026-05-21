@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.moments
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -34,10 +35,30 @@ class MomentsFeedViewModel(
     private val _uiState = MutableStateFlow(MomentsFeedUiState())
     val uiState: StateFlow<MomentsFeedUiState> = _uiState.asStateFlow()
 
+    companion object {
+        private const val TAG = "MomentsFeedViewModel"
+    }
+
     init {
         viewModelScope.launch {
+            var lastSize = -1
+            var lastNewestId: String? = null
             feedService.feed.collect { list ->
                 _uiState.update { it.copy(moments = list) }
+                // Diagnostic: log every size/head change so we can confirm the
+                // feed VM is propagating service updates into uiState. Pairs
+                // with MomentsFeedService.processIncrementalBatch logs to
+                // triangulate a "remote moment didn't appear" report.
+                val newest = list.firstOrNull()
+                val newestId = newest?.id?.toString()
+                if (list.size != lastSize || newestId != lastNewestId) {
+                    Logger.d(tag = TAG) {
+                        "uiState moments updated: count=${list.size} " +
+                            "newest=$newestId sender=${newest?.senderOdinId?.domainName ?: "self"}"
+                    }
+                    lastSize = list.size
+                    lastNewestId = newestId
+                }
             }
         }
 

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Info
@@ -68,6 +69,10 @@ import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
+import id.homebase.core.avatars.PublicAvatar
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
@@ -455,6 +460,21 @@ private fun MomentPostCard(
                 .padding(8.dp),
         )
 
+        // Top-left: sender avatar for inbound moments. Same "is mine" rule as
+        // `isPrivate` below — null senderOdinId or a self-match means this is
+        // the user's own post (sender's drive copy is null; the optimistic
+        // writer stamps self on the local copy), so we skip the badge to keep
+        // the user's own feed visually quiet.
+        val sender = moment.senderOdinId
+        if (sender != null && sender != selfOdinId) {
+            SenderAvatarBadge(
+                odinId = sender,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+            )
+        }
+
         // Overlay indicators in the bottom-right of the thumbnail. Info badge
         // signals the moment has a description; lock badge signals the moment
         // was kept private (no recipients). Absence of the lock implies the
@@ -477,6 +497,18 @@ private fun MomentPostCard(
                 )
             }
         }
+
+        // Bottom-left: live engagement strip — top reaction emoji + comment
+        // count. Reads `moment.reactionPreview` (kept fresh by
+        // MomentsFeedService incremental updates), so reactions/comments
+        // arriving from another device update without a refresh. Hidden when
+        // there's nothing to surface so empty moments stay clean.
+        EngagementStrip(
+            summary = moment.reactionPreview,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp),
+        )
     }
 }
 
@@ -593,6 +625,26 @@ private fun MomentsTopAppBar(
 }
 
 @Composable
+private fun SenderAvatarBadge(
+    odinId: OdinId,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        PublicAvatar(
+            odinId = odinId,
+            initials = odinId.toString().firstOrNull()?.toString()?.uppercase(),
+            options = AvatarOptions(size = 24.dp, fontSize = 10.sp),
+        )
+    }
+}
+
+@Composable
 private fun IndicatorBadge(
     imageVector: ImageVector,
     contentDescription: String? = null,
@@ -612,3 +664,76 @@ private fun IndicatorBadge(
         )
     }
 }
+
+/**
+ * Inline reaction + comment indicator overlaid on each feed tile. Deliberately
+ * subtle:
+ *  - Up to three top emoji, no count digits, so the pill stays narrow.
+ *  - Same dark-scrim chip as [IndicatorBadge] so the indicator family on a
+ *    tile reads as one design.
+ *  - Renders nothing when both reactions and comments are absent — empty
+ *    moments stay visually quiet.
+ *
+ * Lives on the bottom-left so it balances the existing info/lock indicators
+ * in the bottom-right without crowding either.
+ */
+@Composable
+private fun EngagementStrip(
+    summary: ReactionSummary?,
+    modifier: Modifier = Modifier,
+) {
+    val topEmoji = remember(summary) {
+        summary?.reactions?.values
+            ?.sortedByDescending { it.count }
+            ?.mapNotNull { entry ->
+                if (entry.count <= 0) return@mapNotNull null
+                decodeReactionEmoji(entry.reactionContent)
+            }
+            ?.take(MaxTopEmoji)
+            .orEmpty()
+    }
+    val commentCount = summary?.totalCommentCount ?: 0
+    if (topEmoji.isEmpty() && commentCount <= 0) return
+
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        topEmoji.forEach { emoji ->
+            Text(
+                text = emoji,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+        if (commentCount > 0) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Comment,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = commentCount.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+private const val MaxTopEmoji = 3
+
+/**
+ * Decode the JSON-wrapped reaction content into its emoji glyph. Same shape
+ * the detail screen uses (see `MomentDetailScreen.decodeReactionEmoji`) —
+ * duplicated rather than lifted because there's no third caller yet.
+ */
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
+    OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
+}.getOrNull()
