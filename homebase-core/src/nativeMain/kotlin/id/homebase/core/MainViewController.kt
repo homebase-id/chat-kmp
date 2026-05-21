@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
@@ -67,6 +68,10 @@ fun initializeApp() {
 
     // Set up crash handler
     setupIOSCrashHandler()
+
+    // Detect main-thread stalls and log them to homebase.log. On iOS the stack itself can't be
+    // captured from a background thread, but the "stalled for Nms" breadcrumb is still recorded.
+    MainThreadWatchdog().start()
 
     val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
     runBlocking {
