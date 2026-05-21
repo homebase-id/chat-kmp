@@ -231,6 +231,14 @@ sealed interface BackendEvent {
      */
     data object PermissionsExtensionCanceled : BackendEvent
 
+    /**
+     * Emitted when the user returns from the owner-console data-upgrade page
+     * (via deep link on mobile or /data-upgrade-callback on desktop).
+     * PendingUpgradeManager listens for this and immediately re-checks upgrade
+     * status so the UI clears or updates without waiting for the next poll.
+     */
+    data object DataUpgradeReturned : BackendEvent
+
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
 }
