@@ -66,11 +66,14 @@ fun VaultEntryCard(
 ) {
     val cardShape = RoundedCornerShape(CARD_CORNER)
     val description = file.label?.ifBlank { null } ?: file.fileName
+    val noteTitle = if (file.isNote) {
+        file.fileName.removeSuffix(".md").ifBlank { file.fileName }
+    } else null
 
     Column(
         modifier = modifier
             .width(CARD_WIDTH)
-            .height(if (!file.label.isNullOrBlank()) CARD_HEIGHT else THUMBNAIL_HEIGHT)
+            .height(if (!file.label.isNullOrBlank() || file.isNote) CARD_HEIGHT else THUMBNAIL_HEIGHT)
             .clip(cardShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(
@@ -208,7 +211,7 @@ fun VaultEntryCard(
             }
         }
 
-        if (!file.label.isNullOrBlank()) {
+        if (!file.label.isNullOrBlank() || file.isNote) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -217,7 +220,7 @@ fun VaultEntryCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = file.label,
+                    text = noteTitle ?: file.label ?: file.fileName,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
