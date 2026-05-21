@@ -20,7 +20,16 @@ actual class DatabaseDriverFactory {
             "jdbc:sqlite:file:$dbFileName?cipher=sqlcipher&legacy=4&key=$encodedPassword"
         }
 
-        return JdbcSqliteDriver(jdbcUrl, Properties())
+        // Apply the shared SQLITE_TUNING_PRAGMAS as JDBC connection properties — the
+        // Willena/xerial driver applies these to every connection it opens (reads and
+        // writes use different connections; see DatabaseManager). These are the same
+        // key/value pairs SQLiteConfig.toProperties() would emit, just sourced from the
+        // one cross-platform definition so desktop/Android/iOS can't drift.
+        val props = Properties().apply {
+            SQLITE_TUNING_PRAGMAS.forEach { (key, value) -> setProperty(key, value) }
+        }
+
+        return JdbcSqliteDriver(jdbcUrl, props)
     }
 
     actual fun dbFilePath(): String = resolveDbFile().absolutePath

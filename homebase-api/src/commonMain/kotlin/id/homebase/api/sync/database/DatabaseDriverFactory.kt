@@ -5,6 +5,37 @@ import app.cash.sqldelight.db.SqlDriver
 /** The on-disk database file name used by every platform's [DatabaseDriverFactory]. */
 internal const val DB_FILE_NAME = "odin-2.db"
 
+/**
+ * Shared SQLite tuning applied identically on every platform — the single source of
+ * truth so the three [DatabaseDriverFactory] actuals can't drift. Each platform applies
+ * it through its driver's native mechanism (desktop: JDBC connection [java.util.Properties];
+ * Android: `execSQL` in the open-helper callback; iOS: `rawExecSql` in the sqliter
+ * connection lifecycle), but the pragma set itself lives here.
+ *
+ *  - `journal_mode=WAL` — readers and the single writer don't block each other. Reads
+ *    bypass [DatabaseManager]'s single-writer dispatcher and run on separate connections,
+ *    so without WAL a long read + a write collide into `SQLITE_BUSY` (what knocked the
+ *    desktop WebSocket offline). File-persistent.
+ *  - `busy_timeout=5000` — a contended statement waits up to 5s for the lock instead of
+ *    throwing `SQLITE_BUSY` immediately.
+ *  - `synchronous=NORMAL` — faster, WAL-safe durability (no corruption risk; at most the
+ *    last committed transaction is lost on power loss).
+ *  - `temp_store=MEMORY` — temp tables/indices in RAM.
+ */
+internal val SQLITE_TUNING_PRAGMAS: Map<String, String> = linkedMapOf(
+    "journal_mode" to "WAL",
+    "busy_timeout" to "5000",
+    "synchronous" to "NORMAL",
+    "temp_store" to "MEMORY",
+)
+
+/**
+ * [SQLITE_TUNING_PRAGMAS] rendered as executable `PRAGMA key=value` statements, for the
+ * platforms that apply pragmas as raw SQL on each new connection (Android, iOS).
+ */
+internal fun sqliteTuningPragmaStatements(): List<String> =
+    SQLITE_TUNING_PRAGMAS.entries.map { (key, value) -> "PRAGMA $key=$value" }
+
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class DatabaseDriverFactory {
     fun createDriver(passphrase: String? = null): SqlDriver

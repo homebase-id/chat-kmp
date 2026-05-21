@@ -87,6 +87,22 @@ private data class ConnectionStatusContext(
     val statusKnown: Boolean,
 )
 
+/**
+ * What triggered a conversation to be opened/loaded. Logged on every [ConversationListViewModel.selectConversation]
+ * / loadMessagesForConversation so a burst of opens in the log can be attributed to a cause
+ * (a real user tap vs. a deep link vs. a recomposition/restore loop) instead of guessed at.
+ */
+enum class ConversationLoadTrigger {
+    /** User picked a conversation from the list, or a deep link routed through navigation. */
+    Navigation,
+
+    /** A notification tap resolved to a now-loaded conversation. */
+    NotificationResolved,
+
+    /** Caller did not specify — investigate if these show up in a burst. */
+    Unknown,
+}
+
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
     private val conversationStream: ConversationStream,
@@ -536,6 +552,7 @@ class ConversationListViewModel(
                         conversationId = resolved.conversationId,
                         messageId = resolved.messageId,
                         scrollToBottom = true,
+                        trigger = ConversationLoadTrigger.NotificationResolved,
                     )
                     pendingNotificationTap.clearIfMatches(resolved.conversationId)
                 }
@@ -582,10 +599,11 @@ class ConversationListViewModel(
     fun selectConversation(
         conversationId: Uuid,
         messageId: Uuid? = null,
-        scrollToBottom: Boolean = false
+        scrollToBottom: Boolean = false,
+        trigger: ConversationLoadTrigger = ConversationLoadTrigger.Navigation
     ) {
         Logger.i(tag = "ConversationListViewModel") {
-            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom"
+            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom trigger=$trigger"
         }
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
@@ -593,7 +611,7 @@ class ConversationListViewModel(
         }
 
         ActiveConversation.selectConversation(conversationId)
-        loadMessagesForConversation(conversationId, messageId, scrollToBottom)
+        loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
     fun eventConsumed() {
@@ -612,7 +630,11 @@ class ConversationListViewModel(
                 // to a different one.
                 pendingNotificationTap.clear()
                 ActiveConversation.selectConversation(action.conversationId)
-                loadMessagesForConversation(action.conversationId, action.messageId)
+                loadMessagesForConversation(
+                    action.conversationId,
+                    action.messageId,
+                    trigger = ConversationLoadTrigger.Navigation,
+                )
             }
 
             is ConversationListUiAction.BackClicked -> {
@@ -1007,13 +1029,14 @@ class ConversationListViewModel(
     private fun loadMessagesForConversation(
         conversationId: Uuid,
         messageIdForScroll: Uuid?,
-        scrollToBottom: Boolean = false
+        scrollToBottom: Boolean = false,
+        trigger: ConversationLoadTrigger = ConversationLoadTrigger.Unknown
     ) {
         val loadStart = TimeSource.Monotonic.markNow()
 
         val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
         Logger.i(tag = "ConversationListViewModel") {
-            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
+            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages trigger=$trigger"
         }
 
         // Always mark loading here, even when hasCachedMessages == true.
@@ -1054,7 +1077,7 @@ class ConversationListViewModel(
         // already shows isLoadingMessages = true above; messages will fill in via
         // the collect block below.
         Logger.i(tag = "ConversationListViewModel") {
-            "selectedConversationId set id=$conversationId (pending messages)"
+            "selectedConversationId set id=$conversationId (pending messages) trigger=$trigger"
         }
         _uiState.update { it.copy(selectedConversationId = conversationId) }
 
