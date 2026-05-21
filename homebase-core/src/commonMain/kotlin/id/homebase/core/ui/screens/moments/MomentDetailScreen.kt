@@ -109,6 +109,7 @@ import id.homebase.resources.moments_detail_shared_with
 import id.homebase.resources.moments_detail_shared_with_conversation_fallback
 import id.homebase.resources.moments_detail_shared_with_group_members
 import id.homebase.resources.moments_detail_shared_with_hide
+import id.homebase.resources.moments_detail_shared_with_more
 import id.homebase.resources.moments_detail_shared_with_private
 import id.homebase.resources.moments_detail_shared_with_show
 import id.homebase.resources.moments_label
@@ -976,7 +977,7 @@ private fun AvatarStack(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "+$overflow",
+                    text = stringResource(MR.string.moments_detail_shared_with_more, overflow),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
