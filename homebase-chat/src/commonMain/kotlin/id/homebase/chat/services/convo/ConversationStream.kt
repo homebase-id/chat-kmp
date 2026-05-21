@@ -28,6 +28,7 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +38,15 @@ import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+// Persisted, version-gated marker for the one-time orphaned-at-rest sweep. Stored
+// in the encrypted KeyValue table (UUID namespace 0b01 = recovery/maintenance), so
+// it's scoped to the DB/account lifecycle — wiped on logout, gone on reinstall — and
+// the sweep correctly re-runs whenever the DB is rebuilt. Bump
+// ORPHAN_AT_REST_SWEEP_VERSION to force existing installs to re-sweep exactly once.
+private val ORPHAN_SWEEP_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0101")
+private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
+private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -117,6 +127,12 @@ class ConversationStream(
     // Within a session the set prevents a recovery → reload → recovery loop
     // if the placeholder write somehow fails silently.
     private val recoveryAttemptedIds = mutableSetOf<Uuid>()
+
+    // One-shot latch for the orphaned-at-rest scan (conversations with messages
+    // but no header). Flipped only inside the sequential eventBus.events.collect
+    // (the Stopped handler), so a plain var is safe — no atomic needed. Runs once
+    // per process, on the first clean chat-drive sync completion.
+    private var orphanedAtRestScanDone = false
     // endregion
 
     // region Auto-unarchive: incoming message for archived conversation
@@ -223,6 +239,21 @@ class ConversationStream(
                                     }
                                 }
                             }
+                        }
+
+                        // One-shot, once per process: after the chat drive's initial sync
+                        // has cleanly drained (so a missing header is genuinely missing, not
+                        // mid-download), scan for conversations that have messages but no
+                        // header — "orphaned at rest" (e.g. a 1:1 whose header is gone from
+                        // both the server and local DB; it has no broken row for the
+                        // Invalid-row path to flag, and no incoming message for the live
+                        // orphan path to catch, so it falls through every other net).
+                        // Deliberately NOT gated on totalCount > 0: such orphans are
+                        // pre-existing, and the common cold-start case is a no-op (cursor
+                        // already at HEAD, totalCount == 0). Fire-and-forget; never blocks.
+                        if (event.result is BackendEvent.DriveResult.Completed && !orphanedAtRestScanDone) {
+                            orphanedAtRestScanDone = true
+                            sweepOrphanedAtRestOnce()
                         }
                     }
 
@@ -920,6 +951,105 @@ class ConversationStream(
             }
         }
     }
+
+    /**
+     * Once-ever gate for the orphaned-at-rest recovery. Runs the sweep a single
+     * time per DB lifetime: deferred past the contended boot window, gated on a
+     * persisted KeyValue version flag (so it re-runs only if the DB is rebuilt —
+     * KeyValue is wiped on logout — or if [ORPHAN_AT_REST_SWEEP_VERSION] is bumped).
+     * Fire-and-forget; never blocks. All orphan logic lives here, not in the
+     * [BackendEvent.DriveEvent.Stopped] handler.
+     */
+    private fun sweepOrphanedAtRestOnce() {
+        val recover = onRecoverConversation ?: return
+        scope.launch {
+            try {
+                // Off the boot window: the initial list mapping + WS connect both
+                // hit the single SQLite connection (see the SQLITE_BUSY / WS-drop at
+                // startup). Orphan recovery isn't urgent.
+                delay(ORPHAN_SWEEP_BOOT_DELAY_MS)
+
+                val storedVersion = readOrphanSweepVersion()
+                if (storedVersion >= ORPHAN_AT_REST_SWEEP_VERSION) {
+                    Logger.d(tag = "OrphanAtRest") {
+                        "sweep already done (storedVersion=$storedVersion) — skipping"
+                    }
+                    return@launch
+                }
+
+                val recovered = recoverOrphanedAtRestConversations(recover)
+
+                // Mark done ONLY after a clean sweep, so a failure retries next launch.
+                dbm.keyValue.upsertValue(
+                    ORPHAN_SWEEP_KEY,
+                    encodeOrphanSweepVersion(ORPHAN_AT_REST_SWEEP_VERSION),
+                )
+                Logger.i(tag = "OrphanAtRest") {
+                    "sweep complete: recovered=$recovered, marked version=$ORPHAN_AT_REST_SWEEP_VERSION"
+                }
+            } catch (e: Exception) {
+                Logger.e(e) {
+                    "ConversationStream: orphaned-at-rest sweep FAILED (will retry next launch): ${e.message}"
+                }
+            }
+        }
+    }
+
+    /**
+     * Scans for conversations that have live messages but no header, and recovers
+     * each via [recover] — rebuilding a real 1:1 when a non-self counterparty is
+     * known (otherwise recoverConversation falls back to a "1:1 repair" group).
+     * Returns the number recovered. The scan's NOT-EXISTS-header filter naturally
+     * skips any conversation the live orphan path already healed this session.
+     */
+    private suspend fun recoverOrphanedAtRestConversations(
+        recover: suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit,
+    ): Int {
+        val c = credentialsManager.requireActiveCredentials()
+        val selfDomain = credentialsManager.requireActiveDomain().domainName
+        val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(c.getIdentityId(), selfDomain)
+        if (orphans.isEmpty()) {
+            Logger.i(tag = "OrphanAtRest") { "orphaned-at-rest scan: none found" }
+            return 0
+        }
+        Logger.w(tag = "OrphanAtRest") {
+            "orphaned-at-rest scan: ${orphans.size} conversation(s) have messages but no header — recovering: " +
+                orphans.joinToString(separator = "; ") {
+                    "convoId=${it.conversationId} msgs=${it.messageCount} " +
+                        "counterparty=${it.counterpartyAuthor ?: "unknown(self-only)"}"
+                }
+        }
+        var recovered = 0
+        for (orphan in orphans) {
+            val counterparty = orphan.counterpartyAuthor?.let { runCatching { OdinId(it) }.getOrNull() }
+            try {
+                recover(orphan.conversationId, counterparty)
+                recovered++
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = "OrphanAtRest") {
+                    "recover failed for convoId=${orphan.conversationId}: ${t.message}"
+                }
+            }
+        }
+        return recovered
+    }
+
+    /** Reads the persisted orphaned-at-rest sweep version (0 when never run). */
+    private fun readOrphanSweepVersion(): Int {
+        val bytes = runCatching { dbm.keyValue.selectByKey(ORPHAN_SWEEP_KEY)?.data_ }.getOrNull() ?: return 0
+        if (bytes.size != 4) return 0
+        return (bytes[0].toInt() and 0xFF shl 24) or
+            (bytes[1].toInt() and 0xFF shl 16) or
+            (bytes[2].toInt() and 0xFF shl 8) or
+            (bytes[3].toInt() and 0xFF)
+    }
+
+    private fun encodeOrphanSweepVersion(value: Int): ByteArray = byteArrayOf(
+        (value ushr 24).toByte(),
+        (value ushr 16).toByte(),
+        (value ushr 8).toByte(),
+        value.toByte(),
+    )
 
     /**
      * ENRICHMENT — patches `lastMessage*` fields on the already-loaded
