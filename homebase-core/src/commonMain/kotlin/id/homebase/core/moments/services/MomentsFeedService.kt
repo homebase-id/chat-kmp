@@ -101,6 +101,19 @@ class MomentsFeedService(
                             scope.launch { coldLoad() }
                         }
                     }
+                    is BackendEvent.OutboxEvent.OptimisticRollback -> {
+                        // Fired when OptimisticWriter.removeOptimisticFile
+                        // deletes the local row — typically because the user
+                        // tapped Delete on a permanently-failed moment that
+                        // never reached the server. Mirrors ChatMessageStream.
+                        if (event.driveId != drive) return@collect
+                        if (byId.remove(event.uniqueId) != null) {
+                            Logger.d(tag = TAG) {
+                                "OptimisticRollback: removed moment=${event.uniqueId}"
+                            }
+                            emitSorted()
+                        }
+                    }
                     else -> {}
                 }
             }
