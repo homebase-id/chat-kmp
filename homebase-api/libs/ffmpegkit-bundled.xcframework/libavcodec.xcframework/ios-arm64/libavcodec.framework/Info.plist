@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>FMWK</string>
 	<key>CFBundleShortVersionString</key>
-	<string>60.3.100</string>
+	<string>62.28.101</string>
 	<key>CFBundleVersion</key>
-	<string>60.3.100</string>
+	<string>62.28.101</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>MinimumOSVersion</key>
