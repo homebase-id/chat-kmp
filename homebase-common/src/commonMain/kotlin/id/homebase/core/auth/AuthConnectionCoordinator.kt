@@ -16,8 +16,10 @@ import id.homebase.core.config.LabeledDrive
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.avatars.AppConnectionStatus
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +42,19 @@ class AuthConnectionCoordinator(
     private val driveRegistry: DriveRegistry,
     private val onPostAuthenticated: () -> Unit = {},
 ) {
-    private val scope = CoroutineScope(Dispatchers.Default)
+    // SupervisorJob so one child's failure doesn't cancel its siblings, plus a
+    // top-level handler so an *uncaught* exception in any child (notably a transient
+    // SQLITE_BUSY in a DB-writing coroutine) is logged instead of escaping to the
+    // platform's uncaught handler and cancelling this whole scope. The WebSocket
+    // client runs on this same scope; a plain-Job scope previously meant one such
+    // throw tore down the reconnect loop and left the app permanently offline.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            Logger.e(throwable = e, tag = "AuthLifecycle") {
+                "AuthCC: uncaught exception in coordinator scope (isolated, not fatal): ${e.message}"
+            }
+        }
+    )
     private var wsClient: OdinWebSocketClient? = null
 
     // Coalesces bursts of mountDrive/unmountDrive calls into a single WebSocket reconnect.
