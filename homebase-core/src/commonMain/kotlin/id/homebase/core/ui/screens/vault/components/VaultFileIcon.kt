@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
@@ -73,6 +74,8 @@ fun fileTypeIcon(contentType: String): ImageVector = when {
         contentType == "application/gzip" ||
         contentType == "application/x-rar-compressed" ||
         contentType == "application/x-7z-compressed" -> Icons.Outlined.FolderZip
+
+    contentType == "text/markdown" -> Icons.AutoMirrored.Outlined.NoteAdd
 
     contentType.startsWith("text/") -> Icons.Outlined.Description
 

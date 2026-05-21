@@ -748,6 +748,21 @@ class VaultEntryTest {
     }
 
     @Test
+    fun guessContentType_md() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("note.md"))
+    }
+
+    @Test
+    fun guessContentType_markdown() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("note.markdown"))
+    }
+
+    @Test
+    fun guessContentType_MD_caseInsensitive() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("README.MD"))
+    }
+
+    @Test
     fun guessContentType_txt() {
         assertEquals("text/plain", detectContentTypeFromExtensionOrHint("readme.txt"))
     }

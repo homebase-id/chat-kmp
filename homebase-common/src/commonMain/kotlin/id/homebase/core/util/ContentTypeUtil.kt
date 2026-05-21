@@ -94,8 +94,8 @@ private val commonExtToMime: Map<String, String> = mapOf(
     // Text / Plain
     "txt" to "text/plain",
     "log" to "text/plain",
-    "md" to "text/plain",
-    "markdown" to "text/plain",
+    "md" to "text/markdown",
+    "markdown" to "text/markdown",
     "cfg" to "text/plain",
     "conf" to "text/plain",
     "ini" to "text/plain",
