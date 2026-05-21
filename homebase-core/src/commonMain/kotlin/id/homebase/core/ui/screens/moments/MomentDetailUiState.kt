@@ -233,6 +233,14 @@ sealed interface MomentDetailUiAction {
      * delivery rows can populate; subsequent toggles just flip visibility.
      */
     data class ToggleSharedWithExpansion(val expanded: Boolean) : MomentDetailUiAction
+
+    /**
+     * Share-button tap in the full-screen image viewer. Decrypts the payload,
+     * writes a cleartext copy into the share_outbound sweep dir, and emits
+     * [MomentDetailUiEvent.ShareFileReady] for the screen to hand to the
+     * platform share sheet.
+     */
+    data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
@@ -245,4 +253,11 @@ sealed interface MomentDetailUiEvent {
     data class DeleteFailed(val message: String?) : MomentDetailUiEvent
 
     data class CommentDeleteFailed(val message: String?) : MomentDetailUiEvent
+
+    /**
+     * Decrypted payload is written to [filePath] under the share_outbound sweep
+     * dir; the screen should hand the path to the platform share sheet.
+     */
+    data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
+    data class ShareFailed(val message: String?) : MomentDetailUiEvent
 }

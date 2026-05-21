@@ -7,6 +7,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -70,6 +71,7 @@ class MomentDetailViewModel(
     conversationStream: ConversationStream,
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -427,6 +429,54 @@ class MomentDetailViewModel(
 
             is MomentDetailUiAction.ToggleSharedWithExpansion ->
                 toggleSharedWithExpansion(action.expanded)
+
+            is MomentDetailUiAction.ShareMedia -> shareMedia(action.payloadKey)
+        }
+    }
+
+    /**
+     * Decrypt the selected payload and write a cleartext copy into the
+     * share_outbound sweep dir, then surface the path so the screen can hand
+     * it to the platform share sheet. Mirrors `MediaDownloadHandler.handleShareMedia`
+     * on the chat side — same KeyHeader assembly and same sequestered temp
+     * dir so the cleartext copy is reaped by the cold-start + foreground sweepers.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun shareMedia(payloadKey: String) {
+        val moment = uiState.value.moment ?: return
+        val payload = moment.payloads.firstOrNull { it.key == payloadKey } ?: return
+        val ivString = payload.iv ?: run {
+            Logger.e(tag = TAG) { "shareMedia: payload $payloadKey has no IV" }
+            _events.tryEmit(MomentDetailUiEvent.ShareFailed("Payload missing key header"))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val payloadIv = Base64.decode(ivString)
+                val response = driveFileProvider.getPayloadBytesDecrypted(
+                    driveId = moment.driveId,
+                    fileId = moment.fileId,
+                    key = payloadKey,
+                    keyHeader = KeyHeader(payloadIv, moment.keyHeader.aesKey),
+                )
+                val bytes = response?.bytes
+                if (bytes == null) {
+                    _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
+                    return@launch
+                }
+                val extension = when (val raw = payload.contentType?.substringAfter("/") ?: "bin") {
+                    "jpeg" -> "jpg"
+                    else -> raw
+                }
+                val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
+                    bytes = bytes,
+                    suffix = ".$extension",
+                )
+                _events.tryEmit(MomentDetailUiEvent.ShareFileReady(tempPath))
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "shareMedia failed: ${t.message}" }
+                _events.tryEmit(MomentDetailUiEvent.ShareFailed(t.message))
+            }
         }
     }
 
