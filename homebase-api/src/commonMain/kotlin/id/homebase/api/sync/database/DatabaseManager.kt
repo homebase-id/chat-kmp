@@ -93,6 +93,18 @@ class DatabaseManager(
             outboxAdapter
         )
         logger.i { "Database initialized" }
+
+        // One-time audit of the effective SQLite mode, so each platform's actual
+        // journal mode / busy timeout is visible in homebase.log. WAL + a non-zero
+        // busy_timeout are what keep concurrent reads/writes from throwing
+        // SQLITE_BUSY (which knocked the desktop WebSocket offline). synchronous is
+        // 0=OFF 1=NORMAL 2=FULL 3=EXTRA.
+        val journalMode = readPragmaString("PRAGMA journal_mode") ?: "?"
+        val busyTimeoutMs = readPragmaLong("PRAGMA busy_timeout") ?: -1L
+        val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
+        logger.i {
+            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms synchronous=$synchronous"
+        }
     }
 
     companion object {

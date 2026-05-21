@@ -6,6 +6,8 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.kermit.Logger
 import co.touchlab.sqliter.DatabaseConfiguration
+import co.touchlab.sqliter.JournalMode
+import co.touchlab.sqliter.SynchronousFlag
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -22,7 +24,25 @@ actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
         val driver = NativeSqliteDriver(
             schema = OdinDatabase.Schema, name = DB_FILE_NAME, onConfiguration = { config ->
+                // Configure via sqliter's typed DatabaseConfiguration fields — the idiomatic
+                // path for NativeSqliteDriver/SQLiter, not raw PRAGMA strings. This mirrors the
+                // shared SQLITE_TUNING_PRAGMAS values (desktop/Android use that map directly):
+                //   - journalMode=WAL  (already sqliter's default; set explicitly so it can't
+                //     drift) so reads don't block the writer.
+                //   - busyTimeout=5s   so contention waits instead of throwing SQLITE_BUSY.
+                //   - synchronousFlag=NORMAL  faster, WAL-safe durability.
+                // temp_store has no sqliter config field; it's the least-important tuning pragma
+                // so we omit it on iOS rather than reach for rawExecSql (which on Android we saw
+                // is finicky for result-returning pragmas).
+                //
+                // NOTE: native targets don't compile on Windows — verify on macOS/CI against the
+                // `DB pragmas: journal_mode=wal …` audit line.
                 config.copy(
+                    journalMode = JournalMode.WAL,
+                    busyTimeout = 5_000,
+                    extendedConfig = config.extendedConfig.copy(
+                        synchronousFlag = SynchronousFlag.NORMAL,
+                    ),
                     encryptionConfig = DatabaseConfiguration.Encryption(
                         key = passphrase ?: "", rekey = ""
                     )
