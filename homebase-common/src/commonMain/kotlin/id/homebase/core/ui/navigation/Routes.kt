@@ -112,6 +112,13 @@ sealed class Route {
     data class VaultEntryDetail(val fileId: String, val sectionTitle: String) : Route()
 
     @Serializable
+    @SerialName("vault-note-editor")
+    data class VaultNoteEditor(
+        val sectionId: String,
+        val entryId: String? = null,
+    ) : Route()
+
+    @Serializable
     @SerialName("feed")
     data object Feed : Route()
 
