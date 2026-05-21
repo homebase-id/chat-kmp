@@ -170,6 +170,22 @@ data class MomentFeedItem(
      * "delete for me" (recipient).
      */
     val senderOdinId: OdinId?,
+    /**
+     * Audience the post was originally addressed to — surfaced on the detail
+     * screen's "Shared with" row. Null on legacy moments that pre-date the
+     * source field, on local-only posts, or when the header fails to
+     * deserialise.
+     */
+    val source: MomentSource?,
+    /**
+     * Flat list of OdinIds the sender addressed this moment to (everyone but
+     * the sender themselves). Always populated by the writer alongside
+     * [source]. The detail screen falls back to this when [source] is null
+     * or empty — `MomentAudienceViewModel` deliberately drops the source
+     * field on individuals-only posts ("no need to duplicate the recipient
+     * list"), but the detail screen still needs something to render.
+     */
+    val recipients: List<OdinId>,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -191,5 +207,7 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
         senderOdinId = fileMetadata.senderOdinId,
+        source = content?.source,
+        recipients = content?.recipients.orEmpty(),
     )
 }

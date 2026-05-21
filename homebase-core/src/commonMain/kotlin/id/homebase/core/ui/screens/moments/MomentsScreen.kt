@@ -1,5 +1,9 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,13 +23,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -47,16 +51,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.initials
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.util.isDesktop
@@ -64,9 +77,9 @@ import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.resources.moments_create_action
+import id.homebase.resources.moments_feed_indicator_private
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
-import id.homebase.resources.moments_reaction_like
 import id.homebase.resources.moments_welcome
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -85,6 +98,7 @@ fun MomentsScreen(
     viewModel: MomentsFeedViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
     onCreateMoment: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
     /**
      * Open the detail view for a moment. `payloadKey` is the specific media
      * item the user tapped (so the detail carousel can land on that page);
@@ -134,12 +148,22 @@ fun MomentsScreen(
     if (isWide) {
         WideMomentsLayout(
             moments = uiState.moments,
+            ownerSession = uiState.ownerSession,
+            connectionStatus = uiState.connectionStatus,
+            driveIsSyncing = uiState.driveIsSyncing,
+            hasDriveError = uiState.hasDriveError,
             onCreateMoment = onCreateMoment,
+            onProfileClick = onProfileClick,
         )
     } else {
         CompactMomentsLayout(
             moments = uiState.moments,
+            ownerSession = uiState.ownerSession,
+            connectionStatus = uiState.connectionStatus,
+            driveIsSyncing = uiState.driveIsSyncing,
+            hasDriveError = uiState.hasDriveError,
             onCreateMoment = onCreateMoment,
+            onProfileClick = onProfileClick,
             onOpenMoment = onOpenMoment,
         )
     }
@@ -149,13 +173,24 @@ fun MomentsScreen(
 @Composable
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
     onCreateMoment: () -> Unit,
+    onProfileClick: () -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
+            MomentsTopAppBar(
+                ownerSession = ownerSession,
+                connectionStatus = connectionStatus,
+                driveIsSyncing = driveIsSyncing,
+                hasDriveError = hasDriveError,
+                onProfileClick = onProfileClick,
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateMoment) {
@@ -176,6 +211,7 @@ private fun CompactMomentsLayout(
         } else {
             MomentsFeedList(
                 moments = moments,
+                selfOdinId = ownerSession?.odinId,
                 onOpenMoment = onOpenMoment,
                 openLabel = openLabel,
                 selectedMomentId = null,
@@ -205,7 +241,12 @@ private fun CompactMomentsLayout(
 @Composable
 private fun WideMomentsLayout(
     moments: List<MomentFeedItem>,
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
     onCreateMoment: () -> Unit,
+    onProfileClick: () -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
 
@@ -239,7 +280,13 @@ private fun WideMomentsLayout(
                 .width(feedPaneWidth)
                 .fillMaxHeight(),
             topBar = {
-                TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
+                MomentsTopAppBar(
+                    ownerSession = ownerSession,
+                    connectionStatus = connectionStatus,
+                    driveIsSyncing = driveIsSyncing,
+                    hasDriveError = hasDriveError,
+                    onProfileClick = onProfileClick,
+                )
             },
             floatingActionButton = {
                 FloatingActionButton(onClick = onCreateMoment) {
@@ -260,6 +307,7 @@ private fun WideMomentsLayout(
             } else {
                 MomentsFeedList(
                     moments = moments,
+                    selfOdinId = ownerSession?.odinId,
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
                     },
@@ -309,6 +357,7 @@ private val FeedPaneMaxWidth = 480.dp
 @Composable
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
+    selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     openLabel: String,
     selectedMomentId: Uuid?,
@@ -327,6 +376,7 @@ private fun MomentsFeedList(
         items(moments, key = { it.id.toString() }) { moment ->
             MomentPostCard(
                 moment = moment,
+                selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { onOpenMoment(moment.id.toString(), null) },
                 onMediaClick = { payloadKey ->
@@ -341,6 +391,7 @@ private fun MomentsFeedList(
 @Composable
 private fun MomentPostCard(
     moment: MomentFeedItem,
+    selfOdinId: OdinId?,
     isSelected: Boolean,
     onCardClick: () -> Unit,
     onMediaClick: (payloadKey: String) -> Unit,
@@ -404,10 +455,11 @@ private fun MomentPostCard(
                 .padding(8.dp),
         )
 
-        // Overlay indicators in the bottom-right of the thumbnail. Reaction
-        // counts / comments toggle aren't wired through the post yet, so the
-        // info badge stands in for "has description" and the heart is the
-        // toggleable reaction placeholder.
+        // Overlay indicators in the bottom-right of the thumbnail. Info badge
+        // signals the moment has a description; lock badge signals the moment
+        // was kept private (no recipients). Absence of the lock implies the
+        // moment was shared — that's the common case, so we don't crowd the
+        // tile with a "shared" icon.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -418,15 +470,35 @@ private fun MomentPostCard(
             if (moment.description.isNotBlank()) {
                 IndicatorBadge(Icons.Outlined.Info)
             }
-            // Comments indicator placeholder — shown unconditionally for now.
-            // When the comments-enabled flag round-trips through MomentPostContent,
-            // gate this on it.
-            IndicatorBadge(Icons.Outlined.ChatBubbleOutline)
-            IndicatorBadge(
-                imageVector = Icons.Outlined.FavoriteBorder,
-                contentDescription = stringResource(MR.string.moments_reaction_like),
-            )
+            if (moment.isPrivate(selfOdinId)) {
+                IndicatorBadge(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = stringResource(MR.string.moments_feed_indicator_private),
+                )
+            }
         }
+    }
+}
+
+/**
+ * True when this is one of the active user's own moments and no recipients
+ * were recorded — either the audience picker selected nobody, or the post
+ * pre-dates the source field and the flat recipients list is empty.
+ *
+ * `senderOdinId` is null on the server-side copy of the sender's own file
+ * but the optimistic writer stamps it with the active user's domain on the
+ * local copy — same convention as the detail VM's "isMine" check. We accept
+ * either null or a match on [self] for "this is mine."
+ */
+private fun MomentFeedItem.isPrivate(self: OdinId?): Boolean {
+    val isMine = senderOdinId == null || (self != null && senderOdinId == self)
+    if (!isMine) return false
+    val src = source
+    return when (src) {
+        null -> recipients.isEmpty()
+        is MomentSource.Conversation -> false
+        is MomentSource.Audience ->
+            src.groupIds.isEmpty() && src.individuals.isEmpty() && recipients.isEmpty()
     }
 }
 
@@ -452,6 +524,72 @@ private fun EmptyMomentsState(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/**
+ * Header for the Moments feed. Mirrors the visual language of
+ * `ConversationListPane`: owner avatar (with connection/sync status indicator)
+ * on the left, then a bold "Moments" title that auto-sizes the same way the
+ * chat title does. No actions on the right — search and overflow are
+ * chat-specific.
+ *
+ * The avatar fades in once an owner session has loaded; the title is always
+ * present so the header is never empty during cold start.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MomentsTopAppBar(
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
+    onProfileClick: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Spacer(modifier = Modifier.width(20.dp))
+                AnimatedVisibility(
+                    visible = ownerSession != null,
+                    enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                    exit = fadeOut(animationSpec = tween(150)),
+                ) {
+                    ownerSession?.let { session ->
+                        OwnerAvatar(
+                            odinId = session.odinId,
+                            profileImageData = null,
+                            initials = session.initials(),
+                            connectionStatus = connectionStatus,
+                            driveIsSyncing = driveIsSyncing,
+                            hasDriveError = hasDriveError,
+                            options = AvatarOptions(
+                                size = 32.dp,
+                                fontSize = 12.sp,
+                                onClick = onProfileClick,
+                            ),
+                            animatedVisibilityScope = this@AnimatedVisibility,
+                            sharedTransitionScope = null,
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = stringResource(MR.string.moments_label),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 14.sp,
+                        maxFontSize = 22.sp,
+                    ),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
+        },
+    )
 }
 
 @Composable

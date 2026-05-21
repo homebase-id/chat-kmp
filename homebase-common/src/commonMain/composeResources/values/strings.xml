@@ -351,6 +351,13 @@
     <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
     <string name="moments_detail_comment_delete">Delete</string>
     <string name="moments_detail_delete_comment_dialog_title">Delete this comment?</string>
+    <string name="moments_detail_shared_with">Shared with</string>
+    <string name="moments_detail_shared_with_conversation_fallback">Conversation</string>
+    <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_detail_shared_with_show">Show recipients</string>
+    <string name="moments_detail_shared_with_hide">Hide recipients</string>
+    <string name="moments_detail_shared_with_private">Private</string>
+    <string name="moments_feed_indicator_private">Private moment</string>
     <string name="moments_create_title">Send to</string>
     <string name="moments_create_search_hint">Search contacts and groups</string>
     <string name="moments_create_section_recent">Recent</string>

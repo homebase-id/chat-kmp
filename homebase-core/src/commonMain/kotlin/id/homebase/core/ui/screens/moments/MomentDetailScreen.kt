@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,9 +29,15 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
@@ -91,6 +99,13 @@ import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
 import id.homebase.resources.moments_detail_no_description
 import id.homebase.resources.moments_detail_send_comment
+import id.homebase.resources.moments_detail_shared_with
+import id.homebase.resources.moments_detail_shared_with_conversation_fallback
+import id.homebase.resources.moments_detail_shared_with_group_members
+import id.homebase.resources.moments_detail_shared_with_hide
+import id.homebase.resources.moments_detail_shared_with_more
+import id.homebase.resources.moments_detail_shared_with_private
+import id.homebase.resources.moments_detail_shared_with_show
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_reaction_like
 import kotlin.time.Instant
@@ -98,6 +113,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -516,6 +532,7 @@ private fun MomentDetailContent(
         item {
             MetadataSection(
                 capturedAtMs = moment.userDateMs,
+                sharedWith = uiState.sharedWith,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -728,6 +745,7 @@ private fun DescriptionSection(
 @Composable
 private fun MetadataSection(
     capturedAtMs: Long,
+    sharedWith: SharedWithDisplay?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -740,6 +758,161 @@ private fun MetadataSection(
         )
         // Device row intentionally omitted — the post sender doesn't capture
         // device info today. Add when the schema does.
+        if (sharedWith != null) {
+            SharedWithRow(sharedWith = sharedWith)
+        }
+    }
+}
+
+/**
+ * Inline-summary row that surfaces the moment's audience next to the captured
+ * timestamp. [SharedWithDisplay.Private] renders a plain "Private" label;
+ * [SharedWithDisplay.Recipients] renders the first couple of recipients inline,
+ * with a chevron + tap-to-expand affordance when there are more.
+ */
+@Composable
+private fun SharedWithRow(
+    sharedWith: SharedWithDisplay,
+) {
+    when (sharedWith) {
+        SharedWithDisplay.Private -> PrivateRow()
+        is SharedWithDisplay.Recipients -> RecipientsRow(sharedWith.entries)
+    }
+}
+
+@Composable
+private fun PrivateRow() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = stringResource(MR.string.moments_detail_shared_with_private),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun RecipientsRow(entries: List<SharedWithEntry>) {
+    val inlineBudget = 2
+    val isExpandable = entries.size > inlineBudget
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .let { if (isExpandable) it.clickable { expanded = !expanded } else it },
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(MR.string.moments_detail_shared_with),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = sharedWithInlineSummary(entries, inlineBudget),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (isExpandable) {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp
+                    else Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(
+                        if (expanded) MR.string.moments_detail_shared_with_hide
+                        else MR.string.moments_detail_shared_with_show,
+                    ),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                entries.forEach { entry -> SharedWithEntryRow(entry) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun sharedWithInlineSummary(
+    entries: List<SharedWithEntry>,
+    budget: Int,
+): String {
+    val visible = entries.take(budget).map { it.inlineLabel() }
+    val overflow = entries.size - visible.size
+    val parts = if (overflow > 0) {
+        visible + stringResource(MR.string.moments_detail_shared_with_more, overflow)
+    } else {
+        visible
+    }
+    return parts.joinToString(", ")
+}
+
+@Composable
+private fun SharedWithEntry.inlineLabel(): String = when (this) {
+    is SharedWithEntry.Group -> name
+    is SharedWithEntry.Individual -> name
+    is SharedWithEntry.Conversation ->
+        name ?: stringResource(MR.string.moments_detail_shared_with_conversation_fallback)
+}
+
+@Composable
+private fun SharedWithEntryRow(entry: SharedWithEntry) {
+    val icon: ImageVector = when (entry) {
+        is SharedWithEntry.Group -> Icons.Default.Group
+        is SharedWithEntry.Individual -> Icons.Default.Person
+        is SharedWithEntry.Conversation -> Icons.AutoMirrored.Filled.Chat
+    }
+    val label: String = when (entry) {
+        is SharedWithEntry.Group -> entry.name
+        is SharedWithEntry.Individual -> entry.name
+        is SharedWithEntry.Conversation ->
+            entry.name ?: stringResource(MR.string.moments_detail_shared_with_conversation_fallback)
+    }
+    val subLabel: String? = when (entry) {
+        is SharedWithEntry.Group -> pluralStringResource(
+            MR.plurals.moments_detail_shared_with_group_members,
+            entry.memberCount,
+            entry.memberCount,
+        )
+        else -> null
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (subLabel != null) {
+            Text(
+                text = "· $subLabel",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
