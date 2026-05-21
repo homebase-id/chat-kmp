@@ -65,6 +65,7 @@ import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
@@ -538,6 +539,16 @@ val appModule = module {
         )
     }
     viewModelOf(::VaultSettingsViewModel)
+    viewModel { params ->
+        VaultNoteEditorViewModel(
+            sectionId = params.get(),
+            editEntryId = params.getOrNull(),
+            vaultStream = get(),
+            vaultService = get(),
+            vaultUploaderService = get(),
+            fileOperationsProvider = get(),
+        )
+    }
 }
 
 // Common module that each platform will implement
