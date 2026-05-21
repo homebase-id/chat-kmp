@@ -15,8 +15,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class IdentityUpgradeProviderTest {
 
@@ -35,7 +33,7 @@ class IdentityUpgradeProviderTest {
     }
 
     @Test
-    fun returnsTrue_whenUpgradeHeaderPresent() = runTest {
+    fun returnsRequired_whenUpgradeHeaderPresent() = runTest {
         val engine = MockEngine { request ->
             assertEquals("Bearer test-token", request.headers["Authorization"])
             respond(
@@ -47,11 +45,11 @@ class IdentityUpgradeProviderTest {
                 ),
             )
         }
-        assertTrue(createProvider(engine).isUpgradeRequired())
+        assertEquals(UpgradeStatus.REQUIRED, createProvider(engine).checkUpgradeStatus())
     }
 
     @Test
-    fun returnsFalse_whenUpgradeHeaderAbsent() = runTest {
+    fun returnsNone_whenNoUpgradeHeaders() = runTest {
         val engine = MockEngine {
             respond(
                 content = "{}",
@@ -59,7 +57,38 @@ class IdentityUpgradeProviderTest {
                 headers = headersOf("Content-Type" to listOf(ContentType.Application.Json.toString())),
             )
         }
-        assertFalse(createProvider(engine).isUpgradeRequired())
+        assertEquals(UpgradeStatus.NONE, createProvider(engine).checkUpgradeStatus())
+    }
+
+    @Test
+    fun returnsRunning_whenUpgradeRunningHeaderPresent() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = "{}",
+                status = HttpStatusCode.OK,
+                headers = headersOf(
+                    "X-UPGRADE-RUNNING" to listOf("1"),
+                    "Content-Type" to listOf(ContentType.Application.Json.toString()),
+                ),
+            )
+        }
+        assertEquals(UpgradeStatus.RUNNING, createProvider(engine).checkUpgradeStatus())
+    }
+
+    @Test
+    fun returnsRunning_whenBothHeadersPresent() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = "{}",
+                status = HttpStatusCode.OK,
+                headers = headersOf(
+                    "X-REQUIRES-UPGRADE" to listOf("1"),
+                    "X-UPGRADE-RUNNING" to listOf("1"),
+                    "Content-Type" to listOf(ContentType.Application.Json.toString()),
+                ),
+            )
+        }
+        assertEquals(UpgradeStatus.RUNNING, createProvider(engine).checkUpgradeStatus())
     }
 
     @Test
@@ -72,7 +101,7 @@ class IdentityUpgradeProviderTest {
             )
         }
         assertFailsWith<UnauthorizedException> {
-            createProvider(engine).isUpgradeRequired()
+            createProvider(engine).checkUpgradeStatus()
         }
     }
 
@@ -80,7 +109,7 @@ class IdentityUpgradeProviderTest {
     fun throwsOnNetworkError() = runTest {
         val engine = MockEngine { throw java.io.IOException("timeout") }
         assertFailsWith<java.io.IOException> {
-            createProvider(engine).isUpgradeRequired()
+            createProvider(engine).checkUpgradeStatus()
         }
     }
 }

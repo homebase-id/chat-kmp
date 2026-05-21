@@ -116,6 +116,43 @@ sealed class Route {
     data object Feed : Route()
 
     @Serializable
+    @SerialName("moments")
+    data object Moments : Route()
+
+    @Serializable
+    @SerialName("moment-detail")
+    data class MomentDetail(
+        val momentId: String,
+        /**
+         * Optional payload-key to land the detail screen's carousel on a
+         * specific media item — e.g. when the user tapped one cell of a
+         * multi-image post in the feed. `null` (or unmatched) starts at
+         * page 0.
+         */
+        val initialPayloadKey: String? = null,
+    ) : Route()
+
+    @Serializable
+    @SerialName("moment-compose")
+    data object MomentCompose : Route()
+
+    @Serializable
+    @SerialName("moment-audience")
+    data object MomentAudience : Route()
+
+    @Serializable
+    @SerialName("create-moment-group")
+    data object CreateMomentGroup : Route()
+
+    @Serializable
+    @SerialName("moments-onboarding")
+    data object MomentsOnboarding : Route()
+
+    @Serializable
+    @SerialName("moments-settings")
+    data object MomentsSettings : Route()
+
+    @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String) : Route()
 

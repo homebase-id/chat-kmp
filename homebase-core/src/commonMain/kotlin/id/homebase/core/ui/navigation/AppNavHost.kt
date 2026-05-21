@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -32,6 +33,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -80,6 +86,17 @@ import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
+import id.homebase.core.ui.screens.moments.MomentAudienceScreen
+import id.homebase.core.ui.screens.moments.MomentComposeScreen
+import id.homebase.core.ui.screens.moments.MomentDetailPane
+import id.homebase.core.ui.screens.moments.MomentDetailViewModel
+import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
+import id.homebase.core.ui.screens.moments.MomentsScreen
+import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
+import id.homebase.core.ui.screens.moments.MomentsUiEvent
+import id.homebase.core.ui.screens.moments.MomentsViewModel
+import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -107,14 +124,12 @@ import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
-import id.homebase.core.ui.screens.help.HelpScreen
+import org.koin.core.parameter.parametersOf
 import id.homebase.resources.MR
-import id.homebase.resources.nav_chats
-import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
+import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
@@ -130,6 +145,7 @@ import id.homebase.resources.pending_upgrade_title
 import id.homebase.resources.database_upgrade_snackbar
 import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
+import id.homebase.resources.upgrade_running_message
 
 @Composable
 fun AppNavHost(
@@ -143,15 +159,30 @@ fun AppNavHost(
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val momentsPreferences = koinInject<MomentsPreferences>()
+    val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val momentsViewModel: MomentsViewModel = koinViewModel()
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
-    val topLevelRoutes = remember(vaultIconVisible) {
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
+            if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             add(TopLevelRoute.Home)
+        }
+    }
+    val openMoments: () -> Unit = {
+        if (momentsPreferences.activated.value) {
+            navController.navigate(Route.Moments) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.MomentsOnboarding)
         }
     }
     val uriHandler = getUriHandler()
@@ -304,6 +335,22 @@ fun AppNavHost(
         }
     }
 
+    // Translate Moments onboarding one-shot events into nav-stack changes.
+    LaunchedEffect(Unit) {
+        momentsViewModel.events.collect { event ->
+            when (event) {
+                MomentsUiEvent.Activated -> {
+                    navController.popBackStack(Route.MomentsOnboarding, inclusive = true)
+                    navController.navigate(Route.Moments) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+                MomentsUiEvent.CloseOnboarding -> navController.popBackStack()
+            }
+        }
+    }
+
     // Auto-dismiss in-app banner after 4 seconds
     val inAppNotification = uiState.inAppNotification
     LaunchedEffect(inAppNotification) {
@@ -332,10 +379,10 @@ fun AppNavHost(
                             ) == true,
                             onClick = {
                                 TextRenderingHelper.nudge()
-                                if (topLevelRoute is TopLevelRoute.Vault) {
-                                    openVault()
-                                } else {
-                                    navController.navigate(topLevelRoute.route) {
+                                when {
+                                    topLevelRoute is TopLevelRoute.Moments -> openMoments()
+                                    topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
                                         restoreState = true
@@ -366,10 +413,10 @@ fun AppNavHost(
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
                                     TextRenderingHelper.nudge()
-                                    if (topLevelRoute is TopLevelRoute.Vault) {
-                                        openVault()
-                                    } else {
-                                        navController.navigate(topLevelRoute.route) {
+                                    when {
+                                        topLevelRoute is TopLevelRoute.Moments -> openMoments()
+                                        topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                        else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
                                             restoreState = true
@@ -449,6 +496,31 @@ fun AppNavHost(
                                     }
                                 },
                             )
+                        }
+
+                        if (pendingUpgrade is PendingUpgradeState.UpgradeRunning) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                tonalElevation = 2.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Text(
+                                        text = stringResource(MR.string.upgrade_running_message),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -798,9 +870,116 @@ fun AppNavHost(
                                     onNavigateToHelp = {
                                         navController.navigate(Route.Help)
                                     },
+                                    onNavigateToMomentsSettings = {
+                                        navController.navigate(Route.MomentsSettings)
+                                    },
                                     onNavigateToVaultSettings = {
                                         navController.navigate(Route.VaultSettings)
                                     },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentsOnboarding> {
+                            if (isAuthenticated) {
+                                MomentsOnboardingScreen(
+                                    viewModel = momentsViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.Moments> {
+                            if (isAuthenticated) {
+                                MomentsScreen(
+                                    viewModel = koinViewModel(),
+                                    extendPermissionViewModel = momentsViewModel.momentsExtendPermissionViewModel,
+                                    onCreateMoment = {
+                                        navController.navigate(Route.MomentCompose)
+                                    },
+                                    onOpenMoment = { id, payloadKey ->
+                                        navController.navigate(
+                                            Route.MomentDetail(id, payloadKey)
+                                        )
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentDetail> { backStackEntry ->
+                            if (isAuthenticated) {
+                                // Detail VM no longer reads SavedStateHandle —
+                                // extract route args here and pass them
+                                // through koin parameters. The wide-desktop
+                                // moments screen instantiates the same VM the
+                                // same way for its embedded pane.
+                                val route = backStackEntry.toRoute<Route.MomentDetail>()
+                                val momentId = Uuid.parse(route.momentId)
+                                val detailVm: MomentDetailViewModel = koinViewModel(
+                                    key = "moment-detail-route-${route.momentId}",
+                                ) { parametersOf(momentId, route.initialPayloadKey) }
+                                MomentDetailPane(
+                                    viewModel = detailVm,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentCompose> {
+                            if (isAuthenticated) {
+                                MomentComposeScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToAudience = {
+                                        navController.navigate(Route.MomentAudience)
+                                    },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(Route.Crop(requestId.toString()))
+                                    },
+                                    onNavigateToDrawer = { requestId ->
+                                        navController.navigate(Route.Draw(requestId.toString()))
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentAudience> {
+                            if (isAuthenticated) {
+                                MomentAudienceScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onPosted = {
+                                        // After post: clear the compose flow back
+                                        // to the feed. Pop everything between
+                                        // here and the Moments root.
+                                        navController.popBackStack(
+                                            route = Route.Moments,
+                                            inclusive = false,
+                                        )
+                                    },
+                                    onCreateGroup = {
+                                        navController.navigate(Route.CreateMomentGroup)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.CreateMomentGroup> {
+                            if (isAuthenticated) {
+                                CreateMomentGroupScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onCreated = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.MomentsSettings> {
+                            if (isAuthenticated) {
+                                MomentsSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenMoments = openMoments,
                                 )
                             }
                         }
@@ -948,6 +1127,7 @@ fun AppNavHost(
     }
 }
 
+
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false
 ): Boolean {
@@ -965,8 +1145,9 @@ private fun NavHostController.selectConversationOnChatList(
 
 private fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Feed::class) == true ||
+            this?.hasRoute(Route.Moments::class) == true ||
+            this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true
 }
 
@@ -981,6 +1162,7 @@ sealed class TopLevelRoute(
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
+    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
 }
