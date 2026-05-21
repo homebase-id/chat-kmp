@@ -58,7 +58,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
@@ -68,11 +67,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
@@ -83,6 +87,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
+import id.homebase.resources.delivered_to
+import id.homebase.resources.failed
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_detail_add_comment_hint
 import id.homebase.resources.moments_detail_comment_cancel
@@ -103,11 +109,13 @@ import id.homebase.resources.moments_detail_shared_with
 import id.homebase.resources.moments_detail_shared_with_conversation_fallback
 import id.homebase.resources.moments_detail_shared_with_group_members
 import id.homebase.resources.moments_detail_shared_with_hide
-import id.homebase.resources.moments_detail_shared_with_more
 import id.homebase.resources.moments_detail_shared_with_private
 import id.homebase.resources.moments_detail_shared_with_show
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_reaction_like
+import id.homebase.resources.read_by
+import id.homebase.resources.sending_to
+import id.homebase.resources.uploaded
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format.MonthNames
@@ -533,6 +541,14 @@ private fun MomentDetailContent(
             MetadataSection(
                 capturedAtMs = moment.userDateMs,
                 sharedWith = uiState.sharedWith,
+                sharedWithExpanded = uiState.sharedWithExpanded,
+                onToggleSharedWith = { expanded ->
+                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(expanded))
+                },
+                isMine = uiState.isMine,
+                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
+                recipientDeliveries = uiState.recipientDeliveries,
+                recipientAvatars = uiState.recipientAvatars,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -746,6 +762,12 @@ private fun DescriptionSection(
 private fun MetadataSection(
     capturedAtMs: Long,
     sharedWith: SharedWithDisplay?,
+    sharedWithExpanded: Boolean,
+    onToggleSharedWith: (expanded: Boolean) -> Unit,
+    isMine: Boolean,
+    isTransferHistoryLoading: Boolean,
+    recipientDeliveries: List<RecipientDeliveryUiModel>,
+    recipientAvatars: List<RecipientBaseUiModel>,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -759,24 +781,55 @@ private fun MetadataSection(
         // Device row intentionally omitted — the post sender doesn't capture
         // device info today. Add when the schema does.
         if (sharedWith != null) {
-            SharedWithRow(sharedWith = sharedWith)
+            SharedWithRow(
+                sharedWith = sharedWith,
+                expanded = sharedWithExpanded,
+                onToggleExpansion = onToggleSharedWith,
+                isMine = isMine,
+                isTransferHistoryLoading = isTransferHistoryLoading,
+                recipientDeliveries = recipientDeliveries,
+                recipientAvatars = recipientAvatars,
+            )
         }
     }
 }
 
 /**
- * Inline-summary row that surfaces the moment's audience next to the captured
- * timestamp. [SharedWithDisplay.Private] renders a plain "Private" label;
- * [SharedWithDisplay.Recipients] renders the first couple of recipients inline,
- * with a chevron + tap-to-expand affordance when there are more.
+ * Top-level "Shared with" surface. Routes Private to a lock-icon row;
+ * everything else renders an avatar stack with an expand affordance and a
+ * details list keyed off [isMine]:
+ *  - authored moments expose per-recipient delivery status, grouped by state,
+ *    via [DeliveryStatusSection];
+ *  - received moments fall back to a plain avatar + name list, since
+ *    transfer history is only returned to the file's author.
+ *
+ * Audience-level context (Group, Conversation) shows above the per-recipient
+ * rows so the user can still tell the post was framed around a group/chat
+ * even though the recipients are listed individually. Individual entries are
+ * intentionally dropped from the context section — they would just duplicate
+ * the per-recipient rows below.
  */
 @Composable
 private fun SharedWithRow(
     sharedWith: SharedWithDisplay,
+    expanded: Boolean,
+    onToggleExpansion: (Boolean) -> Unit,
+    isMine: Boolean,
+    isTransferHistoryLoading: Boolean,
+    recipientDeliveries: List<RecipientDeliveryUiModel>,
+    recipientAvatars: List<RecipientBaseUiModel>,
 ) {
     when (sharedWith) {
         SharedWithDisplay.Private -> PrivateRow()
-        is SharedWithDisplay.Recipients -> RecipientsRow(sharedWith.entries)
+        is SharedWithDisplay.Recipients -> RecipientsRow(
+            entries = sharedWith.entries,
+            recipientAvatars = recipientAvatars,
+            expanded = expanded,
+            onToggleExpansion = onToggleExpansion,
+            isMine = isMine,
+            isTransferHistoryLoading = isTransferHistoryLoading,
+            recipientDeliveries = recipientDeliveries,
+        )
     }
 }
 
@@ -801,17 +854,29 @@ private fun PrivateRow() {
 }
 
 @Composable
-private fun RecipientsRow(entries: List<SharedWithEntry>) {
-    val inlineBudget = 2
-    val isExpandable = entries.size > inlineBudget
-    var expanded by rememberSaveable { mutableStateOf(false) }
+private fun RecipientsRow(
+    entries: List<SharedWithEntry>,
+    recipientAvatars: List<RecipientBaseUiModel>,
+    expanded: Boolean,
+    onToggleExpansion: (Boolean) -> Unit,
+    isMine: Boolean,
+    isTransferHistoryLoading: Boolean,
+    recipientDeliveries: List<RecipientDeliveryUiModel>,
+) {
+    // Group/Conversation entries survive into the expanded view as context
+    // lines; Individual entries don't — the avatar stack (collapsed) and the
+    // per-recipient rows (expanded) already cover them, and rendering both
+    // was the source of the duplicate-names complaint.
+    val contextEntries = remember(entries) {
+        entries.filter { it is SharedWithEntry.Group || it is SharedWithEntry.Conversation }
+    }
 
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .let { if (isExpandable) it.clickable { expanded = !expanded } else it },
-            verticalAlignment = Alignment.Top,
+                .clickable { onToggleExpansion(!expanded) },
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
@@ -819,56 +884,222 @@ private fun RecipientsRow(entries: List<SharedWithEntry>) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = sharedWithInlineSummary(entries, inlineBudget),
-                style = MaterialTheme.typography.bodyMedium,
+            AvatarStack(
+                recipients = recipientAvatars,
                 modifier = Modifier.weight(1f),
             )
-            if (isExpandable) {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp
-                    else Icons.Default.KeyboardArrowDown,
-                    contentDescription = stringResource(
-                        if (expanded) MR.string.moments_detail_shared_with_hide
-                        else MR.string.moments_detail_shared_with_show,
-                    ),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp
+                else Icons.Default.KeyboardArrowDown,
+                contentDescription = stringResource(
+                    if (expanded) MR.string.moments_detail_shared_with_hide
+                    else MR.string.moments_detail_shared_with_show,
+                ),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        if (expanded) {
+            if (contextEntries.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    contextEntries.forEach { entry -> SharedWithEntryRow(entry) }
+                }
+            }
+            if (isMine) {
+                DeliveryStatusSection(
+                    isLoading = isTransferHistoryLoading,
+                    deliveries = recipientDeliveries,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            } else if (recipientAvatars.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    recipientAvatars.forEach { recipient ->
+                        RecipientPlainRow(recipient)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Overlapping circle row of recipient avatars, capped at [maxVisible] with a
+ * `+N` chip after the cap. Negative horizontal spacing on the parent Row is
+ * what creates the layered look — each avatar sits on a small surface-colored
+ * disc one pixel wider than the avatar so adjacent edges read as separations
+ * rather than overlapping pixels.
+ */
+@Composable
+private fun AvatarStack(
+    recipients: List<RecipientBaseUiModel>,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = 24.dp,
+    maxVisible: Int = 5,
+) {
+    if (recipients.isEmpty()) return
+    val visible = recipients.take(maxVisible)
+    val overflow = recipients.size - visible.size
+    val ringColor = MaterialTheme.colorScheme.surface
+    val ringSize = avatarSize + 2.dp
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(-(avatarSize / 3)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        visible.forEach { r ->
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(ringColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                PublicAvatar(
+                    odinId = r.odinId,
+                    initials = r.displayName.firstOrNull()?.toString(),
+                    options = AvatarOptions(size = avatarSize),
                 )
             }
         }
-        if (expanded) {
-            Column(
-                modifier = Modifier.padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+        if (overflow > 0) {
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
             ) {
-                entries.forEach { entry -> SharedWithEntryRow(entry) }
+                Text(
+                    text = "+$overflow",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun sharedWithInlineSummary(
-    entries: List<SharedWithEntry>,
-    budget: Int,
-): String {
-    val visible = entries.take(budget).map { it.inlineLabel() }
-    val overflow = entries.size - visible.size
-    val parts = if (overflow > 0) {
-        visible + stringResource(MR.string.moments_detail_shared_with_more, overflow)
-    } else {
-        visible
+private fun RecipientPlainRow(recipient: RecipientBaseUiModel) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PublicAvatar(
+            odinId = recipient.odinId,
+            initials = recipient.displayName.firstOrNull()?.toString(),
+            options = AvatarOptions(size = 32.dp),
+        )
+        Text(
+            text = recipient.displayName,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
     }
-    return parts.joinToString(", ")
+}
+
+/**
+ * Per-recipient delivery breakdown, grouped by [ChatDeliveryStatus]. The chat
+ * MessageInfo screen renders the same shape — same status labels, same error
+ * detail strings, same chat mappings — so the moments surface and the chat
+ * surface stay consistent without duplicating the rendering helpers.
+ *
+ * Empty state intentionally renders nothing rather than a "no delivery
+ * history yet" stub: an authored moment with recipients always has a history
+ * row per recipient once the server has acknowledged the upload, so an empty
+ * map either means the fetch hasn't completed (the loading spinner above
+ * handles that case) or the post is brand-new (will populate on close+reopen).
+ */
+@Composable
+private fun DeliveryStatusSection(
+    isLoading: Boolean,
+    deliveries: List<RecipientDeliveryUiModel>,
+    modifier: Modifier = Modifier,
+) {
+    if (isLoading) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        return
+    }
+    if (deliveries.isEmpty()) return
+
+    val grouped = deliveries.groupBy { it.deliveryStatus }
+    val statusOrder = listOf(
+        ChatDeliveryStatus.Sending,
+        ChatDeliveryStatus.Sent,
+        ChatDeliveryStatus.Delivered,
+        ChatDeliveryStatus.Read,
+        ChatDeliveryStatus.Failed,
+    )
+    val allStatuses = statusOrder + (grouped.keys - statusOrder.toSet())
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        allStatuses.forEach { status ->
+            val rows = grouped[status] ?: return@forEach
+            val label = when (status) {
+                ChatDeliveryStatus.Read -> stringResource(MR.string.read_by)
+                ChatDeliveryStatus.Delivered -> stringResource(MR.string.delivered_to)
+                ChatDeliveryStatus.Sent -> stringResource(MR.string.uploaded)
+                ChatDeliveryStatus.Sending -> stringResource(MR.string.sending_to)
+                ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            rows.forEach { row -> DeliveryRow(row) }
+        }
+    }
 }
 
 @Composable
-private fun SharedWithEntry.inlineLabel(): String = when (this) {
-    is SharedWithEntry.Group -> name
-    is SharedWithEntry.Individual -> name
-    is SharedWithEntry.Conversation ->
-        name ?: stringResource(MR.string.moments_detail_shared_with_conversation_fallback)
+private fun DeliveryRow(row: RecipientDeliveryUiModel) {
+    val odinId = remember(row.odinId) { OdinId(row.odinId) }
+    val errorText = row.errorDetailRes?.let { stringResource(it) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PublicAvatar(
+            odinId = odinId,
+            initials = row.displayName.firstOrNull()?.toString(),
+            options = AvatarOptions(size = 32.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = row.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (errorText != null) {
+                Text(
+                    text = errorText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
 }
 
 @Composable

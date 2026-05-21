@@ -495,6 +495,7 @@ val appModule = module {
             momentGroupService = get(),
             conversationStream = get(),
             contactService = get(),
+            driveFileProvider = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

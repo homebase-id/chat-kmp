@@ -2,9 +2,11 @@ package id.homebase.core.ui.screens.moments
 
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
@@ -87,6 +89,59 @@ data class MomentDetailUiState(
      * not a valid state — the VM emits null in that case.
      */
     val sharedWith: SharedWithDisplay? = null,
+
+    /**
+     * Whether the "Shared with" row is expanded. Hoisted into the VM (vs. a
+     * local rememberSaveable) because the first expansion triggers an
+     * on-demand `getTransferHistory` fetch — keeping the toggle next to the
+     * loader lets the VM scope the network call to the open state and avoid
+     * doing it on cold load.
+     */
+    val sharedWithExpanded: Boolean = false,
+
+    /** True while a transfer-history fetch is in flight. */
+    val isTransferHistoryLoading: Boolean = false,
+
+    /**
+     * Per-recipient delivery state for the author's own moment. Empty for
+     * received moments (the server only returns history to the sender) and
+     * before the first expansion. Reuses chat's status/error-text mappings
+     * so the UI presentation matches the chat MessageInfo screen.
+     */
+    val recipientDeliveries: List<RecipientDeliveryUiModel> = emptyList(),
+
+    /**
+     * Flat list of individual recipients (OdinId + resolved display name)
+     * derived from the moment's recipients list, minus the active user.
+     * Drives the collapsed avatar stack and the expanded recipient list for
+     * received (non-authored) moments. For [SharedWithDisplay.Private] this
+     * is empty.
+     */
+    val recipientAvatars: List<RecipientBaseUiModel> = emptyList(),
+)
+
+/**
+ * Lightweight recipient row data — OdinId for the avatar lookup, displayName
+ * for the row label. Distinct from [RecipientDeliveryUiModel] (which also
+ * carries delivery state) so the collapsed avatar stack and the !isMine
+ * expanded list don't drag along loading/status fields they don't use.
+ */
+data class RecipientBaseUiModel(
+    val odinId: OdinId,
+    val displayName: String,
+)
+
+/**
+ * Per-recipient delivery row for the moment's expanded "Shared with" surface.
+ * Shape mirrors `RecipientStatusUiModel` from MessageInfoUiState — same fields,
+ * same chat mappings — but lives in the moments namespace so the two screens
+ * can evolve independently.
+ */
+data class RecipientDeliveryUiModel(
+    val odinId: String,
+    val displayName: String,
+    val deliveryStatus: ChatDeliveryStatus,
+    val errorDetailRes: StringResource? = null,
 )
 
 /**
@@ -167,6 +222,13 @@ sealed interface MomentDetailUiAction {
         val commentId: Uuid,
         val forEveryone: Boolean,
     ) : MomentDetailUiAction
+
+    /**
+     * Open / close the recipient list under the "Shared with" row. The first
+     * expand on an authored moment triggers a transfer-history fetch so the
+     * delivery rows can populate; subsequent toggles just flip visibility.
+     */
+    data class ToggleSharedWithExpansion(val expanded: Boolean) : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {

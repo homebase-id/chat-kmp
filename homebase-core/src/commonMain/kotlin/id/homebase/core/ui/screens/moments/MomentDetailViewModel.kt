@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.toChatDeliveryStatus
+import id.homebase.chat.services.toErrorDetailRes
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCommentsService
 import id.homebase.core.moments.services.MomentFeedItem
@@ -63,7 +66,8 @@ class MomentDetailViewModel(
     private val userPreferences: UserPreferences,
     momentGroupService: MomentGroupService,
     conversationStream: ConversationStream,
-    contactService: ContactService,
+    private val contactService: ContactService,
+    private val driveFileProvider: DriveFileProvider,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -84,6 +88,10 @@ class MomentDetailViewModel(
         val isDeletingMoment: Boolean = false,
         val deletingCommentIds: Set<Uuid> = emptySet(),
         val deleteCommentDialogTarget: Uuid? = null,
+        val sharedWithExpanded: Boolean = false,
+        val isTransferHistoryLoading: Boolean = false,
+        val transferHistoryLoaded: Boolean = false,
+        val recipientDeliveries: List<RecipientDeliveryUiModel> = emptyList(),
     )
 
     private val _screenLocal = MutableStateFlow(ScreenLocalState())
@@ -127,7 +135,8 @@ class MomentDetailViewModel(
         val sharedWith = match?.let {
             resolveSharedWith(it, groups, conversationsData.items, contacts, self)
         }
-        MomentWithSharedWith(match, sharedWith)
+        val avatars = match?.let { resolveRecipientAvatars(it, contacts, self) }.orEmpty()
+        MomentWithSharedWith(match, sharedWith, avatars)
     }
 
     val uiState: StateFlow<MomentDetailUiState> = combine(
@@ -162,6 +171,10 @@ class MomentDetailViewModel(
             deletingCommentIds = local.deletingCommentIds,
             deleteCommentDialogTarget = local.deleteCommentDialogTarget,
             sharedWith = momentBundle.sharedWith,
+            sharedWithExpanded = local.sharedWithExpanded,
+            isTransferHistoryLoading = local.isTransferHistoryLoading,
+            recipientDeliveries = local.recipientDeliveries,
+            recipientAvatars = momentBundle.recipientAvatars,
         )
     }.stateIn(
         viewModelScope,
@@ -172,7 +185,31 @@ class MomentDetailViewModel(
     private data class MomentWithSharedWith(
         val moment: MomentFeedItem?,
         val sharedWith: SharedWithDisplay?,
+        val recipientAvatars: List<RecipientBaseUiModel>,
     )
+
+    /**
+     * Flat per-individual recipient list for the avatar stack + (for received
+     * moments) the expanded recipient list. Drawn directly from
+     * `MomentFeedItem.recipients` — the underlying transit recipient list,
+     * which carries individual OdinIds even when the audience picker framed
+     * the post around a group. Self is filtered out so the active user
+     * doesn't see their own address listed under "Shared with".
+     */
+    private fun resolveRecipientAvatars(
+        moment: MomentFeedItem,
+        contacts: List<ContactUiModel>,
+        self: OdinId?,
+    ): List<RecipientBaseUiModel> {
+        return moment.recipients
+            .filter { it != self }
+            .map { odinId ->
+                RecipientBaseUiModel(
+                    odinId = odinId,
+                    displayName = odinId.displayName(contacts),
+                )
+            }
+    }
 
     private fun resolveSharedWith(
         moment: MomentFeedItem,
@@ -340,6 +377,72 @@ class MomentDetailViewModel(
 
             is MomentDetailUiAction.ConfirmDeleteComment ->
                 deleteComment(action.commentId, action.forEveryone)
+
+            is MomentDetailUiAction.ToggleSharedWithExpansion ->
+                toggleSharedWithExpansion(action.expanded)
+        }
+    }
+
+    /**
+     * Flip the expansion state and, on the first open against an authored
+     * moment, kick off the transfer-history fetch. Subsequent opens reuse the
+     * already-loaded rows — the data is a snapshot from the server, but we
+     * deliberately don't poll: the user can close+reopen to refresh.
+     *
+     * Gated on `isMine` because the server only returns transfer history to
+     * the file's author. For received moments the row collapses/expands but
+     * never fetches.
+     */
+    private fun toggleSharedWithExpansion(expanded: Boolean) {
+        _screenLocal.update { it.copy(sharedWithExpanded = expanded) }
+        if (!expanded) return
+
+        val current = uiState.value
+        if (!current.isMine) return
+        if (_screenLocal.value.transferHistoryLoaded) return
+        if (_screenLocal.value.isTransferHistoryLoading) return
+
+        val moment = current.moment ?: return
+        loadTransferHistory(driveId = moment.driveId, fileId = moment.fileId)
+    }
+
+    private fun loadTransferHistory(driveId: Uuid, fileId: Uuid) {
+        _screenLocal.update { it.copy(isTransferHistoryLoading = true) }
+        viewModelScope.launch {
+            try {
+                val history = driveFileProvider.getTransferHistory(driveId, fileId)
+                val entries = history?.history?.results.orEmpty().map { entry ->
+                    val odinId = OdinId(entry.recipient)
+                    val displayName = contactService.resolveByOdinId(odinId)?.name
+                        ?.takeIf { it.isNotBlank() }
+                        ?: odinId.domainName
+                    RecipientDeliveryUiModel(
+                        odinId = entry.recipient,
+                        displayName = displayName,
+                        deliveryStatus = entry.toChatDeliveryStatus(),
+                        errorDetailRes = entry.latestTransferStatus.toErrorDetailRes(),
+                    )
+                }
+                _screenLocal.update {
+                    it.copy(
+                        recipientDeliveries = entries,
+                        isTransferHistoryLoading = false,
+                        transferHistoryLoaded = true,
+                    )
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "loadTransferHistory failed driveId=$driveId fileId=$fileId: ${t.message}"
+                }
+                // Mark not-loaded so the next expand retries — a transient
+                // network hiccup shouldn't permanently hide the rows.
+                _screenLocal.update {
+                    it.copy(
+                        isTransferHistoryLoading = false,
+                        transferHistoryLoaded = false,
+                    )
+                }
+            }
         }
     }
 
