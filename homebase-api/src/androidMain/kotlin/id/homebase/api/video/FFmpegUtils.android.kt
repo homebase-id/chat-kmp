@@ -4,6 +4,7 @@ import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
@@ -26,13 +27,14 @@ actual object FFmpegUtils {
 
     actual suspend fun getFfmpegVersion(): String? = withContext(Dispatchers.IO) {
         if (ffmpegVersionProbed) return@withContext cachedFfmpegVersion
+        // FFmpegKitConfig.getFFmpegVersion() calls FFmpeg's av_version_info()
+        // directly via JNI (no `ffmpeg -version` subprocess). The previous
+        // approach — FFmpegKit.execute("-version") + parseFfmpegVersionBanner —
+        // doesn't work because ffmpeg's show_version writes to stdout via
+        // printf AND swaps the log callback away from arthenica's capture
+        // hook before printing, so session.allLogsAsString comes back empty.
         val v = try {
-            val session = FFmpegKit.execute("-version")
-            if (!ReturnCode.isSuccess(session.returnCode)) {
-                null
-            } else {
-                parseFfmpegVersionBanner(session.allLogsAsString)
-            }
+            FFmpegKitConfig.getFFmpegVersion()?.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             Log.w(TAG, "getFfmpegVersion failed", e)
             null
