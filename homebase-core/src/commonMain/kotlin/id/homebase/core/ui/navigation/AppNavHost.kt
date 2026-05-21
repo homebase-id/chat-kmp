@@ -275,10 +275,7 @@ fun AppNavHost(
                     navController.popBackStack()
                 }
 
-                is VaultUiEvent.OpenNoteEditor -> {
-                    navController.navigate(Route.VaultNoteEditor(event.sectionId.toString(), event.entryId.toString()))
-                }
-
+                is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }

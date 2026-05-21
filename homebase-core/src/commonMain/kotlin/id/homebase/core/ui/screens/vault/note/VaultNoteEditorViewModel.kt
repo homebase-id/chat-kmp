@@ -22,6 +22,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultNoteEditorVM"
+private const val CONTENT_TYPE_MARKDOWN = "text/markdown"
 
 data class VaultNoteEditorUiState(
     val title: String = "",
@@ -59,14 +60,14 @@ class VaultNoteEditorViewModel(
     private var editEntry: VaultEntry? = null
 
     init {
-        if (editEntryId != null) loadExistingNote()
+        if (editEntryId != null) loadExistingNote(editEntryId)
     }
 
-    private fun loadExistingNote() {
+    private fun loadExistingNote(entryId: Uuid) {
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             try {
-                val entry = findEntry(editEntryId!!) ?: run {
+                val entry = findEntry(entryId) ?: run {
                     _events.tryEmit(VaultNoteEditorEvent.LoadFailed)
                     _uiState.update { it.copy(isLoading = false) }
                     return@launch
@@ -79,9 +80,12 @@ class VaultNoteEditorViewModel(
                     _uiState.update { it.copy(isLoading = false) }
                     return@launch
                 }
-                val bytes = fileOperationsProvider.readFileBytes(tempPath)
-                fileOperationsProvider.deleteTempFile(tempPath)
-                loadedMarkdown = bytes.decodeToString()
+                try {
+                    val bytes = fileOperationsProvider.readFileBytes(tempPath)
+                    loadedMarkdown = bytes.decodeToString()
+                } finally {
+                    fileOperationsProvider.deleteTempFile(tempPath)
+                }
                 val displayTitle = entry.fileName.removeSuffix(".md")
                 _uiState.update {
                     it.copy(title = displayTitle, isLoading = false)
@@ -117,54 +121,36 @@ class VaultNoteEditorViewModel(
             )
             try {
                 if (currentState.isCreateMode) {
-                    createNote(fileName, tempPath)
+                    uploadNote(fileName, tempPath)
                 } else {
-                    updateNote(fileName, tempPath)
+                    val entry = editEntry ?: return@launch
+                    vaultService.deleteEntry(entry.uniqueId, entry.fileId)
+                    uploadNote(fileName, tempPath)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                fileOperationsProvider.deleteTempFile(tempPath)
                 throw e
             } catch (e: Exception) {
-                fileOperationsProvider.deleteTempFile(tempPath)
                 Logger.w(e, TAG) { "Failed to save note" }
                 _uiState.update { it.copy(isSaving = false) }
                 _events.tryEmit(VaultNoteEditorEvent.SaveFailed)
+            } finally {
+                try { fileOperationsProvider.deleteTempFile(tempPath) } catch (_: Exception) {}
             }
         }
     }
 
-    private suspend fun createNote(fileName: String, tempPath: String) {
+    private suspend fun uploadNote(fileName: String, tempPath: String) {
         val uniqueId = vaultUploaderService.uploadFile(
             entryName = fileName,
-            files = listOf(tempPath to "text/markdown"),
+            files = listOf(tempPath to CONTENT_TYPE_MARKDOWN),
             scope = viewModelScope,
             groupId = sectionId,
         )
         _uiState.update { it.copy(isSaving = false) }
-        if (uniqueId != null) {
-            _events.tryEmit(VaultNoteEditorEvent.SaveSuccess)
-        } else {
-            _events.tryEmit(VaultNoteEditorEvent.SaveFailed)
-        }
-    }
-
-    private suspend fun updateNote(fileName: String, tempPath: String) {
-        val entry = editEntry ?: return
-        // Delete old entry, then re-upload with new content under the same section (groupId).
-        // There is no updatePayload API, so edit = delete + re-create with a new uniqueId.
-        vaultService.deleteEntry(entry.uniqueId, entry.fileId)
-        val uniqueId = vaultUploaderService.uploadFile(
-            entryName = fileName,
-            files = listOf(tempPath to "text/markdown"),
-            scope = viewModelScope,
-            groupId = sectionId,
+        _events.tryEmit(
+            if (uniqueId != null) VaultNoteEditorEvent.SaveSuccess
+            else VaultNoteEditorEvent.SaveFailed
         )
-        _uiState.update { it.copy(isSaving = false) }
-        if (uniqueId != null) {
-            _events.tryEmit(VaultNoteEditorEvent.SaveSuccess)
-        } else {
-            _events.tryEmit(VaultNoteEditorEvent.SaveFailed)
-        }
     }
 
     private fun findEntry(entryId: Uuid): VaultEntry? {

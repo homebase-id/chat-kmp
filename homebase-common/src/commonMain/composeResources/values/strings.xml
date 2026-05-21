@@ -797,6 +797,8 @@
     <string name="vault_note_title_required">Title is required</string>
     <string name="vault_note_save">Save</string>
     <string name="vault_note_loading">Loading note…</string>
+    <string name="vault_note_save_failed">Failed to save note</string>
+    <string name="vault_note_load_failed">Failed to load note</string>
 
     <!-- Vault Sections -->
     <string name="vault_section_passports">Passports</string>

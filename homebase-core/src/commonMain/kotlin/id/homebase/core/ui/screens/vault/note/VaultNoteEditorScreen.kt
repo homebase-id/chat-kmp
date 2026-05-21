@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -15,6 +16,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -24,9 +26,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -35,13 +37,15 @@ import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.chat.widget.RichTextEditorButtons
+import id.homebase.core.util.applyMarkDownContent
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_note_body_placeholder
 import id.homebase.resources.vault_note_editor_title_edit
 import id.homebase.resources.vault_note_editor_title_new
-import id.homebase.resources.vault_note_loading
+import id.homebase.resources.vault_note_load_failed
 import id.homebase.resources.vault_note_save
+import id.homebase.resources.vault_note_save_failed
 import id.homebase.resources.vault_note_title_placeholder
 import id.homebase.resources.vault_note_title_required
 import org.jetbrains.compose.resources.stringResource
@@ -56,27 +60,27 @@ fun VaultNoteEditorScreen(
     val richTextState = rememberRichTextState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val saveFailed = stringResource(MR.string.vault_note_save) // reuse pattern — provide error strings
-    val loadFailed = stringResource(MR.string.vault_note_loading)
+    val saveFailedMessage = stringResource(MR.string.vault_note_save_failed)
+    val loadFailedMessage = stringResource(MR.string.vault_note_load_failed)
 
-    // Handle one-time events
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 VaultNoteEditorEvent.SaveSuccess -> onBackClick()
-                VaultNoteEditorEvent.SaveFailed -> snackbarHostState.showSnackbar(saveFailed)
+                VaultNoteEditorEvent.SaveFailed -> snackbarHostState.showSnackbar(saveFailedMessage)
                 VaultNoteEditorEvent.LoadFailed -> {
-                    snackbarHostState.showSnackbar(loadFailed)
+                    snackbarHostState.showSnackbar(loadFailedMessage)
                     onBackClick()
                 }
             }
         }
     }
 
-    // Once loading finishes in edit mode, seed the rich text editor with the downloaded markdown
+    var hasSeeded by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isLoading) {
-        if (!uiState.isLoading && !uiState.isCreateMode) {
-            richTextState.setMarkdown(viewModel.getLoadedMarkdown())
+        if (!uiState.isLoading && !uiState.isCreateMode && !hasSeeded) {
+            richTextState.applyMarkDownContent(viewModel.getLoadedMarkdown())
+            hasSeeded = true
         }
     }
 
@@ -137,7 +141,7 @@ fun VaultNoteEditorScreen(
 
             OutlinedTextField(
                 value = uiState.title,
-                onValueChange = { viewModel.onTitleChanged(it) },
+                onValueChange = viewModel::onTitleChanged,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
