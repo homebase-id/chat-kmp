@@ -908,7 +908,7 @@ private fun SharedWithEntryRow(entry: SharedWithEntry) {
         )
         if (subLabel != null) {
             Text(
-                text = "· $subLabel",
+                text = subLabel,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
