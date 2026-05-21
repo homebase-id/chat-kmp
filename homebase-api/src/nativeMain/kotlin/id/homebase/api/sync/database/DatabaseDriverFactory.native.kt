@@ -39,8 +39,8 @@ actual class DatabaseDriverFactory {
                 // `DB pragmas: journal_mode=wal …` audit line.
                 config.copy(
                     journalMode = JournalMode.WAL,
-                    busyTimeout = 5_000,
                     extendedConfig = config.extendedConfig.copy(
+                        busyTimeout = 5_000,
                         synchronousFlag = SynchronousFlag.NORMAL,
                     ),
                     encryptionConfig = DatabaseConfiguration.Encryption(
