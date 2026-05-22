@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
+		1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */; };
+		3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
 		43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; };
 		43296FB72F3A0C08000B3AFE /* libavformat.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
@@ -28,9 +31,27 @@
 		4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */; };
 		43AB755A2F87A7C4001EF1D3 /* NotificationServiceExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		43CFC1DB2F741EF200628241 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43CFC1D12F741EF200628241 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; };
+		652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
+		65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */ = {isa = PBXBuildFile; fileRef = FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */; };
+		87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
+		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
+		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
+		CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */; };
+		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
+		DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F72A108F8868D83B449653CC /* fixture_720p.mp4 */; };
+		E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; };
+		FA96B35DB50A41A5E8A351EF /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		275F89A7B6D9FDCDEE7EEFEF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4E281890246EA5507039EAC8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1B3C06D1520D2521F661776E;
+			remoteInfo = iosApp;
+		};
 		43AB75582F87A7C4001EF1D3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4E281890246EA5507039EAC8 /* Project object */;
@@ -81,6 +102,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_1080p.mp4; sourceTree = "<group>"; };
+		1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FFmpegPipelineTests.swift; sourceTree = "<group>"; };
 		43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavformat.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavformat.xcframework"; sourceTree = "<group>"; };
 		43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavutil.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavutil.xcframework"; sourceTree = "<group>"; };
 		43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavfilter.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavfilter.xcframework"; sourceTree = "<group>"; };
@@ -96,7 +119,12 @@
 		43958A702FB46E1C00D226CE /* NotificationServiceExtensionDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationServiceExtensionDebug.entitlements; sourceTree = "<group>"; };
 		43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationServiceExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		43CFC1D12F741EF200628241 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		83540B919899D142F6699230 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		A119F0A8E11D557B2E98503F /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E036487443061F6060AA1439 /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_4k.mp4; sourceTree = "<group>"; };
+		F72A108F8868D83B449653CC /* fixture_720p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_720p.mp4; sourceTree = "<group>"; };
+		FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_hevc.mov; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -142,6 +170,8 @@
 		};
 		77B4216A23B10141C86A920D /* Configuration */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Configuration;
 			sourceTree = "<group>";
 		};
@@ -156,6 +186,22 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		02877DE0DC1A4F6341F732D9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */,
+				E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */,
+				3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */,
+				8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */,
+				4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */,
+				FA96B35DB50A41A5E8A351EF /* libavformat.xcframework in Frameworks */,
+				87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */,
+				652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */,
+				031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		43AB75502F87A7C4001EF1D3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -197,6 +243,7 @@
 				E036487443061F6060AA1439 /* Homebase.app */,
 				43CFC1D12F741EF200628241 /* ShareExtension.appex */,
 				43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */,
+				A119F0A8E11D557B2E98503F /* iosAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -213,6 +260,7 @@
 				43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */,
 				43296FB52F3A0C08000B3AFE /* libswresample.xcframework */,
 				43296FB32F3A0C08000B3AFE /* libswscale.xcframework */,
+				B2ACBBE9062A074C9CE55CEA /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -228,6 +276,14 @@
 			path = NotificationServiceExtension;
 			sourceTree = "<group>";
 		};
+		B2ACBBE9062A074C9CE55CEA /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				83540B919899D142F6699230 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		C518C3BA997C48BC7763149C = {
 			isa = PBXGroup;
 			children = (
@@ -238,7 +294,21 @@
 				43296FAD2F3A0C08000B3AFE /* Frameworks */,
 				0FA39D98867DA0943346125E /* Products */,
 				4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */,
+				E4394BA0696F07118E612228 /* iosAppTests */,
 			);
+			sourceTree = "<group>";
+		};
+		E4394BA0696F07118E612228 /* iosAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */,
+				E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */,
+				03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */,
+				F72A108F8868D83B449653CC /* fixture_720p.mp4 */,
+				FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */,
+			);
+			name = iosAppTests;
+			path = iosAppTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -276,6 +346,24 @@
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
 			productType = "com.apple.product-type.application";
 		};
+		41E11AF31C5CD3349CCE4D84 /* iosAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56F739763075564E6C385392 /* Build configuration list for PBXNativeTarget "iosAppTests" */;
+			buildPhases = (
+				026F4088AB8C789A324660C7 /* Sources */,
+				02877DE0DC1A4F6341F732D9 /* Frameworks */,
+				53FA484EABB33CA9E269E17D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DAE7C6C248D295C574FFC09F /* PBXTargetDependency */,
+			);
+			name = iosAppTests;
+			productName = iosAppTests;
+			productReference = A119F0A8E11D557B2E98503F /* iosAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		43AB75522F87A7C4001EF1D3 /* NotificationServiceExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 43AB755E2F87A7C4001EF1D3 /* Build configuration list for PBXNativeTarget "NotificationServiceExtension" */;
@@ -292,8 +380,6 @@
 				43AB75542F87A7C4001EF1D3 /* NotificationServiceExtension */,
 			);
 			name = NotificationServiceExtension;
-			packageProductDependencies = (
-			);
 			productName = NotificationServiceExtension;
 			productReference = 43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -314,8 +400,6 @@
 				43CFC1D22F741EF200628241 /* ShareExtension */,
 			);
 			name = ShareExtension;
-			packageProductDependencies = (
-			);
 			productName = ShareExtension;
 			productReference = 43CFC1D12F741EF200628241 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -361,6 +445,7 @@
 				1B3C06D1520D2521F661776E /* iosApp */,
 				43CFC1D02F741EF200628241 /* ShareExtension */,
 				43AB75522F87A7C4001EF1D3 /* NotificationServiceExtension */,
+				41E11AF31C5CD3349CCE4D84 /* iosAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -377,6 +462,17 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		53FA484EABB33CA9E269E17D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */,
+				CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */,
+				DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */,
+				65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -453,6 +549,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		026F4088AB8C789A324660C7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		43AB754F2F87A7C4001EF1D3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -486,6 +590,12 @@
 			isa = PBXTargetDependency;
 			target = 43CFC1D02F741EF200628241 /* ShareExtension */;
 			targetProxy = 43CFC1D92F741EF200628241 /* PBXContainerItemProxy */;
+		};
+		DAE7C6C248D295C574FFC09F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = iosApp;
+			target = 1B3C06D1520D2521F661776E /* iosApp */;
+			targetProxy = 275F89A7B6D9FDCDEE7EEFEF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -676,6 +786,50 @@
 			};
 			name = Release;
 		};
+		8424E0E3F37F9313F59122E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebase.app/Homebase";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8661E5F343FADF018D99776D /* Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebase.app/Homebase";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Dev;
+		};
 		96D6A996719FA87C66118036 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -809,6 +963,27 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D75041B173D769AD258743DB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Homebase.app/Homebase";
 			};
 			name = Debug;
 		};
@@ -1034,6 +1209,16 @@
 				43CFC1DD2F741EF200628241 /* Debug */,
 				43CFC1DE2F741EF200628241 /* Release */,
 				F02D52382F867B61008C30F8 /* Dev */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		56F739763075564E6C385392 /* Build configuration list for PBXNativeTarget "iosAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8424E0E3F37F9313F59122E2 /* Release */,
+				D75041B173D769AD258743DB /* Debug */,
+				8661E5F343FADF018D99776D /* Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

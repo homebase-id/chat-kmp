@@ -2,9 +2,11 @@ package id.homebase.core.ui.screens.moments
 
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
@@ -78,7 +80,101 @@ data class MomentDetailUiState(
      * dialog (for me / for everyone / cancel).
      */
     val deleteCommentDialogTarget: Uuid? = null,
+
+    /**
+     * Audience the moment was shared with — group titles and individual
+     * domains, resolved by the VM from the moment's `MomentSource`. Null when
+     * the moment has no recorded source (legacy posts, local-only) or when
+     * the lookup tables haven't loaded yet. Empty list inside the wrapper is
+     * not a valid state — the VM emits null in that case.
+     */
+    val sharedWith: SharedWithDisplay? = null,
+
+    /**
+     * Whether the "Shared with" row is expanded. Hoisted into the VM (vs. a
+     * local rememberSaveable) because the first expansion triggers an
+     * on-demand `getTransferHistory` fetch — keeping the toggle next to the
+     * loader lets the VM scope the network call to the open state and avoid
+     * doing it on cold load.
+     */
+    val sharedWithExpanded: Boolean = false,
+
+    /** True while a transfer-history fetch is in flight. */
+    val isTransferHistoryLoading: Boolean = false,
+
+    /**
+     * Per-recipient delivery state for the author's own moment. Empty for
+     * received moments (the server only returns history to the sender) and
+     * before the first expansion. Reuses chat's status/error-text mappings
+     * so the UI presentation matches the chat MessageInfo screen.
+     */
+    val recipientDeliveries: List<RecipientDeliveryUiModel> = emptyList(),
+
+    /**
+     * Flat list of individual recipients (OdinId + resolved display name)
+     * derived from the moment's recipients list, minus the active user.
+     * Drives the collapsed avatar stack and the expanded recipient list for
+     * received (non-authored) moments. For [SharedWithDisplay.Private] this
+     * is empty.
+     */
+    val recipientAvatars: List<RecipientBaseUiModel> = emptyList(),
 )
+
+/**
+ * Lightweight recipient row data — OdinId for the avatar lookup, displayName
+ * for the row label. Distinct from [RecipientDeliveryUiModel] (which also
+ * carries delivery state) so the collapsed avatar stack and the !isMine
+ * expanded list don't drag along loading/status fields they don't use.
+ */
+data class RecipientBaseUiModel(
+    val odinId: OdinId,
+    val displayName: String,
+)
+
+/**
+ * Per-recipient delivery row for the moment's expanded "Shared with" surface.
+ * Shape mirrors `RecipientStatusUiModel` from MessageInfoUiState — same fields,
+ * same chat mappings — but lives in the moments namespace so the two screens
+ * can evolve independently.
+ */
+data class RecipientDeliveryUiModel(
+    val odinId: String,
+    val displayName: String,
+    val deliveryStatus: ChatDeliveryStatus,
+    val errorDetailRes: StringResource? = null,
+)
+
+/**
+ * Already-resolved audience presentation for the detail screen. Group titles
+ * and individual domains are pre-resolved by the VM so the composable can
+ * render synchronously — the only thing left to the screen is layout +
+ * localisation of the row label and any +N suffix.
+ *
+ * [Private] is author-side: the user kept this moment with no recipients.
+ *   Covers two indistinguishable cases — no recorded source (legacy posts),
+ *   or an explicitly empty audience (saved-just-for-me post).
+ * [JustYou] is receiver-side: an inbound 1:1 share where the active user is
+ *   the only recipient. Distinct from Private so the receiver isn't told
+ *   their own inbound post is "private" (it isn't — it was shared with them).
+ * [Recipients.entries] is non-empty by construction — the VM emits null
+ *   instead of an empty Recipients while a lookup is still loading.
+ */
+sealed interface SharedWithDisplay {
+    data object Private : SharedWithDisplay
+    data object JustYou : SharedWithDisplay
+    data class Recipients(val entries: List<SharedWithEntry>) : SharedWithDisplay
+}
+
+sealed interface SharedWithEntry {
+    data class Group(val name: String, val memberCount: Int) : SharedWithEntry
+    data class Individual(val name: String) : SharedWithEntry
+    /**
+     * Conversation-sourced moment. `name` is null when the conversation list
+     * hasn't loaded yet (cold start) so the composable can fall back to a
+     * generic localised label rather than showing a blank row.
+     */
+    data class Conversation(val name: String?) : SharedWithEntry
+}
 
 sealed interface MomentDetailUiAction {
     /**
@@ -130,6 +226,21 @@ sealed interface MomentDetailUiAction {
         val commentId: Uuid,
         val forEveryone: Boolean,
     ) : MomentDetailUiAction
+
+    /**
+     * Open / close the recipient list under the "Shared with" row. The first
+     * expand on an authored moment triggers a transfer-history fetch so the
+     * delivery rows can populate; subsequent toggles just flip visibility.
+     */
+    data class ToggleSharedWithExpansion(val expanded: Boolean) : MomentDetailUiAction
+
+    /**
+     * Share-button tap in the full-screen image viewer. Decrypts the payload,
+     * writes a cleartext copy into the share_outbound sweep dir, and emits
+     * [MomentDetailUiEvent.ShareFileReady] for the screen to hand to the
+     * platform share sheet.
+     */
+    data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
@@ -142,4 +253,11 @@ sealed interface MomentDetailUiEvent {
     data class DeleteFailed(val message: String?) : MomentDetailUiEvent
 
     data class CommentDeleteFailed(val message: String?) : MomentDetailUiEvent
+
+    /**
+     * Decrypted payload is written to [filePath] under the share_outbound sweep
+     * dir; the screen should hand the path to the platform share sheet.
+     */
+    data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
+    data class ShareFailed(val message: String?) : MomentDetailUiEvent
 }

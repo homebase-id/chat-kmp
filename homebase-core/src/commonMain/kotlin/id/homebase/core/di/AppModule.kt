@@ -497,6 +497,11 @@ val appModule = module {
             actionService = get(),
             credentialsManager = get(),
             userPreferences = get(),
+            momentGroupService = get(),
+            conversationStream = get(),
+            contactService = get(),
+            driveFileProvider = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

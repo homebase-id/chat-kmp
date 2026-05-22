@@ -16,4 +16,8 @@
         <item quantity="one">Asked %1$d peer to clean up their copy</item>
         <item quantity="other">Asked %1$d peers to clean up their copies</item>
     </plurals>
+    <plurals name="moments_detail_shared_with_group_members">
+        <item quantity="one">· %1$d member</item>
+        <item quantity="other">· %1$d members</item>
+    </plurals>
 </resources>

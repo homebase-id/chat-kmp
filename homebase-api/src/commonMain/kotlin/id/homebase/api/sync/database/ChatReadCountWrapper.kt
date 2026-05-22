@@ -35,6 +35,21 @@ data class ConversationUnreadCount(
 )
 
 /**
+ * A conversation that has live messages in the local index but no conversation
+ * header (fileType=8888) — see `ChatReadCount.sq:selectOrphanedAtRestConversations`.
+ */
+data class OrphanedAtRestConversation(
+    val conversationId: Uuid,
+    val messageCount: Long,
+    /**
+     * Most recent non-self message author for this group, or null when every
+     * message is self-authored (counterparty unrecoverable — would become a
+     * "1:1 repair" group). Used to rebuild a real 1:1 on recovery.
+     */
+    val counterpartyAuthor: String?,
+)
+
+/**
  * Wrapper for ChatReadCount database operations following the DriveMainIndexWrapper pattern
  * Handles conversion between jsonHeader -> HomebaseFile -> Message/Conversation
  */
@@ -64,6 +79,26 @@ class ChatReadCountWrapper(
                 null
             }
         }
+    }
+
+    /**
+     * Groups that have live messages but no conversation header — the orphaned-at-rest
+     * set. Cheap (index-backed, empty in the normal case); intended to run once per cold
+     * start after the chat drive's initial sync settles.
+     */
+    fun selectOrphanedAtRestConversations(
+        identityId: Uuid,
+        selfDomain: String,
+    ): List<OrphanedAtRestConversation> {
+        return delegate.selectOrphanedAtRestConversations(identityId = identityId, selfDomain = selfDomain)
+            .executeAsList()
+            .map {
+                OrphanedAtRestConversation(
+                    conversationId = it.groupId,
+                    messageCount = it.messageCount,
+                    counterpartyAuthor = it.counterpartyAuthor,
+                )
+            }
     }
 
     private val logger = Logger.withTag("ConversationQueries")

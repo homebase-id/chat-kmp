@@ -6,6 +6,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.chat.services.ChatDeliveryStatus
 import kotlin.test.Test
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalTestApi::class)
 class DeliveryStatusTest {
@@ -60,6 +62,35 @@ class DeliveryStatusTest {
                     isPendingSend = false,
                     deliveryStatus = ChatDeliveryStatus.Read.value,
                     contentColor = Color.White,
+                )
+            }
+        }
+        waitForIdle()
+    }
+
+    @Test
+    fun rendersForFailedStatus() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                DeliveryStatus(
+                    isPendingSend = false,
+                    deliveryStatus = ChatDeliveryStatus.Failed.value,
+                    contentColor = Color.White,
+                )
+            }
+        }
+        waitForIdle()
+    }
+
+    @Test
+    fun rendersForStalePendingSend() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                DeliveryStatus(
+                    isPendingSend = true,
+                    deliveryStatus = 0,
+                    contentColor = Color.White,
+                    pendingSince = Clock.System.now() - 2.minutes,
                 )
             }
         }

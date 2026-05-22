@@ -109,32 +109,8 @@ class DriveWebSocketUpsertWorker(
             snapshot
         }
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║  HACK detection — REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-   ║
-        // ║  WRITE                                                         ║
-        // ║                                                                ║
-        // ║  TODO(server): the chat-drive WS currently emits N             ║
-        // ║  notifications (typically 3) per logical file write — same     ║
-        // ║  fileId, same versionTag, same content, just delivered         ║
-        // ║  multiple times. The DB upsert is idempotent so correctness    ║
-        // ║  isn't affected, but we redundantly decrypt + upsert. This     ║
-        // ║  warning is the canary so we don't forget to fix it on the    ║
-        // ║  backend.                                                      ║
-        // ║                                                                ║
-        // ║  When the server-side fix lands: delete this block.            ║
-        // ╚════════════════════════════════════════════════════════════════╝
-        val uniqueFileIds = batch.mapTo(HashSet()) { it.fileId }
-        if (uniqueFileIds.size != batch.size) {
-            Logger.w {
-                "WSPush: HACK detected ${batch.size - uniqueFileIds.size} duplicate file(s) " +
-                    "in batch drive=$driveId rows=${batch.size} unique=${uniqueFileIds.size} " +
-                    "(server fan-out workaround — same fileId delivered multiple times). " +
-                    "TODO(server): stop fan-out-per-write."
-            }
-        }
-
         try {
-            val (_, upsertElapsed) = measureTimedValue {
+            val (written, upsertElapsed) = measureTimedValue {
                 fileHeaderProcessor.baseUpsertEntryZapZap(
                     identityId = identityId,
                     driveId = driveId,
@@ -142,14 +118,33 @@ class DriveWebSocketUpsertWorker(
                     cursor = null,
                 )
             }
+
+            // Emit only the rows that actually changed a DriveMainIndex record
+            // (passed the timestamp guard), not the raw incoming batch. A stale or
+            // duplicate server push — e.g. the half-stale `statisticsChanged`
+            // fan-out copy whose `updated` is older than what we already hold — is
+            // rejected by the guard and so is absent from `written`. Mapping the
+            // raw batch instead would paint that rejected payload into the UI for a
+            // frame (the reaction-highlight blink); honoring the guard here avoids
+            // it and also collapses the fan-out duplicates to the single row that
+            // won.
+            if (written.isEmpty()) {
+                Logger.i(tag = "WSPush") {
+                    "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed " +
+                        "— no rows changed (timestamp guard); skipping BatchReceived"
+                }
+                return
+            }
+
             Logger.i(tag = "WSPush") {
-                "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed (emitting BatchReceived)"
+                "WSPush: drainOnce drive=$driveId rows=${batch.size} wrote=${written.size} " +
+                    "took=$upsertElapsed (emitting BatchReceived)"
             }
 
             eventBus.emit(
                 BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    batchData = batch,
+                    batchData = written,
                 )
             )
         } catch (e: Exception) {

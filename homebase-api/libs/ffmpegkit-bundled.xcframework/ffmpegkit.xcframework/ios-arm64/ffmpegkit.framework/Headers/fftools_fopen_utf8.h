@@ -16,14 +16,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/*
- * This file is the modified version of fopen_utf8.h file living in ffmpeg source code under the fftools folder. We
- * manually update it each time we depend on a new ffmpeg version. Below you can see the list of changes applied
- * by us to develop the ffmpeg-kit library.
- *
- * ffmpeg-kit changes by Taner Sener
- */
-
 #ifndef FFTOOLS_FOPEN_UTF8_H
 #define FFTOOLS_FOPEN_UTF8_H
 
@@ -35,6 +27,7 @@
  * CRT, and FILE* handles can't be shared across them.) */
 
 #ifdef _WIN32
+#include "libavutil/mem.h"
 #include "libavutil/wchar_filename.h"
 
 static inline FILE *fopen_utf8(const char *path_utf8, const char *mode)

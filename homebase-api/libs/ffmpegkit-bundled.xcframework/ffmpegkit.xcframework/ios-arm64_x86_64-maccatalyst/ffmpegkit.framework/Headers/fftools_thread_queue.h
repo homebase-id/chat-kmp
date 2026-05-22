@@ -1,6 +1,5 @@
 /*
  * This file is part of FFmpeg.
- * Copyright (c) 2023 ARTHENICA LTD
  *
  * FFmpeg is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -17,24 +16,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/*
- * This file is the modified version of thread_queue.h file living in ffmpeg source code under the fftools folder. We
- * manually update it each time we depend on a new ffmpeg version. Below you can see the list of changes applied
- * by us to develop ffmpeg-kit library.
- *
- * ffmpeg-kit changes by ARTHENICA LTD
- *
- * 07.2023
- * --------------------------------------------------------
- * - FFmpeg 6.0 changes migrated
- */
-
 #ifndef FFTOOLS_THREAD_QUEUE_H
 #define FFTOOLS_THREAD_QUEUE_H
 
 #include <string.h>
 
-#include "fftools_objpool.h"
+enum ThreadQueueType {
+    THREAD_QUEUE_FRAMES,
+    THREAD_QUEUE_PACKETS,
+};
 
 typedef struct ThreadQueue ThreadQueue;
 
@@ -45,12 +35,9 @@ typedef struct ThreadQueue ThreadQueue;
  *                   maintained
  * @param queue_size number of items that can be stored in the queue without
  *                   blocking
- * @param obj_pool object pool that will be used to allocate items stored in the
- *                 queue; the pool becomes owned by the queue
- * @param callback that moves the contents between two data pointers
  */
 ThreadQueue *tq_alloc(unsigned int nb_streams, size_t queue_size,
-                      ObjPool *obj_pool, void (*obj_move)(void *dst, void *src));
+                      enum ThreadQueueType type);
 void         tq_free(ThreadQueue **tq);
 
 /**
@@ -70,6 +57,15 @@ int tq_send(ThreadQueue *tq, unsigned int stream_idx, void *data);
  * Mark the given stream finished from the sending side.
  */
 void tq_send_finish(ThreadQueue *tq, unsigned int stream_idx);
+
+/**
+ * Prevent further reads from the thread queue until it is unchoked. Threads
+ * attempting to read from the queue will block, similar to when the queue is
+ * empty.
+ *
+ * @param choked 1 to choke, 0 to unchoke
+ */
+void tq_choke(ThreadQueue *tq, int choked);
 
 /**
  * Read the next item from the queue.

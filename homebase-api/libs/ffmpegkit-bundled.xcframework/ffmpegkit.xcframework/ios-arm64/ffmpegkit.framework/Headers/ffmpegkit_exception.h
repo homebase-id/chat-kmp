@@ -23,7 +23,21 @@
 #include <stdio.h>
 #include <setjmp.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** Holds information to implement exception handling. */
 extern __thread jmp_buf ex_buf__;
+
+/** Stores the exit code passed to exit_program() so the longjmp recipient
+ *  (ffmpeg_execute / ffprobe_execute) can return it. */
+extern __thread int longjmp_value;
+
+void exit_program(int ret);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // FFMPEG_KIT_EXCEPTION_H
