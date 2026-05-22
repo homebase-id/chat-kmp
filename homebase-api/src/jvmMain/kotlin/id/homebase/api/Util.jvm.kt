@@ -1,8 +1,10 @@
 package id.homebase.api
 
-actual fun getPlatform(): Platform {
-    TODO("Not yet implemented")
+private object JvmPlatform : Platform {
+    override val name: PlatformType = PlatformType.JVM
 }
+
+actual fun getPlatform(): Platform = JvmPlatform
 
 actual fun isAndroid(): Boolean {
     return false

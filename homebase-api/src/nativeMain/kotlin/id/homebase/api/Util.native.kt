@@ -8,9 +8,11 @@ actual fun isIos(): Boolean {
     return true
 }
 
-actual fun getPlatform(): Platform {
-    TODO("Not yet implemented")
+private object IosPlatform : Platform {
+    override val name: PlatformType = PlatformType.IOS
 }
+
+actual fun getPlatform(): Platform = IosPlatform
 
 actual fun showMessage(title: String, message: String) {
 }

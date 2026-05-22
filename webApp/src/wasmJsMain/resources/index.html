@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- The base href below is substituted at build time from the -PpublicPath Gradle property (default "/"). -->
+    <base href="@PUBLIC_PATH@">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json"/>
@@ -98,7 +100,9 @@
     // We detect that here and post the full URL back to the opener (which still holds the in-memory
     // ECDH keypair needed to finish the token exchange), then close — WITHOUT booting the heavy
     // wasm bundle inside the popup. On a normal load we inject the app scripts in order:
-    //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app.js (the app).
+    //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app bundle.
+    // The bundle filename is substituted at build time by HtmlWebpackPlugin (see
+    // webApp/webpack.config.d/html-plugin.js) — in production it's content-hashed for cache busting.
     (function () {
         var params = new URLSearchParams(location.search);
         var isAuthCallback = window.opener
@@ -111,7 +115,7 @@
             window.close();
             return;
         }
-        ["sql-wasm.js", "odin-sqljs.js", "homebase-app.js"].forEach(function (src) {
+        ["sql-wasm.js", "odin-sqljs.js", "<%= htmlWebpackPlugin.files.js[0] %>"].forEach(function (src) {
             var s = document.createElement("script");
             s.src = src;
             s.async = false; // script-inserted scripts run in insertion order when async=false
