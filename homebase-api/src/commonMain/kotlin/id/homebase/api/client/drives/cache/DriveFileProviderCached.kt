@@ -106,11 +106,16 @@ class DriveFileProviderCached(
     // get()/put()/clear() are all safe per the Coil contract.
     private val payloadDiskCache: DiskCache = DiskCache.Builder()
             .directory(payloadDir.toPath())
+            // Use the project FileSystem abstraction: okio FileSystem.SYSTEM on native (unchanged),
+            // the in-memory FakeFileSystem on web. Coil's default is FileSystem.SYSTEM, which throws
+            // "Javascript does not have access to the device's file system" on wasmJs.
+            .fileSystem(fileSystem)
             .maxSizeBytes(200L * 1024L * 1024L) // 200MB
             .build()
 
     private val thumbDiskCache: DiskCache = DiskCache.Builder()
             .directory(thumbDir.toPath())
+            .fileSystem(fileSystem)
             .maxSizeBytes(300L * 1024L * 1024L) // 300MB
             .build()
 
