@@ -109,30 +109,6 @@ class DriveWebSocketUpsertWorker(
             snapshot
         }
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║  HACK detection — REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-   ║
-        // ║  WRITE                                                         ║
-        // ║                                                                ║
-        // ║  TODO(server): the chat-drive WS currently emits N             ║
-        // ║  notifications (typically 3) per logical file write — same     ║
-        // ║  fileId, same versionTag, same content, just delivered         ║
-        // ║  multiple times. The DB upsert is idempotent so correctness    ║
-        // ║  isn't affected, but we redundantly decrypt + upsert. This     ║
-        // ║  warning is the canary so we don't forget to fix it on the    ║
-        // ║  backend.                                                      ║
-        // ║                                                                ║
-        // ║  When the server-side fix lands: delete this block.            ║
-        // ╚════════════════════════════════════════════════════════════════╝
-        val uniqueFileIds = batch.mapTo(HashSet()) { it.fileId }
-        if (uniqueFileIds.size != batch.size) {
-            Logger.w {
-                "WSPush: HACK detected ${batch.size - uniqueFileIds.size} duplicate file(s) " +
-                    "in batch drive=$driveId rows=${batch.size} unique=${uniqueFileIds.size} " +
-                    "(server fan-out workaround — same fileId delivered multiple times). " +
-                    "TODO(server): stop fan-out-per-write."
-            }
-        }
-
         try {
             val (written, upsertElapsed) = measureTimedValue {
                 fileHeaderProcessor.baseUpsertEntryZapZap(
