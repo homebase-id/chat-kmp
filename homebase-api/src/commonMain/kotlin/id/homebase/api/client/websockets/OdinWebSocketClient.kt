@@ -360,10 +360,19 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.inboxItemReceived -> {
-                Logger.w(tag = "WebSocket") {
-                    "Received obsolete inboxItemReceived notification — server should auto-process on QueryBatch. data=${notification.data.take(200)}"
-                }
-                // handleProcessInbox(notification)  // disabled — server auto-processes on QueryBatch
+                // Re-enabled (was a no-op since the server-side "auto-process
+                // on QueryBatch" promise covered the previous use cases).
+                // Confirmed regression for the moments drive: a peer-posted
+                // comment/moment arrives at the receiver as
+                // `inboxItemReceived` but no `fileAdded` follows — the file
+                // stays in inbox limbo and the detail/feed UI never updates.
+                // The explicit per-item processInbox ack moves the inbox
+                // entry onto the drive, which then fires `fileAdded` →
+                // `BatchReceived` → service/VM/UI as normal.
+                //
+                // TODO: remove once the server reliably auto-processes the
+                // inbox on transit arrival without needing the client to ack.
+                handleProcessInbox(notification)
             }
 
             ClientNotificationType.fileAdded -> {
@@ -490,32 +499,34 @@ class OdinWebSocketClient(
         }
     }
 
-    // Disabled — server now auto-processes the inbox on QueryBatch, so the
-    // explicit per-message ack is no longer needed. Kept commented so it can
-    // be re-enabled if the server-side behaviour regresses.
-    //
-    // private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
-    //     val n =
-    //         OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
-    //             notification.data
-    //         )
-    //
-    //     // Reverts block #3 of commit 18483c4e. The WS push path bypasses
-    //     // QueryBatch in steady state, so the server's "auto-process inbox on
-    //     // QueryBatch" never fires for a recipient sitting in an already-loaded
-    //     // conversation — the inboxItemReceived notification arrives but no
-    //     // fileAdded follows, and the message body never makes it to the
-    //     // WebSocket. Send the explicit processInbox ack so the server moves
-    //     // the inbox entry onto the drive. Remove once the server-side
-    //     // auto-process behaviour is fixed.
-    //     notify(
-    //         command = "processInbox",
-    //         payload = ProcessInboxPayload(
-    //             targetDrive = n.targetDrive,
-    //             batchSize = 100
-    //         )
-    //     )
-    // }
+    /**
+     * Per-item inbox ack — tells the server to process the just-arrived
+     * inbox entry for [notification]'s `targetDrive` and write it onto the
+     * drive. The server then fires `fileAdded` (or `fileModified` for an
+     * upsert), which lands at [handleFileEvent] and propagates as a normal
+     * `BatchReceived` event.
+     *
+     * Originally added for the same reason as [processAllInboxes] (cold
+     * reconnect backlog), then disabled in favor of relying on the server's
+     * "auto-process on QueryBatch" path. That path covers the chat drive
+     * because the conversation screen does its own paging QueryBatches, but
+     * for the moments drive (no ongoing polling once cold-load completes)
+     * the inbox-arrived item never gets processed. Re-enabling closes that
+     * gap. TODO: remove once the server auto-processes inbox arrivals.
+     */
+    private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
+        val n =
+            OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
+                notification.data
+            )
+        notify(
+            command = "processInbox",
+            payload = ProcessInboxPayload(
+                targetDrive = n.targetDrive,
+                batchSize = 100
+            )
+        )
+    }
 
 /**
      * Reaction add/remove notification — no-op for every drive.

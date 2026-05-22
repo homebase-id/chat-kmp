@@ -7,6 +7,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -25,6 +26,8 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.data.ConversationUiModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +71,7 @@ class MomentDetailViewModel(
     conversationStream: ConversationStream,
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -182,6 +186,41 @@ class MomentDetailViewModel(
         MomentDetailUiState(initialPayloadKey = initialPayloadKey),
     )
 
+    /**
+     * Diagnostic: log every comment-list change observed on this VM's
+     * uiState. Pairs with the MomentCommentsService logs to triangulate a
+     * "comment didn't appear" report — if the service shows `added comment=…`
+     * but no corresponding `uiState comments=…` line fires here, the gap is
+     * in the combine/StateFlow plumbing. If both fire but the row doesn't
+     * appear on screen, the gap is in the composable's recomposition.
+     *
+     * Must live in a second init block placed AFTER [uiState] is declared.
+     * With `Dispatchers.Main.immediate` (the default for `viewModelScope`),
+     * `launch { ... }` can execute its body synchronously during init — if
+     * this ran in the first init block, `uiState` would still be null at
+     * that moment and the `.map { … }` operator would NPE.
+     */
+    init {
+        viewModelScope.launch {
+            uiState
+                .map {
+                    // Service emits newest-first, so [0] is the newest comment.
+                    // distinctUntilChanged-on-pair fires only when either the
+                    // count or the newest id changes, so an edit/reaction
+                    // re-emit of the same head doesn't spam the log.
+                    val newest = it.comments.firstOrNull()
+                    Triple(it.comments.size, newest?.id, newest?.senderOdinId?.domainName)
+                }
+                .distinctUntilChanged()
+                .collect { (size, newestId, newestSender) ->
+                    Logger.d(tag = TAG) {
+                        "uiState comments updated: moment=$momentId count=$size " +
+                            "newest=$newestId sender=${newestSender ?: "self"}"
+                    }
+                }
+        }
+    }
+
     private data class MomentWithSharedWith(
         val moment: MomentFeedItem?,
         val sharedWith: SharedWithDisplay?,
@@ -256,7 +295,17 @@ class MomentDetailViewModel(
         // recipients but no source. Filter self so the receiver doesn't see
         // their own address listed.
         val flatRecipients = moment.recipients.filter { it != self }
-        if (flatRecipients.isEmpty()) return SharedWithDisplay.Private
+        if (flatRecipients.isEmpty()) {
+            // "Private" means the author kept this with no recipients. For a
+            // received moment (sender != self), an empty co-recipient list
+            // just means "1:1 share to you alone" — never private; emit
+            // [JustYou] so the receiver gets an explicit confirmation rather
+            // than an ambiguous missing row. Same "is mine" rule as the
+            // uiState combine (line 155) and the feed card's isPrivate().
+            val isMine = moment.senderOdinId == null ||
+                (self != null && moment.senderOdinId == self)
+            return if (isMine) SharedWithDisplay.Private else SharedWithDisplay.JustYou
+        }
         return SharedWithDisplay.Recipients(
             flatRecipients.map { SharedWithEntry.Individual(name = it.displayName(contacts)) },
         )
@@ -380,6 +429,54 @@ class MomentDetailViewModel(
 
             is MomentDetailUiAction.ToggleSharedWithExpansion ->
                 toggleSharedWithExpansion(action.expanded)
+
+            is MomentDetailUiAction.ShareMedia -> shareMedia(action.payloadKey)
+        }
+    }
+
+    /**
+     * Decrypt the selected payload and write a cleartext copy into the
+     * share_outbound sweep dir, then surface the path so the screen can hand
+     * it to the platform share sheet. Mirrors `MediaDownloadHandler.handleShareMedia`
+     * on the chat side — same KeyHeader assembly and same sequestered temp
+     * dir so the cleartext copy is reaped by the cold-start + foreground sweepers.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun shareMedia(payloadKey: String) {
+        val moment = uiState.value.moment ?: return
+        val payload = moment.payloads.firstOrNull { it.key == payloadKey } ?: return
+        val ivString = payload.iv ?: run {
+            Logger.e(tag = TAG) { "shareMedia: payload $payloadKey has no IV" }
+            _events.tryEmit(MomentDetailUiEvent.ShareFailed("Payload missing key header"))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val payloadIv = Base64.decode(ivString)
+                val response = driveFileProvider.getPayloadBytesDecrypted(
+                    driveId = moment.driveId,
+                    fileId = moment.fileId,
+                    key = payloadKey,
+                    keyHeader = KeyHeader(payloadIv, moment.keyHeader.aesKey),
+                )
+                val bytes = response?.bytes
+                if (bytes == null) {
+                    _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
+                    return@launch
+                }
+                val extension = when (val raw = payload.contentType?.substringAfter("/") ?: "bin") {
+                    "jpeg" -> "jpg"
+                    else -> raw
+                }
+                val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
+                    bytes = bytes,
+                    suffix = ".$extension",
+                )
+                _events.tryEmit(MomentDetailUiEvent.ShareFileReady(tempPath))
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "shareMedia failed: ${t.message}" }
+                _events.tryEmit(MomentDetailUiEvent.ShareFailed(t.message))
+            }
         }
     }
 

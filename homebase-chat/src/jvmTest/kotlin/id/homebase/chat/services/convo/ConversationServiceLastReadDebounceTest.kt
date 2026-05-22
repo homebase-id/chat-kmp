@@ -86,6 +86,49 @@ class ConversationServiceLastReadDebounceTest {
                         .fileMetadata.localAppData?.content?.contains("\"lastReadTime\":5000") == true,
                     "stamped conv-file must carry the model's lastRead (5000)",
                 )
+                assertTrue(
+                    fixture.getConversationFile(convoId)!!
+                        .fileMetadata.localAppData?.content?.contains("\"latestMessageTimestamp\":10000") == true,
+                    "stamped conv-file must carry the model's latestMessageTimestamp (10000) — the list sort key ride-along",
+                )
+            }
+        } finally { serviceScope.cancel() }
+    }
+
+    @Test
+    fun basicMapPrefersPersistedLatestMessageTimestampElseFallsBackToCreated() = runBlocking {
+        val serviceScope = newServiceScope()
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = serviceScope)
+                val mapper = ConversationMapper(fixture.credentialsManager, fixture.dbm)
+                val convoId = fixture.seedOneOnOne(other = "dave.test")
+
+                // Fallback: a never-stamped conversation has no persisted sort key,
+                // so mapToBasic seeds latestMessageTimestamp from fileMetadata.created.
+                val freshFile = fixture.getConversationFile(convoId)!!
+                assertEquals(
+                    freshFile.fileMetadata.created.toInstant(),
+                    mapper.mapToBasic(freshFile).latestMessageTimestamp,
+                    "never-stamped conversation falls back to fileMetadata.created",
+                )
+
+                // Round-trip: a lastRead flush stamps the sort key into localAppData;
+                // mapToBasic then reads it back instead of using created.
+                fixture.participantLookup.setLastRead(
+                    convoId,
+                    Instant.fromEpochMilliseconds(5_000L),
+                    latestMessageTimestamp = Instant.fromEpochMilliseconds(10_000L),
+                    dirty = true,
+                )
+                service.flushLastReadNow()
+
+                assertEquals(
+                    10_000L,
+                    mapper.mapToBasic(fixture.getConversationFile(convoId)!!)
+                        .latestMessageTimestamp.toEpochMilliseconds(),
+                    "mapToBasic must prefer the persisted localAppData sort key over created",
+                )
             }
         } finally { serviceScope.cancel() }
     }

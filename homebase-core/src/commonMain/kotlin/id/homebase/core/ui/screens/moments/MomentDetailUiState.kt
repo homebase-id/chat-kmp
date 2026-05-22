@@ -150,14 +150,18 @@ data class RecipientDeliveryUiModel(
  * render synchronously — the only thing left to the screen is layout +
  * localisation of the row label and any +N suffix.
  *
- * [Private] covers two cases that are indistinguishable to the user:
- *  - the moment has no recorded source (legacy posts pre-dating the field), and
- *  - the source explicitly carries an empty audience (a saved-just-for-me post).
+ * [Private] is author-side: the user kept this moment with no recipients.
+ *   Covers two indistinguishable cases — no recorded source (legacy posts),
+ *   or an explicitly empty audience (saved-just-for-me post).
+ * [JustYou] is receiver-side: an inbound 1:1 share where the active user is
+ *   the only recipient. Distinct from Private so the receiver isn't told
+ *   their own inbound post is "private" (it isn't — it was shared with them).
  * [Recipients.entries] is non-empty by construction — the VM emits null
- * instead of an empty Recipients while a lookup is still loading.
+ *   instead of an empty Recipients while a lookup is still loading.
  */
 sealed interface SharedWithDisplay {
     data object Private : SharedWithDisplay
+    data object JustYou : SharedWithDisplay
     data class Recipients(val entries: List<SharedWithEntry>) : SharedWithDisplay
 }
 
@@ -229,6 +233,14 @@ sealed interface MomentDetailUiAction {
      * delivery rows can populate; subsequent toggles just flip visibility.
      */
     data class ToggleSharedWithExpansion(val expanded: Boolean) : MomentDetailUiAction
+
+    /**
+     * Share-button tap in the full-screen image viewer. Decrypts the payload,
+     * writes a cleartext copy into the share_outbound sweep dir, and emits
+     * [MomentDetailUiEvent.ShareFileReady] for the screen to hand to the
+     * platform share sheet.
+     */
+    data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
@@ -241,4 +253,11 @@ sealed interface MomentDetailUiEvent {
     data class DeleteFailed(val message: String?) : MomentDetailUiEvent
 
     data class CommentDeleteFailed(val message: String?) : MomentDetailUiEvent
+
+    /**
+     * Decrypted payload is written to [filePath] under the share_outbound sweep
+     * dir; the screen should hand the path to the platform share sheet.
+     */
+    data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
+    data class ShareFailed(val message: String?) : MomentDetailUiEvent
 }

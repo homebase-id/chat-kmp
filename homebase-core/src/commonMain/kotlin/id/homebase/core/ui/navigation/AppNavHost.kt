@@ -5,7 +5,9 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -103,6 +105,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
@@ -116,6 +120,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
+import kotlinx.io.files.Path
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
@@ -273,6 +278,7 @@ fun AppNavHost(
                     navController.popBackStack()
                 }
 
+                is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
@@ -530,24 +536,28 @@ fun AppNavHost(
                         modifier = Modifier.weight(1f),
                         enterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
+                            else if (targetState.destination.isVerticalSlideRoute()) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { 1000 }, animationSpec = tween(500)
                             )
                         },
                         exitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { -1000 }, animationSpec = tween(500)
                             )
                         },
                         popEnterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute()) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { -1000 }, animationSpec = tween(500)
                             )
                         },
                         popExitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { 1000 }, animationSpec = tween(500)
                             )
@@ -1048,6 +1058,9 @@ fun AppNavHost(
                                                     inclusive = false
                                                 )
                                             },
+                                            onNavigateToNoteEditor = { sectionId, entryId ->
+                                                navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
                                         )
                                     }
                                 }
@@ -1070,6 +1083,49 @@ fun AppNavHost(
                         composable<Route.VaultEntryDetail> { _ ->
                             if (isAuthenticated) {
                                 LaunchedEffect(Unit) { navController.popBackStack() }
+                            }
+                        }
+
+                        composable<Route.VaultNoteEditor>(
+                            enterTransition = {
+                                slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            exitTransition = {
+                                slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            popEnterTransition = {
+                                slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                            popExitTransition = {
+                                slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(400),
+                                )
+                            },
+                        ) { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.VaultNoteEditor>()
+                                val sectionUuid = Uuid.parse(route.sectionId)
+                                val entryUuid = route.entryId?.let { Uuid.parse(it) }
+                                val noteViewModel: VaultNoteEditorViewModel = koinViewModel {
+                                    parametersOf(sectionUuid, entryUuid)
+                                }
+                                VaultNoteEditorScreen(
+                                    viewModel = noteViewModel,
+                                    onBackClick = { navController.popBackStack() },
+                                    onShareFile = { filePath ->
+                                        uriHandler.shareFile(Path(filePath))
+                                    },
+                                )
                             }
                         }
 
@@ -1156,6 +1212,10 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
+}
+
+private fun NavDestination?.isVerticalSlideRoute(): Boolean {
+    return this?.hasRoute(Route.VaultNoteEditor::class) == true
 }
 
 sealed class TopLevelRoute(
