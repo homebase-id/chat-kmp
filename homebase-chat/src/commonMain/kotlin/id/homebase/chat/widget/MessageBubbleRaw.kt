@@ -82,6 +82,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
@@ -335,6 +336,7 @@ fun MessageBubbleRaw(
                         isPendingSend = isPendingSend,
                         deliveryStatus = message.messageAppData.deliveryStatus,
                         contentColor = contentColor,
+                        pendingSince = message.userDate,
                     )
                 }
             } else if (replyMediaOnly && !message.isDeleted) {
@@ -372,6 +374,7 @@ fun MessageBubbleRaw(
                                 isPendingSend = isPendingSend,
                                 deliveryStatus = message.messageAppData.deliveryStatus,
                                 contentColor = contentColor,
+                                pendingSince = message.userDate,
                             )
                         }
                     },
@@ -513,6 +516,7 @@ fun MessageBubbleRaw(
                                         isPendingSend = isPendingSend,
                                         deliveryStatus = message.messageAppData.deliveryStatus,
                                         contentColor = contentColor.copy(alpha = 0.7f),
+                                        pendingSince = message.userDate,
                                     )
                                 }
                             }
@@ -729,6 +733,7 @@ private fun BoxScope.MediaTimestampOverlay(
     isPendingSend: Boolean,
     deliveryStatus: Int,
     contentColor: Color,
+    pendingSince: Instant?,
 ) {
     Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
         Box(
@@ -757,6 +762,7 @@ private fun BoxScope.MediaTimestampOverlay(
                         isPendingSend = isPendingSend,
                         deliveryStatus = deliveryStatus,
                         contentColor = contentColor.copy(alpha = 0.7f),
+                        pendingSince = pendingSince,
                     )
                 }
             }
