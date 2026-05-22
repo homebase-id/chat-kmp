@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -29,11 +31,11 @@ kotlin {
 
     jvm()
 
-//    @OptIn(ExperimentalWasmDsl::class)
-//    wasmJs {
-//        browser()
-//        binaries.executable()
-//    }
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        binaries.executable()
+    }
 
     listOf(
         iosArm64(),
@@ -120,9 +122,9 @@ kotlin {
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).
-//        wasmJsMain.dependencies {
-//            implementation(libs.ktor.client.js)
-//        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)

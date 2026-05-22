@@ -52,6 +52,8 @@ import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.auth.closeWebAuthPopup
+import id.homebase.core.ui.auth.prepareWebAuthPopup
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.core.widget.SquircleIcon
@@ -127,6 +129,12 @@ fun LoginScreen(
         }
     }
 
+    // If the login attempt fails (e.g. identity ping failed) before the auth URL is ready, close
+    // the popup that was opened on the click gesture so it doesn't linger blank. No-op off web.
+    LaunchedEffect(uiState.errorMessage) {
+        if (uiState.errorMessage != null) closeWebAuthPopup()
+    }
+
     LoginUi(
         uiState = uiState,
         onAction = viewModel::onAction
@@ -170,6 +178,9 @@ fun LoginUi(
                         errorMessage = uiState.errorMessage,
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
+                            // Open the auth popup synchronously in the click gesture (web only,
+                            // no-op elsewhere) so the browser doesn't block it after the async ping.
+                            prepareWebAuthPopup()
                             onAction(LoginUiAction.LoginClicked(it))
                         },
                         onCreateAccountClick = {
@@ -181,6 +192,7 @@ fun LoginUi(
                     LoginForm(
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
+                            prepareWebAuthPopup()
                             onAction(LoginUiAction.LoginClicked(it))
                         },
                         onCreateAccountClick = {

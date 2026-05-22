@@ -6,7 +6,7 @@ import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.withRetry
 import id.homebase.api.file.FileOperationsProvider
-import io.github.vinceglb.filekit.PlatformFile
+import id.homebase.core.clipboard.platformFileFromPath
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import kotlinx.coroutines.CancellationException
@@ -209,8 +209,8 @@ internal fun buildImageLoadFailureMessage(
 /** Load pending/local file from filesystem */
 suspend fun FileOperationsProvider.loadPendingFile(data: HomebaseImageData): CachedImage? {
     val fileUri = data.pendingFileUri ?: return null
-    val file = PlatformFile(fileUri)
     return try {
+        val file = platformFileFromPath(fileUri)
         val bytes = this.readFileBytes(fileUri)
         val contentType = file.mimeType()?.toString() ?: file.extension
         CachedImage(bytes = bytes, contentType = contentType, size = null)

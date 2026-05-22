@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -45,11 +46,11 @@ kotlin {
         }
     }
 
-//    @OptIn(ExperimentalWasmDsl::class)
-//    wasmJs {
-//        browser()
-//        binaries.executable()
-//    }
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        binaries.executable()
+    }
 
     // For iOS targets, this is also where you should
     // configure native binary output. For more information, see:
@@ -134,10 +135,14 @@ kotlin {
         // provides the browser engine (fetch/WebSocket); WebWorkerDriver
         // runs sql.js (SQLite-compiled-to-WASM) inside a Web Worker — see
         // `DatabaseDriverFactory.web.kt` for the constructor shape.
-//        wasmJsMain.dependencies {
-//            implementation(libs.ktor.client.js)
-//            implementation(libs.sqldelight.web.worker.driver)
-//        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+            // In-memory okio FileSystem for the web (systemFileSystem.web.kt).
+            implementation(libs.okio.fakefilesystem)
+            // Note: the SQLite driver is a hand-written synchronous wrapper over main-thread
+            // sql.js (WebSqlDriver.kt) — NOT SQLDelight's async web-worker-driver, which is
+            // incompatible with this codebase's synchronous generated DB layer.
+        }
 
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)

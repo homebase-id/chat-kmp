@@ -27,9 +27,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.path
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.copyTo
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -381,7 +379,7 @@ class VaultViewModel(
                 localAttachmentStore.put(
                     pendingId,
                     payloadKey,
-                    LocalAttachmentContext.Image(localFilePath = file.path, aspectRatio = null),
+                    LocalAttachmentContext.Image(localFilePath = file.pathCompat, aspectRatio = null),
                 )
             }
         }
@@ -399,7 +397,7 @@ class VaultViewModel(
             isEncrypted = false,
             versionTag = null,
             uploadStatus = VaultUploadStatus.Preparing,
-            pendingFileUri = files.first().path,
+            pendingFileUri = files.first().pathCompat,
             groupId = action.sectionId,
             payloadDescriptors = placeholderDescriptors,
         )
@@ -413,7 +411,7 @@ class VaultViewModel(
                     val ext = file.name.substringAfterLast('.', "tmp")
                     val cacheDir = fileOperationsProvider.getCacheDirectory()
                     val tempPath = "$cacheDir/vault_upload_${Uuid.random()}.$ext"
-                    file.copyTo(PlatformFile(tempPath))
+                    file.copyToPath(tempPath)
                     tempPath to fileContentTypes[index]
                 }
 
@@ -523,7 +521,7 @@ class VaultViewModel(
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
         val fileData = action.newFiles.map { file ->
             val ct = resolveContentType(file.name, file.mimeType()?.toString())
-            file.path to ct
+            file.pathCompat to ct
         }
 
         val existingMax = action.file.payloadDescriptors

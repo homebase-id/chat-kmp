@@ -92,7 +92,33 @@
     }
 </script>
 
-<script type="application/javascript" src="homebase-app.js"></script>
+<script type="application/javascript">
+    // YouAuth runs in a popup this app opened. After the owner console authenticates the user it
+    // redirects the popup to <origin>/authorization-code-callback?state=...&identity=...&public_key=...
+    // We detect that here and post the full URL back to the opener (which still holds the in-memory
+    // ECDH keypair needed to finish the token exchange), then close — WITHOUT booting the heavy
+    // wasm bundle inside the popup. On a normal load we inject the app scripts in order:
+    //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app.js (the app).
+    (function () {
+        var params = new URLSearchParams(location.search);
+        var isAuthCallback = window.opener
+            && location.pathname.indexOf("/authorization-code-callback") !== -1
+            && params.has("state");
+        if (isAuthCallback) {
+            try {
+                window.opener.postMessage({ type: "youauth-callback", url: location.href }, location.origin);
+            } catch (e) { /* opener gone — nothing we can do */ }
+            window.close();
+            return;
+        }
+        ["sql-wasm.js", "odin-sqljs.js", "homebase-app.js"].forEach(function (src) {
+            var s = document.createElement("script");
+            s.src = src;
+            s.async = false; // script-inserted scripts run in insertion order when async=false
+            document.body.appendChild(s);
+        });
+    })();
+</script>
 
 </body>
 </html>
