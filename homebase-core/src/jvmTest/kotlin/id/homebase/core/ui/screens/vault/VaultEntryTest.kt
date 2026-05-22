@@ -599,6 +599,91 @@ class VaultEntryTest {
     }
 
     // ---------------------------------------------------------------
+    // VaultEntry — isNote property
+    // ---------------------------------------------------------------
+
+    @Test
+    fun isNote_textMarkdown() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "My Note.md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertTrue(item.isNote)
+        assertTrue(item.isText)
+    }
+
+    @Test
+    fun isNote_falseForTextPlain() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    @Test
+    fun isNote_falseForImage() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "image/jpeg", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    @Test
+    fun isNote_falseForPdf() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "application/pdf", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertFalse(item.isNote)
+    }
+
+    // ---------------------------------------------------------------
+    // VaultEntry — noteDisplayTitle
+    // ---------------------------------------------------------------
+
+    @Test
+    fun noteDisplayTitle_stripsExtension() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "Shopping List.md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals("Shopping List", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_noExtension() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = "Note Without Extension")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals("Note Without Extension", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_blankAfterStrip_fallsBackToFileName() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/markdown", bytesWritten = 10L)),
+            contentJson = OdinSystemSerializer.serialize(VaultFileContent(name = ".md")),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertEquals(".md", item.noteDisplayTitle)
+    }
+
+    @Test
+    fun noteDisplayTitle_nullForNonNote() {
+        val item = buildHomebaseFile(
+            payloads = listOf(PayloadDescriptor(key = "k", contentType = "text/plain", bytesWritten = 10L)),
+        ).toVaultEntry()
+        assertNotNull(item)
+        assertNull(item.noteDisplayTitle)
+    }
+
+    // ---------------------------------------------------------------
     // VaultEntry — pdfPageCount
     // ---------------------------------------------------------------
 
@@ -703,6 +788,21 @@ class VaultEntryTest {
     @Test
     fun guessContentType_zip() {
         assertEquals("application/zip", detectContentTypeFromExtensionOrHint("archive.zip"))
+    }
+
+    @Test
+    fun guessContentType_md() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("note.md"))
+    }
+
+    @Test
+    fun guessContentType_markdown() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("note.markdown"))
+    }
+
+    @Test
+    fun guessContentType_MD_caseInsensitive() {
+        assertEquals("text/markdown", detectContentTypeFromExtensionOrHint("README.MD"))
     }
 
     @Test

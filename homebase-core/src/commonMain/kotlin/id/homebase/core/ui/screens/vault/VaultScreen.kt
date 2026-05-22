@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.ui.screens.vault
 
 import androidx.compose.animation.AnimatedContent
@@ -80,6 +82,7 @@ import id.homebase.resources.vault_settings
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.uuid.ExperimentalUuidApi
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -91,6 +94,7 @@ fun VaultScreen(
     viewModel: VaultViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToChats: () -> Unit,
+    onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -135,6 +139,12 @@ fun VaultScreen(
                 }
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
+                }
+                is VaultUiEvent.OpenNoteEditor -> {
+                    onNavigateToNoteEditor(
+                        event.sectionId.toString(),
+                        event.entryId?.toString(),
+                    )
                 }
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
@@ -353,6 +363,11 @@ fun VaultScreen(
                 isPickerActive = true
                 documentPicker.launch()
             }
+            VaultPickerAction.Note -> {
+                activeSectionForEntry?.let { section ->
+                    onNavigateToNoteEditor(section.sectionId.toString(), null)
+                }
+            }
             null -> {}
         }
         pendingPickerAction = null
@@ -374,6 +389,10 @@ fun VaultScreen(
             onChooseFile = {
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
+            },
+            onAddNote = {
+                showImageAddSheet = false
+                pendingPickerAction = VaultPickerAction.Note
             },
             onDismiss = {
                 showImageAddSheet = false
@@ -454,7 +473,7 @@ fun VaultScreen(
 
 }
 
-private enum class VaultPickerAction { Camera, Gallery, File }
+private enum class VaultPickerAction { Camera, Gallery, File, Note }
 
 @Composable
 private fun resolveVaultError(error: VaultError): String = when (error) {

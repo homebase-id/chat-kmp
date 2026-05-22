@@ -30,12 +30,14 @@ import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
+import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
@@ -61,11 +63,12 @@ class VaultUploaderService(
         scope: CoroutineScope,
         groupId: Uuid? = null,
         notes: String? = null,
+        notePreview: String? = null,
         uniqueId: Uuid = Uuid.random(),
     ): Uuid? =
-        // Resolve the picked files (Android copies content:// picks into cacheDir
-        // as resolved_*) and reap those copies once the upload is enqueued — the
-        // shared resolve-then-delete scope, so this path can't strand them. See
+    // Resolve the picked files (Android copies content:// picks into cacheDir
+    // as resolved_*) and reap those copies once the upload is enqueued — the
+    // shared resolve-then-delete scope, so this path can't strand them. See
         // FileOperationsProvider.withResolvedFiles.
         fileOperationsProvider.withResolvedFiles(files.map { it.first }) { resolvedPaths ->
             uploadResolvedFiles(
@@ -74,6 +77,7 @@ class VaultUploaderService(
                 scope = scope,
                 groupId = groupId,
                 notes = notes,
+                notePreview = notePreview,
                 uniqueId = uniqueId,
             )
         }
@@ -84,6 +88,7 @@ class VaultUploaderService(
         scope: CoroutineScope,
         groupId: Uuid?,
         notes: String?,
+        notePreview: String?,
         uniqueId: Uuid,
     ): Uuid? {
         // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
@@ -101,7 +106,7 @@ class VaultUploaderService(
             }
 
             var pdfPageCount: Int? = null
-            val bundle = buildMultiPayloadBundle(resolvedFiles) { pdfPageCount = it }
+            val bundle = buildMultiPayloadBundle(resolvedFiles, { pdfPageCount = it }, notePreview)
 
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 uniqueId, bundle, keyHeader.aesKey, scope
@@ -246,7 +251,11 @@ class VaultUploaderService(
 
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
-                fileContent = VaultFileContent(name = file.fileName, label = file.label, notes = file.notes),
+                fileContent = VaultFileContent(
+                    name = file.fileName,
+                    label = file.label,
+                    notes = file.notes
+                ),
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
@@ -278,7 +287,11 @@ class VaultUploaderService(
 
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
-                fileContent = VaultFileContent(name = file.fileName, label = file.label, notes = file.notes),
+                fileContent = VaultFileContent(
+                    name = file.fileName,
+                    label = file.label,
+                    notes = file.notes
+                ),
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
@@ -289,6 +302,68 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue delete page $payloadKey from ${file.uniqueId}" }
             false
+        }
+    }
+
+    suspend fun updateNotePayload(
+        file: VaultEntry,
+        newName: String,
+        markdown: String,
+        notePreview: String?,
+        scope: CoroutineScope,
+    ): Boolean {
+        val tempPath = fileOperationsProvider.writeBytesToTempFile(
+            markdown.encodeToByteArray(), "vault_note_", ".md"
+        )
+        return try {
+            val existingKey = file.payloadDescriptors.firstOrNull()?.key
+                ?: VaultEntry.DEFAULT_PAYLOAD_KEY
+
+            val payload = PayloadFile(
+                key = existingKey,
+                filePath = tempPath,
+                contentType = CONTENT_TYPE_MARKDOWN,
+                descriptorContent = notePreview,
+            )
+
+            val keyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16),
+                aesKey = file.keyHeader.aesKey,
+            )
+
+            val encryptedBundle = payloadEncryptionService.encryptBundle(
+                Uuid.random(),
+                PayloadBundle(listOf(payload), emptyList(), emptyList()),
+                keyHeader.aesKey,
+                scope,
+            )
+
+            vaultService.enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(
+                    name = newName,
+                    label = file.label,
+                    notes = file.notes,
+                ),
+                groupId = file.groupId,
+                versionTag = file.versionTag,
+                keyHeader = file.keyHeader,
+                manifest = UpdateManifest.build(
+                    payloads = encryptedBundle.payloads,
+                    generatePayloadIv = false,
+                ),
+                payloads = encryptedBundle.payloads,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to update note payload for ${file.uniqueId}" }
+            false
+        } finally {
+            try {
+                fileOperationsProvider.deleteTempFile(tempPath)
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -327,6 +402,7 @@ class VaultUploaderService(
     private suspend fun buildMultiPayloadBundle(
         files: List<Pair<String, String>>,
         onPdfPageCount: ((Int) -> Unit)? = null,
+        notePreview: String? = null,
     ): PayloadBundle {
         val allPayloads = mutableListOf<PayloadFile>()
         val allThumbnails = mutableListOf<ThumbnailFile>()
@@ -386,6 +462,7 @@ class VaultUploaderService(
                 filePath = filePath,
                 contentType = contentType,
                 previewThumbnail = previewThumbnail,
+                descriptorContent = if (contentType == CONTENT_TYPE_MARKDOWN) notePreview else null,
             )
             allThumbnails += thumbnails
             if (previewThumbnail != null) allPreviews += previewThumbnail

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -22,9 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.vault_add_entry
+import id.homebase.resources.vault_add_note
 import id.homebase.resources.vault_choose_file
 import id.homebase.resources.vault_image_choose_gallery
 import id.homebase.resources.vault_image_take_photo
@@ -37,6 +40,7 @@ fun VaultAddEntrySheet(
     onTakePhoto: () -> Unit,
     onChooseGallery: () -> Unit,
     onChooseFile: () -> Unit,
+    onAddNote: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -56,68 +60,54 @@ fun VaultAddEntrySheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clickable(onClick = onTakePhoto),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.CameraAlt,
-                    contentDescription = stringResource(MR.string.vault_image_take_photo),
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = stringResource(MR.string.vault_image_take_photo),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clickable(onClick = onChooseGallery),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Image,
-                    contentDescription = stringResource(MR.string.vault_image_choose_gallery),
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = stringResource(MR.string.vault_image_choose_gallery),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clickable(onClick = onChooseFile),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Description,
-                    contentDescription = stringResource(MR.string.vault_choose_file),
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = stringResource(MR.string.vault_choose_file),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            SheetActionRow(
+                icon = Icons.Outlined.CameraAlt,
+                label = stringResource(MR.string.vault_image_take_photo),
+                onClick = onTakePhoto,
+            )
+            SheetActionRow(
+                icon = Icons.Outlined.Image,
+                label = stringResource(MR.string.vault_image_choose_gallery),
+                onClick = onChooseGallery,
+            )
+            SheetActionRow(
+                icon = Icons.Outlined.Description,
+                label = stringResource(MR.string.vault_choose_file),
+                onClick = onChooseFile,
+            )
+            SheetActionRow(
+                icon = Icons.AutoMirrored.Outlined.NoteAdd,
+                label = stringResource(MR.string.vault_add_note),
+                onClick = onAddNote,
+            )
         }
+    }
+}
+
+@Composable
+private fun SheetActionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
