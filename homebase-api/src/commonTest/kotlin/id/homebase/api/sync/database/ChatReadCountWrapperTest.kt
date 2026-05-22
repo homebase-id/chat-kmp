@@ -89,6 +89,7 @@ class ChatReadCountWrapperTest {
         created: UnixTimeUtc,
         fileState: String = "active",
         archivalStatus: Int = 1,
+        originalAuthor: String = "test.sender",
     ): HomebaseFile {
         val jsonHeader = """{
             "driveId": "${driveId}",
@@ -109,8 +110,8 @@ class ChatReadCountWrapperTest {
                 "transitCreated": 0,
                 "transitUpdated": 0,
                 "serverFileIsEncrypted": true,
-                "senderOdinId": "test.sender",
-                "originalAuthor": "test.sender",
+                "senderOdinId": "$originalAuthor",
+                "originalAuthor": "$originalAuthor",
                 "appData": {
                     "uniqueId": "${uniqueId}",
                     "tags": null,
@@ -507,6 +508,102 @@ class ChatReadCountWrapperTest {
                 1L, row.unreadCount,
                 "Only the fully-active row counts; both soft-delete markers must be excluded",
             )
+        }
+    }
+
+    // --- selectOrphanedAtRestConversations: messages that exist with no conversation header ---
+
+    @Test
+    fun selectOrphanedAtRest_returnsHeaderlessConversationsWithCounterparty() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            // (a) Healthy: header (8888) + 2 messages → NOT orphaned.
+            val healthyId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(healthyId, driveId, 8888, null, now))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, healthyId, now.addMilliseconds(1000)))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, healthyId, now.addMilliseconds(2000)))
+
+            // (b) Header but no messages → NOT orphaned.
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 8888, null, now))
+
+            // (c) Orphaned at rest: 3 messages, NO header.
+            val orphanId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, orphanId, now.addMilliseconds(1000)))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, orphanId, now.addMilliseconds(2000)))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, orphanId, now.addMilliseconds(3000)))
+
+            val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(identityId, selfDomain.domainName)
+
+            assertEquals(1, orphans.size, "Only the headerless-with-messages conversation is orphaned")
+            val row = orphans.single()
+            assertEquals(orphanId, row.conversationId)
+            assertEquals(3L, row.messageCount)
+            assertEquals(
+                "test.sender", row.counterpartyAuthor,
+                "Counterparty is the most-recent non-self message author",
+            )
+        }
+    }
+
+    @Test
+    fun selectOrphanedAtRest_excludesSoftDeletedMessages() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            // Orphan A: only soft-deleted messages (one of each marker) → must NOT appear.
+            val allDeletedId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, allDeletedId, now.addMilliseconds(1000), fileState = "deleted"))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, allDeletedId, now.addMilliseconds(2000), archivalStatus = 2))
+
+            // Orphan B: 1 active + 1 deleted → appears, counts only the live message.
+            val mixedId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, mixedId, now.addMilliseconds(1000)))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, mixedId, now.addMilliseconds(2000), fileState = "deleted"))
+
+            val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(identityId, selfDomain.domainName)
+
+            assertEquals(1, orphans.size, "All-deleted conversation excluded; the mixed one remains")
+            val row = orphans.single()
+            assertEquals(mixedId, row.conversationId)
+            assertEquals(1L, row.messageCount, "Only the live message is counted")
+        }
+    }
+
+    @Test
+    fun selectOrphanedAtRest_selfOnlyMessagesYieldNullCounterparty() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val now = UnixTimeUtc.now()
+            val self = selfDomain.domainName
+
+            // Headerless conversation whose only messages are self-authored: it's still
+            // orphaned (has messages, no header) but no counterparty can be derived.
+            val orphanId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, orphanId, now.addMilliseconds(1000), originalAuthor = self))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, orphanId, now.addMilliseconds(2000), originalAuthor = self))
+
+            val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(identityId, self)
+
+            assertEquals(1, orphans.size)
+            val row = orphans.single()
+            assertEquals(orphanId, row.conversationId)
+            assertEquals(2L, row.messageCount)
+            assertEquals(null, row.counterpartyAuthor, "All-self messages → counterparty can't be derived")
+        }
+    }
+
+    @Test
+    fun selectOrphanedAtRest_emptyWhenEverythingHasHeaders() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val testData = populateMockData(dbm) // every conversation has a header
+            val orphans = dbm.chatReadCount.selectOrphanedAtRestConversations(testData.identityId, selfDomain.domainName)
+            assertTrue(orphans.isEmpty(), "Conversations that have headers are not orphaned-at-rest")
         }
     }
 

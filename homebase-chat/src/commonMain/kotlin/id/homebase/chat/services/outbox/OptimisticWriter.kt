@@ -634,9 +634,16 @@ class OptimisticWriter(
         driveId: Uuid,
         conversationId: Uuid,
         newLastReadTime: UnixTimeUtc,
+        latestMessageTimestamp: UnixTimeUtc? = null,
     ): UpdateLocalAppdataContentOutboxRequest? =
         stampConversationLocalAppData(driveId, conversationId, "stampConversationLastReadTime") {
-            it.copy(lastReadTime = newLastReadTime)
+            it.copy(
+                lastReadTime = newLastReadTime,
+                // Ride the list sort key along with the lastRead push — no separate
+                // write. Monotonic so a device behind on sync can't stamp an older
+                // last-message time over a newer one another device already pushed.
+                latestMessageTimestamp = UnixTimeUtc.later(it.latestMessageTimestamp, latestMessageTimestamp),
+            )
         }
 
     @OptIn(ExperimentalEncodingApi::class)

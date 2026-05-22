@@ -2439,6 +2439,10 @@ class ConversationService(
                     driveId = chatDrive,
                     conversationId = id,
                     newLastReadTime = target,
+                    // Ride the list sort key along with the lastRead push so the
+                    // post-sync basic list lands in last-message order. mapToBasic
+                    // reads it back from localAppData.
+                    latestMessageTimestamp = UnixTimeUtc(convo.latestMessageTimestamp.toEpochMilliseconds()),
                 )
                 if (request == null) {
                     Logger.w(tag = "MarkAsRead") {

@@ -5,15 +5,29 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.toChatDeliveryStatus
+import id.homebase.chat.services.toErrorDetailRes
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCommentsService
+import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentGroup
+import id.homebase.core.moments.services.MomentGroupService
+import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.chat.data.ConversationUiModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +67,11 @@ class MomentDetailViewModel(
     private val actionService: MomentActionService,
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
+    momentGroupService: MomentGroupService,
+    conversationStream: ConversationStream,
+    private val contactService: ContactService,
+    private val driveFileProvider: DriveFileProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -73,6 +92,10 @@ class MomentDetailViewModel(
         val isDeletingMoment: Boolean = false,
         val deletingCommentIds: Set<Uuid> = emptySet(),
         val deleteCommentDialogTarget: Uuid? = null,
+        val sharedWithExpanded: Boolean = false,
+        val isTransferHistoryLoading: Boolean = false,
+        val transferHistoryLoaded: Boolean = false,
+        val recipientDeliveries: List<RecipientDeliveryUiModel> = emptyList(),
     )
 
     private val _screenLocal = MutableStateFlow(ScreenLocalState())
@@ -98,14 +121,36 @@ class MomentDetailViewModel(
         }
     }
 
-    val uiState: StateFlow<MomentDetailUiState> = combine(
+    /**
+     * Resolve the moment + its shared-with audience in one flow so the main
+     * uiState combine stays within the 5-typed-overload limit. We need groups
+     * + conversations to translate `MomentSource` ids into human-readable
+     * labels; doing it here keeps the downstream combine focused on screen
+     * state.
+     */
+    private val momentWithSharedWith: kotlinx.coroutines.flow.Flow<MomentWithSharedWith> = combine(
         feedService.feed,
+        momentGroupService.groups,
+        conversationStream.conversations,
+        contactService.contacts,
+        _selfOdinId,
+    ) { feed, groups, conversationsData, contacts, self ->
+        val match = feed.firstOrNull { it.id == momentId }
+        val sharedWith = match?.let {
+            resolveSharedWith(it, groups, conversationsData.items, contacts, self)
+        }
+        val avatars = match?.let { resolveRecipientAvatars(it, contacts, self) }.orEmpty()
+        MomentWithSharedWith(match, sharedWith, avatars)
+    }
+
+    val uiState: StateFlow<MomentDetailUiState> = combine(
+        momentWithSharedWith,
         _overlay,
         commentsService.commentsFor(momentId),
         _screenLocal,
         _selfOdinId,
-    ) { feed, overlay, comments, local, self ->
-        val match = feed.firstOrNull { it.id == momentId }
+    ) { momentBundle, overlay, comments, local, self ->
+        val match = momentBundle.moment
         // Owner-side moment files have a null senderOdinId (the server only
         // populates it on the receiving drive). A match on the active
         // identity catches the edge case where the file was sent to self.
@@ -129,12 +174,154 @@ class MomentDetailViewModel(
             isDeleting = local.isDeletingMoment,
             deletingCommentIds = local.deletingCommentIds,
             deleteCommentDialogTarget = local.deleteCommentDialogTarget,
+            sharedWith = momentBundle.sharedWith,
+            sharedWithExpanded = local.sharedWithExpanded,
+            isTransferHistoryLoading = local.isTransferHistoryLoading,
+            recipientDeliveries = local.recipientDeliveries,
+            recipientAvatars = momentBundle.recipientAvatars,
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         MomentDetailUiState(initialPayloadKey = initialPayloadKey),
     )
+
+    /**
+     * Diagnostic: log every comment-list change observed on this VM's
+     * uiState. Pairs with the MomentCommentsService logs to triangulate a
+     * "comment didn't appear" report — if the service shows `added comment=…`
+     * but no corresponding `uiState comments=…` line fires here, the gap is
+     * in the combine/StateFlow plumbing. If both fire but the row doesn't
+     * appear on screen, the gap is in the composable's recomposition.
+     *
+     * Must live in a second init block placed AFTER [uiState] is declared.
+     * With `Dispatchers.Main.immediate` (the default for `viewModelScope`),
+     * `launch { ... }` can execute its body synchronously during init — if
+     * this ran in the first init block, `uiState` would still be null at
+     * that moment and the `.map { … }` operator would NPE.
+     */
+    init {
+        viewModelScope.launch {
+            uiState
+                .map {
+                    // Service emits newest-first, so [0] is the newest comment.
+                    // distinctUntilChanged-on-pair fires only when either the
+                    // count or the newest id changes, so an edit/reaction
+                    // re-emit of the same head doesn't spam the log.
+                    val newest = it.comments.firstOrNull()
+                    Triple(it.comments.size, newest?.id, newest?.senderOdinId?.domainName)
+                }
+                .distinctUntilChanged()
+                .collect { (size, newestId, newestSender) ->
+                    Logger.d(tag = TAG) {
+                        "uiState comments updated: moment=$momentId count=$size " +
+                            "newest=$newestId sender=${newestSender ?: "self"}"
+                    }
+                }
+        }
+    }
+
+    private data class MomentWithSharedWith(
+        val moment: MomentFeedItem?,
+        val sharedWith: SharedWithDisplay?,
+        val recipientAvatars: List<RecipientBaseUiModel>,
+    )
+
+    /**
+     * Flat per-individual recipient list for the avatar stack + (for received
+     * moments) the expanded recipient list. Drawn directly from
+     * `MomentFeedItem.recipients` — the underlying transit recipient list,
+     * which carries individual OdinIds even when the audience picker framed
+     * the post around a group. Self is filtered out so the active user
+     * doesn't see their own address listed under "Shared with".
+     */
+    private fun resolveRecipientAvatars(
+        moment: MomentFeedItem,
+        contacts: List<ContactUiModel>,
+        self: OdinId?,
+    ): List<RecipientBaseUiModel> {
+        return moment.recipients
+            .filter { it != self }
+            .map { odinId ->
+                RecipientBaseUiModel(
+                    odinId = odinId,
+                    displayName = odinId.displayName(contacts),
+                )
+            }
+    }
+
+    private fun resolveSharedWith(
+        moment: MomentFeedItem,
+        groups: List<MomentGroup>,
+        conversations: List<ConversationUiModel>,
+        contacts: List<ContactUiModel>,
+        self: OdinId?,
+    ): SharedWithDisplay? {
+        val source = moment.source
+
+        // Chat-conversation source: one entry, conversation title (with a
+        // localised fallback when the conversation list hasn't loaded yet).
+        if (source is MomentSource.Conversation) {
+            val convo = conversations.firstOrNull { it.id == source.conversationId }
+            return SharedWithDisplay.Recipients(
+                listOf(SharedWithEntry.Conversation(name = convo?.getDisplayName())),
+            )
+        }
+
+        // Structured audience source: render the breakdown of groups +
+        // individuals. Only used when the picker actually selected a group —
+        // `MomentAudienceViewModel` deliberately drops this field on
+        // individuals-only posts to avoid duplicating the recipients list.
+        if (source is MomentSource.Audience &&
+            (source.groupIds.isNotEmpty() || source.individuals.isNotEmpty())
+        ) {
+            val groupEntries = source.groupIds.mapNotNull { id ->
+                val group = groups.firstOrNull { it.id == id } ?: return@mapNotNull null
+                SharedWithEntry.Group(name = group.title, memberCount = group.members.size)
+            }
+            val individualEntries = source.individuals
+                .filter { it != self }
+                .map { SharedWithEntry.Individual(name = it.displayName(contacts)) }
+            val entries = groupEntries + individualEntries
+            // Mid-load: source has IDs but nothing resolved yet. Hide the row
+            // transiently rather than flashing "Private" or an empty list.
+            return entries.takeIf { it.isNotEmpty() }
+                ?.let { SharedWithDisplay.Recipients(it) }
+        }
+
+        // No structured source (null, or empty Audience). Fall back to the
+        // flat recipient list the writer always populates — this is the path
+        // for individuals-only posts and for legacy moments that still carry
+        // recipients but no source. Filter self so the receiver doesn't see
+        // their own address listed.
+        val flatRecipients = moment.recipients.filter { it != self }
+        if (flatRecipients.isEmpty()) {
+            // "Private" means the author kept this with no recipients. For a
+            // received moment (sender != self), an empty co-recipient list
+            // just means "1:1 share to you alone" — never private; emit
+            // [JustYou] so the receiver gets an explicit confirmation rather
+            // than an ambiguous missing row. Same "is mine" rule as the
+            // uiState combine (line 155) and the feed card's isPrivate().
+            val isMine = moment.senderOdinId == null ||
+                (self != null && moment.senderOdinId == self)
+            return if (isMine) SharedWithDisplay.Private else SharedWithDisplay.JustYou
+        }
+        return SharedWithDisplay.Recipients(
+            flatRecipients.map { SharedWithEntry.Individual(name = it.displayName(contacts)) },
+        )
+    }
+
+    /**
+     * Friendly display name from the user's contacts when one is on file;
+     * falls back to the raw domain. Mirrors the lookup pattern used in
+     * `MessageInfoViewModel` and `MomentsRecipientLookupService`. Blank
+     * contact names are skipped so a contact saved with no name doesn't
+     * render as an empty pill.
+     */
+    private fun OdinId.displayName(contacts: List<ContactUiModel>): String {
+        val contact = contacts.firstOrNull { it.odinId == this }
+        return contact?.name?.takeIf { it.isNotBlank() } ?: domainName
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun onAction(action: MomentDetailUiAction) {
@@ -239,6 +426,120 @@ class MomentDetailViewModel(
 
             is MomentDetailUiAction.ConfirmDeleteComment ->
                 deleteComment(action.commentId, action.forEveryone)
+
+            is MomentDetailUiAction.ToggleSharedWithExpansion ->
+                toggleSharedWithExpansion(action.expanded)
+
+            is MomentDetailUiAction.ShareMedia -> shareMedia(action.payloadKey)
+        }
+    }
+
+    /**
+     * Decrypt the selected payload and write a cleartext copy into the
+     * share_outbound sweep dir, then surface the path so the screen can hand
+     * it to the platform share sheet. Mirrors `MediaDownloadHandler.handleShareMedia`
+     * on the chat side — same KeyHeader assembly and same sequestered temp
+     * dir so the cleartext copy is reaped by the cold-start + foreground sweepers.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun shareMedia(payloadKey: String) {
+        val moment = uiState.value.moment ?: return
+        val payload = moment.payloads.firstOrNull { it.key == payloadKey } ?: return
+        val ivString = payload.iv ?: run {
+            Logger.e(tag = TAG) { "shareMedia: payload $payloadKey has no IV" }
+            _events.tryEmit(MomentDetailUiEvent.ShareFailed("Payload missing key header"))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val payloadIv = Base64.decode(ivString)
+                val response = driveFileProvider.getPayloadBytesDecrypted(
+                    driveId = moment.driveId,
+                    fileId = moment.fileId,
+                    key = payloadKey,
+                    keyHeader = KeyHeader(payloadIv, moment.keyHeader.aesKey),
+                )
+                val bytes = response?.bytes
+                if (bytes == null) {
+                    _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
+                    return@launch
+                }
+                val extension = when (val raw = payload.contentType?.substringAfter("/") ?: "bin") {
+                    "jpeg" -> "jpg"
+                    else -> raw
+                }
+                val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
+                    bytes = bytes,
+                    suffix = ".$extension",
+                )
+                _events.tryEmit(MomentDetailUiEvent.ShareFileReady(tempPath))
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "shareMedia failed: ${t.message}" }
+                _events.tryEmit(MomentDetailUiEvent.ShareFailed(t.message))
+            }
+        }
+    }
+
+    /**
+     * Flip the expansion state and, on the first open against an authored
+     * moment, kick off the transfer-history fetch. Subsequent opens reuse the
+     * already-loaded rows — the data is a snapshot from the server, but we
+     * deliberately don't poll: the user can close+reopen to refresh.
+     *
+     * Gated on `isMine` because the server only returns transfer history to
+     * the file's author. For received moments the row collapses/expands but
+     * never fetches.
+     */
+    private fun toggleSharedWithExpansion(expanded: Boolean) {
+        _screenLocal.update { it.copy(sharedWithExpanded = expanded) }
+        if (!expanded) return
+
+        val current = uiState.value
+        if (!current.isMine) return
+        if (_screenLocal.value.transferHistoryLoaded) return
+        if (_screenLocal.value.isTransferHistoryLoading) return
+
+        val moment = current.moment ?: return
+        loadTransferHistory(driveId = moment.driveId, fileId = moment.fileId)
+    }
+
+    private fun loadTransferHistory(driveId: Uuid, fileId: Uuid) {
+        _screenLocal.update { it.copy(isTransferHistoryLoading = true) }
+        viewModelScope.launch {
+            try {
+                val history = driveFileProvider.getTransferHistory(driveId, fileId)
+                val entries = history?.history?.results.orEmpty().map { entry ->
+                    val odinId = OdinId(entry.recipient)
+                    val displayName = contactService.resolveByOdinId(odinId)?.name
+                        ?.takeIf { it.isNotBlank() }
+                        ?: odinId.domainName
+                    RecipientDeliveryUiModel(
+                        odinId = entry.recipient,
+                        displayName = displayName,
+                        deliveryStatus = entry.toChatDeliveryStatus(),
+                        errorDetailRes = entry.latestTransferStatus.toErrorDetailRes(),
+                    )
+                }
+                _screenLocal.update {
+                    it.copy(
+                        recipientDeliveries = entries,
+                        isTransferHistoryLoading = false,
+                        transferHistoryLoaded = true,
+                    )
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "loadTransferHistory failed driveId=$driveId fileId=$fileId: ${t.message}"
+                }
+                // Mark not-loaded so the next expand retries — a transient
+                // network hiccup shouldn't permanently hide the rows.
+                _screenLocal.update {
+                    it.copy(
+                        isTransferHistoryLoading = false,
+                        transferHistoryLoaded = false,
+                    )
+                }
+            }
         }
     }
 

@@ -30,11 +30,17 @@ import kotlin.uuid.Uuid
  *   1. On [start], do a one-shot cold-load via `QueryBatch.queryBatchAsync`
  *      with `filetypesAnyOf = [MomentPostFileType]` so the feed is populated
  *      immediately on app open from the local DB (no HTTP).
- *   2. Subscribe to `BackendEvent.DriveEvent.BatchReceived` for the moments
- *      drive and apply each batch incrementally — the event carries the
- *      list of `HomebaseFile`s that just landed, so we never re-read the DB
- *      on a sync update. Soft-deleted files are removed from the in-memory
- *      state on sight.
+ *   2. Subscribe to `BackendEvent.DataEvent.BatchReceived` for the moments
+ *      drive and apply each batch incrementally — these come from live
+ *      WebSocket pushes (per-file events from `DriveWebSocketUpsertWorker`).
+ *      Soft-deleted files are removed from the in-memory state on sight.
+ *   3. Subscribe to `BackendEvent.DriveEvent.Stopped(totalCount > 0)` and
+ *      re-cold-load — bulk `DriveSync.performSync` is *silent* (no per-batch
+ *      `BatchReceived`; see DriveSync.kt:199-204), so a freshly-mounted drive's
+ *      initial historical pull only surfaces via Stopped. Without this branch,
+ *      enabling Moments at runtime mounts the drive, the catch-up writes land
+ *      in `DriveMainIndex`, but the in-memory feed stays empty until next
+ *      app launch. Gate on `totalCount > 0` to match `ChatMessageStream`.
  */
 class MomentsFeedService(
     private val databaseManager: DatabaseManager,
@@ -63,14 +69,52 @@ class MomentsFeedService(
         if (started) return
         started = true
 
+        Logger.i(tag = TAG) {
+            "start: cold-loading + subscribing to EventBus for moments drive=$drive"
+        }
+
         scope.launch { coldLoad() }
 
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DataEvent || event.driveId != drive) return@collect
                 when (event) {
-                    is BackendEvent.DataEvent.BatchReceived ->
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != drive) return@collect
                         processIncrementalBatch(event.batchData)
+                    }
+                    is BackendEvent.DriveEvent.Stopped -> {
+                        if (event.driveId != drive) return@collect
+                        // Silent-DriveSync contract: bulk catch-up just landed
+                        // `totalCount` rows in DriveMainIndex without emitting
+                        // BatchReceived. Re-read the DB to converge in-memory
+                        // state — this is what makes "enable Moments at runtime
+                        // → historical posts appear without restart" work.
+                        // Gate on totalCount > 0 (mirrors ChatMessageStream):
+                        // Stopped(Aborted, totalCount > 0) still means earlier
+                        // batches landed; totalCount == 0 means cursor at HEAD,
+                        // nothing to refresh.
+                        if (event.totalCount > 0) {
+                            Logger.d(tag = TAG) {
+                                "DriveEvent.Stopped(totalCount=${event.totalCount}, " +
+                                    "result=${event.result}) — re-cold-loading moments"
+                            }
+                            scope.launch { coldLoad() }
+                        }
+                    }
+                    is BackendEvent.OutboxEvent.OptimisticRollback -> {
+                        // Fired when OptimisticWriter.removeOptimisticFile
+                        // deletes the local row — typically because the user
+                        // tapped Delete on a permanently-failed moment that
+                        // never reached the server. Mirrors ChatMessageStream.
+                        if (event.driveId != drive) return@collect
+                        if (byId.remove(event.uniqueId) != null) {
+                            Logger.d(tag = TAG) {
+                                "OptimisticRollback: removed moment=${event.uniqueId}"
+                            }
+                            emitSorted()
+                        }
+                    }
+                    else -> {}
                 }
             }
         }
@@ -98,10 +142,23 @@ class MomentsFeedService(
             )
 
             byId.clear()
+            var skippedSoftDeleted = 0
+            var skippedUnparseable = 0
             for (file in result.records) {
-                if (file.isSoftDeleted()) continue
-                val item = file.toFeedItem() ?: continue
+                if (file.isSoftDeleted()) {
+                    skippedSoftDeleted++
+                    continue
+                }
+                val item = file.toFeedItem()
+                if (item == null) {
+                    skippedUnparseable++
+                    continue
+                }
                 byId[item.id] = item
+            }
+            Logger.i(tag = TAG) {
+                "coldLoad: rows=${result.records.size} loaded=${byId.size} " +
+                    "skippedSoftDeleted=$skippedSoftDeleted skippedUnparseable=$skippedUnparseable"
             }
             emitSorted()
         } catch (e: Exception) {
@@ -116,6 +173,18 @@ class MomentsFeedService(
      * already-landed `HomebaseFile`s; we never re-read the DB here.
      */
     private fun processIncrementalBatch(files: List<HomebaseFile>) {
+        // Per-batch histogram mirrors MomentCommentsService: lets us tell at
+        // a glance whether a batch even reached this collector and what was
+        // in it. A "remote moment didn't appear" report splits cleanly along
+        // this line — if no `processIncrementalBatch` entry fires after a
+        // remote send, the WS push isn't delivering to this client.
+        val fileTypeCounts = files.groupingBy {
+            it.fileMetadata.appData.fileType
+        }.eachCount()
+        Logger.d(tag = TAG) {
+            "processIncrementalBatch: drive=$drive files=${files.size} " +
+                "byFileType=$fileTypeCounts currentFeedSize=${byId.size}"
+        }
         val moments = files.filter {
             it.fileMetadata.appData.fileType == MomentsProtocol.MomentPostFileType
         }
@@ -123,14 +192,36 @@ class MomentsFeedService(
 
         var changed = false
         for (file in moments) {
-            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-            if (file.isSoftDeleted()) {
-                if (byId.remove(uniqueId) != null) changed = true
+            val uniqueId = file.fileMetadata.appData.uniqueId
+            if (uniqueId == null) {
+                Logger.w(tag = TAG) {
+                    "processIncrementalBatch: moment fileId=${file.fileId} missing uniqueId — dropped"
+                }
                 continue
             }
-            val item = file.toFeedItem() ?: continue
+            if (file.isSoftDeleted()) {
+                if (byId.remove(uniqueId) != null) {
+                    changed = true
+                    Logger.d(tag = TAG) {
+                        "processIncrementalBatch: soft-deleted moment=$uniqueId removed (feedSize=${byId.size})"
+                    }
+                }
+                continue
+            }
+            val item = file.toFeedItem() ?: run {
+                Logger.w(tag = TAG) {
+                    "processIncrementalBatch: toFeedItem returned null for uniqueId=$uniqueId fileId=${file.fileId}"
+                }
+                continue
+            }
+            val isUpdate = byId.containsKey(uniqueId)
             byId[uniqueId] = item
             changed = true
+            Logger.i(tag = TAG) {
+                "processIncrementalBatch: ${if (isUpdate) "updated" else "added"} moment=$uniqueId " +
+                    "sender=${item.senderOdinId?.domainName ?: "self"} " +
+                    "recipients=${item.recipients.size} feedSize=${byId.size}"
+            }
         }
         if (changed) emitSorted()
     }
@@ -170,6 +261,22 @@ data class MomentFeedItem(
      * "delete for me" (recipient).
      */
     val senderOdinId: OdinId?,
+    /**
+     * Audience the post was originally addressed to — surfaced on the detail
+     * screen's "Shared with" row. Null on legacy moments that pre-date the
+     * source field, on local-only posts, or when the header fails to
+     * deserialise.
+     */
+    val source: MomentSource?,
+    /**
+     * Flat list of OdinIds the sender addressed this moment to (everyone but
+     * the sender themselves). Always populated by the writer alongside
+     * [source]. The detail screen falls back to this when [source] is null
+     * or empty — `MomentAudienceViewModel` deliberately drops the source
+     * field on individuals-only posts ("no need to duplicate the recipient
+     * list"), but the detail screen still needs something to render.
+     */
+    val recipients: List<OdinId>,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -191,5 +298,7 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
         senderOdinId = fileMetadata.senderOdinId,
+        source = content?.source,
+        recipients = content?.recipients.orEmpty(),
     )
 }

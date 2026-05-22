@@ -50,9 +50,10 @@ class ConversationMapper(
      * MANDATORY — basic conversation row required to render the list.
      *
      * Populates identity, title, participants, avatar model, membership
-     * state (Active/Left/Archived/Removed/…), and seeds
-     * `latestMessageTimestamp = metadata.created` so freshly-created
-     * threads (no messages yet) still sort by recency.
+     * state (Active/Left/Archived/Removed/…), and resolves
+     * `latestMessageTimestamp` from the persisted localAppData sort key
+     * (written by the lastRead writeback), falling back to `metadata.created`
+     * so freshly-created or never-stamped threads still sort by recency.
      *
      * Explicitly does NOT populate:
      *   - `lastMessage*` fields (defaults: " ", null, false)
@@ -210,11 +211,16 @@ class ConversationMapper(
                     id = conversationId,
                     name = title,
                     lastMessage = " ",
-                    // Seed sort timestamp with file creation so a freshly-created thread
-                    // (e.g. one started alongside a connection request, before any messages
-                    // have flowed) sorts to the top of the list instead of the bottom.
-                    // applyLastMessage overwrites this once a real message exists.
-                    latestMessageTimestamp = metadata.created.toInstant(),
+                    // Sort key for the list. Prefer the persisted last-message time
+                    // (rides along with the lastRead writeback in localAppData) so the
+                    // basic / post-sync list lands in last-message order without waiting
+                    // for the enrich JOIN. Fall back to file creation for never-stamped
+                    // or message-less threads so a freshly-created thread (e.g. one
+                    // started alongside a connection request, before any messages have
+                    // flowed) still sorts by recency. applyLastMessage overwrites this
+                    // once the real last message is loaded.
+                    latestMessageTimestamp = localAppData?.latestMessageTimestamp?.toInstant()
+                        ?: metadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",

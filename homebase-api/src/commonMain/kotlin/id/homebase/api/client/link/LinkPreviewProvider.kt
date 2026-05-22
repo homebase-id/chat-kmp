@@ -35,7 +35,7 @@ class LinkPreviewProvider(
 
         throwForFailure(response)
 
-        return deserialize<LinkPreview>(response.body)?.sanitize()
+        return deserialize<LinkPreview>(response.body).sanitize()
     }
 
     companion object {

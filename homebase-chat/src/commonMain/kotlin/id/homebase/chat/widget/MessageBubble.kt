@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AddReaction
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -111,18 +113,23 @@ import id.homebase.resources.media
 import id.homebase.resources.cd_reply_thumbnail
 import id.homebase.resources.message_delivered
 import id.homebase.resources.message_read
+import id.homebase.resources.message_send_failed
 import id.homebase.resources.message_sending
 import id.homebase.resources.message_sent
 import id.homebase.resources.you
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
@@ -812,16 +819,28 @@ fun DeliveryStatus(
     isPendingSend: Boolean,
     deliveryStatus: Int,
     contentColor: Color,
+    pendingSince: Instant? = null,
 ) {
+    val warning = HomebaseTheme.extendedColors.warning
     if (isPendingSend) {
+        val stale = pendingSince != null && rememberPendingStale(pendingSince)
         Icon(
             Icons.Default.Alarm,
             contentDescription = stringResource(MR.string.message_sending),
             modifier = Modifier.size(16.dp),
-            tint = contentColor,
+            tint = if (stale) warning else contentColor,
         )
     } else {
         when (deliveryStatus) {
+            ChatDeliveryStatus.Failed.value -> {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    contentDescription = stringResource(MR.string.message_send_failed),
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = warning,
+                )
+            }
+
             ChatDeliveryStatus.Read.value -> {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
@@ -849,6 +868,24 @@ fun DeliveryStatus(
             }
         }
     }
+}
+
+/**
+ * True once the message has been pending (un-sent) for at least [threshold]. Computes the
+ * answer once for the current [since] value, then schedules a single delay to flip at the
+ * threshold — no polling ticker, so it leaves the Compose dispatcher idle while waiting.
+ */
+@Composable
+private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes): Boolean {
+    var stale by remember(since) { mutableStateOf(Clock.System.now() - since >= threshold) }
+    LaunchedEffect(since) {
+        if (!stale) {
+            val remaining = threshold - (Clock.System.now() - since)
+            if (remaining > Duration.ZERO) delay(remaining)
+            stale = true
+        }
+    }
+    return stale
 }
 
 fun String.hasContent(): Boolean {

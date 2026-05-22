@@ -308,6 +308,52 @@ class DriveWebSocketUpsertWorkerTest {
     }
 
     @Test
+    fun submit_stalePush_doesNotEmitBatchReceived() = runBlocking {
+        // A push the DriveMainIndex timestamp guard rejects (older `updated`
+        // than what we already hold — e.g. the half-stale `statisticsChanged`
+        // fan-out copy) must not produce a BatchReceived: the worker emits only
+        // the rows that actually wrote. Mapping the rejected payload otherwise
+        // paints it into the UI for a frame (the reaction-highlight blink).
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DataEvent.BatchReceived) collected.add(event)
+            }
+        }
+        delay(20)
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        val fileId = Uuid.random()
+        val uniqueId = Uuid.random()
+
+        // Establish the current row (newer timestamp) — emits one batch.
+        worker.submit(makeFile(fileId, driveId, uniqueId, updatedMs = 2_000_000_000_000L))
+        withTimeoutOrNull(5.seconds) { while (collected.isEmpty()) delay(20) }
+
+        // Stale push: same fileId, older `updated` → rejected by the guard.
+        worker.submit(makeFile(fileId, driveId, uniqueId, updatedMs = 1_000_000_000_000L))
+        delay(300) // give any emit a chance to (not) happen
+
+        assertEquals(
+            1, collected.size,
+            "stale push rejected by the guard must not emit a second BatchReceived (got ${collected.size})",
+        )
+
+        collector.cancel()
+    }
+
+    @Test
     fun cancel_doesNotProduceMoreThanOneBatch() = runBlocking {
         val identityId = Uuid.random()
         val driveId = Uuid.random()
@@ -350,6 +396,7 @@ class DriveWebSocketUpsertWorkerTest {
         fileId: Uuid,
         driveId: Uuid,
         uniqueId: Uuid = Uuid.random(),
+        updatedMs: Long = Clock.System.now().epochSeconds * 1000,
     ): HomebaseFile {
         val now = Clock.System.now().epochSeconds
         val json = """{
@@ -365,7 +412,7 @@ class DriveWebSocketUpsertWorkerTest {
             "fileMetadata": {
                 "globalTransitId": "${Uuid.random()}",
                 "created": ${now}000,
-                "updated": ${now}000,
+                "updated": $updatedMs,
                 "transitCreated": 0,
                 "transitUpdated": 0,
                 "serverFileIsEncrypted": true,

@@ -36,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,26 +76,23 @@ fun MomentComposeScreen(
 
     val textFieldState: RichTextState = rememberRichTextState()
 
-    // Two-way sync between the rich text editor and the VM's plain-string
-    // description. The editor owns the live state; we mirror toMarkdown() into
-    // the VM whenever the user types so navigation/draft persistence sees the
-    // current text without forcing a recomposition through the VM on every
-    // keystroke.
+    // Editor owns the live text. We don't mirror it into the VM continuously —
+    // `snapshotFlow { textFieldState.toMarkdown() }` doesn't observe the rich
+    // editor's internal buffer (the walk inside toMarkdown() doesn't read
+    // Compose snapshot state the observer can see), so the flow fired once at
+    // composition with the empty editor and never re-emitted, leaving the VM's
+    // description blank and shipping `description = ""` to the post sender.
+    // Matches the chat composer pattern (MessageInputBar / MessageActionsHandler):
+    // read toMarkdown() once at submit time — see the Continue onClick below.
     //
-    // On first composition we seed the editor from the VM's description so a
-    // back-nav from the audience picker rehydrates the text. The seed runs
-    // before the snapshotFlow collector starts so the initial emission matches
-    // what the VM already has — no clobber of the restored description.
+    // We still need to seed the editor on first composition when the VM was
+    // restored from a draft (back-nav from the audience picker), so the user
+    // sees the text they typed before. One-shot, not continuous.
     LaunchedEffect(textFieldState) {
         val restored = viewModel.uiState.value.description
         if (restored.isNotEmpty()) {
             textFieldState.setMarkdown(restored)
         }
-        snapshotFlow { textFieldState.toMarkdown() }
-            .distinctUntilChanged()
-            .collect { md ->
-                viewModel.onAction(MomentComposeUiAction.DescriptionChanged(md.trimEnd()))
-            }
     }
 
     LaunchedEffect(Unit) {
@@ -165,7 +161,17 @@ fun MomentComposeScreen(
         bottomBar = {
             ComposeBottomBar(
                 enabled = uiState.canContinue,
-                onContinue = { viewModel.onAction(MomentComposeUiAction.NextClicked) },
+                onContinue = {
+                    // Pull the editor's current text once, here at the submit
+                    // boundary — see the LaunchedEffect comment above for why
+                    // we don't mirror it continuously.
+                    viewModel.onAction(
+                        MomentComposeUiAction.DescriptionChanged(
+                            textFieldState.toMarkdown().trimEnd()
+                        )
+                    )
+                    viewModel.onAction(MomentComposeUiAction.NextClicked)
+                },
             )
         },
     ) { innerPadding ->

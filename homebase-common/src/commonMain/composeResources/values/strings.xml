@@ -351,6 +351,14 @@
     <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
     <string name="moments_detail_comment_delete">Delete</string>
     <string name="moments_detail_delete_comment_dialog_title">Delete this comment?</string>
+    <string name="moments_detail_shared_with">Shared with</string>
+    <string name="moments_detail_shared_with_conversation_fallback">Conversation</string>
+    <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_detail_shared_with_show">Show recipients</string>
+    <string name="moments_detail_shared_with_hide">Hide recipients</string>
+    <string name="moments_detail_shared_with_private">Private</string>
+    <string name="moments_detail_shared_with_just_you">Just you</string>
+    <string name="moments_feed_indicator_private">Private moment</string>
     <string name="moments_create_title">Send to</string>
     <string name="moments_create_search_hint">Search contacts and groups</string>
     <string name="moments_create_section_recent">Recent</string>
@@ -752,6 +760,12 @@
     <string name="upload_uploading">Uploading\u2026</string>
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
+    <string name="upload_retrying">Retrying\u2026</string>
+    <string name="upload_failed">Upload failed</string>
+    <string name="upload_failed_sheet_title">Upload failed</string>
+    <string name="upload_failed_sheet_body">This moment couldn\'t be uploaded. Recipients didn\'t receive it.</string>
+    <string name="upload_failed_action_delete">Delete moment</string>
+    <string name="upload_failed_action_dismiss">Dismiss</string>
 
     <!-- Vault -->
     <string name="vault_label">Vault</string>
@@ -917,6 +931,7 @@
     <string name="message_read">Read</string>
     <string name="message_delivered">Delivered</string>
     <string name="message_sent">Sent</string>
+    <string name="message_send_failed">Failed to send</string>
 
     <!-- Accessibility: content descriptions -->
     <string name="cd_play_video">Play video</string>
@@ -928,6 +943,7 @@
     <string name="cd_gallery_thumbnail">Gallery thumbnail</string>
     <string name="cd_send_to">Send to %1$s</string>
     <string name="cd_upload_complete">Upload complete</string>
+    <string name="cd_upload_failed">Upload failed</string>
     <string name="cd_location_pin">Location</string>
     <string name="cd_link_preview_image">Link preview image</string>
     <string name="cd_reply_thumbnail">Reply thumbnail</string>

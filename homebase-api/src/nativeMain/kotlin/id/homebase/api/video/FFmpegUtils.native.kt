@@ -172,11 +172,22 @@ actual object FFmpegUtils {
                 return@withContext null
             }
 
-            // FFmpegKit's iOS executeFFmpeg(String) does pseudo-shell quoting,
-            // so wrap any arg containing whitespace in double quotes. The
-            // planner emits no special chars beyond the input/output paths
-            // (which app cacheDir-rooted), so this naive quoting is sufficient.
-            val command = plan.args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
+            // When using a VideoToolbox encoder, also HW-decode the input.
+            // Without this, HEVC sources are software-decoded which is 3-4x
+            // slower on iPhone (18s → 5s for a 15s 1080p60 HEVC clip).
+            val args = if (encoder.contains("videotoolbox")) {
+                val mutable = plan.args.toMutableList()
+                val iIdx = mutable.indexOf("-i")
+                if (iIdx >= 0) {
+                    mutable.add(iIdx, "videotoolbox")
+                    mutable.add(iIdx, "-hwaccel")
+                }
+                mutable
+            } else {
+                plan.args
+            }
+
+            val command = args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
 
             val result = executeFfmpegWithProgress(command, durationMs, onProgress)
             if (result.isSuccess) {

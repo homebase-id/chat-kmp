@@ -1,5 +1,9 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,21 +23,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,27 +56,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.initials
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.OwnerAvatar
+import id.homebase.core.avatars.PublicAvatar
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import id.homebase.core.util.isDesktop
 import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.resources.moments_create_action
+import id.homebase.resources.moments_feed_indicator_private
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
-import id.homebase.resources.moments_reaction_like
 import id.homebase.resources.moments_welcome
+import id.homebase.resources.upload_failed_action_delete
+import id.homebase.resources.upload_failed_action_dismiss
+import id.homebase.resources.upload_failed_sheet_body
+import id.homebase.resources.upload_failed_sheet_title
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -85,6 +114,7 @@ fun MomentsScreen(
     viewModel: MomentsFeedViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
     onCreateMoment: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
     /**
      * Open the detail view for a moment. `payloadKey` is the specific media
      * item the user tapped (so the detail carousel can land on that page);
@@ -134,13 +164,29 @@ fun MomentsScreen(
     if (isWide) {
         WideMomentsLayout(
             moments = uiState.moments,
+            uploadProgress = uiState.uploadProgress,
+            ownerSession = uiState.ownerSession,
+            connectionStatus = uiState.connectionStatus,
+            driveIsSyncing = uiState.driveIsSyncing,
+            hasDriveError = uiState.hasDriveError,
             onCreateMoment = onCreateMoment,
+            onProfileClick = onProfileClick,
+            onDeleteFailedMoment = viewModel::deleteFailedMoment,
+            onDismissUpload = viewModel::dismissUpload,
         )
     } else {
         CompactMomentsLayout(
             moments = uiState.moments,
+            uploadProgress = uiState.uploadProgress,
+            ownerSession = uiState.ownerSession,
+            connectionStatus = uiState.connectionStatus,
+            driveIsSyncing = uiState.driveIsSyncing,
+            hasDriveError = uiState.hasDriveError,
             onCreateMoment = onCreateMoment,
+            onProfileClick = onProfileClick,
             onOpenMoment = onOpenMoment,
+            onDeleteFailedMoment = viewModel::deleteFailedMoment,
+            onDismissUpload = viewModel::dismissUpload,
         )
     }
 }
@@ -149,13 +195,27 @@ fun MomentsScreen(
 @Composable
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
+    uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
     onCreateMoment: () -> Unit,
+    onProfileClick: () -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    onDeleteFailedMoment: (Uuid) -> Unit,
+    onDismissUpload: (Uuid) -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
+            MomentsTopAppBar(
+                ownerSession = ownerSession,
+                connectionStatus = connectionStatus,
+                driveIsSyncing = driveIsSyncing,
+                hasDriveError = hasDriveError,
+                onProfileClick = onProfileClick,
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateMoment) {
@@ -176,9 +236,13 @@ private fun CompactMomentsLayout(
         } else {
             MomentsFeedList(
                 moments = moments,
+                uploadProgress = uploadProgress,
+                selfOdinId = ownerSession?.odinId,
                 onOpenMoment = onOpenMoment,
                 openLabel = openLabel,
                 selectedMomentId = null,
+                onDeleteFailedMoment = onDeleteFailedMoment,
+                onDismissUpload = onDismissUpload,
                 modifier = Modifier
                     .fillMaxSize()
                     .consumeWindowInsets(innerPadding)
@@ -205,7 +269,15 @@ private fun CompactMomentsLayout(
 @Composable
 private fun WideMomentsLayout(
     moments: List<MomentFeedItem>,
+    uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
     onCreateMoment: () -> Unit,
+    onProfileClick: () -> Unit,
+    onDeleteFailedMoment: (Uuid) -> Unit,
+    onDismissUpload: (Uuid) -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
 
@@ -239,7 +311,13 @@ private fun WideMomentsLayout(
                 .width(feedPaneWidth)
                 .fillMaxHeight(),
             topBar = {
-                TopAppBar(title = { Text(stringResource(MR.string.moments_label)) })
+                MomentsTopAppBar(
+                    ownerSession = ownerSession,
+                    connectionStatus = connectionStatus,
+                    driveIsSyncing = driveIsSyncing,
+                    hasDriveError = hasDriveError,
+                    onProfileClick = onProfileClick,
+                )
             },
             floatingActionButton = {
                 FloatingActionButton(onClick = onCreateMoment) {
@@ -260,11 +338,15 @@ private fun WideMomentsLayout(
             } else {
                 MomentsFeedList(
                     moments = moments,
+                    uploadProgress = uploadProgress,
+                    selfOdinId = ownerSession?.odinId,
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
                     },
                     openLabel = openLabel,
                     selectedMomentId = selectedMomentId,
+                    onDeleteFailedMoment = onDeleteFailedMoment,
+                    onDismissUpload = onDismissUpload,
                     modifier = Modifier
                         .fillMaxSize()
                         .consumeWindowInsets(innerPadding)
@@ -309,9 +391,13 @@ private val FeedPaneMaxWidth = 480.dp
 @Composable
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
+    uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     openLabel: String,
     selectedMomentId: Uuid?,
+    onDeleteFailedMoment: (Uuid) -> Unit = {},
+    onDismissUpload: (Uuid) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -327,25 +413,40 @@ private fun MomentsFeedList(
         items(moments, key = { it.id.toString() }) { moment ->
             MomentPostCard(
                 moment = moment,
+                uploadStatus = uploadProgress[moment.id],
+                selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { onOpenMoment(moment.id.toString(), null) },
                 onMediaClick = { payloadKey ->
                     onOpenMoment(moment.id.toString(), payloadKey)
                 },
                 onClickLabel = openLabel,
+                onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
+                onDismissUpload = { onDismissUpload(moment.id) },
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MomentPostCard(
     moment: MomentFeedItem,
+    uploadStatus: UploadStatus?,
+    selfOdinId: OdinId?,
     isSelected: Boolean,
     onCardClick: () -> Unit,
     onMediaClick: (payloadKey: String) -> Unit,
     onClickLabel: String,
+    onDeleteFailedMoment: () -> Unit,
+    onDismissUpload: () -> Unit,
 ) {
+    // Local sheet state — only one moment's failed-upload sheet can be open
+    // at a time per card, and the sheet's lifetime tracks the card. No need
+    // to lift this to the VM (it's pure presentation, no cross-screen
+    // implications, no need to survive process death).
+    var failedSheetOpen by remember { mutableStateOf(false) }
+    val failedSheetState = rememberModalBottomSheetState()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,18 +481,33 @@ private fun MomentPostCard(
                 )
             }
         } else {
-            MomentMediaGallery(
-                payloads = moment.payloads,
-                fileId = moment.fileId,
-                driveId = moment.driveId,
-                previewThumbnail = moment.previewThumbnail,
-                keyHeader = moment.keyHeader,
-                messageId = moment.id,
-                downloadingFiles = emptySet(),
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-                onMediaClick = { payload -> onMediaClick(payload.key) },
-            )
+            // Wrap the gallery so the upload-progress overlay can size to the
+            // media only (matchParentSize) — date pill / sender avatar / info
+            // chips below stay readable through the scrim because they sit
+            // outside this Box on the outer card.
+            Box {
+                MomentMediaGallery(
+                    payloads = moment.payloads,
+                    fileId = moment.fileId,
+                    driveId = moment.driveId,
+                    previewThumbnail = moment.previewThumbnail,
+                    keyHeader = moment.keyHeader,
+                    messageId = moment.id,
+                    downloadingFiles = emptySet(),
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    onMediaClick = { payload -> onMediaClick(payload.key) },
+                    isUploading = uploadStatus != null,
+                )
+
+                if (uploadStatus != null) {
+                    MomentUploadProgressOverlay(
+                        status = uploadStatus,
+                        modifier = Modifier.matchParentSize(),
+                        onPermanentFailureTap = { failedSheetOpen = true },
+                    )
+                }
+            }
         }
 
         // Top-right: localized capture date pill. Sourced from the moment's
@@ -404,10 +520,26 @@ private fun MomentPostCard(
                 .padding(8.dp),
         )
 
-        // Overlay indicators in the bottom-right of the thumbnail. Reaction
-        // counts / comments toggle aren't wired through the post yet, so the
-        // info badge stands in for "has description" and the heart is the
-        // toggleable reaction placeholder.
+        // Top-left: sender avatar for inbound moments. Same "is mine" rule as
+        // `isPrivate` below — null senderOdinId or a self-match means this is
+        // the user's own post (sender's drive copy is null; the optimistic
+        // writer stamps self on the local copy), so we skip the badge to keep
+        // the user's own feed visually quiet.
+        val sender = moment.senderOdinId
+        if (sender != null && sender != selfOdinId) {
+            SenderAvatarBadge(
+                odinId = sender,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+            )
+        }
+
+        // Overlay indicators in the bottom-right of the thumbnail. Info badge
+        // signals the moment has a description; lock badge signals the moment
+        // was kept private (no recipients). Absence of the lock implies the
+        // moment was shared — that's the common case, so we don't crowd the
+        // tile with a "shared" icon.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -418,15 +550,97 @@ private fun MomentPostCard(
             if (moment.description.isNotBlank()) {
                 IndicatorBadge(Icons.Outlined.Info)
             }
-            // Comments indicator placeholder — shown unconditionally for now.
-            // When the comments-enabled flag round-trips through MomentPostContent,
-            // gate this on it.
-            IndicatorBadge(Icons.Outlined.ChatBubbleOutline)
-            IndicatorBadge(
-                imageVector = Icons.Outlined.FavoriteBorder,
-                contentDescription = stringResource(MR.string.moments_reaction_like),
-            )
+            if (moment.isPrivate(selfOdinId)) {
+                IndicatorBadge(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = stringResource(MR.string.moments_feed_indicator_private),
+                )
+            }
         }
+
+        // Bottom-left: live engagement strip — top reaction emoji + comment
+        // count. Reads `moment.reactionPreview` (kept fresh by
+        // MomentsFeedService incremental updates), so reactions/comments
+        // arriving from another device update without a refresh. Hidden when
+        // there's nothing to surface so empty moments stay clean.
+        EngagementStrip(
+            summary = moment.reactionPreview,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp),
+        )
+
+        // Action sheet for a permanently-failed upload. Only the
+        // permanent-Failed overlay surfaces the tap that flips
+        // `failedSheetOpen` to true, so this never opens for in-progress or
+        // transient-retry states. Delete removes the local optimistic write
+        // (the upload never reached the server, so nothing remote to
+        // delete); Dismiss just clears the overlay and leaves the local
+        // copy in the feed.
+        if (failedSheetOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { failedSheetOpen = false },
+                sheetState = failedSheetState,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = stringResource(MR.string.upload_failed_sheet_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(
+                        text = stringResource(MR.string.upload_failed_sheet_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            failedSheetOpen = false
+                            onDeleteFailedMoment()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(text = stringResource(MR.string.upload_failed_action_delete))
+                    }
+                    TextButton(
+                        onClick = {
+                            failedSheetOpen = false
+                            onDismissUpload()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(text = stringResource(MR.string.upload_failed_action_dismiss))
+                    }
+                    Spacer(modifier = Modifier.padding(bottom = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * True when this is one of the active user's own moments and no recipients
+ * were recorded — either the audience picker selected nobody, or the post
+ * pre-dates the source field and the flat recipients list is empty.
+ *
+ * `senderOdinId` is null on the server-side copy of the sender's own file
+ * but the optimistic writer stamps it with the active user's domain on the
+ * local copy — same convention as the detail VM's "isMine" check. We accept
+ * either null or a match on [self] for "this is mine."
+ */
+private fun MomentFeedItem.isPrivate(self: OdinId?): Boolean {
+    val isMine = senderOdinId == null || (self != null && senderOdinId == self)
+    if (!isMine) return false
+    val src = source
+    return when (src) {
+        null -> recipients.isEmpty()
+        is MomentSource.Conversation -> false
+        is MomentSource.Audience ->
+            src.groupIds.isEmpty() && src.individuals.isEmpty() && recipients.isEmpty()
     }
 }
 
@@ -454,6 +668,92 @@ private fun EmptyMomentsState(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Header for the Moments feed. Mirrors the visual language of
+ * `ConversationListPane`: owner avatar (with connection/sync status indicator)
+ * on the left, then a bold "Moments" title that auto-sizes the same way the
+ * chat title does. No actions on the right — search and overflow are
+ * chat-specific.
+ *
+ * The avatar fades in once an owner session has loaded; the title is always
+ * present so the header is never empty during cold start.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MomentsTopAppBar(
+    ownerSession: OwnerSession?,
+    connectionStatus: AppConnectionStatus,
+    driveIsSyncing: Boolean,
+    hasDriveError: Boolean,
+    onProfileClick: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Spacer(modifier = Modifier.width(20.dp))
+                AnimatedVisibility(
+                    visible = ownerSession != null,
+                    enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                    exit = fadeOut(animationSpec = tween(150)),
+                ) {
+                    ownerSession?.let { session ->
+                        OwnerAvatar(
+                            odinId = session.odinId,
+                            profileImageData = null,
+                            initials = session.initials(),
+                            connectionStatus = connectionStatus,
+                            driveIsSyncing = driveIsSyncing,
+                            hasDriveError = hasDriveError,
+                            options = AvatarOptions(
+                                size = 32.dp,
+                                fontSize = 12.sp,
+                                onClick = onProfileClick,
+                            ),
+                            animatedVisibilityScope = this@AnimatedVisibility,
+                            sharedTransitionScope = null,
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = stringResource(MR.string.moments_label),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 14.sp,
+                        maxFontSize = 22.sp,
+                    ),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
+        },
+    )
+}
+
+@Composable
+private fun SenderAvatarBadge(
+    odinId: OdinId,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        PublicAvatar(
+            odinId = odinId,
+            initials = odinId.toString().firstOrNull()?.toString()?.uppercase(),
+            options = AvatarOptions(size = 24.dp, fontSize = 10.sp),
+        )
+    }
+}
+
 @Composable
 private fun IndicatorBadge(
     imageVector: ImageVector,
@@ -474,3 +774,76 @@ private fun IndicatorBadge(
         )
     }
 }
+
+/**
+ * Inline reaction + comment indicator overlaid on each feed tile. Deliberately
+ * subtle:
+ *  - Up to three top emoji, no count digits, so the pill stays narrow.
+ *  - Same dark-scrim chip as [IndicatorBadge] so the indicator family on a
+ *    tile reads as one design.
+ *  - Renders nothing when both reactions and comments are absent — empty
+ *    moments stay visually quiet.
+ *
+ * Lives on the bottom-left so it balances the existing info/lock indicators
+ * in the bottom-right without crowding either.
+ */
+@Composable
+private fun EngagementStrip(
+    summary: ReactionSummary?,
+    modifier: Modifier = Modifier,
+) {
+    val topEmoji = remember(summary) {
+        summary?.reactions?.values
+            ?.sortedByDescending { it.count }
+            ?.mapNotNull { entry ->
+                if (entry.count <= 0) return@mapNotNull null
+                decodeReactionEmoji(entry.reactionContent)
+            }
+            ?.take(MaxTopEmoji)
+            .orEmpty()
+    }
+    val commentCount = summary?.totalCommentCount ?: 0
+    if (topEmoji.isEmpty() && commentCount <= 0) return
+
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        topEmoji.forEach { emoji ->
+            Text(
+                text = emoji,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+        if (commentCount > 0) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Comment,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = commentCount.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+private const val MaxTopEmoji = 3
+
+/**
+ * Decode the JSON-wrapped reaction content into its emoji glyph. Same shape
+ * the detail screen uses (see `MomentDetailScreen.decodeReactionEmoji`) —
+ * duplicated rather than lifted because there's no third caller yet.
+ */
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
+    OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
+}.getOrNull()
