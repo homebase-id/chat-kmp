@@ -8,6 +8,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.Base64UrlEncoder
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
@@ -19,6 +20,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.http.HttpHeaders
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
@@ -244,19 +246,40 @@ class OdinWebSocketClient(
 
         _connectionState.value = WebSocketState.Connecting
 
-        val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
+        val wsUrl = "wss://${identity}/api/v2/notify/ws-token"
         Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
 
-        val appCookieName = "BX0900"
+        // Auth for the v2 ws-token route is carried on the WebSocket upgrade itself
+        // via Sec-WebSocket-Protocol — no cookie, no Authorization header. We send
+        // two subprotocol values: the application protocol (which the server must
+        // echo back in the 101) and a bearer credential of the form
+        // odin.bearer.<base64url(33-byte App ClientAuthToken)>.
+        val bearer = "odin.bearer.${creds.clientAccessToken}"
 
         client.webSocket(
             urlString = wsUrl,
             request = {
-                headers.append("Cookie", "$appCookieName=${creds.clientAccessToken}")
+                headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
             }
         ) {
             session = this
             _connectionState.value = WebSocketState.Connected
+
+            // Verify the server committed to our application subprotocol on the 101.
+            // The log line is deliberately verbose on the first connect so we can
+            // confirm the engine passed our comma-separated header through intact
+            // and the server negotiated the expected value.
+            val negotiated = call.response.headers[HttpHeaders.SecWebSocketProtocol]
+            Logger.i(tag = "WebSocket") {
+                "WS[$instanceId] negotiated Sec-WebSocket-Protocol=$negotiated"
+            }
+            if (negotiated?.trim() != "odin.notify.v1") {
+                Logger.w(tag = "WebSocket") {
+                    "WS[$instanceId] server did not commit to odin.notify.v1 (got=$negotiated) — closing"
+                }
+                close()
+                return@webSocket
+            }
 
             handshakeDone = false
             establishConnectionRequest()
