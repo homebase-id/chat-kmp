@@ -86,6 +86,7 @@ data class HomebaseExtendedColors(
         val onSurfaceVariant1: androidx.compose.ui.graphics.Color,
         val bubbleSentSurface: androidx.compose.ui.graphics.Color,
         val bubbleSentOnSurface: androidx.compose.ui.graphics.Color,
+        val warning: androidx.compose.ui.graphics.Color,
 )
 
 private val LightExtendedColors =
@@ -108,6 +109,7 @@ private val LightExtendedColors =
                 onSurfaceVariant1 = LightColors.OnSurfaceVariant1,
                 bubbleSentSurface = LightColors.Primary,
                 bubbleSentOnSurface = LightColors.OnPrimary,
+                warning = ExtendedColors.Warning,
         )
 
 private val DarkExtendedColors =
@@ -130,6 +132,7 @@ private val DarkExtendedColors =
                 onSurfaceVariant1 = DarkColors.OnSurfaceVariant1,
                 bubbleSentSurface = LightColors.Primary,
                 bubbleSentOnSurface = LightColors.OnPrimary,
+                warning = ExtendedColors.Warning,
         )
 
 val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors }
