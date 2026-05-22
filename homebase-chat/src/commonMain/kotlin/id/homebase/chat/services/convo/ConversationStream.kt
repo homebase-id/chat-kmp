@@ -349,44 +349,17 @@ class ConversationStream(
         if (messageFiles.size != incoming.size)
             Logger.w("ConversationStream: ${messageFiles.size - incoming.size} of ${messageFiles.size} messages failed to convert")
 
-        // ╔══════════════════════════════════════════════════════════════╗
-        // ║  HACK ── REMOVE ONCE THE SERVER STOPS FAN-OUT-PER-WRITE      ║
-        // ║                                                              ║
-        // ║  TODO(server): the chat-drive WS currently emits N           ║
-        // ║  notifications (typically 3) per logical file write — same   ║
-        // ║  uniqueId, same versionTag, same content, just delivered     ║
-        // ║  multiple times. Suspected cause: multi-stage server-side    ║
-        // ║  processing or duplicated subscription registration.         ║
-        // ║                                                              ║
-        // ║  Downstream caches dedupe naturally:                         ║
-        // ║    • [DriveMainIndex] upsert is idempotent on uniqueId.      ║
-        // ║    • [PaginatedConversationState.upsert] collapses by        ║
-        // ║      `m.id`.                                                 ║
-        // ║                                                              ║
-        // ║  But the per-message side effects in this loop (unread bump  ║
-        // ║  via [applyIncomingMessageBump], orphan placeholder, deleted-║
-        // ║  conversation revive, auto-unarchive) would otherwise fire   ║
-        // ║  N times per logical message — N-x over-counting unread      ║
-        // ║  observable in homebase.log as repeated `unread++` lines all ║
-        // ║  carrying the same convo id within a millisecond.            ║
-        // ║                                                              ║
-        // ║  Until the server is fixed, we collapse the batch by         ║
-        // ║  message id here. `associateBy` keeps the LAST occurrence on ║
-        // ║  key collision, which gives us the latest wire state.        ║
-        // ║                                                              ║
-        // ║  When the server-side fix lands: delete this block and the   ║
-        // ║  loop should iterate `incoming` directly.                    ║
-        // ╚══════════════════════════════════════════════════════════════╝
-        val deduped = incoming.associateBy { (_, m) -> m.id }.values.toList()
-        if (deduped.size != incoming.size) {
-            Logger.w(
-                "ConversationStream: HACK dedupe — dropped ${incoming.size - deduped.size} " +
-                    "duplicate message file(s) from batch (server fan-out workaround; " +
-                    "kept ${deduped.size} unique by id)"
-            )
-        }
-
-        for ((file, m) in deduped) {
+        // Process every incoming event — no by-id de-dupe. The chat-drive WS can
+        // legitimately deliver two *distinct* events for one logical write (e.g. a
+        // reaction emits fileModified + statisticsChanged with the same uniqueId);
+        // collapsing by id would silently drop a real event. Re-processing a
+        // same-id event is safe here: each branch below re-reads
+        // `matchingConversation` from live `_conversations.value`, so unarchive /
+        // revive / orphan-placeholder no-op on the second pass, and the unread bump
+        // is guarded by `sqlUserDate <= latestMessageTimestamp` in
+        // [applyIncomingMessageBump], so re-emits carrying the original message's
+        // userDate never double-count.
+        for ((file, m) in incoming) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
 
             // Drop messages for conversations the user has left or been removed from
