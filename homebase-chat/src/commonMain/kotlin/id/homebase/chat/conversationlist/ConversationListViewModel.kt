@@ -155,6 +155,12 @@ class ConversationListViewModel(
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
 
+    // Conversations whose next message emission should land the user at the
+    // newest message (set by the ScrollToLatest action, consumed once in the
+    // message-emission collect block below). Per-conversation so rapid
+    // conversation switches can't cross-fire a scroll.
+    private val pendingScrollToLatest = mutableSetOf<Uuid>()
+
     private val mediaDownloadHandler = MediaDownloadHandler(
         scope = viewModelScope,
         uiState = _uiState,
@@ -781,6 +787,14 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ScrollToLatest -> {
+                // Mark the reload as scroll-to-latest BEFORE loading: when the
+                // user is paged deep into history (hasNewerMessages == true) the
+                // loaded window's bottom isn't the real latest message, so we
+                // reload the newest page. The next observeMessages emission for
+                // this conversation then resolves a triggerScroll bottom anchor
+                // (see resolveScrollToLatestPosition) instead of leaving the
+                // listState parked at its stale history index.
+                pendingScrollToLatest.add(action.conversationId)
                 viewModelScope.launch { chatMessageStream.loadConversation(action.conversationId) }
             }
 
@@ -1232,20 +1246,33 @@ class ConversationListViewModel(
                                 null
                             }
 
-                            val newScroll = if (indexOfMessageForScroll == null) {
-                                if (setInitialScroll && !scrollToBottom) {
+                            val newScroll = when {
+                                // ScrollToLatest reload: the user tapped the
+                                // scroll-to-bottom FAB while paged into history.
+                                // .remove() consumes the flag once and reports
+                                // whether it was set. Land on the newest message.
+                                pendingScrollToLatest.remove(conversationId) -> {
+                                    Logger.i("Scroll-to-latest: landing at newest message")
+                                    resolveScrollToLatestPosition(messagesModels)
+                                }
+
+                                indexOfMessageForScroll != null -> {
+                                    Logger.i("Setting scroll position: $indexOfMessageForScroll")
+                                    ScrollPosition(
+                                        firstVisibleItemIndex = indexOfMessageForScroll,
+                                        triggerScroll = true
+                                    )
+                                }
+
+                                setInitialScroll && !scrollToBottom -> {
                                     Logger.i("Getting saved scroll position")
                                     getScrollPosition(conversationId, messagesModels)
-                                } else {
+                                }
+
+                                else -> {
                                     Logger.i("No saved scroll position")
                                     null
                                 }
-                            } else {
-                                Logger.i("Setting scroll position: $indexOfMessageForScroll")
-                                ScrollPosition(
-                                    firstVisibleItemIndex = indexOfMessageForScroll,
-                                    triggerScroll = true
-                                )
                             }
 
                             // Persist the anchor only when we just landed on a freshly
