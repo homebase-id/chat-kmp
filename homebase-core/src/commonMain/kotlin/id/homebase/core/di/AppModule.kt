@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.di
 
 import co.touchlab.kermit.Logger
@@ -65,6 +67,9 @@ import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
@@ -543,6 +548,16 @@ val appModule = module {
         )
     }
     viewModelOf(::VaultSettingsViewModel)
+    viewModel { params ->
+        VaultNoteEditorViewModel(
+            sectionId = params[0],
+            editEntryId = params.values.getOrNull(1) as? Uuid,
+            vaultStream = get(),
+            vaultService = get(),
+            vaultUploaderService = get(),
+            fileOperationsProvider = get(),
+        )
+    }
 }
 
 // Common module that each platform will implement

@@ -249,7 +249,9 @@ fun VaultGalleryScreen(
                         title = {
                             Column {
                                 Text(
-                                    text = labelText.ifBlank { null } ?: file.fileName,
+                                    text = labelText.ifBlank { null }
+                                        ?: file.noteDisplayTitle
+                                        ?: file.fileName,
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,

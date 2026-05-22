@@ -52,6 +52,20 @@ fun String.sanitizePreviewText(): String =
         .replace(whitespaceRun, " ")
         .trim()
 
+private const val NOTE_PREVIEW_MAX_LENGTH = 200
+
+fun String.stripMarkdownForPreview(): String? {
+    val plain = this
+        .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
+        .replace(Regex("[*_~`>]"), "")
+        .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (plain.isEmpty()) return null
+    return plain.truncateToCodePoints(NOTE_PREVIEW_MAX_LENGTH)
+}
+
 // Truncate a string to maxVisibleCharacters (be sure UTF characters aren't chopped in the middle)
 fun String.truncateToCodePoints(maxVisibleCharacters: Int): String {
     if (maxVisibleCharacters <= 0) return ""

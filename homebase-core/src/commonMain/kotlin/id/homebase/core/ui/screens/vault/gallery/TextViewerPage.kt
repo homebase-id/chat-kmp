@@ -63,7 +63,7 @@ fun TextViewerPage(
     LaunchedEffect(file.fileId) {
         state = TextViewerState.Loading
         try {
-            val payloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
+            val payloadKey = file.payloadDescriptors.firstOrNull()?.key ?: VaultEntry.DEFAULT_PAYLOAD_KEY
             val tempPath = withContext(Dispatchers.Default) {
                 uploaderService.downloadPayload(file, payloadKey)
             }

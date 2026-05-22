@@ -47,6 +47,10 @@ data class PayloadDescriptor(
 
             }
 
+            contentType == "text/markdown" -> {
+                DescriptorContent.NoteFile(preview = descriptorContent)
+            }
+
             contentType?.startsWith("video/") == true -> {
                 try {
                     val meta = OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
@@ -69,6 +73,7 @@ data class PayloadDescriptor(
             is DescriptorContent.AudioFile -> info.name
             DescriptorContent.Empty -> null
             is DescriptorContent.File -> info.name
+            is DescriptorContent.NoteFile -> null
             is DescriptorContent.VideoFile -> null
         }
     }
@@ -77,6 +82,7 @@ data class PayloadDescriptor(
 sealed interface DescriptorContent {
     data object Empty : DescriptorContent
     data class File(val name: String) : DescriptorContent
+    data class NoteFile(val preview: String?) : DescriptorContent
     @Serializable
     data class AudioFile(val name: String?, val lengthSeconds: Int) : DescriptorContent
     /** Surfaces the bits of a video's [VideoMetadata] that the UI cares about. */
