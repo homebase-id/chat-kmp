@@ -143,7 +143,7 @@ fun VaultScreen(
                 is VaultUiEvent.OpenNoteEditor -> {
                     onNavigateToNoteEditor(
                         event.sectionId.toString(),
-                        event.entryId.toString(),
+                        event.entryId?.toString(),
                     )
                 }
                 is VaultUiEvent.Activated,
@@ -322,14 +322,6 @@ fun VaultScreen(
                             },
                             onDeleteEntry = {
                                 viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
-                            },
-                            onEditNote = {
-                                val sectionId = overlay.file.groupId ?: return@VaultGalleryScreen
-                                viewModel.onAction(VaultUiAction.CloseOverlay)
-                                onNavigateToNoteEditor(
-                                    sectionId.toString(),
-                                    overlay.file.uniqueId.toString(),
-                                )
                             },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,

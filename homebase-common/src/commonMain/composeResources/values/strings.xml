@@ -799,6 +799,15 @@
     <string name="vault_note_load_failed">Failed to load note</string>
     <string name="vault_note_load_failed_preview">Could not load note preview</string>
     <string name="vault_note_edit">Edit note</string>
+    <string name="vault_note_share">Share note</string>
+    <string name="vault_note_delete">Delete note</string>
+    <string name="vault_note_delete_confirm_title">Delete note?</string>
+    <string name="vault_note_delete_confirm_message">“%1$s” will be permanently deleted.</string>
+    <string name="vault_note_delete_failed">Failed to delete note</string>
+    <string name="vault_note_close">Close</string>
+    <string name="vault_note_discard_title">Discard changes?</string>
+    <string name="vault_note_discard_message">You have unsaved changes that will be lost.</string>
+    <string name="vault_note_discard_action">Discard</string>
 
     <!-- Vault Sections -->
     <string name="vault_section_passports">Passports</string>

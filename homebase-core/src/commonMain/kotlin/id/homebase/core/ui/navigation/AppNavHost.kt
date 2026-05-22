@@ -120,6 +120,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
+import kotlinx.io.files.Path
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
@@ -535,24 +536,28 @@ fun AppNavHost(
                         modifier = Modifier.weight(1f),
                         enterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
+                            else if (targetState.destination.isVerticalSlideRoute()) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { 1000 }, animationSpec = tween(500)
                             )
                         },
                         exitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (targetState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { -1000 }, animationSpec = tween(500)
                             )
                         },
                         popEnterTransition = {
                             if (isBetweenTopLevelRoutes()) EnterTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute()) EnterTransition.None
                             else slideInHorizontally(
                                 initialOffsetX = { -1000 }, animationSpec = tween(500)
                             )
                         },
                         popExitTransition = {
                             if (isBetweenTopLevelRoutes()) ExitTransition.None
+                            else if (initialState.destination.isVerticalSlideRoute()) ExitTransition.None
                             else slideOutHorizontally(
                                 targetOffsetX = { 1000 }, animationSpec = tween(500)
                             )
@@ -1114,6 +1119,9 @@ fun AppNavHost(
                                 VaultNoteEditorScreen(
                                     viewModel = noteViewModel,
                                     onBackClick = { navController.popBackStack() },
+                                    onShareFile = { filePath ->
+                                        uriHandler.shareFile(Path(filePath))
+                                    },
                                 )
                             }
                         }
@@ -1201,6 +1209,10 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
+}
+
+private fun NavDestination?.isVerticalSlideRoute(): Boolean {
+    return this?.hasRoute(Route.VaultNoteEditor::class) == true
 }
 
 sealed class TopLevelRoute(

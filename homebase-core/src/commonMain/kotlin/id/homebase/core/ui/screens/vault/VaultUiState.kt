@@ -77,7 +77,7 @@ sealed interface VaultUiEvent {
         val fileName: String,
     ) : VaultUiEvent
     data class Error(val error: VaultError) : VaultUiEvent
-    data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid) : VaultUiEvent
+    data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid? = null) : VaultUiEvent
 }
 
 sealed interface VaultError {
