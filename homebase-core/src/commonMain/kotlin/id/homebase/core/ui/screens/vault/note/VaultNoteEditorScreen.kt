@@ -103,7 +103,8 @@ fun VaultNoteEditorScreen(
         if (uiState.isCreateMode) {
             uiState.title.isNotBlank() || richTextState.toMarkdown().isNotBlank()
         } else {
-            richTextState.toMarkdown() != (uiState.loadedMarkdown ?: "")
+            uiState.title != (uiState.loadedTitle ?: "") ||
+                richTextState.toMarkdown() != (uiState.loadedMarkdown ?: "")
         }
     }
 

@@ -350,7 +350,6 @@ class VaultUploaderService(
                 keyHeader = file.keyHeader,
                 manifest = UpdateManifest.build(
                     payloads = encryptedBundle.payloads,
-                    toDeletePayloads = listOf(PayloadDeleteKey(existingKey)),
                     generatePayloadIv = false,
                 ),
                 payloads = encryptedBundle.payloads,

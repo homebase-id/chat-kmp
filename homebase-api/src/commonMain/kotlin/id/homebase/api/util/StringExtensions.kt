@@ -58,8 +58,8 @@ fun String.stripMarkdownForPreview(): String? {
     val plain = this
         .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
         .replace(Regex("[*_~`>]"), "")
-        .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
         .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
         .replace(Regex("\\s+"), " ")
         .trim()
     if (plain.isEmpty()) return null

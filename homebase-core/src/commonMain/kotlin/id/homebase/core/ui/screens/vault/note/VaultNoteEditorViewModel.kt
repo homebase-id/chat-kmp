@@ -37,6 +37,7 @@ data class VaultNoteEditorUiState(
     val entryId: Uuid? = null,
     val titleError: Boolean = false,
     val loadedMarkdown: String? = null,
+    val loadedTitle: String? = null,
 ) {
     val isCreateMode: Boolean get() = entryId == null
     val canSave: Boolean get() = title.isNotBlank() && !isSaving
@@ -112,7 +113,12 @@ class VaultNoteEditorViewModel(
                 }
                 val displayTitle = entry.noteDisplayTitle ?: entry.fileName
                 _uiState.update {
-                    it.copy(title = displayTitle, isLoading = false, loadedMarkdown = markdown)
+                    it.copy(
+                        title = displayTitle,
+                        isLoading = false,
+                        loadedMarkdown = markdown,
+                        loadedTitle = displayTitle,
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -155,6 +161,7 @@ class VaultNoteEditorViewModel(
                     isSaving = false,
                     isEditing = false,
                     loadedMarkdown = if (success) markdown else it.loadedMarkdown,
+                    loadedTitle = if (success) it.title else it.loadedTitle,
                 )
             }
             _events.tryEmit(
