@@ -47,6 +47,13 @@ data class UnixTimeUtc(val milliseconds: Long) : Comparable<UnixTimeUtc> {
         fun fromInstant(instant: Instant): UnixTimeUtc {
             return UnixTimeUtc(instant)
         }
+
+        /** The larger of two nullable timestamps; null only when both are null. */
+        fun later(a: UnixTimeUtc?, b: UnixTimeUtc?): UnixTimeUtc? {
+            if (a == null) return b
+            if (b == null) return a
+            return if (a >= b) a else b
+        }
     }
 
     val seconds: Long
