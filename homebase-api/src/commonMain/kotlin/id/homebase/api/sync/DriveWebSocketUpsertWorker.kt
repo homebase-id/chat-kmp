@@ -134,7 +134,7 @@ class DriveWebSocketUpsertWorker(
         }
 
         try {
-            val (_, upsertElapsed) = measureTimedValue {
+            val (written, upsertElapsed) = measureTimedValue {
                 fileHeaderProcessor.baseUpsertEntryZapZap(
                     identityId = identityId,
                     driveId = driveId,
@@ -142,14 +142,33 @@ class DriveWebSocketUpsertWorker(
                     cursor = null,
                 )
             }
+
+            // Emit only the rows that actually changed a DriveMainIndex record
+            // (passed the timestamp guard), not the raw incoming batch. A stale or
+            // duplicate server push — e.g. the half-stale `statisticsChanged`
+            // fan-out copy whose `updated` is older than what we already hold — is
+            // rejected by the guard and so is absent from `written`. Mapping the
+            // raw batch instead would paint that rejected payload into the UI for a
+            // frame (the reaction-highlight blink); honoring the guard here avoids
+            // it and also collapses the fan-out duplicates to the single row that
+            // won.
+            if (written.isEmpty()) {
+                Logger.i(tag = "WSPush") {
+                    "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed " +
+                        "— no rows changed (timestamp guard); skipping BatchReceived"
+                }
+                return
+            }
+
             Logger.i(tag = "WSPush") {
-                "WSPush: drainOnce drive=$driveId rows=${batch.size} took=$upsertElapsed (emitting BatchReceived)"
+                "WSPush: drainOnce drive=$driveId rows=${batch.size} wrote=${written.size} " +
+                    "took=$upsertElapsed (emitting BatchReceived)"
             }
 
             eventBus.emit(
                 BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    batchData = batch,
+                    batchData = written,
                 )
             )
         } catch (e: Exception) {

@@ -168,8 +168,8 @@ object MainIndexMetaHelpers {
             driveId: Uuid,
             fileHeaders: List<HomebaseFile>,
             cursor: QueryBatchCursor?
-        ) {
-            performBaseUpsert(identityId, driveId, fileHeaders, cursor)
+        ): List<HomebaseFile> {
+            return performBaseUpsert(identityId, driveId, fileHeaders, cursor)
         }
 
         /**
@@ -182,7 +182,12 @@ object MainIndexMetaHelpers {
             driveId: Uuid,
             fileHeaders: List<HomebaseFile>,
             cursor: QueryBatchCursor?
-        ) {
+        ): List<HomebaseFile> {
+            // The headers that actually changed a row (passed the DriveMainIndex
+            // timestamp guard, n > 0). Callers — notably DriveWebSocketUpsertWorker
+            // — emit BatchReceived from THIS list, not the raw incoming batch, so a
+            // stale/duplicate server push the guard rejected never reaches the UI.
+            val written = ArrayList<HomebaseFile>(fileHeaders.size)
             databaseManager.withWriteTransaction { db ->
 
                 fileHeaders.forEach { fileHeader ->
@@ -196,6 +201,8 @@ object MainIndexMetaHelpers {
                     // less or equal to the existing modified timestamp), we only want to update the
                     // TAGs if the record is "new"
                     if (n > 0L) {
+                        written.add(fileHeader)
+
                         db.driveTagIndexQueries.deleteByFile(
                             identityId = identityId,
                             driveId = driveId,
@@ -247,6 +254,7 @@ object MainIndexMetaHelpers {
                     }
                 }
             }
+            return written
         }
 
         /**
@@ -263,8 +271,8 @@ object MainIndexMetaHelpers {
             driveId: Uuid,
             fileHeader: HomebaseFile,
             cursor: QueryBatchCursor?
-        ) {
-            baseUpsertEntryZapZap(identityId, driveId, listOf(fileHeader), cursor)
+        ): List<HomebaseFile> {
+            return baseUpsertEntryZapZap(identityId, driveId, listOf(fileHeader), cursor)
         }
     }
 }

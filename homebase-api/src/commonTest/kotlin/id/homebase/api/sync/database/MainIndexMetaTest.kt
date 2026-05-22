@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.time.UnixTimeUtc
@@ -905,6 +906,125 @@ class MainIndexMetaTest {
             val totalRecords = dbm.driveMainIndex.countAll()
             assertEquals(
                 1L, totalRecords, "Should still have 1 record after fileId conflict update"
+            )
+        }
+    }
+
+    /**
+     * Blink fix (DB-return half): a stale push — older `updated` than what we
+     * already hold — is rejected by the DriveMainIndex timestamp guard, so it
+     * must NOT appear in the returned written list (callers emit BatchReceived
+     * from that list, so a rejected push never reaches the UI), and it must
+     * leave the existing row untouched.
+     */
+    @Test
+    fun performBaseUpsert_stalePush_returnsEmpty_andLeavesRowIntact() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val fileId = Uuid.random()
+            val uniqueId = Uuid.random()
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+
+            val current = makeHeader(
+                fileId, driveId, uniqueId,
+                updatedMs = 2_000L,
+                localReactions = listOf("""{"emoji":"👍"}"""),
+            )
+            assertEquals(1, processor.baseUpsertEntryZapZap(identityId, driveId, current, null).size)
+
+            // Older `updated`, and (like the half-stale statisticsChanged push)
+            // a localReactions that lags the current state.
+            val stale = makeHeader(
+                fileId, driveId, uniqueId,
+                updatedMs = 1_000L,
+                localReactions = emptyList(),
+            )
+            val written = processor.baseUpsertEntryZapZap(identityId, driveId, stale, null)
+
+            assertEquals(0, written.size, "a stale (older-updated) push must not be written")
+            val stored = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, driveId, uniqueId)
+            assertNotNull(stored)
+            assertEquals(
+                listOf("""{"emoji":"👍"}"""),
+                stored.fileMetadata.localAppData?.localReactions,
+                "the rejected stale push must not alter the stored row",
+            )
+        }
+    }
+
+    /**
+     * Build a minimal [HomebaseFile] with a controllable `updated` timestamp and
+     * an optional `localAppData.localReactions` mirror. localReactions == null
+     * mirrors a server/WS header (which never carries the local-only field).
+     */
+    private fun makeHeader(
+        fileId: Uuid,
+        driveId: Uuid,
+        uniqueId: Uuid,
+        updatedMs: Long,
+        localReactions: List<String>?,
+    ): HomebaseFile {
+        val json = """{
+            "fileId": "${fileId}",
+            "driveId": "${driveId}",
+            "fileState": "active",
+            "fileSystemType": "standard",
+            "serverFileIsEncrypted":"true",
+            "keyHeader" : {
+                "iv" : [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
+                "aesKey" : { "bytes" : [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] }
+            },
+            "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": $updatedMs,
+                "updated": $updatedMs,
+                "transitCreated": 0,
+                "transitUpdated": 0,
+                "serverFileIsEncrypted": true,
+                "senderOdinId": "test.sender",
+                "originalAuthor": "test.sender",
+                "appData": {
+                    "uniqueId": "${uniqueId}",
+                    "tags": null,
+                    "fileType": 1,
+                    "dataType": 1,
+                    "groupId": null,
+                    "userDate": $updatedMs,
+                    "content": "test content",
+                    "archivalStatus": 1
+                },
+                "localAppData": null,
+                "referencedFile": null,
+                "reactionPreview": null,
+                "versionTag": "1355aa19-2031-d800-403d-e8696a8be494",
+                "payloads": [],
+                "dataSource": null
+            },
+            "serverMetadata": {
+                "accessControlList": {
+                    "requiredSecurityGroup": "owner",
+                    "circleIdList": null,
+                    "odinIdList": null
+                },
+                "doNotIndex": false,
+                "allowDistribution": false,
+                "fileSystemType": "standard",
+                "fileByteCount": 1000,
+                "originalRecipientCount": 0,
+                "transferHistory": null
+            },
+            "priority": 300,
+            "fileByteCount": 1000
+        }"""
+        val base = OdinSystemSerializer.deserialize<HomebaseFile>(json)
+        return if (localReactions == null) {
+            base
+        } else {
+            base.copy(
+                fileMetadata = base.fileMetadata.copy(
+                    localAppData = LocalAppMetadata(localReactions = localReactions),
+                )
             )
         }
     }
