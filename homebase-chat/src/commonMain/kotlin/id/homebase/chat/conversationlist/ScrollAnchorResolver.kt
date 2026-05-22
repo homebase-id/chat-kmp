@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.util.ScrollPosition
 import kotlin.uuid.Uuid
 
 /**
@@ -56,4 +57,26 @@ internal fun resolveAnchorIndex(
         i++
     }
     return null
+}
+
+/**
+ * After a "scroll to latest" reload swaps the in-memory window to the newest
+ * page, the Pane's [androidx.compose.foundation.lazy.LazyListState] still
+ * points at the stale history index it had while the user was paged backwards.
+ * Produce an explicit bottom anchor (`triggerScroll = true`) at the last
+ * message so [id.homebase.chat.widget.ConversationMessagesPane]'s
+ * scroll-trigger effect jumps to the newest message instead of leaving the
+ * user mid-window. Returns `null` when there are no message rows to land on.
+ *
+ * Walks back from the end to the last [MessageListContentModel.Message] rather
+ * than using `lastIndex`: after the reload `hasNewerMessages` is false so there
+ * is no trailing `LoadingNewer` row, but this stays correct even if the model
+ * list ever ends in a separator or other non-message row.
+ */
+internal fun resolveScrollToLatestPosition(
+    messages: List<MessageListContentModel>,
+): ScrollPosition? {
+    val lastMessageIndex = messages.indexOfLast { it is MessageListContentModel.Message }
+    if (lastMessageIndex < 0) return null
+    return ScrollPosition(firstVisibleItemIndex = lastMessageIndex, triggerScroll = true)
 }

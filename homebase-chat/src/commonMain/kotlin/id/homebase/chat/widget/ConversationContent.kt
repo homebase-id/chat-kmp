@@ -1133,8 +1133,15 @@ fun ConversationContent(
                                     // Deep in history: the bottom of the loaded
                                     // window isn't the latest message, so a plain
                                     // animateScrollToItem(last) would land mid-history.
-                                    // Reload the latest page instead — the existing
-                                    // auto-follow then snaps the user to the bottom.
+                                    // Reload the latest page instead — the VM marks
+                                    // the reload pending-scroll-to-latest and the
+                                    // resulting emission carries a triggerScroll
+                                    // bottom anchor (resolveScrollToLatestPosition)
+                                    // that ConversationMessagesPane scrolls to.
+                                    // (Auto-follow can't do this: it only fires on
+                                    // list growth while already at the bottom, but
+                                    // this reload shrinks the window from up in
+                                    // history.)
                                     onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
                                 } else {
                                     coroutineScope.launch {
