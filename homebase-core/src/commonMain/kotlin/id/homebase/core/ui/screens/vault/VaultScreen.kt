@@ -146,6 +146,7 @@ fun VaultScreen(
         onDispose { viewModel.onAction(VaultUiAction.CloseOverlay) }
     }
 
+    @Suppress("DEPRECATION")
     BackHandler(enabled = uiState.fullScreenOverlay != null) {
         viewModel.onAction(VaultUiAction.CloseOverlay)
     }
