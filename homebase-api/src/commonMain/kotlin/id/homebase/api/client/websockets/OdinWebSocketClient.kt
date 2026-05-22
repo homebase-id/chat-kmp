@@ -259,7 +259,16 @@ class OdinWebSocketClient(
         client.webSocket(
             urlString = wsUrl,
             request = {
-                headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
+                // Two appends, not one comma-joined string. The browser WebSocket
+                // constructor (Ktor JS/wasm engine) validates each subprotocol
+                // value against the RFC 7230 token grammar; a single
+                // "odin.notify.v1, $bearer" value fails because the space after
+                // the comma is not a valid tchar, throwing SyntaxError before
+                // any network I/O. The JVM/Darwin/OkHttp engines tolerate the
+                // joined form by writing it raw to the wire — appending each
+                // value separately works on every engine.
+                headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1")
+                headers.append(HttpHeaders.SecWebSocketProtocol, bearer)
             }
         ) {
             session = this
