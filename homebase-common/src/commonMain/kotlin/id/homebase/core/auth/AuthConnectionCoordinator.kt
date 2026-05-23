@@ -2,8 +2,6 @@ package id.homebase.core.auth
 
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
-import id.homebase.api.PlatformType
-import id.homebase.api.getPlatform
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
@@ -298,27 +296,6 @@ class AuthConnectionCoordinator(
                 Logger.i(tag = "AuthLifecycle") { "AuthCC: WS[${it.instanceId}] created, start() invoked" }
                 it.start()
             }
-
-        // --- WEB-ONLY: WS-independent initial sync (easy to remove; gated on JS) -----------------
-        // On web the WebSocket handshake can't authenticate yet (browsers can't set the BX0900
-        // cookie header), so onConnected never fires and the initial driveSyncManager.syncAll()
-        // above never runs — leaving the local DB empty and the conversation list showing only
-        // "Note to Self". Kick the same HTTP sync directly here. No-op on every other platform.
-        // (processAllInboxes() is intentionally skipped — it rides the WS, which isn't connected.)
-        if (getPlatform().name == PlatformType.JS) {
-            scope.launch {
-                try {
-                    driveSyncManager.start()
-                    driveSyncManager.syncAll()
-                    Logger.i(tag = "AuthLifecycle") { "AuthCC: web HTTP initial syncAll() done (no WS)" }
-                } catch (e: Exception) {
-                    Logger.e(throwable = e, tag = "AuthLifecycle") { "AuthCC: web initial syncAll() failed" }
-                } finally {
-                    _connectionState.update { it.copy(isConnecting = false) }
-                }
-            }
-        }
-        // --- END WEB-ONLY ------------------------------------------------------------------------
     }
 
     fun setForeground(foreground: Boolean) {
