@@ -265,7 +265,15 @@ class OdinWebSocketClient(
         // two subprotocol values: the application protocol (which the server must
         // echo back in the 101) and a bearer credential of the form
         // odin.bearer.<base64url(33-byte App ClientAuthToken)>.
-        val bearer = "odin.bearer.${creds.clientAccessToken}"
+        //
+        // clientAccessToken is STANDARD base64 (see YouAuthProvider). A Sec-WebSocket-Protocol
+        // value must be an RFC 7230 token, and '/' — which standard base64 emits for ~50% of
+        // 33-byte tokens — is not a legal token char, so the browser's WebSocket constructor
+        // throws SyntaxError before connecting (proven against Chromium). Convert to base64url
+        // (no padding); the server reverses it via Base64UrlToBase64. Native engines happened to
+        // tolerate standard base64, but the wire value must be base64url for the browser/wasm path.
+        val bearerToken = creds.clientAccessToken.replace('+', '-').replace('/', '_').trimEnd('=')
+        val bearer = "odin.bearer.$bearerToken"
 
         client.webSocket(
             urlString = wsUrl,
