@@ -144,6 +144,10 @@ actual object FFmpegUtils {
         val widthPx = videoStream?.width ?: 0
         val heightPx = videoStream?.height ?: 0
         val codecMime = videoStream?.codec  // ffprobe short form, e.g. "h264"
+        // ffprobe reports raw container dims; rotation rides on the side-data
+        // displaymatrix. Planner needs both so portrait phone captures don't
+        // get a landscape scale filter and end up squished.
+        val rotation = videoStream?.rotation ?: 0
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
@@ -164,6 +168,7 @@ actual object FFmpegUtils {
                 probedCodecMime = codecMime,
                 inputDurationMs = durationMs,
                 inputBytes = inputBytes,
+                rotationDegrees = rotation,
                 encoder = encoder,
             )
 

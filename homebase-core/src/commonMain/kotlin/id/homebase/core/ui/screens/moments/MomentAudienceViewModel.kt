@@ -116,6 +116,7 @@ class MomentAudienceViewModel(
                     mediaInfoByAttachment = draft.attachments
                         .map { it.toMediaInfo() }
                         .takeIf { list -> list.any { it != null } },
+                    commentsEnabled = state.commentsEnabled,
                 )
                 // recordUsed is fire-and-forget on the lookup service's own
                 // singleton scope — see its KDoc. Calling it from

@@ -73,6 +73,15 @@ object FfmpegCompressPlanner {
      * @param inputDurationMs source video duration in milliseconds (for bitrate calc).
      *   Pass ≤0 if unknown — already-optimal short-circuit will not fire.
      * @param inputBytes source file size in bytes (for bitrate calc)
+     * @param rotationDegrees source video rotation flag (0/90/180/270 or
+     *   ±90/±270). Phone camera captures expose raw container dims to probes
+     *   (e.g. 1920×1080 + rotation=90 for a portrait video); FFmpeg's default
+     *   auto-rotate decodes those into the display orientation (1080×1920)
+     *   before the scale filter runs. So the planner has to reason in display
+     *   space too — when |rotation%180|=90, probedWidth and probedHeight are
+     *   swapped before any dim math. Otherwise a portrait video gets the
+     *   landscape scale target, squishing the decoded frames into the wrong
+     *   aspect.
      * @param encoder ffmpeg encoder name. Defaults to `"libx264"`; iOS passes
      *   `"h264_videotoolbox"` first and falls back to libx264 on failure
      */
@@ -87,28 +96,34 @@ object FfmpegCompressPlanner {
         probedCodecMime: String?,
         inputDurationMs: Long,
         inputBytes: Long,
+        rotationDegrees: Int = 0,
         encoder: String = "libx264",
     ): FfmpegCompressPlan {
+        // Reason in display dims from here on — FFmpeg auto-rotate has already
+        // swapped them by the time the scale filter sees the frames.
+        val swapDims = kotlin.math.abs(((rotationDegrees % 360) + 360) % 360) % 180 == 90
+        val displayWidthPx = if (swapDims) probedHeightPx else probedWidthPx
+        val displayHeightPx = if (swapDims) probedWidthPx else probedHeightPx
         val targets = quality.targets()
         val hasTrim = trimStartMs != null && trimEndMs != null
 
         // Already-optimal short-circuit: skip ffmpeg entirely. Trim forces
         // re-encode (the trim points are precise only with a real encode pass).
         if (!hasTrim && isAlreadyOptimal(
-                probedCodecMime, probedWidthPx, probedHeightPx,
+                probedCodecMime, displayWidthPx, displayHeightPx,
                 inputBytes, inputDurationMs, targets,
             )
         ) {
             return FfmpegCompressPlan(
                 args = emptyList(),
                 skipReason = "input already optimal " +
-                    "(codec=$probedCodecMime, ${probedWidthPx}x${probedHeightPx}, " +
+                    "(codec=$probedCodecMime, ${displayWidthPx}x${displayHeightPx}, " +
                     "${inputDurationMs}ms, ${inputBytes}B, quality=$quality)",
                 outputDims = null,
             )
         }
 
-        val outDims = computeOutputDims(probedWidthPx, probedHeightPx, targets.shortEdgePx)
+        val outDims = computeOutputDims(displayWidthPx, displayHeightPx, targets.shortEdgePx)
         val scaleArgs = if (outDims != null) {
             // Explicit W:H — sidesteps the comma-escaping landmine that an
             // expression-based filter (`scale=min(N,iw):-2`) hits when fed
@@ -144,7 +159,9 @@ object FfmpegCompressPlanner {
         return FfmpegCompressPlan(
             args = args,
             skipReason = null,
-            outputDims = outDims ?: (probedWidthPx to probedHeightPx),
+            // Encoded frames come out post-rotation, so the reported output
+            // dims are the display ones (not the pre-rotation probe values).
+            outputDims = outDims ?: (displayWidthPx to displayHeightPx),
         )
     }
 

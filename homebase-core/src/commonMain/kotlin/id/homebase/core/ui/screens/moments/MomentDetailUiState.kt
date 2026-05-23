@@ -118,6 +118,37 @@ data class MomentDetailUiState(
      * is empty.
      */
     val recipientAvatars: List<RecipientBaseUiModel> = emptyList(),
+
+    /**
+     * Whether the "who reacted" bottom sheet is open. Opening it triggers
+     * an on-demand fetch via `MomentActionService.getReactionsForMoment` so
+     * the sheet only pays the round-trip when the user actually asks. The
+     * chips above the sheet keep using `moment.reactionPreview`, which is
+     * already live-updated by the feed.
+     */
+    val showReactionsSheet: Boolean = false,
+
+    /** True while a reaction-list fetch is in flight. */
+    val isReactionsLoading: Boolean = false,
+
+    /**
+     * Per-reactor rows for the bottom sheet — one entry per (odinId, emoji)
+     * pair returned by the server. Resolved against the user's contact list
+     * for display names so the sheet matches chat's MessageInfo "Reactions"
+     * section visually and semantically.
+     */
+    val reactions: List<MomentReactionUiModel> = emptyList(),
+)
+
+/**
+ * One row in the "who reacted" bottom sheet. Shape mirrors chat's
+ * `ReactionUiModel` in MessageInfoUiState — same fields, same render — but
+ * lives in the moments namespace so the surfaces can evolve independently.
+ */
+data class MomentReactionUiModel(
+    val odinId: OdinId,
+    val displayName: String,
+    val emoji: String,
 )
 
 /**
@@ -241,6 +272,12 @@ sealed interface MomentDetailUiAction {
      * platform share sheet.
      */
     data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
+
+    /** Open the "who reacted" bottom sheet and fetch the reactor list. */
+    data object OpenReactionsSheet : MomentDetailUiAction
+
+    /** Dismiss the "who reacted" bottom sheet. */
+    data object DismissReactionsSheet : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {

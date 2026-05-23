@@ -28,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -535,11 +534,14 @@ private fun MomentPostCard(
             )
         }
 
-        // Overlay indicators in the bottom-right of the thumbnail. Info badge
-        // signals the moment has a description; lock badge signals the moment
-        // was kept private (no recipients). Absence of the lock implies the
-        // moment was shared — that's the common case, so we don't crowd the
-        // tile with a "shared" icon.
+        // Bottom-right: engagement strip + lock indicator. Engagement strip
+        // surfaces top reaction emoji + comment count from
+        // `moment.reactionPreview` (kept fresh by MomentsFeedService
+        // incremental updates) and renders nothing when empty. The lock badge
+        // signals a private moment (no recipients) — absence implies shared,
+        // which is the common case. Both live on the right so the bottom-left
+        // stays clear of the video duration label rendered by
+        // MomentMediaItem.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -547,9 +549,7 @@ private fun MomentPostCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (moment.description.isNotBlank()) {
-                IndicatorBadge(Icons.Outlined.Info)
-            }
+            EngagementStrip(summary = moment.reactionPreview)
             if (moment.isPrivate(selfOdinId)) {
                 IndicatorBadge(
                     imageVector = Icons.Outlined.Lock,
@@ -557,18 +557,6 @@ private fun MomentPostCard(
                 )
             }
         }
-
-        // Bottom-left: live engagement strip — top reaction emoji + comment
-        // count. Reads `moment.reactionPreview` (kept fresh by
-        // MomentsFeedService incremental updates), so reactions/comments
-        // arriving from another device update without a refresh. Hidden when
-        // there's nothing to surface so empty moments stay clean.
-        EngagementStrip(
-            summary = moment.reactionPreview,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp),
-        )
 
         // Action sheet for a permanently-failed upload. Only the
         // permanent-Failed overlay surfaces the tap that flips
@@ -784,8 +772,8 @@ private fun IndicatorBadge(
  *  - Renders nothing when both reactions and comments are absent — empty
  *    moments stay visually quiet.
  *
- * Lives on the bottom-left so it balances the existing info/lock indicators
- * in the bottom-right without crowding either.
+ * Lives on the bottom-right alongside the lock badge, leaving the bottom-left
+ * clear for the video duration label rendered by MomentMediaItem.
  */
 @Composable
 private fun EngagementStrip(
