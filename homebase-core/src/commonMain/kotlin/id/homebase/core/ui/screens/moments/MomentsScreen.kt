@@ -1,11 +1,16 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,12 +54,17 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -83,6 +93,9 @@ import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import id.homebase.core.util.isDesktop
 import id.homebase.resources.MR
 import kotlin.time.Instant
@@ -170,6 +183,7 @@ fun MomentsScreen(
             hasDriveError = uiState.hasDriveError,
             onCreateMoment = onCreateMoment,
             onProfileClick = onProfileClick,
+            onAddReaction = viewModel::addReaction,
             onDeleteFailedMoment = viewModel::deleteFailedMoment,
             onDismissUpload = viewModel::dismissUpload,
         )
@@ -184,6 +198,7 @@ fun MomentsScreen(
             onCreateMoment = onCreateMoment,
             onProfileClick = onProfileClick,
             onOpenMoment = onOpenMoment,
+            onAddReaction = viewModel::addReaction,
             onDeleteFailedMoment = viewModel::deleteFailedMoment,
             onDismissUpload = viewModel::dismissUpload,
         )
@@ -202,6 +217,7 @@ private fun CompactMomentsLayout(
     onCreateMoment: () -> Unit,
     onProfileClick: () -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
 ) {
@@ -238,6 +254,7 @@ private fun CompactMomentsLayout(
                 uploadProgress = uploadProgress,
                 selfOdinId = ownerSession?.odinId,
                 onOpenMoment = onOpenMoment,
+                onAddReaction = onAddReaction,
                 openLabel = openLabel,
                 selectedMomentId = null,
                 onDeleteFailedMoment = onDeleteFailedMoment,
@@ -275,6 +292,7 @@ private fun WideMomentsLayout(
     hasDriveError: Boolean,
     onCreateMoment: () -> Unit,
     onProfileClick: () -> Unit,
+    onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
 ) {
@@ -342,6 +360,7 @@ private fun WideMomentsLayout(
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
                     },
+                    onAddReaction = onAddReaction,
                     openLabel = openLabel,
                     selectedMomentId = selectedMomentId,
                     onDeleteFailedMoment = onDeleteFailedMoment,
@@ -393,6 +412,7 @@ private fun MomentsFeedList(
     uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
     selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    onAddReaction: (Uuid, String) -> Unit,
     openLabel: String,
     selectedMomentId: Uuid?,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
@@ -416,9 +436,7 @@ private fun MomentsFeedList(
                 selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { onOpenMoment(moment.id.toString(), null) },
-                onMediaClick = { payloadKey ->
-                    onOpenMoment(moment.id.toString(), payloadKey)
-                },
+                onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
@@ -435,7 +453,7 @@ private fun MomentPostCard(
     selfOdinId: OdinId?,
     isSelected: Boolean,
     onCardClick: () -> Unit,
-    onMediaClick: (payloadKey: String) -> Unit,
+    onAddReaction: (emoji: String) -> Unit,
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
     onDismissUpload: () -> Unit,
@@ -446,9 +464,64 @@ private fun MomentPostCard(
     // implications, no need to survive process death).
     var failedSheetOpen by remember { mutableStateOf(false) }
     val failedSheetState = rememberModalBottomSheetState()
+
+    // Floating-emoji feedback for double/triple-tap reactions. Set on tap,
+    // cleared by [floatingEmojiHideJob] after the animation finishes. Job
+    // is cancelled on a follow-up tap so the next emoji re-triggers cleanly.
+    var floatingEmoji by remember { mutableStateOf<String?>(null) }
+    var floatingEmojiHideJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun showFloatingEmoji(emoji: String) {
+        floatingEmoji = emoji
+        floatingEmojiHideJob?.cancel()
+        floatingEmojiHideJob = scope.launch {
+            delay(FloatingEmojiHideDelayMs)
+            floatingEmoji = null
+        }
+    }
+
+    // Multi-tap state lives at the composable level (not inside
+    // pointerInput's coroutine) so the dispatch coroutine is hosted by the
+    // composable's lifecycle and is not coupled to detector restarts.
+    var tapCount by remember { mutableStateOf(0) }
+    var dispatchJob by remember { mutableStateOf<Job?>(null) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            // Single multi-tap detector handles all taps:
+            // 1 tap → open detail (dispatch is delayed ≈[MultiTapTimeoutMs]
+            //   so we can disambiguate from double/triple),
+            // 2 taps → heart reaction + floating-emoji feedback,
+            // 3 taps → flame reaction + floating-emoji feedback.
+            // Works on the media area because [MomentMediaGallery] is now
+            // told `onMediaClick = null`, which keeps the inner per-cell
+            // pointer detectors uninstalled and lets taps reach this Box.
+            .pointerInput(moment.id) {
+                detectTapGestures(
+                    onTap = {
+                        tapCount += 1
+                        dispatchJob?.cancel()
+                        dispatchJob = scope.launch {
+                            delay(MultiTapTimeoutMs)
+                            val resolved = tapCount
+                            tapCount = 0
+                            when (resolved) {
+                                1 -> onCardClick()
+                                2 -> {
+                                    showFloatingEmoji(HeartEmoji)
+                                    onAddReaction(HeartEmoji)
+                                }
+                                else -> if (resolved >= 3) {
+                                    showFloatingEmoji(FlameEmoji)
+                                    onAddReaction(FlameEmoji)
+                                }
+                            }
+                        }
+                    },
+                )
+            }
             .padding(horizontal = 16.dp)
             .clip(MaterialTheme.shapes.large)
             // Selected ring shows up in wide-screen mode where the right pane
@@ -458,12 +531,14 @@ private fun MomentPostCard(
                 if (isSelected) MaterialTheme.colorScheme.primaryContainer
                 else Color.Transparent,
             )
-            // Card-level clickable handles taps that aren't on a media cell
-            // (overlay indicators, padding, description-only tiles). The
-            // gallery's per-cell onMediaClick consumes cell taps and routes
-            // them through with the payload key so the detail carousel can
-            // land on the specific page the user picked.
-            .clickable(onClick = onCardClick, onClickLabel = onClickLabel),
+            // Talkback / accessibility services need a click action because
+            // the raw pointerInput above isn't visible to them.
+            .semantics {
+                onClick(label = onClickLabel) {
+                    onCardClick()
+                    true
+                }
+            },
     ) {
         if (moment.payloads.isEmpty()) {
             // Description-only / corrupt-payload moment — still render a tile so
@@ -495,7 +570,11 @@ private fun MomentPostCard(
                     downloadingFiles = emptySet(),
                     sharedTransitionScope = null,
                     animatedVisibilityScope = null,
-                    onMediaClick = { payload -> onMediaClick(payload.key) },
+                    // Inner per-cell click handlers stay disabled in the feed
+                    // so the card-level multi-tap detector receives all taps
+                    // — that's what makes double/triple-tap-to-react work on
+                    // the media area itself (Instagram-style).
+                    onMediaClick = null,
                     isUploading = uploadStatus != null,
                 )
 
@@ -557,6 +636,16 @@ private fun MomentPostCard(
                 )
             }
         }
+
+        // Floating-emoji overlay: pops + fades in when a double/triple-tap
+        // lands a reaction, then fades back out via [floatingEmojiHideJob].
+        // Sits centered on the card so the user sees clear confirmation that
+        // their multi-tap registered. Drawn after all other overlays so it
+        // lands on top of media + badges.
+        FloatingReactionOverlay(
+            emoji = floatingEmoji,
+            modifier = Modifier.align(Alignment.Center),
+        )
 
         // Action sheet for a permanently-failed upload. Only the
         // permanent-Failed overlay surfaces the tap that flips
@@ -835,3 +924,62 @@ private const val MaxTopEmoji = 3
 private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
+
+private const val HeartEmoji = "❤️"
+private const val FlameEmoji = "🔥"
+
+// Multi-tap disambiguation window. Slightly longer than Android's stock
+// double-tap timeout (~300ms) so the third tap of a triple-tap has comfortable
+// headroom on slower devices; short enough that single-tap-to-open doesn't
+// feel laggy.
+private const val MultiTapTimeoutMs = 320L
+private const val FloatingEmojiHideDelayMs = 700L
+private const val FloatingEmojiFontSize = 96
+private const val FloatingEmojiInitialScale = 0.4f
+
+/**
+ * Animated reaction confirmation. Pops in with a spring scale + fade when
+ * [emoji] becomes non-null, then fades out when the parent clears it. We
+ * remember the last non-null emoji so the glyph stays visible through the
+ * exit transition (otherwise AnimatedVisibility unmounts the slot too early
+ * and the fade-out is empty).
+ */
+@Composable
+private fun FloatingReactionOverlay(
+    emoji: String?,
+    modifier: Modifier = Modifier,
+) {
+    var displayedEmoji by remember { mutableStateOf<String?>(null) }
+    if (emoji != null && emoji != displayedEmoji) {
+        displayedEmoji = emoji
+    }
+    val visible = emoji != null
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else FloatingEmojiInitialScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "floating-emoji-scale",
+    )
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(120)) +
+            scaleIn(initialScale = FloatingEmojiInitialScale),
+        exit = fadeOut(animationSpec = tween(180)) +
+            scaleOut(targetScale = FloatingEmojiInitialScale),
+        modifier = modifier,
+    ) {
+        val glyph = displayedEmoji
+        if (glyph != null) {
+            Text(
+                text = glyph,
+                fontSize = FloatingEmojiFontSize.sp,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+            )
+        }
+    }
+}

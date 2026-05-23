@@ -10,6 +10,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentsFeedService
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
@@ -36,6 +37,7 @@ class MomentsFeedViewModel(
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
     private val optimisticWriter: OptimisticWriter,
+    private val actionService: MomentActionService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MomentsFeedUiState())
@@ -74,6 +76,26 @@ class MomentsFeedViewModel(
      * `OptimisticRollback` it emits is what `MomentsFeedService` is now
      * subscribed to for removing from the in-memory feed.
      */
+    /**
+     * Fire-and-forget reaction toggle from the feed (double/triple-tap
+     * gestures on a moment card). Uses the same toggle semantics as the
+     * detail screen — tap-to-add, tap-again-to-remove — so the visual
+     * pulse in [id.homebase.core.ui.screens.moments.MomentsScreen] is the
+     * user's confirmation that their tap registered, not a strict "added"
+     * signal.
+     */
+    fun addReaction(momentId: Uuid, emoji: String) {
+        viewModelScope.launch {
+            try {
+                actionService.toggleReactionOnMoment(momentId, emoji)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "addReaction failed for moment=$momentId emoji=$emoji: ${t.message}"
+                }
+            }
+        }
+    }
+
     fun deleteFailedMoment(momentId: Uuid) {
         viewModelScope.launch {
             try {

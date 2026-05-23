@@ -162,8 +162,14 @@ private fun SingleImageLayout(
         // when source aspect matches the box).
         preserveAspectRatio = false,
         shape = RectangleShape,
-        onClick = { onMediaClick?.invoke(payload) },
-        onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
+        // Preserve nullability so MomentMediaItem only installs its inner
+        // pointerInput when there's an actual click/long-press handler.
+        // Wrapping a nullable handler in a non-null `{ onMediaClick?.invoke(...) }`
+        // lambda made the item *always* register a pointer detector that
+        // silently consumed taps — which broke the feed's card-level
+        // multi-tap detector. Same pattern at the other layout call sites.
+        onClick = onMediaClick?.let { handler -> { handler(payload) } },
+        onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
         isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
@@ -261,8 +267,8 @@ private fun ThreeImageLayout(
             imageSize = ImageSize.THUMB_MEDIUM,
             preserveAspectRatio = false,
             shape = RectangleShape,
-            onClick = { onMediaClick?.invoke(payloads[2]) },
-            onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
+            onClick = onMediaClick?.let { handler -> { handler(payloads[2]) } },
+            onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payloads[2], offset) } },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
             isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}"),
@@ -344,8 +350,8 @@ private fun FourPlusImageLayout(
                     imageSize = ImageSize.THUMB_MEDIUM,
                     preserveAspectRatio = false,
                     shape = RectangleShape,
-                    onClick = { onMediaClick?.invoke(payloads[3]) },
-                    onLongPress = { offset -> onMediaLongPress?.invoke(payloads[3], offset) },
+                    onClick = onMediaClick?.let { handler -> { handler(payloads[3]) } },
+                    onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payloads[3], offset) } },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     isDownloading = downloadingFiles.contains("${messageId}_${payloads[3].key}"),
@@ -399,8 +405,8 @@ private fun SquareCell(
         // Default crop is correct: square cell, image cropped to fill.
         preserveAspectRatio = false,
         shape = RectangleShape,
-        onClick = { onMediaClick?.invoke(payload) },
-        onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
+        onClick = onMediaClick?.let { handler -> { handler(payload) } },
+        onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
         isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
