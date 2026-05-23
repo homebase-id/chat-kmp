@@ -123,6 +123,10 @@ actual object FFmpegUtils {
         val sourceDurationMs = getDurationMs(inputPath)
         val inputBytes = inputFile.length()
         val probe = probeVideoTrackViaFfprobe(inputPath)
+        // ffprobe reports raw container dims; rotation rides on the side-data
+        // displaymatrix. Planner needs both so portrait phone captures don't
+        // get a landscape scale filter and end up squished.
+        val rotation = getRotationFromFile(inputPath)
         val effectiveDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
             (effectiveTrimEnd - effectiveTrimStart).coerceAtLeast(1L)
         } else {
@@ -141,6 +145,7 @@ actual object FFmpegUtils {
             probedCodecMime = probe.codec,
             inputDurationMs = sourceDurationMs,
             inputBytes = inputBytes,
+            rotationDegrees = rotation,
         )
 
         if (plan.skipReason != null) {
