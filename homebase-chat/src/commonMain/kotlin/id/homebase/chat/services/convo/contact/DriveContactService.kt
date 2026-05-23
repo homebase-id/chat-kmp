@@ -89,7 +89,9 @@ class DriveContactService(
                 // Both branches scope.launch { refresh() } — never call refresh() inline:
                 // QueryBatch hangs on partial connectivity, which would park the EventBus
                 // buffer and cascade into stalling the chat Send path.
-                if (event is BackendEvent.DriveEvent.Stopped &&
+                if (event is BackendEvent.SessionEnded) {
+                    reset()
+                } else if (event is BackendEvent.DriveEvent.Stopped &&
                     event.driveId == contactDrive &&
                     event.totalCount > 0
                 ) {
@@ -105,6 +107,18 @@ class DriveContactService(
     }
 
     private var startJob: Job? = null
+
+    /**
+     * Logout: cancel any in-flight refresh and drop the previous identity's
+     * contacts. ContactService (which combines this flow) re-emits empty
+     * automatically. The next session repopulates via the contact-drive sync.
+     */
+    fun reset() {
+        startJob?.cancel()
+        startJob = null
+        _contacts.value = emptyList()
+        contactByOdinId.value = emptyMap()
+    }
 
     fun start() {
         if (startJob?.isActive == true) return

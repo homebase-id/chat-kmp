@@ -197,6 +197,11 @@ class ConversationStream(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop the previous identity's conversation list so it
+                    // doesn't linger on the login screen or bleed into the next
+                    // session. The DB is wiped concurrently by logout(); this clears
+                    // the in-memory mirror. start() reloads cold on the next login.
+                    is BackendEvent.SessionEnded -> reset()
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")

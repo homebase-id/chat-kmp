@@ -78,6 +78,8 @@ class MomentsFeedService(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop the previous identity's moments feed.
+                    is BackendEvent.SessionEnded -> reset()
                     is BackendEvent.DataEvent.BatchReceived -> {
                         if (event.driveId != drive) return@collect
                         processIncrementalBatch(event.batchData)
@@ -228,6 +230,16 @@ class MomentsFeedService(
 
     private fun emitSorted() {
         _feed.value = byId.values.sortedByDescending { it.userDateMs }
+    }
+
+    /**
+     * Logout: drop the previous identity's moments. `started` is intentionally
+     * left set — the app-scoped eventBus collector stays alive and repopulates
+     * from the next session's moments-drive sync (DriveEvent.Stopped).
+     */
+    fun reset() {
+        byId.clear()
+        _feed.value = emptyList()
     }
 }
 

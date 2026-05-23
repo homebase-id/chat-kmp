@@ -1,5 +1,8 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.File
@@ -15,7 +18,7 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class LocalAttachmentContextStoreFileExistenceTest {
 
-    private val store = LocalAttachmentContextStore()
+    private val store = LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob()))
     private val messageId = Uuid.random()
     private val payloadKey = "vlt_pg_00"
 
