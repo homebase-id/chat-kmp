@@ -58,4 +58,7 @@ actual object FFmpegUtils {
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String = fileName
 
     actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean = false
+
+    // No ffmpeg on the web stub — version is undeterminable.
+    actual suspend fun getFfmpegVersion(): String? = null
 }

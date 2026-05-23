@@ -1,5 +1,6 @@
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -39,11 +40,11 @@ kotlin {
 
     jvm()
 
-//    @OptIn(ExperimentalWasmDsl::class)
-//    wasmJs {
-//        browser()
-//        binaries.executable()
-//    }
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        binaries.executable()
+    }
 
     // For iOS targets, this is also where you should
     // configure native binary output. For more information, see:
@@ -150,9 +151,9 @@ kotlin {
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).
-//        wasmJsMain.dependencies {
-//            implementation(libs.ktor.client.js)
-//        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+        }
     }
 
     targets.all {

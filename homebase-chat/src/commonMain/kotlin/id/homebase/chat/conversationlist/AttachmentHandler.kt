@@ -16,14 +16,9 @@ import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
 import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_message_audio_recording_help
-import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.cacheDir
-import io.github.vinceglb.filekit.delete
-import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.write
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -472,9 +467,8 @@ internal class AttachmentHandler(
     fun handleStartRecording(action: ConversationListUiAction.StartRecording) {
         scope.launch {
             try {
-                val file = PlatformFile(
-                    base = FileKit.filesDir,
-                    child = "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
+                val file = newRecordingFile(
+                    "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
                 )
                 audioRecorder.startRecording(file.toString())
                 messagesUiState.update {
@@ -512,11 +506,10 @@ internal class AttachmentHandler(
                             1000,
                             200
                         )
-                        waveFormImageFile = PlatformFile(
-                            FileKit.cacheDir,
+                        waveFormImageFile = newWaveformCacheFile(
                             "waveform-${Uuid.generateV4()}.png"
                         )
-                        waveFormImageFile.write(waveFormImageBytes)
+                        waveFormImageFile.writeBytesCompat(waveFormImageBytes)
                     } catch (e: Exception) {
                         Logger.e("Failed to generate waveform", e)
                     }
@@ -547,7 +540,7 @@ internal class AttachmentHandler(
         scope.launch {
             try {
                 audioRecorder.stopRecording()
-                messagesUiState.value.recordingData?.file?.delete(mustExist = false)
+                messagesUiState.value.recordingData?.file?.deleteCompat(mustExist = false)
             } catch (_: Exception) {
                 // ignore
             }

@@ -1,6 +1,8 @@
 package id.homebase.api.client.websockets
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.PlatformType
+import id.homebase.api.getPlatform
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.TargetDrive
@@ -8,7 +10,6 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
-import id.homebase.api.crypto.Base64UrlEncoder
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
@@ -246,7 +247,17 @@ class OdinWebSocketClient(
 
         _connectionState.value = WebSocketState.Connecting
 
-        val wsUrl = "wss://${identity}/api/v2/notify/ws-token"
+        // Browsers always use HTTP/2 WebSocket upgrades (RFC 8441 Extended
+        // CONNECT) when the server advertises h2; native engines (CIO/OkHttp/
+        // Darwin) always use HTTP/1.1 GET + Upgrade. The two methods need
+        // different route attributes on the server ([AcceptVerbs("GET",
+        // "CONNECT")] vs [HttpGet]) and the two attribute sets each break the
+        // other transport in subtle ways — so the server exposes the same
+        // controller body behind two route URLs and we pick the right one per
+        // platform.
+        val isWasm = getPlatform().name == PlatformType.JS
+        val wsRoute = if (isWasm) "ws-token-wasm" else "ws-token"
+        val wsUrl = "wss://${identity}/api/v2/notify/$wsRoute"
         Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
 
         // Auth for the v2 ws-token route is carried on the WebSocket upgrade itself
@@ -259,7 +270,29 @@ class OdinWebSocketClient(
         client.webSocket(
             urlString = wsUrl,
             request = {
-                headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
+                // Single comma-joined value, no whitespace. Two earlier
+                // attempts failed:
+                //   - "odin.notify.v1, $bearer" (with space) crashes the Ktor
+                //     JS engine: it splits the header on ',' and passes the
+                //     tokens to new WebSocket(url, protocols); " odin.bearer.*"
+                //     has a leading space, violates the RFC 7230 token grammar,
+                //     and the browser throws SyntaxError pre-flight.
+                //   - Two headers.append(...) calls fixes the browser but on
+                //     CIO/OkHttp emits two separate Sec-WebSocket-Protocol
+                //     header lines; ASP.NET Core's WebSocketRequestedProtocols
+                //     reads only the first and the controller sees no bearer
+                //     value → 401.
+                // The no-space single-string form is the only variant that
+                // produces one wire-format header on every engine AND parses
+                // cleanly in the browser's WebSocket constructor.
+                if(isWasm)
+                {
+                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1")
+                    headers.append(HttpHeaders.SecWebSocketProtocol, bearer)
+                }
+                else {
+                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
+                }
             }
         ) {
             session = this

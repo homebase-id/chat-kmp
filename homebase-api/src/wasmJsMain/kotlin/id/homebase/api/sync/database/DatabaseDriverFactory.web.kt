@@ -31,18 +31,10 @@ import app.cash.sqldelight.db.SqlDriver
  */
 @Suppress(names = ["EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING"])
 actual class DatabaseDriverFactory {
-    actual fun createDriver(passphrase: String?): SqlDriver {
-        TODO(
-            "wasmJs driver not yet wired. To finish:\n" +
-                " 1. Uncomment `wasmJsMain.dependencies { implementation(libs.sqldelight.web.worker.driver) }`\n" +
-                "    in homebase-api/build.gradle.kts (paired with `wasmJs { browser() }`).\n" +
-                " 2. Drop `sqljs.worker.js` + `sql-wasm.wasm` into webApp's served assets\n" +
-                "    (webApp/src/wasmJsMain/resources/), copying from @cashapp/sqldelight-sqljs-worker.\n" +
-                " 3. Replace this TODO with:\n" +
-                "      val worker = Worker(js(\"new URL('sqljs.worker.js', import.meta.url)\"))\n" +
-                "      return WebWorkerDriver(worker).also { OdinDatabase.Schema.create(it) }"
-        )
-    }
+    // [initWebSqlJs] must have completed (awaited from the web entry point) before this is called,
+    // so the in-memory sql.js database already exists. The `passphrase` is ignored — sql.js has no
+    // SQLCipher equivalent (CLAUDE.md: "SQLite will be in-memory, no SQLCipher").
+    actual fun createDriver(passphrase: String?): SqlDriver = WebSqlDriver()
 
     // sql.js is in-memory only — no on-disk file to report. Empty string
     // causes `deleteDatabaseFiles` to short-circuit, which is correct: there

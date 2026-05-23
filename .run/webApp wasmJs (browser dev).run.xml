@@ -1,0 +1,24 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="webApp wasmJs (browser dev)" type="GradleRunConfiguration" factoryName="Gradle">
+    <ExternalSystemSettings>
+      <option name="executionName" />
+      <option name="externalProjectPath" value="$PROJECT_DIR$" />
+      <option name="externalSystemIdString" value="GRADLE" />
+      <!-- Both flags are required: the KotlinWebpack task is not configuration-cache
+           compatible, and parallel execution trips a Gradle 9 "configuration resolved
+           without an exclusive lock" error on the wasmJs npm-aggregation tasks. -->
+      <option name="scriptParameters" value="--no-configuration-cache --no-parallel" />
+      <option name="taskDescriptions">
+        <list />
+      </option>
+      <option name="taskNames">
+        <list>
+          <option value=":webApp:wasmJsBrowserDevelopmentRun" />
+        </list>
+      </option>
+      <option name="vmOptions" />
+    </ExternalSystemSettings>
+    <GradleScriptDebugEnabled>false</GradleScriptDebugEnabled>
+    <method v="2" />
+  </configuration>
+</component>
