@@ -63,6 +63,7 @@ class MomentsPostSenderService(
          * only carries entries for images the user opted in for.
          */
         mediaInfoByAttachment: List<MediaInfo?>? = null,
+        commentsEnabled: Boolean = true,
     ): PostMomentResult {
         Logger.d(tag = TAG) {
             "postMoment: starting moment=$momentUniqueId attachments=${attachments.size} recipients=${recipients.size} source=$source"
@@ -101,6 +102,7 @@ class MomentsPostSenderService(
                 recipients = recipients,
                 source = source,
                 mediaInfo = keyedMediaInfo,
+                commentsEnabled = commentsEnabled,
             )
         )
 
@@ -251,6 +253,9 @@ class MomentsPostSenderService(
                 description = description,
                 recipients = existingContent?.recipients ?: emptyList(),
                 source = existingContent?.source,
+                // Preserve author's original comments choice; default-true
+                // matches legacy posts that pre-date this field.
+                commentsEnabled = existingContent?.commentsEnabled ?: true,
             )
         )
 

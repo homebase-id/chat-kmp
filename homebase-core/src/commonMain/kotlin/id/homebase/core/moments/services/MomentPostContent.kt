@@ -19,6 +19,12 @@ data class MomentPostContent(
      * is configured with `ignoreUnknownKeys = true`.
      */
     val mediaInfo: Map<String, MediaInfo>? = null,
+    /**
+     * Author's choice to allow commenting. Default true so legacy posts that
+     * pre-date this field continue to allow comments. The detail screen hides
+     * the entire comments section (header, list, composer) when false.
+     */
+    val commentsEnabled: Boolean = true,
 )
 
 /**

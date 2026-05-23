@@ -158,6 +158,11 @@ actual object FFmpegUtils {
         val inputDurationMs = getDurationMs(inputPath)
         val inputBytes = inFile.length()
         val probe = probeVideoTrack(inputPath)
+        // MediaExtractor reports raw container dims; rotation lives in a
+        // separate track-header field. Planner needs both so it can swap
+        // before computing the scale target (else portrait camera captures
+        // get a landscape scale and the decoded frames get squished).
+        val rotation = getRotationFromFile(inputPath)
         val trimDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
             effectiveTrimEnd - effectiveTrimStart
         } else {
@@ -177,6 +182,7 @@ actual object FFmpegUtils {
             probedCodecMime = if (probe.videoTrackCount == 1 && probe.audioTrackCount <= 1) probe.videoMime else null,
             inputDurationMs = inputDurationMs,
             inputBytes = inputBytes,
+            rotationDegrees = rotation,
             // Default encoder = libx264. Android doesn't expose a hardware
             // libavcodec wrapper (h264_mediacodec exists but is unreliable in
             // FFmpegKit builds); stick with libx264 for predictable behaviour.

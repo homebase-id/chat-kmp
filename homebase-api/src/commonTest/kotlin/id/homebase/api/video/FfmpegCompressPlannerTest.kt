@@ -327,6 +327,59 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
+    fun plan_rotation90_treatsRawLandscapeAsPortrait() {
+        // Phone-camera portrait capture: container stores 1920×1080 + rotation=90.
+        // Planner must reason in display orientation (1080×1920 portrait), not the
+        // raw landscape dims — otherwise scale=1280:720 squishes the auto-rotated
+        // frames back into landscape during compression.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = 0L, trimEndMs = 5_000L,
+            probedWidthPx = 1920, probedHeightPx = 1080,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 10_000L, inputBytes = 10_000_000L,
+            rotationDegrees = 90,
+        )
+        val vfIdx = plan.args.indexOf("-vf")
+        assertTrue(vfIdx > 0, "downscale source must get -vf; args=${plan.args}")
+        assertEquals("scale=720:1280", plan.args[vfIdx + 1])
+        assertEquals(720 to 1280, plan.outputDims)
+    }
+
+    @Test
+    fun plan_rotation270_alsoSwaps() {
+        // -90° / 270° same effect on aspect.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = 0L, trimEndMs = 5_000L,
+            probedWidthPx = 1920, probedHeightPx = 1080,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 10_000L, inputBytes = 10_000_000L,
+            rotationDegrees = -90,
+        )
+        val vfIdx = plan.args.indexOf("-vf")
+        assertEquals("scale=720:1280", plan.args[vfIdx + 1])
+    }
+
+    @Test
+    fun plan_rotation180_doesNotSwap() {
+        // Upside-down landscape: rotation 180 leaves the aspect alone.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = 0L, trimEndMs = 5_000L,
+            probedWidthPx = 1920, probedHeightPx = 1080,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 10_000L, inputBytes = 10_000_000L,
+            rotationDegrees = 180,
+        )
+        val vfIdx = plan.args.indexOf("-vf")
+        assertEquals("scale=1280:720", plan.args[vfIdx + 1])
+    }
+
+    @Test
     fun plan_alwaysAddsMovflagsFaststart() {
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",
