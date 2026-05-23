@@ -96,6 +96,9 @@ class MomentDetailViewModel(
         val isTransferHistoryLoading: Boolean = false,
         val transferHistoryLoaded: Boolean = false,
         val recipientDeliveries: List<RecipientDeliveryUiModel> = emptyList(),
+        val showReactionsSheet: Boolean = false,
+        val isReactionsLoading: Boolean = false,
+        val reactions: List<MomentReactionUiModel> = emptyList(),
     )
 
     private val _screenLocal = MutableStateFlow(ScreenLocalState())
@@ -179,6 +182,9 @@ class MomentDetailViewModel(
             isTransferHistoryLoading = local.isTransferHistoryLoading,
             recipientDeliveries = local.recipientDeliveries,
             recipientAvatars = momentBundle.recipientAvatars,
+            showReactionsSheet = local.showReactionsSheet,
+            isReactionsLoading = local.isReactionsLoading,
+            reactions = local.reactions,
         )
     }.stateIn(
         viewModelScope,
@@ -431,6 +437,49 @@ class MomentDetailViewModel(
                 toggleSharedWithExpansion(action.expanded)
 
             is MomentDetailUiAction.ShareMedia -> shareMedia(action.payloadKey)
+
+            MomentDetailUiAction.OpenReactionsSheet -> openReactionsSheet()
+
+            MomentDetailUiAction.DismissReactionsSheet ->
+                _screenLocal.update { it.copy(showReactionsSheet = false) }
+        }
+    }
+
+    /**
+     * Open the "who reacted" sheet and refresh the reactor list. The chip
+     * preview on the detail screen reads `reactionPreview` (already live), so
+     * the only thing this call adds is the per-user attribution — fresh on
+     * every open so a reactor who joined while the sheet was closed still
+     * appears.
+     */
+    private fun openReactionsSheet() {
+        _screenLocal.update { it.copy(showReactionsSheet = true) }
+        if (_screenLocal.value.isReactionsLoading) return
+        loadReactions()
+    }
+
+    private fun loadReactions() {
+        _screenLocal.update { it.copy(isReactionsLoading = true) }
+        viewModelScope.launch {
+            try {
+                val raw = actionService.getReactionsForMoment(momentId)
+                val resolved = raw.map { entry ->
+                    val displayName = contactService.resolveByOdinId(entry.odinId)?.name
+                        ?.takeIf { it.isNotBlank() }
+                        ?: entry.odinId.domainName
+                    MomentReactionUiModel(
+                        odinId = entry.odinId,
+                        displayName = displayName,
+                        emoji = entry.emoji,
+                    )
+                }
+                _screenLocal.update {
+                    it.copy(reactions = resolved, isReactionsLoading = false)
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "loadReactions failed: ${t.message}" }
+                _screenLocal.update { it.copy(isReactionsLoading = false) }
+            }
         }
     }
 

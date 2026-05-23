@@ -289,6 +289,13 @@ data class MomentFeedItem(
      * list"), but the detail screen still needs something to render.
      */
     val recipients: List<OdinId>,
+    /**
+     * Author's choice to allow commenting on this moment. Defaults to true for
+     * legacy posts whose `MomentPostContent` pre-dates the field. The detail
+     * screen hides the entire comments section (header, list, composer) when
+     * this is false.
+     */
+    val commentsEnabled: Boolean,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -312,5 +319,9 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         senderOdinId = fileMetadata.senderOdinId,
         source = content?.source,
         recipients = content?.recipients.orEmpty(),
+        // Default true when content failed to parse OR when an older post
+        // didn't include the field — matches the @Serializable default and
+        // keeps legacy moments commentable.
+        commentsEnabled = content?.commentsEnabled ?: true,
     )
 }

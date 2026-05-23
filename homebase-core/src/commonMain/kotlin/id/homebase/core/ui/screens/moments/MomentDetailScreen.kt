@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +19,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,15 +49,19 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,8 +124,12 @@ import id.homebase.resources.moments_detail_shared_with_more
 import id.homebase.resources.moments_detail_shared_with_just_you
 import id.homebase.resources.moments_detail_shared_with_private
 import id.homebase.resources.moments_detail_shared_with_show
+import id.homebase.resources.moments_detail_reactions_filter_all
+import id.homebase.resources.moments_detail_reactions_see_who
+import id.homebase.resources.moments_detail_reactions_sheet_empty
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_reaction_like
+import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
@@ -133,9 +146,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * Subscribes to [MomentDetailViewModel] which sources from the live moments
  * feed. Layout mirrors the spec: media → reactions → description → metadata
- * → comments. Comments visibility is currently always-on (skeleton) —
- * `commentsEnabled` should round-trip through `MomentPostContent` and gate
- * the section once that schema lands.
+ * → comments (hidden when the author disabled commenting at post time).
  *
  * Named `Pane` because it's also embedded as the right pane of the desktop
  * wide-screen feed (see `MomentsScreen`) — the route-based full-screen
@@ -268,6 +279,27 @@ private fun DetailContent(
                 },
             )
         },
+        bottomBar = {
+            // Sticky composer so the keyboard never hides what the user is
+            // typing. Empty (no surface) while the moment is loading or when
+            // the author disabled commenting — Scaffold treats a no-op
+            // composable as zero-height, so the body extends to the bottom.
+            val moment = uiState.moment
+            if (moment != null && moment.commentsEnabled) {
+                Surface(tonalElevation = 3.dp) {
+                    AddCommentRow(
+                        draft = uiState.commentDraft,
+                        isPosting = uiState.isPostingComment,
+                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                        onSend = { onAction(MomentDetailUiAction.PostComment) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        },
     ) { innerPadding ->
         val moment = uiState.moment
         if (moment == null) {
@@ -327,6 +359,14 @@ private fun DetailContent(
                 )
             },
             onDismiss = { onAction(MomentDetailUiAction.DismissDeleteCommentDialog) },
+        )
+    }
+
+    if (uiState.showReactionsSheet) {
+        ReactionsBottomSheet(
+            isLoading = uiState.isReactionsLoading,
+            reactions = uiState.reactions,
+            onDismiss = { onAction(MomentDetailUiAction.DismissReactionsSheet) },
         )
     }
 }
@@ -431,6 +471,184 @@ private fun DeleteCommentDialog(
     }
 }
 
+/**
+ * "Who reacted" bottom sheet — opened from the [ReactionsRow] chip on the
+ * moment detail screen. Mirrors chat's MessageInfo "Reactions" section
+ * (one row per (odinId, emoji) pair) so the two surfaces stay consistent.
+ * The reactor list is fetched on each open via the VM — the chip preview
+ * on the detail screen already reads `moment.reactionPreview` for the
+ * aggregate counts, so this sheet only pays the round-trip when the user
+ * actually asks "who".
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReactionsBottomSheet(
+    isLoading: Boolean,
+    reactions: List<MomentReactionUiModel>,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    // Selected emoji filter. `null` means "All". Reset when the underlying
+    // reactor list changes shape (e.g. a refetch dropped the active emoji)
+    // so the user doesn't end up on an empty filter tab.
+    var selectedEmoji by remember(reactions) { mutableStateOf<String?>(null) }
+
+    val emojiCounts = remember(reactions) {
+        reactions.groupingBy { it.emoji }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key to it.value }
+    }
+    val filtered = remember(reactions, selectedEmoji) {
+        val emoji = selectedEmoji
+        if (emoji == null) reactions else reactions.filter { it.emoji == emoji }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = stringResource(MR.string.reactions),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
+                reactions.isEmpty() -> {
+                    Text(
+                        text = stringResource(MR.string.moments_detail_reactions_sheet_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 16.dp),
+                    )
+                }
+                else -> {
+                    ReactionFilterBar(
+                        totalCount = reactions.size,
+                        emojiCounts = emojiCounts,
+                        selectedEmoji = selectedEmoji,
+                        onSelect = { selectedEmoji = it },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    filtered.forEach { reaction ->
+                        ReactionDetailRow(
+                            reaction = reaction,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * Horizontally scrolling filter bar for the reactions sheet. "All N" chip
+ * first, then one chip per distinct emoji sorted by descending count so the
+ * most-used reactions appear first. `null` selection == All. Built as plain
+ * [FilterChip]s in a `horizontalScroll` row rather than a [androidx.compose.foundation.lazy.LazyRow] so the chip set —
+ * typically 2-6 entries — measures eagerly and the sheet height settles on
+ * the first frame.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReactionFilterBar(
+    totalCount: Int,
+    emojiCounts: List<Pair<String, Int>>,
+    selectedEmoji: String?,
+    onSelect: (String?) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilterChip(
+            selected = selectedEmoji == null,
+            onClick = { onSelect(null) },
+            label = {
+                Text(
+                    text = stringResource(
+                        MR.string.moments_detail_reactions_filter_all,
+                        totalCount,
+                    ),
+                )
+            },
+        )
+        emojiCounts.forEach { (emoji, count) ->
+            FilterChip(
+                selected = selectedEmoji == emoji,
+                onClick = { onSelect(emoji) },
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(emoji)
+                        Text(
+                            text = count.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReactionDetailRow(
+    reaction: MomentReactionUiModel,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PublicAvatar(
+            odinId = reaction.odinId,
+            initials = reaction.displayName.firstOrNull()?.toString(),
+            options = AvatarOptions(size = 40.dp),
+        )
+        Text(
+            text = reaction.displayName,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = reaction.emoji,
+            style = MaterialTheme.typography.headlineMedium,
+        )
+    }
+}
+
 @Composable
 private fun MomentDetailContent(
     uiState: MomentDetailUiState,
@@ -532,6 +750,9 @@ private fun MomentDetailContent(
                 onToggle = { emoji ->
                     onAction(MomentDetailUiAction.ToggleReactionOnMoment(emoji))
                 },
+                onShowReactors = {
+                    onAction(MomentDetailUiAction.OpenReactionsSheet)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -567,61 +788,54 @@ private fun MomentDetailContent(
             )
         }
 
-        // Comments — live stream from MomentCommentsService via the VM.
-        // Wire visibility to `MomentPostContent.commentsEnabled` once that
-        // flag round-trips through the post pipeline.
-        item {
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            CommentsHeader(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-        if (uiState.comments.isEmpty()) {
+        // Comments — live stream from MomentCommentsService via the VM. The
+        // author may have disabled commenting at post time; hide the whole
+        // section (header, list, empty state) in that case. The composer
+        // lives in the Scaffold's bottomBar and is hidden by the same flag
+        // up there.
+        if (moment.commentsEnabled) {
             item {
-                CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            }
-        } else {
-            // Service emits newest-first; reverse for chat-style chronological
-            // ordering (oldest at top, newest just above the input).
-            items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                val isMine = comment.senderOdinId == null ||
-                    (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
-                CommentRow(
-                    comment = comment,
-                    isMine = isMine,
-                    isEditing = uiState.editingCommentId == comment.id,
-                    editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
-                    isSaving = uiState.isSavingCommentEdit,
-                    isDeleting = uiState.deletingCommentIds.contains(comment.id),
-                    quickReactions = uiState.userDefaultReactions,
-                    onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
-                    onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
-                    onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
-                    onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
-                    onDeleteClick = {
-                        onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
-                    },
-                    onToggleReaction = { emoji ->
-                        onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
-                    },
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                CommentsHeader(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-        }
-        item {
-            AddCommentRow(
-                draft = uiState.commentDraft,
-                isPosting = uiState.isPostingComment,
-                onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
-                onSend = { onAction(MomentDetailUiAction.PostComment) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            if (uiState.comments.isEmpty()) {
+                item {
+                    CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
+            } else {
+                // Service emits newest-first; reverse for chat-style chronological
+                // ordering (oldest at top, newest just above the input).
+                items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
+                    val isMine = comment.senderOdinId == null ||
+                        (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+                    CommentRow(
+                        comment = comment,
+                        isMine = isMine,
+                        isEditing = uiState.editingCommentId == comment.id,
+                        editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+                        isSaving = uiState.isSavingCommentEdit,
+                        isDeleting = uiState.deletingCommentIds.contains(comment.id),
+                        quickReactions = uiState.userDefaultReactions,
+                        onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+                        onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+                        onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+                        onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                        onDeleteClick = {
+                            onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
+                        },
+                        onToggleReaction = { emoji ->
+                            onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -663,6 +877,7 @@ private fun ReactionsRow(
     summary: id.homebase.api.client.drives.files.ReactionSummary?,
     quickReactions: List<String>,
     onToggle: (emoji: String) -> Unit,
+    onShowReactors: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val entries = summary?.reactions?.values
@@ -700,6 +915,25 @@ private fun ReactionsRow(
                         }
                     }
                 },
+            )
+        }
+
+        // "See who reacted" affordance — only present when there's something
+        // to show. Chip-tap on the emoji chips already toggles the user's
+        // own reaction, so we deliberately keep this as a separate icon
+        // chip to avoid colliding with that gesture. Mirrors chat's
+        // MessageInfo "Reactions" section, just opened on demand.
+        if (entries.isNotEmpty()) {
+            AssistChip(
+                onClick = onShowReactors,
+                label = {
+                    Icon(
+                        imageVector = Icons.Default.Group,
+                        contentDescription = stringResource(MR.string.moments_detail_reactions_see_who),
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(),
             )
         }
 

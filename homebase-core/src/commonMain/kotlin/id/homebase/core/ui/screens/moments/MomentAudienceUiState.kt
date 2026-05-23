@@ -10,7 +10,7 @@ data class MomentAudienceUiState(
     val query: String = "",
     val isPosting: Boolean = false,
     val draftReady: Boolean = false,
-    val commentsEnabled: Boolean = false,
+    val commentsEnabled: Boolean = true,
 ) {
     val canPost: Boolean get() = draftReady && !isPosting
 
