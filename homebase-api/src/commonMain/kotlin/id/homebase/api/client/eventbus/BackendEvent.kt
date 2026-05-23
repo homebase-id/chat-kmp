@@ -212,6 +212,17 @@ sealed interface BackendEvent {
     data object ConnectionOnline : BackendEvent
     data object ConnectionOffline : BackendEvent
 
+    /**
+     * Emitted once when the user logs out (authState → Unauthenticated), AFTER the
+     * WebSocket and DriveSync have been torn down so no producer can re-populate
+     * afterwards. Stateful singletons (ConversationStream, ChatMessageStream, the
+     * contact/connection/moments/vault services, …) listen for this and clear their
+     * own in-memory per-identity caches, mirroring the SQL DB wipe in
+     * [id.homebase.api.youauth.YouAuthFlowManager.logout]. Decentralised by design:
+     * each service owns its teardown instead of logout() reaching into all of them.
+     */
+    data object SessionEnded : BackendEvent
+
     // A drive subscription was rejected by the server (non-fatal — other drives still sync)
     data class DriveAuthorizationFailed(val message: String) : BackendEvent
 

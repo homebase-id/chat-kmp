@@ -2,6 +2,8 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.profile.PublicProfileProviderCached
@@ -52,6 +54,7 @@ class NotificationService(
     private val credentialsManager: CredentialsManager,
     private val pendingNotificationTap: PendingNotificationTap,
     private val notificationBackend: NotificationBackend,
+    private val eventBus: EventBus,
 ) {
 
     private var isListening = false
@@ -94,6 +97,13 @@ class NotificationService(
                 if (id != null) conversationMessageCounts.remove(id.toString())
             }
         }
+        // Logout: drop per-conversation unread counts and the chime cooldown so the
+        // previous identity's notification summary state doesn't carry into the next.
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.SessionEnded) reset()
+            }
+        }
         // Route clicks from platform backends (Nucleus on JVM) through the shared
         // NotificationEntry so every platform's tap path lands in the same place,
         // with the same defensive-sync semantics. Lazy Koin lookup avoids a
@@ -107,6 +117,12 @@ class NotificationService(
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
     fun clearNotificationCount(conversationId: String) {
         conversationMessageCounts.remove(conversationId)
+    }
+
+    /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
+    fun reset() {
+        conversationMessageCounts.clear()
+        lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
     }
 
     /**

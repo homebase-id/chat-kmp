@@ -96,14 +96,25 @@ class MomentsRecipientMruStore(
         scope.launch {
             reloadFromLocal()
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DataEvent.BatchReceived) return@collect
-                if (event.driveId != drive) return@collect
-                val touches = event.batchData.any {
-                    it.fileMetadata.appData.uniqueId == MomentsProtocol.MomentsRecipientMruUniqueId
+                when (event) {
+                    // Logout: drop the previous identity's recent-recipients list.
+                    is BackendEvent.SessionEnded -> reset()
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != drive) return@collect
+                        val touches = event.batchData.any {
+                            it.fileMetadata.appData.uniqueId == MomentsProtocol.MomentsRecipientMruUniqueId
+                        }
+                        if (touches) reloadFromLocal()
+                    }
+                    else -> {}
                 }
-                if (touches) reloadFromLocal()
             }
         }
+    }
+
+    /** Logout: clear the in-memory MRU list for the previous identity. */
+    fun reset() {
+        _stableKeys.value = emptyList()
     }
 
     /**

@@ -1,10 +1,14 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
 /**
@@ -60,9 +64,28 @@ sealed interface LocalAttachmentContext {
     ) : LocalAttachmentContext
 }
 
-class LocalAttachmentContextStore {
+class LocalAttachmentContextStore(
+    eventBus: EventBus,
+    scope: CoroutineScope,
+) {
     private val _contexts =
         MutableStateFlow<Map<Uuid, Map<String, LocalAttachmentContext>>>(emptyMap())
+
+    init {
+        // Logout: drop the previous identity's outgoing-attachment previews
+        // (local file paths + thumbnail bytes) so they don't survive into the
+        // next session.
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.SessionEnded) reset()
+            }
+        }
+    }
+
+    /** Logout: clear all cached attachment previews. */
+    fun reset() {
+        _contexts.value = emptyMap()
+    }
 
     fun put(messageId: Uuid, payloadKey: String, context: LocalAttachmentContext) {
         _contexts.update { current ->

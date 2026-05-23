@@ -62,6 +62,8 @@ class ChatMessageStream(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop cached message windows for the previous identity.
+                    is BackendEvent.SessionEnded -> paginatedState.reset()
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
                             paginatedState.removeMessage(event.uniqueId)

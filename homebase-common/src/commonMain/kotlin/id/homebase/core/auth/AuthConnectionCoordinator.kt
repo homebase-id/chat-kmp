@@ -147,6 +147,20 @@ class AuthConnectionCoordinator(
             is YouAuthState.Initializing -> {
                 // ignore
             }
+            is YouAuthState.Unauthenticated -> {
+                disconnect()
+                // The profile is loaded here on auth (loadProfile); clear it on the
+                // way out so the owner avatar/name doesn't bleed into the login screen
+                // or the next identity. AuthCC owns the profile lifecycle, so it clears
+                // it directly rather than over the bus.
+                ownerSessionRepository.clear()
+                // Broadcast session end so every stateful singleton clears its own
+                // in-memory caches (conversations, messages, contacts, moments,
+                // vault, …). Emitted AFTER disconnect() — WS is closed and DriveSync
+                // stopped — so nothing can re-populate after the services reset.
+                Logger.i(tag = "AuthLifecycle") { "AuthCC: emitting SessionEnded (logout)" }
+                eventBus.tryEmit(BackendEvent.SessionEnded)
+            }
             else -> {
                 disconnect()
             }

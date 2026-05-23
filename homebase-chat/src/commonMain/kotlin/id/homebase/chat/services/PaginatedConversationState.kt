@@ -57,6 +57,16 @@ class PaginatedConversationState(
     private val _windows = MutableStateFlow<Map<Uuid, MessageWindow>>(emptyMap())
     val windows: StateFlow<Map<Uuid, MessageWindow>> = _windows.asStateFlow()
 
+    /**
+     * Drop every cached message window. Called on logout so the previous
+     * identity's open-conversation messages don't survive in memory into the
+     * next session; windows reload lazily via [setInitialWindow] when the user
+     * reopens a conversation.
+     */
+    fun reset() {
+        _windows.value = emptyMap()
+    }
+
     fun hasCachedMessages(conversationId: Uuid): Boolean =
         _windows.value.containsKey(conversationId)
 

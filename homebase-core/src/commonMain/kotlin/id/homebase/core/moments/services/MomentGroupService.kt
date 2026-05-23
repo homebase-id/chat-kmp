@@ -74,9 +74,15 @@ class MomentGroupService(
 
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DataEvent || event.driveId != drive) return@collect
-                if (event !is BackendEvent.DataEvent.BatchReceived) return@collect
-                processIncrementalBatch(event.batchData)
+                when (event) {
+                    // Logout: drop the previous identity's moment groups.
+                    is BackendEvent.SessionEnded -> reset()
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId != drive) return@collect
+                        processIncrementalBatch(event.batchData)
+                    }
+                    else -> {}
+                }
             }
         }
     }
@@ -354,6 +360,16 @@ class MomentGroupService(
 
     private fun emitSorted() {
         _groups.value = byId.values.sortedBy { it.title.lowercase() }
+    }
+
+    /**
+     * Logout: drop the previous identity's moment groups. `started` is left set
+     * — the app-scoped eventBus collector stays alive and repopulates from the
+     * next session's moments-drive sync.
+     */
+    fun reset() {
+        byId.clear()
+        _groups.value = emptyList()
     }
 }
 

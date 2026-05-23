@@ -1,6 +1,12 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.test.Test
@@ -15,7 +21,7 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class LocalAttachmentContextStoreFileExistenceTest {
 
-    private val store = LocalAttachmentContextStore()
+    private val store = LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob()))
     private val messageId = Uuid.random()
     private val payloadKey = "vlt_pg_00"
 
@@ -212,6 +218,32 @@ class LocalAttachmentContextStoreFileExistenceTest {
 
         assertNull(store.get(messageId, payloadKey))
         assertNotNull(store.get(otherMessageId, payloadKey))
+    }
+
+    // endregion
+
+    // region Logout (BackendEvent.SessionEnded) clears all cached previews
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun sessionEnded_clearsAllContexts() = runTest(UnconfinedTestDispatcher()) {
+        val eventBus = EventBus()
+        // Unconfined dispatcher so the store's init eventBus collector subscribes
+        // eagerly before we emit — exercising the real logout wiring, not just reset().
+        val store = LocalAttachmentContextStore(eventBus, backgroundScope)
+
+        val otherMessageId = Uuid.random()
+        store.put(messageId, "pg_00", image(createTempFile().absolutePath))
+        store.put(messageId, "pg_01", image(createTempFile().absolutePath))
+        store.put(otherMessageId, "pg_00", image(createTempFile().absolutePath))
+        assertTrue(store.hasAny(messageId))
+        assertTrue(store.hasAny(otherMessageId))
+
+        eventBus.emit(BackendEvent.SessionEnded)
+
+        assertFalse(store.hasAny(messageId), "logout must drop the previous identity's previews")
+        assertFalse(store.hasAny(otherMessageId))
+        assertTrue(store.getAll(messageId).isEmpty())
     }
 
     // endregion
