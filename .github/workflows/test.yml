@@ -14,12 +14,12 @@ jobs:
         include:
           - os: ubuntu-latest
             name: Android & Desktop
-            # Run Android Unit Tests and Desktop Tests
+            # `jvmTest` fans out to every subproject (covers desktop logic too);
+            # `testDebugUnitTest` runs the Android app unit tests. The old
+            # `./gradlew desktopTest` referenced a task that does not exist.
             test-command: |
               set -o pipefail
-              ./gradlew testDebugUnitTest --info | tee test-output.log
-              ./gradlew homebase-common:jvmTest homebase-chat:jvmTest
-              ./gradlew desktopTest
+              ./gradlew jvmTest testDebugUnitTest --info | tee test-output.log
           - os: macos-latest
             name: iOS
             # Run iOS Simulator Tests
