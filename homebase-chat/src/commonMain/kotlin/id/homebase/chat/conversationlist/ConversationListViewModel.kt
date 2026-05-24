@@ -569,19 +569,32 @@ class ConversationListViewModel(
         // CLVM is created (returning user, instant cold-load), selectConversation
         // fires during VM init. That's intentional — it's the right behavior —
         // but worth knowing when reading a stack trace.
+        // Monotonic mark stamped the moment a notification tap is first observed (by
+        // whichever of the two collectors below sees it first), so every NotifTap log can
+        // report elapsed-since-tap — pinning where a notification-tap delay lives:
+        // resolution (convo not in items yet), fast-path DB load, message fetch, or
+        // detail-pane render. Both collectors run on viewModelScope (Main), so a plain var
+        // is safe.
+        var notifTapMark: kotlin.time.TimeMark? = null
+
         viewModelScope.launch {
             combine(
                 pendingNotificationTap.state,
                 conversationStream.conversations,
             ) { tap, convos -> tap to convos }
                 .collect { (tap, convosState) ->
+                    if (tap != null && notifTapMark == null) {
+                        notifTapMark = TimeSource.Monotonic.markNow()
+                    }
                     val resolved = resolveNotificationTap(
                         tap = tap,
                         conversationIds = convosState.items.map { it.id }.toSet(),
                     ) ?: return@collect
-                    Logger.i(tag = "ConversationListViewModel") {
-                        "pendingNotificationTap resolved convo=${resolved.conversationId} msg=${resolved.messageId}"
+                    Logger.i(tag = "NotifTap") {
+                        "resolved convo=${resolved.conversationId} msg=${resolved.messageId} " +
+                            "sinceTap=${notifTapMark?.elapsedNow()?.inWholeMilliseconds ?: -1}ms itemsAtResolve=${convosState.items.size}"
                     }
+                    notifTapMark = null
                     selectConversation(
                         conversationId = resolved.conversationId,
                         messageId = resolved.messageId,
@@ -609,12 +622,23 @@ class ConversationListViewModel(
         viewModelScope.launch {
             pendingNotificationTap.state.collect { tap ->
                 if (tap == null) return@collect
+                if (notifTapMark == null) notifTapMark = TimeSource.Monotonic.markNow()
                 val convoId = tap.conversationId
                 val alreadyLoaded = conversationStream.conversations.value.items
                     .any { it.id == convoId }
+                Logger.i(tag = "NotifTap") {
+                    "fast-path: tap convo=$convoId msg=${tap.messageId} alreadyInItems=$alreadyLoaded " +
+                        "sinceTap=${notifTapMark?.elapsedNow()?.inWholeMilliseconds ?: -1}ms"
+                }
                 if (alreadyLoaded) return@collect
                 launch(ioDispatcher) {
+                    val mark = TimeSource.Monotonic.markNow()
                     conversationStream.loadConversation(convoId)
+                    val nowInItems = conversationStream.conversations.value.items.any { it.id == convoId }
+                    Logger.i(tag = "NotifTap") {
+                        "fast-path: loadConversation($convoId) took=${mark.elapsedNow().inWholeMilliseconds}ms " +
+                            "nowInItems=$nowInItems"
+                    }
                 }
             }
         }
