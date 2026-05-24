@@ -240,6 +240,10 @@ class DatabaseManager(
             } catch (e: Exception) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: open failed, resetting" }
+                // If construction got far enough to assign `instance`, it may hold open
+                // writer AND read connections. Close them before deleting the files — open
+                // handles block deletion on Windows (recovery would no-op and loop).
+                runCatching { if (::instance.isInitialized) instance.close() }
                 factory.deleteOnDiskFiles()
                 DatabaseKeyManager.clearKey()
                 val freshKey = DatabaseKeyManager.getOrGenerateKey()
@@ -311,23 +315,53 @@ class DatabaseManager(
         onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)? = null
     ): QueryResult<R> {
         // Prefer the dedicated read connection + read lane so this read runs concurrently
-        // with the single writer under WAL. Fall back to the writer connection + dispatcher
-        // when no read connection is configured (in-memory tests, wasm). Snapshot the field
-        // once so the driver and dispatcher choice can't disagree mid-call.
-        val rd = readDriver
-        val readLaneDriver = rd ?: driver
-        val readLaneDispatcher = if (rd != null) readDispatcher else dispatcher
+        // with the single writer under WAL. When no read connection is configured (in-memory
+        // tests, wasm), use the writer lane (prior behavior).
+        val rd = readDriver ?: return executeReadOnWriter(identifier, sql, mapper, parameters, binders, onTiming)
         val enqueuedAt = TimeSource.Monotonic.markNow()
-        return withContext(readLaneDispatcher) {
+        val result: QueryResult<R>? = withContext(readDispatcher) {
+            // closeReadDriver() runs on this SAME single-thread lane and may have closed `rd`
+            // (a concurrent wipeAndRecreate/vacuum) before we got here. Re-check on the lane:
+            // if the read connection was closed or swapped under us, bail to the writer lane
+            // rather than calling executeQuery on a closed driver. Returning null signals that.
+            if (readDriver !== rd) return@withContext null
             // Reaching here means the lane is finally ours; everything up to this point was
-            // spent queued behind other work on that lane. On the read lane this is queue
-            // behind other reads only (not the writer); on the fallback it's the old behavior.
+            // queued behind other reads only (not the writer).
             val queueWait = enqueuedAt.elapsedNow()
             val sqlStart = TimeSource.Monotonic.markNow()
             try {
-                val result = readLaneDriver.executeQuery(identifier, sql, mapper, parameters, binders)
-                onTiming?.invoke(queueWait.inWholeMilliseconds, sqlStart.elapsedNow().inWholeMilliseconds)
-                result
+                rd.executeQuery(identifier, sql, mapper, parameters, binders).also {
+                    onTiming?.invoke(queueWait.inWholeMilliseconds, sqlStart.elapsedNow().inWholeMilliseconds)
+                }
+            } catch (e: Exception) {
+                logger.e { "executeReadQuery failed (read lane): ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
+                throw e
+            }
+        }
+        return result ?: executeReadOnWriter(identifier, sql, mapper, parameters, binders, onTiming)
+    }
+
+    /**
+     * Run a read on the writer connection + [dispatcher]. The fallback path when there is no
+     * read connection, or when the read connection was closed mid-wipe. Serializes with
+     * writes (the prior behavior) but is always safe.
+     */
+    private suspend fun <R> executeReadOnWriter(
+        identifier: Int?,
+        sql: String,
+        mapper: (SqlCursor) -> QueryResult<R>,
+        parameters: Int,
+        binders: (SqlPreparedStatement.() -> Unit)?,
+        onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)?,
+    ): QueryResult<R> {
+        val enqueuedAt = TimeSource.Monotonic.markNow()
+        return withContext(dispatcher) {
+            val queueWait = enqueuedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                driver.executeQuery(identifier, sql, mapper, parameters, binders).also {
+                    onTiming?.invoke(queueWait.inWholeMilliseconds, sqlStart.elapsedNow().inWholeMilliseconds)
+                }
             } catch (e: Exception) {
                 logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
                 throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
@@ -390,10 +424,15 @@ class DatabaseManager(
     suspend fun wipeAndRecreate() {
         // Drop the read connection first: a live reader pins the WAL (checkpoint would
         // report busy) and would carry a stale schema cache across the DROP. Reopened
-        // against the fresh schema once the writer finishes below.
+        // against the fresh schema once the writer finishes below — in a finally so a
+        // failed wipe can't leave the read lane closed forever (which would silently
+        // degrade every later read back onto the writer dispatcher).
         closeReadDriver()
-        withContext(dispatcher) { wipeAndRecreateOnWriter() }
-        openReadDriver()
+        try {
+            withContext(dispatcher) { wipeAndRecreateOnWriter() }
+        } finally {
+            openReadDriver()
+        }
     }
 
     private fun wipeAndRecreateOnWriter() {
@@ -553,16 +592,28 @@ class DatabaseManager(
         ).value
     }.getOrNull()
 
-    // Reclaim space released by DELETE/DROP without nuking schema. Runs on the
-    // single-writer [dispatcher] so it cannot race with other queries. Used by
-    // the Defragmenter screen as its finale.
-    suspend fun vacuum() = withContext(dispatcher) {
-        driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+    // Reclaim space released by DELETE/DROP without nuking schema. Used by the Defragmenter
+    // screen as its finale. Like wipeAndRecreate, the read connection is dropped first: an
+    // open reader holds a WAL read lock that makes VACUUM contend (block up to busy_timeout
+    // or throw SQLITE_BUSY). Reopened in a finally so a failed VACUUM can't lose the read lane.
+    suspend fun vacuum() {
+        closeReadDriver()
+        try {
+            withContext(dispatcher) {
+                driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+            }
+        } finally {
+            openReadDriver()
+        }
     }
 
+    // close() is the AutoCloseable teardown — callers must not run reads concurrently with
+    // it (standard resource contract). Null the field first so any late read falls back to
+    // the writer lane instead of touching a closing connection.
     override fun close() {
-        runCatching { readDriver?.close() }
+        val rd = readDriver
         readDriver = null
+        runCatching { rd?.close() }
         driver.close()
         logger.i { "Database closed" }
     }
