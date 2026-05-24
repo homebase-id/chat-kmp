@@ -61,7 +61,7 @@ class NotificationService(
     private val richDisplayer = RichNotificationDisplayer()
 
     /** Per-conversation message count for notification summary display. */
-    private val conversationMessageCounts = mutableMapOf<String, Int>()
+    private val counts = ConversationNotificationCounts()
 
     /** Chime cooldown: suppress alert sounds within this window. */
     private val ALERT_COOLDOWN = 15.minutes
@@ -94,7 +94,7 @@ class NotificationService(
         // Clear message counts when user opens a conversation
         scope.launch {
             ActiveConversation.conversation.collect { id ->
-                if (id != null) conversationMessageCounts.remove(id.toString())
+                if (id != null) clearConversationNotifications(id.toString())
             }
         }
         // Logout: drop per-conversation unread counts and the chime cooldown so the
@@ -116,12 +116,26 @@ class NotificationService(
 
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
     fun clearNotificationCount(conversationId: String) {
-        conversationMessageCounts.remove(conversationId)
+        counts.clear(conversationId)
+    }
+
+    /**
+     * Clears a single conversation's notification state: forgets its summary
+     * count and cancels its posted notification + group summary from the tray.
+     * Called when the user taps the conversation's notification or opens the
+     * conversation in-app — scoped to one conversation so other senders'
+     * notifications are left intact.
+     */
+    private fun clearConversationNotifications(conversationId: String) {
+        counts.clear(conversationId)
+        val (messageId, summaryId) = conversationNotificationIds(conversationId)
+        BadgeManager.cancelConversationNotifications(messageId, summaryId)
     }
 
     /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
     fun reset() {
-        conversationMessageCounts.clear()
+        counts.clearAll()
+        BadgeManager.cancelAll()
         lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
     }
 
@@ -260,7 +274,7 @@ class NotificationService(
                     Logger.d(tag = "NotificationService") {
                         "Suppressing notification — user is on chat screen"
                     }
-                    conversationMessageCounts.remove(conversationId)
+                    counts.clear(conversationId)
                     return@launch
                 }
 
@@ -301,9 +315,7 @@ class NotificationService(
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
-                    val count = (conversationMessageCounts[conversationId] ?: 0) + 1
-                    conversationMessageCounts[conversationId] = count
-                    count
+                    counts.increment(conversationId)
                 } else 1
 
                 // Override body with count summary when multiple messages accumulated
@@ -450,6 +462,9 @@ class NotificationService(
                                     "typeId=$typeId tagId=$tagId; no auto-navigate"
                         }
                     }
+                    // Tapping clears only this conversation's notifications + count,
+                    // leaving other senders' notifications in the tray.
+                    clearConversationNotifications(typeId)
                     NotificationNavigationEvent.OpenConversation(typeId)
                 }
 
@@ -702,4 +717,31 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
     val msgUuid = tagId.takeIf { it.isNotBlank() }?.let { Uuid.parseOrNull(it) }
         ?: return null
     return convoUuid to msgUuid
+}
+
+/**
+ * Reserved offset so a conversation's group-summary id never collides with a
+ * per-message notification id. Shared between the Android displayer (which posts
+ * with these ids) and [conversationNotificationIds] (which cancels by them) so
+ * the two can never drift.
+ */
+internal const val SUMMARY_ID_OFFSET = 100_000
+
+/**
+ * Derives the (per-message id, group-summary id) pair that a chat conversation's
+ * notifications were posted under, so a single conversation can be cancelled
+ * without touching any other. Must reproduce exactly what the display path used:
+ *  - per-message id = [PushNotificationPayloadOptions.conversationNotificationId]
+ *    (the raw, unmasked `typeId.hashCode()`), and
+ *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash (see
+ *    RichNotificationDisplayer.postSummaryNotification).
+ *
+ * Degenerate case: if `conversationId.hashCode() == 0` the display path posts the
+ * per-message notification under a random id instead, so a derived cancel would
+ * miss it — astronomically rare for a UUID string, not special-cased.
+ */
+fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
+    val messageId = conversationId.hashCode()
+    val summaryId = SUMMARY_ID_OFFSET + (conversationId.hashCode() and 0x7FFFFFFF)
+    return messageId to summaryId
 }

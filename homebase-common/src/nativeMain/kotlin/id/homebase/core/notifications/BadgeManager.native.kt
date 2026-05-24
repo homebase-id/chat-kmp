@@ -10,7 +10,15 @@ actual object BadgeManager {
         app.applicationIconBadgeNumber = app.applicationIconBadgeNumber + 1
     }
 
-    actual fun clear() {
+    actual fun resetCount() {
         UIApplication.sharedApplication.applicationIconBadgeNumber = 0
     }
+
+    actual fun cancelAll() {
+        UIApplication.sharedApplication.applicationIconBadgeNumber = 0
+    }
+
+    // The iOS Notification Service Extension owns per-notification display; there
+    // is no Kotlin-side handle to cancel an individual conversation's notification.
+    actual fun cancelConversationNotifications(messageId: Int, summaryId: Int) { /* no-op */ }
 }
