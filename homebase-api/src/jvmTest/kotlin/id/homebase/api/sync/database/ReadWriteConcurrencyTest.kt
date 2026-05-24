@@ -13,7 +13,9 @@ import kotlin.io.path.absolutePathString
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 
 /**
  * Proves the Phase 2 fix for the cold-boot tap-stall: with a dedicated read connection,
@@ -103,6 +105,59 @@ class ReadWriteConcurrencyTest {
                 queueWait > 800,
                 "without a read connection the read must queue behind the ${writeHoldMs}ms write, " +
                     "but queueWait=${queueWait}ms",
+            )
+        }
+    }
+
+    @Test
+    fun readConnection_seesCommittedWriterRows_crossConnection() = runBlocking {
+        // The property the in-memory single-connection suite cannot check: a row committed on
+        // the WRITER connection must be visible to a read issued on the SEPARATE read
+        // connection (read-your-writes across two connections under WAL). If this regressed,
+        // a tap would open a conversation and see stale/missing messages.
+        val dbm = DatabaseManager(
+            driverProvider = { openWalDriver(dbPath.absolutePathString()) },
+            readDriverProvider = { openWalDriver(dbPath.absolutePathString()) },
+        )
+        dbm.use {
+            // Write on the writer connection (withWrite runs on the writer dispatcher and
+            // commits before it returns).
+            dbm.withWrite { db ->
+                db.driveMainIndexQueries.upsertDriveMainIndex(
+                    identityId = Uuid.random(),
+                    driveId = Uuid.random(),
+                    fileId = Uuid.random(),
+                    uniqueId = null,
+                    globalTransitId = null,
+                    groupId = null,
+                    senderId = null,
+                    originalAuthor = null,
+                    fileType = 7878L,
+                    dataType = 0L,
+                    archivalStatus = 0L,
+                    fileState = 1L,
+                    historyStatus = 0L,
+                    userDate = 1_000L,
+                    created = 1_000L,
+                    modified = 1_000L,
+                    fileSystemType = 0L,
+                    jsonHeader = "{\"probe\":true}",
+                )
+            }
+
+            // Read on the read connection via the production read path (executeReadQuery).
+            val count = dbm.executeReadQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM DriveMainIndex WHERE fileType = 7878",
+                mapper = { cursor -> cursor.next(); QueryResult.Value(cursor.getLong(0) ?: -1L) },
+                parameters = 0,
+            ).value
+
+            assertEquals(
+                1L,
+                count,
+                "a committed write on the writer connection must be visible to the read " +
+                    "connection (cross-connection read-your-writes under WAL)",
             )
         }
     }
