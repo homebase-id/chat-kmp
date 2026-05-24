@@ -158,7 +158,11 @@ class QueryBatch(
         tagsAnyOf: List<Uuid>? = null,
         tagsAllOf: List<Uuid>? = null,
         localTagsAnyOf: List<Uuid>? = null,
-        localTagsAllOf: List<Uuid>? = null
+        localTagsAllOf: List<Uuid>? = null,
+        // Optional probe surfacing the read's dispatcher-queue-wait vs SQL time
+        // (see DatabaseManager.executeReadQuery). Used by SlowMessageFetch to tell
+        // "the query is slow" apart from "the query waited behind a write".
+        onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)? = null
     ): QueryBatchResult {
 
         if (fileSystemType == null) {
@@ -308,8 +312,10 @@ class QueryBatch(
 
                 QueryResult.Value(QueryBatchResult(records, hasMoreRows, workingCursor))
             },
-            parameters = 0
-        ) { }
+            parameters = 0,
+            binders = { },
+            onTiming = onTiming
+        )
 
         return result.value;
     }

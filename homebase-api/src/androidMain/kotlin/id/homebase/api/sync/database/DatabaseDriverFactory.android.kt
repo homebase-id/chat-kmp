@@ -35,5 +35,12 @@ actual class DatabaseDriverFactory(private val context: Context) {
         )
     }
 
+    // A second AndroidSqliteDriver (own SupportSQLiteOpenHelper) on the same DB file.
+    // Called only after the writer created the schema, so the file already exists at the
+    // current version → the open helper's onCreate/onUpgrade does not fire, it just opens
+    // and applies the tuning pragmas. Under WAL this gives a reader that runs concurrently
+    // with the writer connection.
+    actual fun createReadDriver(passphrase: String?): SqlDriver? = createDriver(passphrase)
+
     actual fun dbFilePath(): String = context.getDatabasePath(DB_FILE_NAME).absolutePath
 }

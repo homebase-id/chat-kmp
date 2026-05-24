@@ -36,6 +36,11 @@ actual class DatabaseDriverFactory {
     // SQLCipher equivalent (CLAUDE.md: "SQLite will be in-memory, no SQLCipher").
     actual fun createDriver(passphrase: String?): SqlDriver = WebSqlDriver()
 
+    // sql.js is in-memory and single-connection — a "second connection" would be a
+    // different, empty database. Return null so DatabaseManager keeps reads on the writer
+    // lane on wasm (there is no real disk contention there anyway).
+    actual fun createReadDriver(passphrase: String?): SqlDriver? = null
+
     // sql.js is in-memory only — no on-disk file to report. Empty string
     // causes `deleteDatabaseFiles` to short-circuit, which is correct: there
     // is no SQLite file (or WAL/SHM siblings) to delete on the web.

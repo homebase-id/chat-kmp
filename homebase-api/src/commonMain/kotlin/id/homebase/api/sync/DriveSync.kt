@@ -185,16 +185,26 @@ class DriveSync(
                         val batchTotalCount = totalCount  // captured for the async closure
 
                         pendingDbJob = scope.async {
+                            // took = end-to-end including time queued behind other DB
+                            // work; sql = the transaction's actual run time; queueWait =
+                            // the difference spent waiting for the single writer
+                            // dispatcher. sql is the number that says whether this batch
+                            // is too large to hold the writer; queueWait says how starved
+                            // the writer already was. See DatabaseManager.executeReadQuery.
+                            var upsertQueueWaitMs = 0L
+                            var upsertSqlMs = 0L
                             val (_, upsertElapsed) = measureTimedValue {
                                 fileHeaderProcessor.baseUpsertEntryZapZap(
                                     identityId = identityId,
                                     driveId = driveId,
                                     fileHeaders = searchResults,
-                                    cursor = batchCursorToSave
+                                    cursor = batchCursorToSave,
+                                    onTiming = { qw, sql -> upsertQueueWaitMs = qw; upsertSqlMs = sql }
                                 )
                             }
                             Logger.i {
-                                "DriveSync: batch upsert drive=$driveId rows=${searchResults.size} took=$upsertElapsed"
+                                "DriveSync: batch upsert drive=$driveId rows=${searchResults.size} " +
+                                        "took=$upsertElapsed sql=${upsertSqlMs}ms queueWait=${upsertQueueWaitMs}ms"
                             }
                             // DriveSync is a silent batched DB write — no per-batch
                             // BatchReceived (consumers reload from DriveMainIndex on

@@ -5,12 +5,14 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
+import id.homebase.api.coroutines.ioDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlin.time.TimeSource
 
 /**
  * One-shot signal that the local DB was just wiped because the on-disk schema
@@ -73,11 +75,30 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
 
 class DatabaseManager(
     driverProvider: () -> SqlDriver,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    // Optional dedicated READ connection. When this yields a non-null driver, reads
+    // (executeReadQuery) run on that SEPARATE connection + [readDispatcher], so a read can
+    // run concurrently with the single writer under WAL instead of queuing behind it on
+    // [dispatcher] (the cold-boot tap-stall this whole change targets). When null / it
+    // yields null (in-memory test DBs, wasm's in-memory sql.js), reads fall back to the
+    // writer connection + [dispatcher] — exactly the prior behavior. Writes ALWAYS stay on
+    // the writer: there is only ever ONE writer, because concurrent writers crash.
+    private val readDriverProvider: (() -> SqlDriver?)? = null,
+    // Single-thread read lane: a read never blocks the writer (separate connection) and
+    // reads serialize among themselves (safe for a single read connection). Reads are fast,
+    // so serializing them is fine; the win is read-concurrent-with-write.
+    private val readDispatcher: CoroutineDispatcher = ioDispatcher.limitedParallelism(1),
 ) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
+
+    // The read connection, opened AFTER the writer creates/migrates the schema (see
+    // [openReadDriver], called at the end of init). Null means "no separate read lane" →
+    // reads use the writer connection. @Volatile because it's read on [readDispatcher] and
+    // reassigned during wipeAndRecreate from a different thread.
+    @kotlin.concurrent.Volatile
+    private var readDriver: SqlDriver? = null
 
     init {
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
@@ -104,6 +125,40 @@ class DatabaseManager(
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
         logger.i {
             "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms synchronous=$synchronous"
+        }
+
+        // Open the concurrent read connection now that the writer has created/migrated the
+        // schema above. Safe to skip on platforms/tests that don't provide one.
+        openReadDriver()
+    }
+
+    /**
+     * Open the dedicated read connection from [readDriverProvider], if configured. Called
+     * at the end of init (after the writer created the schema) and again after
+     * [wipeAndRecreate] rebuilds it. A failure here must NOT take down the app — reads
+     * simply fall back to the writer lane, logged loudly so it's diagnosable.
+     */
+    private fun openReadDriver() {
+        val provider = readDriverProvider ?: return
+        readDriver = try {
+            provider()?.also { logger.i { "Read connection opened (concurrent reads enabled)" } }
+        } catch (e: Exception) {
+            logger.e(e) { "Failed to open read connection — reads will use the writer lane" }
+            null
+        }
+    }
+
+    /**
+     * Close the read connection on its own lane so it cannot race an in-flight read, then
+     * null it out (reads fall back to the writer until [openReadDriver] runs again). Used
+     * before [wipeAndRecreate] drops tables: a live reader would pin the WAL and make the
+     * checkpoint(TRUNCATE) report busy, and would hold a now-stale schema cache.
+     */
+    private suspend fun closeReadDriver() {
+        val rd = readDriver ?: return
+        withContext(readDispatcher) {
+            runCatching { rd.close() }
+            readDriver = null
         }
     }
 
@@ -144,10 +199,13 @@ class DatabaseManager(
             "Outbox"
         )
 
-        suspend fun initialize(driverProvider: () -> SqlDriver) {
+        suspend fun initialize(
+            driverProvider: () -> SqlDriver,
+            readDriverProvider: (() -> SqlDriver?)? = null,
+        ) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
-            instance = DatabaseManager(driverProvider)
+            instance = DatabaseManager(driverProvider, readDriverProvider = readDriverProvider)
 
             val version = instance.driveMainIndex.getSchemaVersion()
 
@@ -175,14 +233,20 @@ class DatabaseManager(
         suspend fun initializeWithRecovery(factory: DatabaseDriverFactory) {
             val key = DatabaseKeyManager.getOrGenerateKey()
             try {
-                initialize { factory.createDriver(key) }
+                initialize(
+                    driverProvider = { factory.createDriver(key) },
+                    readDriverProvider = { factory.createReadDriver(key) },
+                )
             } catch (e: Exception) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: open failed, resetting" }
                 factory.deleteOnDiskFiles()
                 DatabaseKeyManager.clearKey()
                 val freshKey = DatabaseKeyManager.getOrGenerateKey()
-                initialize { factory.createDriver(freshKey) }
+                initialize(
+                    driverProvider = { factory.createDriver(freshKey) },
+                    readDriverProvider = { factory.createReadDriver(freshKey) },
+                )
             }
         }
     }
@@ -230,24 +294,70 @@ class DatabaseManager(
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
+    /**
+     * @param onTiming optional probe invoked on success with `queueWaitMs` (time this
+     *   call spent waiting for the single-threaded DB dispatcher before any SQL ran) and
+     *   `sqlMs` (the actual driver execution time). Splitting these is the only way to
+     *   tell "the query is slow" apart from "the query waited behind a write" — every
+     *   read and every write share one dispatcher, so a tap-read can sit queued for
+     *   seconds behind a DriveSync batch upsert. See SlowMessageFetch.
+     */
     suspend fun <R> executeReadQuery(
         identifier: Int?,
         sql: String,
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)? = null
-    ): QueryResult<R> = withContext(dispatcher) {
-        try {
-            driver.executeQuery(identifier, sql, mapper, parameters, binders)
-        } catch (e: Exception) {
-            logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
-            throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+        binders: (SqlPreparedStatement.() -> Unit)? = null,
+        onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)? = null
+    ): QueryResult<R> {
+        // Prefer the dedicated read connection + read lane so this read runs concurrently
+        // with the single writer under WAL. Fall back to the writer connection + dispatcher
+        // when no read connection is configured (in-memory tests, wasm). Snapshot the field
+        // once so the driver and dispatcher choice can't disagree mid-call.
+        val rd = readDriver
+        val readLaneDriver = rd ?: driver
+        val readLaneDispatcher = if (rd != null) readDispatcher else dispatcher
+        val enqueuedAt = TimeSource.Monotonic.markNow()
+        return withContext(readLaneDispatcher) {
+            // Reaching here means the lane is finally ours; everything up to this point was
+            // spent queued behind other work on that lane. On the read lane this is queue
+            // behind other reads only (not the writer); on the fallback it's the old behavior.
+            val queueWait = enqueuedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                val result = readLaneDriver.executeQuery(identifier, sql, mapper, parameters, binders)
+                onTiming?.invoke(queueWait.inWholeMilliseconds, sqlStart.elapsedNow().inWholeMilliseconds)
+                result
+            } catch (e: Exception) {
+                logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
+                throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+            }
         }
     }
 
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
         withContext(dispatcher) {
             database.transaction { block(database) }
+        }
+    }
+
+    /**
+     * Timed variant of [withWriteTransaction]. [onTiming] reports `queueWaitMs` (time
+     * spent waiting for the single writer dispatcher) and `sqlMs` (the transaction
+     * block's actual run time). Used by the DriveSync batch upsert to log the real cost
+     * of transacting a batch of headers, separate from how long it waited in line — the
+     * `sqlMs` is what tells us whether the write batch is too large.
+     */
+    suspend fun withTimedWriteTransaction(
+        onTiming: (queueWaitMs: Long, sqlMs: Long) -> Unit,
+        block: (OdinDatabase) -> Unit
+    ) {
+        val enqueuedAt = TimeSource.Monotonic.markNow()
+        withContext(dispatcher) {
+            val queueWait = enqueuedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            database.transaction { block(database) }
+            onTiming(queueWait.inWholeMilliseconds, sqlStart.elapsedNow().inWholeMilliseconds)
         }
     }
 
@@ -277,7 +387,16 @@ class DatabaseManager(
     //   2. After CREATE: the row count must be zero. If it's not, something wrote
     //      to the freshly recreated table before we finished — usually a caller
     //      still running with stale credentials.
-    suspend fun wipeAndRecreate() = withContext(dispatcher) {
+    suspend fun wipeAndRecreate() {
+        // Drop the read connection first: a live reader pins the WAL (checkpoint would
+        // report busy) and would carry a stale schema cache across the DROP. Reopened
+        // against the fresh schema once the writer finishes below.
+        closeReadDriver()
+        withContext(dispatcher) { wipeAndRecreateOnWriter() }
+        openReadDriver()
+    }
+
+    private fun wipeAndRecreateOnWriter() {
         val log = Logger.withTag("DatabaseManager")
 
         // Pre-wipe snapshot of the SQLite-internal page state. Captured *before* the
@@ -442,6 +561,8 @@ class DatabaseManager(
     }
 
     override fun close() {
+        runCatching { readDriver?.close() }
+        readDriver = null
         driver.close()
         logger.i { "Database closed" }
     }

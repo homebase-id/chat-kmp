@@ -72,6 +72,12 @@ actual class DatabaseDriverFactory {
         return driver
     }
 
+    // A second NativeSqliteDriver on the same DB file for the concurrent read lane.
+    // Called only after the writer created the schema, so the on-disk user_version already
+    // matches → no migration runs, it just attaches and applies WAL/busy_timeout. Under
+    // WAL it reads concurrently with the writer connection.
+    actual fun createReadDriver(passphrase: String?): SqlDriver? = createDriver(passphrase)
+
     // NativeSqliteDriver resolves `name` to "${NSHomeDirectory()}/databases/<name>"
     // under the hood; report the same path here so the shared recovery deletes
     // the file the driver was looking at.

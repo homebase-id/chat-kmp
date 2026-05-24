@@ -167,9 +167,10 @@ object MainIndexMetaHelpers {
             identityId: Uuid,
             driveId: Uuid,
             fileHeaders: List<HomebaseFile>,
-            cursor: QueryBatchCursor?
+            cursor: QueryBatchCursor?,
+            onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)? = null
         ): List<HomebaseFile> {
-            return performBaseUpsert(identityId, driveId, fileHeaders, cursor)
+            return performBaseUpsert(identityId, driveId, fileHeaders, cursor, onTiming)
         }
 
         /**
@@ -181,14 +182,19 @@ object MainIndexMetaHelpers {
             identityId: Uuid,
             driveId: Uuid,
             fileHeaders: List<HomebaseFile>,
-            cursor: QueryBatchCursor?
+            cursor: QueryBatchCursor?,
+            // Optional probe reporting the write's dispatcher queue-wait vs the actual
+            // transaction SQL time. DriveSync uses it to log how long it really takes to
+            // transact a batch of headers (separate from how long it waited in line) —
+            // the number we'd tune batch/chunk size against.
+            onTiming: ((queueWaitMs: Long, sqlMs: Long) -> Unit)? = null
         ): List<HomebaseFile> {
             // The headers that actually changed a row (passed the DriveMainIndex
             // timestamp guard, n > 0). Callers — notably DriveWebSocketUpsertWorker
             // — emit BatchReceived from THIS list, not the raw incoming batch, so a
             // stale/duplicate server push the guard rejected never reaches the UI.
             val written = ArrayList<HomebaseFile>(fileHeaders.size)
-            databaseManager.withWriteTransaction { db ->
+            databaseManager.withTimedWriteTransaction(onTiming ?: { _, _ -> }) { db ->
 
                 fileHeaders.forEach { fileHeader ->
                     // Convert SharedSecretEncryptedFileHeader to extract DriveMainIndex fields and tag records

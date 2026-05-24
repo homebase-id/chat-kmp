@@ -413,6 +413,14 @@ class ChatMessageStream(
             if (conversationId == ChatProtocol.ConversationWithYourselfId) FileStateFilter.Active
             else FileStateFilter.All
 
+        // dbQuery (wall-clock around queryBatchAsync) lumps together two very
+        // different costs: queueWait (time spent waiting for the single DB
+        // dispatcher while a writer/another read holds it) and sql (the actual
+        // query). Capture them split so a slow fetch can be diagnosed as "the
+        // query is slow" vs "the query waited behind a write". See
+        // DatabaseManager.executeReadQuery.
+        var queueWaitMs = 0L
+        var sqlMs = 0L
         val queryStart = TimeSource.Monotonic.markNow()
         val result =
             queryBatch.queryBatchAsync(
@@ -425,7 +433,8 @@ class ChatMessageStream(
                 fileSystemType = 0,
                 fileState = fileStateFilter,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-                groupIdAnyOf = listOf(conversationId)
+                groupIdAnyOf = listOf(conversationId),
+                onTiming = { qw, sql -> queueWaitMs = qw; sqlMs = sql }
             )
         val queryElapsed = queryStart.elapsedNow()
 
@@ -443,6 +452,8 @@ class ChatMessageStream(
                         "rawRecords=${result.records.size} " +
                         "mappedRecords=${records.size} " +
                         "dbQuery=$queryElapsed " +
+                        "queueWait=${queueWaitMs}ms " +
+                        "sql=${sqlMs}ms " +
                         "mapping=$mapElapsed"
             }
         }

@@ -32,6 +32,11 @@ actual class DatabaseDriverFactory {
         return JdbcSqliteDriver(jdbcUrl, props)
     }
 
+    // A second JDBC connection to the same file. JdbcSqliteDriver does not auto-create
+    // schema (DatabaseManager.init does that on the writer), so this is purely an
+    // additional connection — under WAL it reads concurrently with the writer.
+    actual fun createReadDriver(passphrase: String?): SqlDriver? = createDriver(passphrase)
+
     actual fun dbFilePath(): String = resolveDbFile().absolutePath
 
     companion object {

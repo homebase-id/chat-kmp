@@ -41,6 +41,18 @@ expect class DatabaseDriverFactory {
     fun createDriver(passphrase: String? = null): SqlDriver
 
     /**
+     * Open a SECOND connection to the same database for [DatabaseManager]'s concurrent
+     * read lane — under WAL it reads committed snapshots without blocking (or being
+     * blocked by) the single writer connection. Returns null on platforms with no
+     * separate read connection to give (wasm's in-memory sql.js), where reads fall back
+     * to the writer lane.
+     *
+     * MUST be called only after [createDriver] has opened/created the schema: this
+     * connection never creates schema, it just attaches to the existing file.
+     */
+    fun createReadDriver(passphrase: String? = null): SqlDriver?
+
+    /**
      * Absolute path to the on-disk database file on this platform. Used by
      * [deleteOnDiskFiles] to clean up after a failed open in
      * [DatabaseManager.initializeWithRecovery]. Each platform reports the
