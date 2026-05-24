@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.moments.MomentsAlbumZoom
+import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -17,6 +19,8 @@ data class MomentsFeedUiState(
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    val viewMode: MomentsViewMode = MomentsViewMode.Timeline,
+    val albumZoom: MomentsAlbumZoom = MomentsAlbumZoom.Day,
 )
 
 /**

@@ -34,9 +34,14 @@ import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -86,6 +91,8 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.moments.MomentsAlbumZoom
+import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
@@ -104,6 +111,9 @@ import id.homebase.resources.moments_create_action
 import id.homebase.resources.moments_feed_indicator_private
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
+import id.homebase.resources.moments_view_album
+import id.homebase.resources.moments_view_menu
+import id.homebase.resources.moments_view_timeline
 import id.homebase.resources.moments_welcome
 import id.homebase.resources.upload_failed_action_delete
 import id.homebase.resources.upload_failed_action_dismiss
@@ -181,6 +191,10 @@ fun MomentsScreen(
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
             hasDriveError = uiState.hasDriveError,
+            viewMode = uiState.viewMode,
+            onViewModeChange = viewModel::setViewMode,
+            albumZoom = uiState.albumZoom,
+            onAlbumZoomChange = viewModel::setAlbumZoom,
             onCreateMoment = onCreateMoment,
             onProfileClick = onProfileClick,
             onAddReaction = viewModel::addReaction,
@@ -195,6 +209,10 @@ fun MomentsScreen(
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
             hasDriveError = uiState.hasDriveError,
+            viewMode = uiState.viewMode,
+            onViewModeChange = viewModel::setViewMode,
+            albumZoom = uiState.albumZoom,
+            onAlbumZoomChange = viewModel::setAlbumZoom,
             onCreateMoment = onCreateMoment,
             onProfileClick = onProfileClick,
             onOpenMoment = onOpenMoment,
@@ -214,6 +232,10 @@ private fun CompactMomentsLayout(
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
     hasDriveError: Boolean,
+    viewMode: MomentsViewMode,
+    onViewModeChange: (MomentsViewMode) -> Unit,
+    albumZoom: MomentsAlbumZoom,
+    onAlbumZoomChange: (MomentsAlbumZoom) -> Unit,
     onCreateMoment: () -> Unit,
     onProfileClick: () -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
@@ -229,6 +251,8 @@ private fun CompactMomentsLayout(
                 connectionStatus = connectionStatus,
                 driveIsSyncing = driveIsSyncing,
                 hasDriveError = hasDriveError,
+                viewMode = viewMode,
+                onViewModeChange = onViewModeChange,
                 onProfileClick = onProfileClick,
             )
         },
@@ -241,15 +265,14 @@ private fun CompactMomentsLayout(
             }
         },
     ) { innerPadding ->
+        val contentModifier = Modifier
+            .fillMaxSize()
+            .consumeWindowInsets(innerPadding)
+            .padding(innerPadding)
         if (moments.isEmpty()) {
-            EmptyMomentsState(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .consumeWindowInsets(innerPadding)
-                    .padding(innerPadding),
-            )
-        } else {
-            MomentsFeedList(
+            EmptyMomentsState(modifier = contentModifier)
+        } else when (viewMode) {
+            MomentsViewMode.Timeline -> MomentsFeedList(
                 moments = moments,
                 uploadProgress = uploadProgress,
                 selfOdinId = ownerSession?.odinId,
@@ -259,10 +282,14 @@ private fun CompactMomentsLayout(
                 selectedMomentId = null,
                 onDeleteFailedMoment = onDeleteFailedMoment,
                 onDismissUpload = onDismissUpload,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .consumeWindowInsets(innerPadding)
-                    .padding(innerPadding),
+                modifier = contentModifier,
+            )
+            MomentsViewMode.Album -> MomentsAlbumGrid(
+                moments = moments,
+                zoom = albumZoom,
+                onZoomChange = onAlbumZoomChange,
+                onOpenMoment = onOpenMoment,
+                modifier = contentModifier,
             )
         }
     }
@@ -290,6 +317,10 @@ private fun WideMomentsLayout(
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
     hasDriveError: Boolean,
+    viewMode: MomentsViewMode,
+    onViewModeChange: (MomentsViewMode) -> Unit,
+    albumZoom: MomentsAlbumZoom,
+    onAlbumZoomChange: (MomentsAlbumZoom) -> Unit,
     onCreateMoment: () -> Unit,
     onProfileClick: () -> Unit,
     onAddReaction: (Uuid, String) -> Unit,
@@ -333,6 +364,8 @@ private fun WideMomentsLayout(
                     connectionStatus = connectionStatus,
                     driveIsSyncing = driveIsSyncing,
                     hasDriveError = hasDriveError,
+                    viewMode = viewMode,
+                    onViewModeChange = onViewModeChange,
                     onProfileClick = onProfileClick,
                 )
             },
@@ -345,15 +378,14 @@ private fun WideMomentsLayout(
                 }
             },
         ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
             if (moments.isEmpty()) {
-                EmptyMomentsState(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .consumeWindowInsets(innerPadding)
-                        .padding(innerPadding),
-                )
-            } else {
-                MomentsFeedList(
+                EmptyMomentsState(modifier = contentModifier)
+            } else when (viewMode) {
+                MomentsViewMode.Timeline -> MomentsFeedList(
                     moments = moments,
                     uploadProgress = uploadProgress,
                     selfOdinId = ownerSession?.odinId,
@@ -365,10 +397,16 @@ private fun WideMomentsLayout(
                     selectedMomentId = selectedMomentId,
                     onDeleteFailedMoment = onDeleteFailedMoment,
                     onDismissUpload = onDismissUpload,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .consumeWindowInsets(innerPadding)
-                        .padding(innerPadding),
+                    modifier = contentModifier,
+                )
+                MomentsViewMode.Album -> MomentsAlbumGrid(
+                    moments = moments,
+                    zoom = albumZoom,
+                    onZoomChange = onAlbumZoomChange,
+                    onOpenMoment = { id, _ ->
+                        selectedMomentId = Uuid.parse(id)
+                    },
+                    modifier = contentModifier,
                 )
             }
         }
@@ -762,6 +800,8 @@ private fun MomentsTopAppBar(
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
     hasDriveError: Boolean,
+    viewMode: MomentsViewMode,
+    onViewModeChange: (MomentsViewMode) -> Unit,
     onProfileClick: () -> Unit,
 ) {
     TopAppBar(
@@ -808,6 +848,93 @@ private fun MomentsTopAppBar(
                 Spacer(modifier = Modifier.width(16.dp))
             }
         },
+        actions = {
+            MomentsViewModeMenu(
+                selected = viewMode,
+                onSelect = onViewModeChange,
+            )
+        },
+    )
+}
+
+@Composable
+private fun MomentsViewModeMenu(
+    selected: MomentsViewMode,
+    onSelect: (MomentsViewMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val menuLabel = stringResource(MR.string.moments_view_menu)
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = when (selected) {
+                    MomentsViewMode.Timeline -> Icons.Outlined.ViewAgenda
+                    MomentsViewMode.Album -> Icons.Outlined.PhotoAlbum
+                },
+                contentDescription = menuLabel,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            MomentsViewModeMenuItem(
+                label = stringResource(MR.string.moments_view_timeline),
+                icon = Icons.Outlined.ViewAgenda,
+                isSelected = selected == MomentsViewMode.Timeline,
+                onClick = {
+                    expanded = false
+                    onSelect(MomentsViewMode.Timeline)
+                },
+            )
+            MomentsViewModeMenuItem(
+                label = stringResource(MR.string.moments_view_album),
+                icon = Icons.Outlined.PhotoAlbum,
+                isSelected = selected == MomentsViewMode.Album,
+                onClick = {
+                    expanded = false
+                    onSelect(MomentsViewMode.Album)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MomentsViewModeMenuItem(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = label,
+                style = if (isSelected) {
+                    MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        },
+        onClick = onClick,
     )
 }
 

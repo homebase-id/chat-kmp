@@ -10,6 +10,9 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.moments.MomentsAlbumZoom
+import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentsFeedService
 import kotlinx.collections.immutable.toPersistentMap
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,6 +42,7 @@ class MomentsFeedViewModel(
     eventBus: EventBus,
     private val optimisticWriter: OptimisticWriter,
     private val actionService: MomentActionService,
+    private val momentsPreferences: MomentsPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MomentsFeedUiState())
@@ -111,24 +116,48 @@ class MomentsFeedViewModel(
         }
     }
 
+    fun setViewMode(mode: MomentsViewMode) {
+        viewModelScope.launch {
+            momentsPreferences.setViewMode(mode)
+        }
+    }
+
+    /**
+     * Update the album-view zoom level. Session-only — see [MomentsAlbumZoom]
+     * for why this isn't routed through [MomentsPreferences].
+     */
+    fun setAlbumZoom(zoom: MomentsAlbumZoom) {
+        _uiState.update { it.copy(albumZoom = zoom) }
+    }
+
     init {
+        // The service emits in its own canonical order (by userDate). The view
+        // mode preference picks between Timeline (sort by post creation) and
+        // Album (sort by userDate) — applying the sort here keeps the service
+        // ignorant of UI preferences.
         viewModelScope.launch {
             var lastSize = -1
             var lastNewestId: String? = null
-            feedService.feed.collect { list ->
-                _uiState.update { it.copy(moments = list) }
+            combine(feedService.feed, momentsPreferences.viewMode) { list, mode ->
+                list to mode
+            }.collect { (list, mode) ->
+                val sorted = when (mode) {
+                    MomentsViewMode.Timeline -> list.sortedByDescending { it.createdMs }
+                    MomentsViewMode.Album -> list.sortedByDescending { it.userDateMs }
+                }
+                _uiState.update { it.copy(moments = sorted, viewMode = mode) }
                 // Diagnostic: log every size/head change so we can confirm the
                 // feed VM is propagating service updates into uiState. Pairs
                 // with MomentsFeedService.processIncrementalBatch logs to
                 // triangulate a "remote moment didn't appear" report.
-                val newest = list.firstOrNull()
+                val newest = sorted.firstOrNull()
                 val newestId = newest?.id?.toString()
-                if (list.size != lastSize || newestId != lastNewestId) {
+                if (sorted.size != lastSize || newestId != lastNewestId) {
                     Logger.d(tag = TAG) {
-                        "uiState moments updated: count=${list.size} " +
+                        "uiState moments updated: count=${sorted.size} mode=$mode " +
                             "newest=$newestId sender=${newest?.senderOdinId?.domainName ?: "self"}"
                     }
-                    lastSize = list.size
+                    lastSize = sorted.size
                     lastNewestId = newestId
                 }
             }
