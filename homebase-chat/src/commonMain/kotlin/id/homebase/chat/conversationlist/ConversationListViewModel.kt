@@ -1384,6 +1384,19 @@ class ConversationListViewModel(
             } catch (_: CancellationException) {
                 // ignore
             } catch (e: Exception) {
+                // A failed load (DB error, deserialization, etc.) must NOT leave the
+                // detail pane spinning forever: the success path only clears
+                // isLoadingMessages inside the observeMessages collect, which we never
+                // reach here. Log it (previously this was snackbar-only, invisible in
+                // homebase.log) and clear the spinner. Guard on the conversation still
+                // being selected so a late failure from a superseded job can't wipe the
+                // spinner of the conversation the user has since switched to.
+                Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                    "loadMessagesForConversation failed id=$conversationId trigger=$trigger: ${e.message}"
+                }
+                if (_uiState.value.selectedConversationId == conversationId) {
+                    _messagesUiState.update { it.copy(isLoadingMessages = false) }
+                }
                 sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
             }
         }
