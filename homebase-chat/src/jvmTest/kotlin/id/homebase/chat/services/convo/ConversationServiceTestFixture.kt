@@ -7,6 +7,8 @@ import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.connections.IntroductionResult
 import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -231,16 +233,86 @@ class ConversationServiceTestFixture : AutoCloseable {
      */
     suspend fun seedOrphanedOneOnOneSelfOnly(
         conversationId: Uuid = Uuid.random(),
+        originalAuthor: String = testDomain,
     ): Uuid {
         insertConversationFile(
             fileId = Uuid.random(),
             uniqueId = conversationId,
             participants = listOf(testDomain),
-            originalAuthor = testDomain,
+            originalAuthor = originalAuthor,
             isGroup = false,
             title = "",
         )
         return conversationId
+    }
+
+    /**
+     * Seed a chat message (fileType=MessageFileType, dataType=0) in [groupId] authored
+     * by [author]. Used to exercise recoverConversation's peer-message guard — only
+     * groupId / fileType / originalAuthor are read there, so the content is a stub.
+     */
+    suspend fun seedMessage(
+        groupId: Uuid,
+        author: String,
+        fileId: Uuid = Uuid.random(),
+        archivalStatus: Int = 0,
+    ) {
+        val now = Clock.System.now().epochSeconds
+        insertFile(
+            """{
+              "fileId": "$fileId",
+              "driveId": "$chatDriveId",
+              "fileState": "active",
+              "fileSystemType": "standard",
+              "serverFileIsEncrypted": "false",
+              "keyHeader": {
+                "iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
+              },
+              "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": ${now}000,
+                "updated": ${now}000,
+                "transitCreated": ${now}000,
+                "transitUpdated": 0,
+                "isEncrypted": false,
+                "senderOdinId": "$author",
+                "originalAuthor": "$author",
+                "appData": {
+                  "uniqueId": "${Uuid.random()}",
+                  "tags": null,
+                  "fileType": ${ChatProtocol.MessageFileType},
+                  "dataType": 0,
+                  "groupId": "$groupId",
+                  "userDate": ${now}000,
+                  "content": null,
+                  "previewThumbnail": null,
+                  "archivalStatus": $archivalStatus
+                },
+                "localAppData": null,
+                "referencedFile": null,
+                "reactionPreview": null,
+                "versionTag": "${Uuid.random()}",
+                "payloads": [],
+                "dataSource": null
+              },
+              "serverMetadata": {
+                "accessControlList": {
+                  "requiredSecurityGroup": "owner",
+                  "circleIdList": null,
+                  "odinIdList": null
+                },
+                "doNotIndex": false,
+                "allowDistribution": true,
+                "fileSystemType": "standard",
+                "fileByteCount": 50,
+                "originalRecipientCount": 0,
+                "transferHistory": null
+              },
+              "priority": 300,
+              "fileByteCount": 50
+            }"""
+        )
     }
 
     /** A legacy (pre-tag) group — >2 participants but no ConversationGroupTag. */
@@ -539,6 +611,24 @@ class ConversationServiceTestFixture : AutoCloseable {
         MainIndexMetaHelpers.upsertDriveMainIndex(dbm, record)
     }
 }
+
+// ---------- Shared outbox assertions ----------
+
+/**
+ * Decode a drained [Outbox] row as a hard-delete request, or null if it isn't one.
+ * Shared by the heal tests ([ConversationServiceHealTest]) and the recovery tests
+ * ([ConversationServiceRecoveryTest]).
+ */
+fun Outbox.asHardDeleteRequestOrNull(): DeleteLocalFilesByFileIdRequest? {
+    if (this.uploadType != DriveOutboxUploader.DeleteFile) return null
+    return try {
+        OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(this.json.decodeToString())
+    } catch (_: Throwable) {
+        null
+    }
+}
+
+fun Outbox.isHardDeleteRequest(): Boolean = asHardDeleteRequestOrNull() != null
 
 // ---------- Test doubles ----------
 
