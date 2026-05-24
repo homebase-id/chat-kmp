@@ -282,6 +282,9 @@ class ConversationListViewModel(
 
         viewModelScope.launch {
             val vmInitMark = TimeSource.Monotonic.markNow()
+            Logger.i(tag = "ConvListPerf") {
+                "main list pipeline: launch body entered at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+            }
             contactService.start()
             conversationStream.start()
             connectionService.start()
@@ -328,6 +331,10 @@ class ConversationListViewModel(
                 }
             }
 
+            Logger.i(tag = "ConvListPerf") {
+                "main list pipeline: reaching combine.collect setup at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+            }
+            var firstCombineEval = true
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
@@ -342,6 +349,14 @@ class ConversationListViewModel(
                 // before OwnerSessionRepository.load() has run — the enricher
                 // never has to deal with a null session.
                 val effectiveSession = synthesizeOwnerSession(ownerSession, credentials)
+                if (firstCombineEval) {
+                    firstCombineEval = false
+                    Logger.i(tag = "ConvListPerf") {
+                        "main list pipeline: combine first eval at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit " +
+                            "ownerSession=${ownerSession != null} credentials=${credentials != null} " +
+                            "effectiveSession=${effectiveSession != null} dataReady=${conversationState.dataReady} items=${conversationState.items.size}"
+                    }
+                }
                 if (effectiveSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
