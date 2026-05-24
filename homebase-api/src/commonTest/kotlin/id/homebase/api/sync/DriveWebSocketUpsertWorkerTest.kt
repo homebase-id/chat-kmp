@@ -6,6 +6,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.createInMemoryDatabase
+import id.homebase.api.sync.database.newTestDatabaseManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +51,7 @@ class DriveWebSocketUpsertWorkerTest {
 
     @BeforeTest
     fun setUp() {
-        db = DatabaseManager({ createInMemoryDatabase() })
+        db = newTestDatabaseManager()
         workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 

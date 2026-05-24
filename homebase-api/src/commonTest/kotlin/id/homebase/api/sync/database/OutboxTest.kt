@@ -22,7 +22,7 @@ class OutboxTest {
 
     @Test
     fun testInsertSelectDeleteOutboxItem() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data
             val data = "test data".toByteArray()
             val files = "test files".toByteArray()
@@ -81,7 +81,7 @@ class OutboxTest {
 
     @Test
     fun testCheckoutWithEmptyOutbox() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Try to checkout from empty outbox
             val checkoutResult = dbm.outbox.checkout()
 
@@ -96,7 +96,7 @@ class OutboxTest {
 
     @Test
     fun testMultipleItemsSequentialOrdering() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data
             val data = "test data".toByteArray()
 
@@ -131,7 +131,7 @@ class OutboxTest {
 
     @Test
     fun testOutboxItemWithNullFiles() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+        newTestDatabaseManager().use { dbm ->
             // Test data with null files
             val data = "test data".toByteArray()
 
@@ -163,7 +163,7 @@ class OutboxTest {
 
         @Test
         fun testUpdateCheckOutCount() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 // Insert initial item
                 val data = "test data".toByteArray()
 
@@ -218,7 +218,7 @@ class OutboxTest {
 
         @Test
         fun testPopTest() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 val driveId = Uuid.random()
                 val fileIds = List(5) { Uuid.random() }
                 val values = List(5) { Uuid.random().toByteArray() }
@@ -264,7 +264,7 @@ class OutboxTest {
 
         @Test
         fun testPriorityTest() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 val driveId = Uuid.random()
                 val fileIds = List(5) { Uuid.random() }
                 val values = List(5) { Uuid.random().toByteArray() }
@@ -303,7 +303,7 @@ class OutboxTest {
 
         @Test
         fun testNextRunTest() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 val driveId = Uuid.random()
                 val fileIds = List(5) { Uuid.random() }
                 val values = List(5) { Uuid.random().toByteArray() }
@@ -353,7 +353,7 @@ class OutboxTest {
 
         @Test
         fun testDependencyTest() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 val driveId = Uuid.random()
                 val fileIds = List(5) { Uuid.random() }
                 val values = List(5) { Uuid.random().toByteArray() }
@@ -409,7 +409,7 @@ class OutboxTest {
 
         @Test
         fun testDependencyTestGetNextRun() = runTest {
-            DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            newTestDatabaseManager().use { dbm ->
                 val driveId = Uuid.random()
                 val fileIds = List(5) { Uuid.random() }
                 val values = List(5) { Uuid.random().toByteArray() }

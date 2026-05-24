@@ -35,7 +35,7 @@ class FileStateFilterTest {
 
     @Test
     fun queryBatch_defaultFilterIsActive() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+        newTestDatabaseManager().use { dbm ->
             val activeId = Uuid.random()
             val deletedId = Uuid.random()
             seed(dbm, activeId, fileState = "active")
@@ -60,7 +60,7 @@ class FileStateFilterTest {
 
     @Test
     fun queryBatch_filterAll_returnsBothStates() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+        newTestDatabaseManager().use { dbm ->
             val activeId = Uuid.random()
             val deletedId = Uuid.random()
             seed(dbm, activeId, fileState = "active")
@@ -76,7 +76,7 @@ class FileStateFilterTest {
 
     @Test
     fun queryBatch_reflectsTransition_activeToDeleted_viaUpsert() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+        newTestDatabaseManager().use { dbm ->
             val uniqueId = Uuid.random()
             val fileId = Uuid.random()
             val t0 = Clock.System.now().epochSeconds * 1000L
@@ -114,14 +114,14 @@ class FileStateFilterTest {
     @Test
     fun convertFileHeader_projectsFileStateIntoSqlColumn() {
         val activeRecord = MainIndexMetaHelpers.HomebaseFileProcessor(
-            DatabaseManager({ createInMemoryDatabase() })
+            newTestDatabaseManager()
         ).convertFileHeaderToDriveMainIndexRecord(
             identityId, driveId, parseHeader(Uuid.random(), Uuid.random(), "active"),
         )
         assertEquals(FileState.Active.value.toLong(), activeRecord.fileState)
 
         val deletedRecord = MainIndexMetaHelpers.HomebaseFileProcessor(
-            DatabaseManager({ createInMemoryDatabase() })
+            newTestDatabaseManager()
         ).convertFileHeaderToDriveMainIndexRecord(
             identityId, driveId, parseHeader(Uuid.random(), Uuid.random(), "deleted"),
         )

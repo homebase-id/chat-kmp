@@ -10,7 +10,7 @@ import kotlin.uuid.Uuid
 class DriveLocalTagIndexTest {
     @Test
     fun testInsertSelectDeleteLocalTag() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data - create sample byte arrays
             val randomId = Random.nextLong()
@@ -70,7 +70,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testSelectByFileWithNoLocalTags() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data for non-existent file
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -88,7 +88,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testUniqueConstraint() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data
             val identityId = Uuid.random()

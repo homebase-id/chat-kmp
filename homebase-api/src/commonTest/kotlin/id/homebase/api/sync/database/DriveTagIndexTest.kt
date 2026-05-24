@@ -9,7 +9,7 @@ import kotlin.uuid.Uuid
 class DriveTagIndexTest {
     @Test
     fun testInsertSelectDeleteTag() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data - create sample UUIDs
             val identityId = Uuid.random()
@@ -68,7 +68,7 @@ class DriveTagIndexTest {
 
     @Test
     fun testSelectByFileWithNoTags() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data for non-existent file
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -86,7 +86,7 @@ class DriveTagIndexTest {
 
     @Test
     fun testUniqueConstraint() = runTest {
-        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
+        newTestDatabaseManager().use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data
             val identityId = Uuid.random()
             val driveId = Uuid.random()

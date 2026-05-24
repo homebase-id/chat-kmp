@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.createInMemoryDatabase
+import id.homebase.api.sync.database.newTestDatabaseManager
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -36,7 +37,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun startSetsInitialStateToInitialized() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val credentialsManager = CredentialsManager()
@@ -72,7 +73,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun failedDriveAutoRetriesSyncAfterOneSecond() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val credentialsManager = CredentialsManager()
@@ -156,7 +157,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateIsIdleBeforeStart() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
             assertEquals(SyncState.Idle, manager.syncState.value)
@@ -166,7 +167,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToSyncingOnStartedEvent() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -184,7 +185,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToCompletedWhenAllDrivesComplete() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -204,7 +205,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToFailedOnFailedEvent() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -224,7 +225,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllStartedEventFiredOnTransitionToSyncing() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -246,7 +247,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllCompletedEventFiredOnTransitionToCompleted() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -271,7 +272,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllFailedEventFiredOnTransitionToFailed() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -296,7 +297,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun permissionDeniedEventUnmountsDrive() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -325,7 +326,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun permissionDeniedDoesNotMarkOtherDrivesAsFailed() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val completedDrive = Uuid.random()
@@ -359,7 +360,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun mountDriveAddsNewDrive() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope, emptyMap())
             manager.start()
@@ -382,7 +383,7 @@ class DriveSyncManagerTest {
         // must register the drive in-memory, defer the sync kick, and the subsequent
         // syncAll() (the canonical "kick everything" call after start()) must include
         // the pre-registered drive.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope, emptyMap())
 
@@ -416,7 +417,7 @@ class DriveSyncManagerTest {
         // Mid-session add-on install while the WS is paused (network blip / pre-reconnect):
         // the activation flow's mountDrive() must register, defer the kick, and let the
         // next reconnect's start() + syncAll() pick it up.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val mandatoryDrive = Uuid.random()
             val manager = buildManager(
@@ -451,7 +452,7 @@ class DriveSyncManagerTest {
         // Logout race during add-on activation: getActiveCredentials() returns null,
         // mountDrive must warn and bail without registering — no DriveSync object,
         // no entry in driveStatuses.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val emptyCredentials = CredentialsManager() // never call setActiveCredentials
             val manager = buildManager(db, emptyCredentials, EventBus(), backgroundScope, emptyMap())
@@ -467,7 +468,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun unmountDriveRemovesDriveAndClearsStatus() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -576,7 +577,7 @@ class DriveSyncManagerTest {
         // didn't complete, the mandatory drives never showed up in driveStatuses.
         // ensureMandatoryMounted() decouples the mount from the running flag — drives must
         // appear as Initialized even without start() / syncAll() running.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val driveA = Uuid.random()
             val driveB = Uuid.random()
@@ -603,7 +604,7 @@ class DriveSyncManagerTest {
         // bootstrap. AuthCC.mountDrive needs to know "was anything actually new?" to skip
         // the refreshWsSubscription.trigger() that would tear down an in-flight WS
         // handshake. The return value of DriveSyncManager.mountDrive is that signal.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
             val driveId = Uuid.random()
@@ -623,7 +624,7 @@ class DriveSyncManagerTest {
         // start() calls ensureMandatoryMounted() as a safety net. If AuthConnectionCoordinator
         // also calls it earlier (the new primary path), the second invocation from start()
         // must be a no-op rather than a failure or duplicate registration.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val driveA = Uuid.random()
             val manager = buildManager(
@@ -652,7 +653,7 @@ class DriveSyncManagerTest {
         // driveStatuses: Initialized → Synchronizing(count=0) → Synchronizing(count=N) →
         // Completed(totalCount=finalCount). The Synchronizing.count drives
         // LoginScreen's DriveProgressRow ("N records").
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -707,7 +708,7 @@ class DriveSyncManagerTest {
         // out-of-order BatchReceived emits from optimistic writes had totalCount=1
         // pre-branch and would have undone real progress. Now the same guard
         // protects DriveEvent.Progress.
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()

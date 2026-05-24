@@ -85,7 +85,7 @@ class OutboxSyncTest {
 
     @Test
     fun testSuccessfulSend() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -144,7 +144,7 @@ class OutboxSyncTest {
 
     @Test
     fun testFailureAndRetry() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -197,7 +197,7 @@ class OutboxSyncTest {
 
     @Test
     fun testConcurrencyLimit() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -254,7 +254,7 @@ class OutboxSyncTest {
 
     @Test
     fun testMaxRetriesDrop() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -322,7 +322,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testTryEnqueueDoesNotBlockOnSaturatedEventBus() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -407,7 +407,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -455,7 +455,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testReplaceEnqueueSupersedesExistingRow() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -503,7 +503,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testPermanentFailure_NotFoundExceptionDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -552,7 +552,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testPermanentFailure_VersionTagMismatchByCodeDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -605,7 +605,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testPermanentFailure_MismatchingVersionTagByTitleDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -662,7 +662,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testPermanentFailure_ThumbnailSizeExceedsDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -714,7 +714,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testDependencyChainUnblocksAfterPermanentFailure() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()
@@ -777,7 +777,7 @@ class OutboxSyncTest {
 
     @Test
     fun testEmptyOutbox() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test

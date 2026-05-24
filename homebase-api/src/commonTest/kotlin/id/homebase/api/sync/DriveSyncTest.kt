@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.createInMemoryDatabase
+import id.homebase.api.sync.database.newTestDatabaseManager
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -55,7 +56,7 @@ class DriveSyncTest {
 
     @Test
     fun forbiddenResponseEmitsPermissionDenied() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -90,7 +91,7 @@ class DriveSyncTest {
 
     @Test
     fun forbiddenResponseDoesNotTriggerRetry() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+        val db = newTestDatabaseManager()
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
