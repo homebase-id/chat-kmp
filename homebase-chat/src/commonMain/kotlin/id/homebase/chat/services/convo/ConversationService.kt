@@ -1600,6 +1600,13 @@ class ConversationService(
         // "Heal Group" button); pushing a placeholder pre-emptively to the
         // server has been observed to make the recipient's local state
         // overwrite later heals, defeating the heal flow.
+        //
+        // The one exception is the own-drive corrupt-header cleanup below
+        // ([tryHardDeleteUnrecoverableOwnHeader]): it hard-deletes a dead file we
+        // authored from our OWN drive (recipients=null ⇒ no peer fan-out), which is
+        // file removal, not distribution — the same primitive GroupHealService STEP 1
+        // uses. Without it, a self-only corrupt header re-syncs from our own server
+        // drive every launch and loops forever.
         val existingFile = getConversationHomebaseFile(conversationId)
 
         // Three pieces of state we resolve from the (optional) existing file:
@@ -1608,9 +1615,11 @@ class ConversationService(
         //   - early return if the file is already healthy
         val brokenFileIdToDelete: Uuid?
         val participants: List<OdinId>
+        // Hoisted so the corrupt-header cleanup below can see the mapped state.
+        var existingState: ConversationState? = null
 
         if (existingFile != null) {
-            val existingState: ConversationState? = try {
+            existingState = try {
                 mapper.mapToConversationUi(existingFile, null).conversationState
             } catch (e: Exception) {
                 Logger.w(e) { "ConversationService: recoverConversation($conversationId) — existing file failed to map, will overwrite" }
@@ -1650,6 +1659,23 @@ class ConversationService(
         // branch — yielding a healthy Active state instead of another
         // unmappable_conversation flag.
         val hasNonSelfParticipant = participants.any { it != domain }
+
+        // Before writing yet another local placeholder, check whether this is a dead
+        // own-drive corrupt header that local-only recovery can never fix (it would
+        // just re-sync and loop). If so, hard-delete it server-side and bail.
+        if (existingFile != null &&
+            tryHardDeleteUnrecoverableOwnHeader(
+                conversationId = conversationId,
+                existingFile = existingFile,
+                existingState = existingState,
+                domain = domain,
+                hasNonSelfParticipant = hasNonSelfParticipant,
+                audit = audit,
+            )
+        ) {
+            return
+        }
+
         val forcedGroupForUnmappable1to1 = isOneToOne && !hasNonSelfParticipant
         val placeholderIsGroup = !isOneToOne || forcedGroupForUnmappable1to1
         // Give forced-group recoveries a recognisable label so the user can
@@ -1669,6 +1695,85 @@ class ConversationService(
             audit = audit,
         )
         audit.finish("local-only recovery complete")
+    }
+
+    /**
+     * Breaks the re-sync loop for a corrupt header on our OWN drive. A header we
+     * authored that is genuinely [ConversationState.Invalid], lists only ourselves,
+     * and has no peer message in its group is a dead file that local-only recovery
+     * can never fix — deleting just the local row lets the next sync re-download it,
+     * so it loops forever (FAILED map → recover → deleteBy(local) → "1:1 repair" →
+     * re-sync → repeat).
+     *
+     * When all gates pass it hard-deletes the file from our own server drive
+     * (recipients=null ⇒ no peer fan-out, the same primitive GroupHealService STEP 1
+     * uses), drops the local row, refreshes the model, and returns `true` (the caller
+     * then returns — there is nothing to place). Returns `false` otherwise, leaving
+     * the existing local-placeholder path untouched.
+     *
+     * Conservatively gated: never a file we didn't author, and never one with any
+     * peer-message trace ([FileStateFilter.All] counts soft-deleted tombstones too —
+     * if a peer ever wrote here we keep the placeholder rather than destroy context).
+     */
+    private suspend fun tryHardDeleteUnrecoverableOwnHeader(
+        conversationId: Uuid,
+        existingFile: HomebaseFile,
+        existingState: ConversationState?,
+        domain: OdinId,
+        hasNonSelfParticipant: Boolean,
+        audit: MethodAudit,
+    ): Boolean {
+        val authoredBySelf =
+            (existingFile.fileMetadata.originalAuthor
+                ?: existingFile.fileMetadata.senderOdinId ?: domain) == domain
+        if (existingState != ConversationState.Invalid || !authoredBySelf || hasNonSelfParticipant) {
+            return false
+        }
+
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val hasPeerMessage = QueryBatch(identityId).queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 10_000,
+            fileSystemType = FileSystemType.Standard.value,
+            fileState = FileStateFilter.All, // conservative: tombstones count as a peer trace
+            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+            groupIdAnyOf = listOf(conversationId),
+        ).records.any { m ->
+            val author = m.fileMetadata.originalAuthor ?: m.fileMetadata.senderOdinId
+            author != null && author != domain
+        }
+        if (hasPeerMessage) {
+            audit.info("corrupt own header has a peer message — leaving for local-placeholder path")
+            return false // recoverable ⇒ keep the placeholder behaviour
+        }
+
+        Logger.w("ConversationService: recoverConversation($conversationId) — own-drive corrupt header with no recoverable counterparty; hard-deleting fileId=${existingFile.fileId} from own drive")
+        audit.step(1, "outboxSync.tryEnqueue(DeleteLocalFilesByFileIdRequest hardDelete=true recipients=null fileId=${existingFile.fileId})")
+        runCatching {
+            outboxSync.tryEnqueue(
+                DeleteLocalFilesByFileIdRequest(
+                    driveId = chatDrive,
+                    fileIds = listOf(existingFile.fileId),
+                    recipients = null,
+                    hardDelete = true,
+                )
+            )
+        }.onSuccess { enqueued -> audit.info("hardDelete enqueued=$enqueued") }
+            .onFailure { e -> audit.threw("hardDeleteEnqueue", e) }
+
+        audit.step(2, "deleteBy(local corrupt row fileId=${existingFile.fileId})")
+        runCatching {
+            dbm.driveMainIndex.deleteBy(
+                identityId = identityId,
+                driveId = chatDrive,
+                fileId = existingFile.fileId,
+            )
+        }.onFailure { e -> audit.threw("deleteLocalRow", e) }
+
+        conversationStream.removeConversation(conversationId)
+        audit.finish("own-drive corrupt header hard-deleted")
+        return true
     }
 
     /**

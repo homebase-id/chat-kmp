@@ -175,57 +175,93 @@ class ConversationServiceRecoveryTest {
     }
 
     /**
-     * Regression: an orphaned 1:1 with `recipients=[self]` crashes the
-     * mapper at line 151 (`participants.first { it != domain }`). The
-     * recovery path (ConversationService.kt:1583–1597) is explicitly designed
-     * to handle this — it forces the placeholder to the group branch so the
-     * mapper takes the safe path instead of crashing. Without an active caller
-     * invoking `recoverConversation` this row stays broken on every list load,
-     * which is what `ConversationStream.loadBasicConversations` now wires up.
+     * An own-authored, unmappable (self-only `recipients=[self]`), message-less
+     * header is a dead file on our OWN drive that local-only recovery can never fix:
+     * deleting just the local row lets the next sync re-download it, looping forever
+     * (FAILED map → recover → deleteBy(local) → "1:1 repair" → re-sync → repeat).
      *
-     * Pins the local-only recovery contract: after recovery the placeholder
-     * file carries the group tag (so the mapper's group branch fires) and
-     * no outbox work was enqueued.
+     * Pins the loop-breaker: recovery hard-deletes the file from our own server drive
+     * (`recipients=null` ⇒ no peer fan-out), drops the local row, and writes NO
+     * placeholder so the dead thread disappears.
      */
     @Test
-    fun recoverConversation_oneOnOne_existingInvalidSelfOnly_revivesAsGroupPlaceholder() = runTest {
+    fun recoverConversation_ownAuthoredSelfOnlyInvalid_noMessages_hardDeletesServerHeader() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
-            // The orphan shape: recipients=[testDomain only]. The conversationId
-            // doesn't matter for the crash — what matters is that the stored
-            // recipients list contains only the current user.
+            // The orphan shape: recipients=[testDomain only], authored by us, no messages.
             val convoId = fixture.seedOrphanedOneOnOneSelfOnly()
-            val rowsBefore = fixture.outboxRowCount()
+            val brokenFileId = fixture.getConversationFile(convoId)!!.fileId
 
             service.recoverConversation(
                 conversationId = convoId,
                 originalAuthor = OdinId(fixture.testDomain),
             )
 
+            val deletes = fixture.drainOutbox().mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertEquals(1, deletes.size, "exactly one own-drive hard-delete should be enqueued; got $deletes")
+            val del = deletes.single()
             assertEquals(
-                rowsBefore,
-                fixture.outboxRowCount(),
-                "recovery is local-only ⇒ no outbox enqueue",
+                listOf(brokenFileId),
+                del.fileIds,
+                "hard-delete must target the broken header's fileId",
             )
+            assertNull(del.recipients, "own-drive delete must have no recipients (no peer fan-out)")
+            assertTrue(del.hardDelete, "must be a hard delete so the next peer push lands as a fresh create")
 
-            val file = fixture.getConversationFile(convoId)
-            assertNotNull(file, "post-recovery placeholder file must exist")
-            assertNull(file.fileMetadata.versionTag, "placeholder marker (versionTag=null)")
-
-            // The placeholder MUST carry the group tag so the mapper takes the
-            // group branch — the whole point of the forced-group recovery is to
-            // avoid the `participants.first { it != domain }` deref.
-            val tags = file.fileMetadata.appData.tags ?: emptyList()
+            assertNull(
+                fixture.getConversationFile(convoId),
+                "local row must be gone so the dead thread disappears (no placeholder written)",
+            )
             assertTrue(
-                tags.contains(ChatProtocol.ConversationGroupTag),
-                "self-only 1:1 must be revived with the group tag so the mapper " +
-                        "takes the safe (group) branch; got tags=$tags",
+                fixture.conversationLoader.removed.contains(convoId),
+                "recoverConversation should drop the in-memory model via removeConversation",
+            )
+        }
+    }
+
+    /**
+     * Guard: a self-only Invalid header that we authored but which DOES have a peer
+     * message in its group is recoverable — we must NOT hard-delete it (that would
+     * strand the peer's messages). Falls back to the existing local-placeholder path.
+     */
+    @Test
+    fun recoverConversation_ownAuthoredSelfOnlyInvalid_withPeerMessage_doesNotDelete() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = fixture.seedOrphanedOneOnOneSelfOnly()
+            fixture.seedMessage(groupId = convoId, author = "alice.test")
+
+            service.recoverConversation(
+                conversationId = convoId,
+                originalAuthor = OdinId(fixture.testDomain),
             )
 
-            assertTrue(
-                fixture.conversationLoader.loaded.contains(convoId),
-                "recoverConversation should refresh the in-memory model via loadConversation",
+            val deletes = fixture.drainOutbox().mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertTrue(deletes.isEmpty(), "recoverable header (has a peer message) must NOT be hard-deleted; got $deletes")
+            assertNotNull(
+                fixture.getConversationFile(convoId),
+                "recoverable header keeps a local placeholder",
             )
+        }
+    }
+
+    /**
+     * Ownership gate: a self-only Invalid header authored by a PEER (not us) must
+     * never be hard-deleted from our drive — we only ever remove files we authored.
+     */
+    @Test
+    fun recoverConversation_peerAuthoredSelfOnlyInvalid_doesNotDelete() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = fixture.seedOrphanedOneOnOneSelfOnly(originalAuthor = "alice.test")
+
+            service.recoverConversation(
+                conversationId = convoId,
+                originalAuthor = OdinId("alice.test"),
+            )
+
+            val deletes = fixture.drainOutbox().mapNotNull { it.asHardDeleteRequestOrNull() }
+            assertTrue(deletes.isEmpty(), "peer-authored header must NOT be hard-deleted from our drive; got $deletes")
         }
     }
 

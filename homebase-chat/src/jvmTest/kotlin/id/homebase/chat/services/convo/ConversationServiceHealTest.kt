@@ -9,8 +9,6 @@ import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -545,17 +543,6 @@ class ConversationServiceHealTest {
         priority = 100,
         fileByteCount = 100,
     )
-
-    private fun Outbox.isHardDeleteRequest(): Boolean = asHardDeleteRequestOrNull() != null
-
-    private fun Outbox.asHardDeleteRequestOrNull(): DeleteLocalFilesByFileIdRequest? {
-        if (this.uploadType != DriveOutboxUploader.DeleteFile) return null
-        return try {
-            OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(this.json.decodeToString())
-        } catch (_: Throwable) {
-            null
-        }
-    }
 
     private fun readPlaceholderRecipients(file: HomebaseFile): List<String> {
         val raw = file.fileMetadata.appData.content ?: return emptyList()
