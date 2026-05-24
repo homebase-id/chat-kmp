@@ -335,6 +335,7 @@ class ConversationListViewModel(
                 "main list pipeline: reaching combine.collect setup at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
             }
             var firstCombineEval = true
+            var firstReadyEmitted = false
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
@@ -372,11 +373,23 @@ class ConversationListViewModel(
                         connectionStatusKnown = connectionCtx.statusKnown,
                     )
                 })
-            }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+            }.debounce { (dataReady, _) ->
+                // Leading-edge debounce: render the FIRST ready list immediately, then
+                // coalesce the burst that follows. The cached conversations + a
+                // credentials-synthesized session make a complete list available within
+                // a few ms of vmInit, but the combine's sources (ownerSession,
+                // connectionStatusFlow) keep re-emitting all through the auth/connect
+                // lifecycle. A flat debounce(50) never sees 50ms of quiet during that
+                // storm, so it withheld the ready list for ~half a second until the
+                // connection settled ("blocked until it goes green"). 0ms for the first
+                // ready emit fixes that; 50ms thereafter still coalesces the storm.
+                if (dataReady && !firstReadyEmitted) 0L else 50L
+            }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 Logger.i(tag = "ConversationListViewModel") {
                     "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
                 }
                 if (dataReady) {
+                    firstReadyEmitted = true
                     _uiState.update {
                         it.copy(
                             activeConversations = enriched
