@@ -11,8 +11,10 @@ data class MomentAudienceUiState(
     val isPosting: Boolean = false,
     val draftReady: Boolean = false,
     val commentsEnabled: Boolean = true,
+    val selfOnly: Boolean = false,
 ) {
-    val canPost: Boolean get() = draftReady && !isPosting
+    val canPost: Boolean
+        get() = draftReady && !isPosting && (selfOnly || selected.isNotEmpty())
 
     /** MRU-bumped recipients matching the search query (or all when query is blank). */
     val filteredRecent: List<MomentsRecipient>
@@ -35,6 +37,7 @@ sealed interface MomentAudienceUiAction {
     data class QueryChanged(val text: String) : MomentAudienceUiAction
     data class ToggleRecipient(val id: MomentsRecipientId) : MomentAudienceUiAction
     data class CommentsEnabledChanged(val enabled: Boolean) : MomentAudienceUiAction
+    data object ToggleSelfOnly : MomentAudienceUiAction
     data object PostClicked : MomentAudienceUiAction
 }
 

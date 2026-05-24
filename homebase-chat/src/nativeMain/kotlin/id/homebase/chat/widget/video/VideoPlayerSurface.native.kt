@@ -66,6 +66,7 @@ import platform.AVFoundation.presentationSize
 import platform.AVFoundation.rate
 import platform.AVFoundation.reasonForWaitingToPlay
 import platform.AVFoundation.removeTimeObserver
+import platform.AVFoundation.setMuted
 import platform.AVFoundation.statusOfValueForKey
 import platform.AVFoundation.timeControlStatus
 import platform.AVFoundation.tracks
@@ -108,6 +109,7 @@ actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
+    muted: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -133,6 +135,10 @@ actual fun VideoPlayerSurface(
             notificationObservers.clear()
             tempDir?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
         }
+    }
+
+    LaunchedEffect(state, muted) {
+        (state as? VpsState.Playing)?.player?.setMuted(muted)
     }
 
     LaunchedEffect(data) {

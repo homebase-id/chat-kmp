@@ -87,6 +87,7 @@ actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
+    muted: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -222,6 +223,7 @@ actual fun VideoPlayerSurface(
                 videoPath = s.videoPath,
                 modifier = Modifier.fillMaxSize(),
                 onFirstFrameRendered = { onProgress(1f) },
+                muted = muted,
             )
         }
     }
@@ -238,6 +240,7 @@ internal fun VlcjPlayer(
     externalIsPlaying: Boolean? = null,
     seekRequestMs: Long? = null,
     onPositionMs: ((Long) -> Unit)? = null,
+    muted: Boolean = false,
 ) {
     val vlcFound = remember { NativeDiscovery().discover() }
 
@@ -320,6 +323,10 @@ internal fun VlcjPlayer(
         }
     }
 
+    LaunchedEffect(muted) {
+        mediaPlayer.audio().isMute = muted
+    }
+
     // External seek requests
     if (seekRequestMs != null) {
         LaunchedEffect(seekRequestMs) {
@@ -392,6 +399,7 @@ internal fun VlcjPlayer(
         } else {
             mediaPlayer.media().play(videoPath)
         }
+        mediaPlayer.audio().isMute = muted
 
         onDispose {
             mediaPlayer.events().removeMediaPlayerEventListener(eventListener)
