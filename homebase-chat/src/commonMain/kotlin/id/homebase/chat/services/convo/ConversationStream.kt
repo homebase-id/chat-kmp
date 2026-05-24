@@ -696,79 +696,26 @@ class ConversationStream(
         existing: ConversationUiModel,
         incoming: ConversationUiModel
     ) {
-        // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
-        // which may not preserve localAppData tags. RejoinPending is the one exception: it means
-        // the server shows us back in participants while we still have the Left tag locally.
-        val resolvedState = if (existing.conversationState == ConversationState.Left
-            && incoming.conversationState != ConversationState.Left
-            && incoming.conversationState != ConversationState.RejoinPending
-        ) {
-            ConversationState.Left
-        } else {
-            incoming.conversationState
-        }
+        // All value reconciliation (state stickiness, exitedAt, lastRead/dirty,
+        // structural-vs-preview field ownership) lives in the pure
+        // [mergeConversationFileUpdate]; this method keeps only the side effects.
+        val result = mergeConversationFileUpdate(
+            existing = existing,
+            incoming = incoming,
+            now = UnixTimeUtc().toInstant(),
+        )
 
-        // Stamp lastExitedAt in localAppData the first time we detect a Removed transition.
-        // The mapper reads it back from localAppData on subsequent loads (cold start, reconnect).
-        val isNewlyRemoved = resolvedState == ConversationState.Removed
-                && existing.conversationState != ConversationState.Removed
-                && existing.conversationState != ConversationState.Left
-        if (isNewlyRemoved) {
+        // Stamp lastExitedAt in localAppData the first time we detect a Removed
+        // transition. The mapper reads it back from localAppData on subsequent
+        // loads (cold start, reconnect).
+        if (result.isNewlyRemoved) {
             optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
                 ?.let { outboxSync.tryEnqueue(it) }
         }
 
-        // Clear exitedAt when active again; preserve on Left/Removed (first stamp wins).
-        val resolvedExitedAt = when {
-            resolvedState == ConversationState.Active
-                    || resolvedState == ConversationState.RejoinPending -> null
-
-            isNewlyRemoved -> UnixTimeUtc().toInstant()
-            else -> existing.exitedAt ?: incoming.exitedAt
-        }
-
-        // Carries the conversation file's localAppData.lastReadTime forward — a
-        // peer device's mark-as-read (or our own pushed advance echoing back)
-        // advances it and syncs it. lastRead = max keeps it monotonic against a
-        // stale echo; dirty (we still owe a server push) is retired once the
-        // remote read reaches our local value — see reconciledWithRemoteLastRead.
-        // Must override dirty explicitly: the existing.copy base would otherwise
-        // preserve a now-stale flag.
-        val reconciled = existing.reconciledWithRemoteLastRead(incoming.lastRead)
-
-        // Structural fields (membership, identity) always come from the conversation file,
-        // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
-        // is almost always newer than metadata.created, so a timestamp guard would silently
-        // drop participant/admin/name changes distributed by peers (e.g. leave, add member).
-        // Message-preview fields are only applied when the file is genuinely newer.
-        val updatedConvo = existing.copy(
-            name = incoming.name,
-            isGroup = incoming.isGroup,
-            isLegacyGroup = incoming.isLegacyGroup,
-            admins = incoming.admins,
-            avatarModel = incoming.avatarModel,
-            avatarTiny = incoming.avatarTiny,
-            avatarUrl = incoming.avatarUrl,
-            avatarInitials = incoming.avatarInitials,
-            participants = incoming.participants,
-            isPinned = incoming.isPinned,
-            conversationState = resolvedState,
-            exitedAt = resolvedExitedAt,
-            fileUpdated = incoming.fileUpdated,
-            lastRead = reconciled.lastRead,
-            dirty = reconciled.dirty,
-            // Message preview — only overwrite if the file carries a newer last-message snapshot
-            latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
-            lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
-            lastMessageDeliveryStatus = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
-            lastMessageIsDeleted = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
-            lastMessageFirstPayload = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
-            lastMessageHasMultiplePayloads = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
-            lastMessageIsFromActiveUser = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
-        )
         // We should optimize later to not map the full list
         _conversations.value = _conversations.value.copy(
-            items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it }
+            items = _conversations.value.items.map { if (it.id == existing.id) result.merged else it }
         )
     }
 
