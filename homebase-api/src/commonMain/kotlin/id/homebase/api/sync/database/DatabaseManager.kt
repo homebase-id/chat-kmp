@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -138,6 +140,11 @@ class DatabaseManager(
      * [wipeAndRecreate] rebuilds it. A failure here must NOT take down the app — reads
      * simply fall back to the writer lane, logged loudly so it's diagnosable.
      */
+    // Serializes the read-connection drop/reopen around the writer-maintenance ops
+    // ([wipeAndRecreate], [vacuum]) so two overlapping calls can't each open a read
+    // connection and leak one (the @Volatile field keeps only the last).
+    private val maintenanceMutex = Mutex()
+
     private fun openReadDriver() {
         val provider = readDriverProvider ?: return
         readDriver = try {
@@ -147,6 +154,11 @@ class DatabaseManager(
             null
         }
     }
+
+    // Reopen on the read lane (not the caller's resumed dispatcher, which can be Main):
+    // opening a connection is blocking disk I/O — loadLibrary/SQLCipher key/pragmas — and
+    // must not land on the UI thread. Mirrors [closeReadDriver]'s lane discipline.
+    private suspend fun reopenReadDriver() = withContext(readDispatcher) { openReadDriver() }
 
     /**
      * Close the read connection on its own lane so it cannot race an in-flight read, then
@@ -205,17 +217,27 @@ class DatabaseManager(
         ) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
-            instance = DatabaseManager(driverProvider, readDriverProvider = readDriverProvider)
-
-            val version = instance.driveMainIndex.getSchemaVersion()
-
-            if (version < DATABASE_VERSION) {
-                Logger.withTag("DatabaseManager")
-                    .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
-                instance.wipeAndRecreate()
-                _databaseUpgradeState.value =
-                    DatabaseUpgradeState.JustUpgraded(fromVersion = version.toInt())
+            // Build a candidate and publish it to `instance` only on success. If the
+            // schema-version probe or the upgrade wipe throws (a DB that opens but is
+            // corrupt), close the candidate's connections and rethrow WITHOUT assigning
+            // `instance` — otherwise initializeWithRecovery's retry would trip the
+            // "Already initialized" guard above and the app would fail to start instead
+            // of recovering. (lateinit can't be un-assigned, so we must not assign early.)
+            val candidate = DatabaseManager(driverProvider, readDriverProvider = readDriverProvider)
+            try {
+                val version = candidate.driveMainIndex.getSchemaVersion()
+                if (version < DATABASE_VERSION) {
+                    Logger.withTag("DatabaseManager")
+                        .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
+                    candidate.wipeAndRecreate()
+                    _databaseUpgradeState.value =
+                        DatabaseUpgradeState.JustUpgraded(fromVersion = version.toInt())
+                }
+            } catch (e: Exception) {
+                runCatching { candidate.close() }
+                throw e
             }
+            instance = candidate
         }
 
         /**
@@ -240,10 +262,9 @@ class DatabaseManager(
             } catch (e: Exception) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: open failed, resetting" }
-                // If construction got far enough to assign `instance`, it may hold open
-                // writer AND read connections. Close them before deleting the files — open
-                // handles block deletion on Windows (recovery would no-op and loop).
-                runCatching { if (::instance.isInitialized) instance.close() }
+                // initialize() already closed the candidate's writer+read connections on
+                // failure (and never assigned `instance`), so the files aren't pinned and
+                // the retry below won't hit the "Already initialized" guard.
                 factory.deleteOnDiskFiles()
                 DatabaseKeyManager.clearKey()
                 val freshKey = DatabaseKeyManager.getOrGenerateKey()
@@ -421,7 +442,7 @@ class DatabaseManager(
     //   2. After CREATE: the row count must be zero. If it's not, something wrote
     //      to the freshly recreated table before we finished — usually a caller
     //      still running with stale credentials.
-    suspend fun wipeAndRecreate() {
+    suspend fun wipeAndRecreate() = maintenanceMutex.withLock {
         // Drop the read connection first: a live reader pins the WAL (checkpoint would
         // report busy) and would carry a stale schema cache across the DROP. Reopened
         // against the fresh schema once the writer finishes below — in a finally so a
@@ -431,7 +452,7 @@ class DatabaseManager(
         try {
             withContext(dispatcher) { wipeAndRecreateOnWriter() }
         } finally {
-            openReadDriver()
+            reopenReadDriver()
         }
     }
 
@@ -596,14 +617,14 @@ class DatabaseManager(
     // screen as its finale. Like wipeAndRecreate, the read connection is dropped first: an
     // open reader holds a WAL read lock that makes VACUUM contend (block up to busy_timeout
     // or throw SQLITE_BUSY). Reopened in a finally so a failed VACUUM can't lose the read lane.
-    suspend fun vacuum() {
+    suspend fun vacuum() = maintenanceMutex.withLock {
         closeReadDriver()
         try {
             withContext(dispatcher) {
                 driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
             }
         } finally {
-            openReadDriver()
+            reopenReadDriver()
         }
     }
 
