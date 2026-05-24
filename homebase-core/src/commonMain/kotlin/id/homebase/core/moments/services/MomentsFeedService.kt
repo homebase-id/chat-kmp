@@ -257,6 +257,13 @@ data class MomentFeedItem(
     val payloads: List<PayloadDescriptor>,
     val description: String,
     val userDateMs: Long,
+    /**
+     * Server-side creation timestamp from the file metadata — i.e. when the
+     * post was published. Distinct from [userDateMs], which falls back to the
+     * EXIF "captured at" time when available. Drives the Timeline sort order
+     * (newest *posted* first), versus the Album sort which uses userDate.
+     */
+    val createdMs: Long,
     val previewThumbnail: EmbeddedThumb?,
     /**
      * Embedded reaction summary on the moment file. Drives the per-emoji
@@ -314,6 +321,7 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         payloads = fileMetadata.payloads.orEmpty(),
         description = content?.description.orEmpty(),
         userDateMs = sqlUserDateMs(),
+        createdMs = fileMetadata.created.milliseconds,
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
         senderOdinId = fileMetadata.senderOdinId,

@@ -145,6 +145,12 @@ fun MomentComposeScreen(
     }
 
     Scaffold(
+        // Lift the whole compose screen (topBar + content + Continue bar) above
+        // the keyboard. Putting imePadding on the description field alone
+        // leaves the Continue bottomBar pinned to the bottom, and the IME ends
+        // up covering the field by exactly the bottomBar's height. Matches
+        // AddGroupMembersScreen / CreateConversationGroupScreen's pattern.
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.moments_compose_title)) },
@@ -322,8 +328,7 @@ private fun EmptyComposeState(
         MomentDescriptionField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
-                .imePadding(),
+                .padding(16.dp),
             state = textFieldState,
         )
     }

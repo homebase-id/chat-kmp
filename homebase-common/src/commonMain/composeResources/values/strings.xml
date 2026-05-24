@@ -334,6 +334,15 @@
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
+    <string name="moments_view_menu">Change view</string>
+    <string name="moments_view_timeline">Timeline</string>
+    <string name="moments_view_album">Album</string>
+    <string name="moments_album_zoom_day">Day</string>
+    <string name="moments_album_zoom_month">Month</string>
+    <string name="moments_album_zoom_year">Year</string>
+    <string name="moments_album_zoom_label">Zoom level</string>
+    <string name="moments_album_text_only_label">Text moment</string>
+    <string name="moments_album_extra_count">+%1$d</string>
     <string name="moments_reaction_like">Like</string>
     <string name="moments_detail_no_description">No description added</string>
     <string name="moments_detail_metadata_captured">Captured</string>
