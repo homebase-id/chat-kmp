@@ -386,9 +386,9 @@ class ConversationListViewModel(
                 // connectionStatusFlow) keep re-emitting all through the auth/connect
                 // lifecycle. A flat debounce(50) never sees 50ms of quiet during that
                 // storm, so it withheld the ready list for ~half a second until the
-                // connection settled ("blocked until it goes green"). 0ms for the first
-                // ready emit fixes that; 50ms thereafter still coalesces the storm.
-                if (dataReady && !firstReadyEmitted) 0L else 50L
+                // connection settled ("blocked until it goes green"). See
+                // [conversationListDebounceMillis] / ConversationListDebounceTest.
+                conversationListDebounceMillis(dataReady = dataReady, readyAlreadyEmitted = firstReadyEmitted)
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 Logger.i(tag = "ConversationListViewModel") {
                     "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
@@ -1419,10 +1419,21 @@ class ConversationListViewModel(
                 // Backstop so the detail pane can never spin forever: the success path
                 // clears isLoadingMessages inside the collect; this covers an error or an
                 // unexpected end (cancellation/scope teardown) while still on this
-                // conversation. Guarded so a cancellation caused by switching
-                // conversations — which already set isLoadingMessages=true for the NEW
-                // conversation — can't wipe its spinner.
-                if (_uiState.value.selectedConversationId == conversationId) {
+                // conversation. Guarded (see [shouldClearLoadingSpinnerOnLoadEnd]) so a
+                // cancellation from switching conversations — which already set
+                // isLoadingMessages=true for the NEW conversation — can't wipe its
+                // spinner. Reaching here with loading still true is abnormal (the success
+                // path should have cleared it), so log it loudly.
+                if (shouldClearLoadingSpinnerOnLoadEnd(
+                        selectedConversationId = _uiState.value.selectedConversationId,
+                        conversationId = conversationId,
+                        stillLoading = _messagesUiState.value.isLoadingMessages,
+                    )
+                ) {
+                    Logger.w(tag = TAG) {
+                        "chat-details spinner backstop fired id=$conversationId trigger=$trigger " +
+                            "sinceSelected=${loadStart.elapsedNow()} — clearing a spinner the load left set"
+                    }
                     _messagesUiState.update { it.copy(isLoadingMessages = false) }
                 }
             }
@@ -1459,13 +1470,44 @@ class ConversationListViewModel(
 }
 
 /**
- * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the
- * fully-resolved [live] session, fall back to a minimal one synthesized
- * from [credentials] when the async profile load hasn't arrived yet.
+ * Debounce timeout (ms) for the conversation-list combine. The list's sources
+ * (ownerSession, connectionStatusFlow) re-emit continuously through the auth/connect
+ * lifecycle; a flat debounce would withhold the already-ready cached list until that
+ * storm settled (~when the connection goes online — the "blocked until green" bug).
  *
- * Returns null only when neither source is available (pre-login state).
- * The preference order is load-bearing — inverting it would replace a
- * resolved display name / profile image with a bare odinId.
+ * Leading-edge: 0ms for the FIRST ready snapshot so the cached list renders immediately,
+ * 50ms afterwards so the connect-time storm is still coalesced into few re-sorts.
+ *
+ * Pure so ConversationListDebounceTest can pin the behavior without a ViewModel.
+ */
+internal fun conversationListDebounceMillis(dataReady: Boolean, readyAlreadyEmitted: Boolean): Long =
+    if (dataReady && !readyAlreadyEmitted) 0L else 50L
+
+/**
+ * Whether the message-load backstop should clear the chat-details loading spinner when a
+ * load coroutine ends. The success path clears it inside the observeMessages collect; this
+ * guards the `finally` backstop that catches an error / unexpected cancellation / hung load
+ * that left the spinner set (the reported "infinity spinner").
+ *
+ * Clears only when (a) THIS conversation is still the selected one — so a cancellation from
+ * switching conversations, which already armed the spinner for the NEW conversation, can't
+ * wipe it — and (b) the spinner is actually still up (reaching the backstop with it already
+ * cleared is the normal success case, nothing to do).
+ *
+ * Pure so SpinnerBackstopGuardTest can pin the rule without a ViewModel.
+ */
+internal fun shouldClearLoadingSpinnerOnLoadEnd(
+    selectedConversationId: Uuid?,
+    conversationId: Uuid,
+    stillLoading: Boolean,
+): Boolean = stillLoading && selectedConversationId == conversationId
+
+/**
+ * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the fully-resolved
+ * [live] session, fall back to a minimal one synthesized from [credentials] when the async
+ * profile load hasn't arrived yet. Returns null only when neither source is available
+ * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
+ * display name / profile image with a bare odinId.
  */
 internal fun synthesizeOwnerSession(
     live: OwnerSession?,
