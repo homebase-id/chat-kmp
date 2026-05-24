@@ -128,7 +128,6 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -313,10 +312,8 @@ fun AppNavHost(
                     // ConversationListViewModel via the PendingNotificationTap
                     // singleton (TTL-retried until drive sync lands the
                     // conversation) — here we only manage the back stack.
-                    val stack = navController.currentBackStack.first { stack ->
-                        stack.any {
-                            it.destination.hasRoute(Route.ChatList::class)
-                        }
+                    val stack = navController.currentBackStack.firstContaining {
+                        it.destination.hasRoute(Route.ChatList::class)
                     }
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
