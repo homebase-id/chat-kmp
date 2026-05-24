@@ -42,6 +42,14 @@ actual fun platformModule(): Module = module {
     single<ShakeDetector> { WebShakeDetector() }
 
     single {
+        // Web intentionally does NOT register PublicImageFetcher.Factory here, even though
+        // android/desktop/native do. On web that fetcher routes public avatars (/pub/image)
+        // through getPublicImage() (app httpClient + cache), which fails on this target and
+        // drops EVERY avatar to its initials fallback. Coil's default network fetcher is what
+        // makes web avatars load, so leave them on it. Do not add the Factory as a
+        // "parity"/consistency fix — it's a regression here (verified). (Unrelated, separate
+        // low-frequency cosmetic issue: a host-less "https:///pub/image" can resolve to the
+        // app's own origin and fail; adding the Factory does not fix that either.)
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
                     add(HomebaseImageKeyer())
