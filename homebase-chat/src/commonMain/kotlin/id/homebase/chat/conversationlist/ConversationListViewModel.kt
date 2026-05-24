@@ -132,6 +132,11 @@ class ConversationListViewModel(
 
     companion object {
         private const val TAG = "ConversationListViewModel"
+
+        // How long the chat-details loading spinner may stay up for one conversation
+        // before the watchdog logs it as stuck. Generous so a slow-but-legitimate DB
+        // read isn't flagged; the point is to catch a load that never completes/fails.
+        private const val SPINNER_WATCHDOG_MS = 8_000L
     }
 
     private val enricher = ConversationEnricher()
@@ -1151,6 +1156,23 @@ class ConversationListViewModel(
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
         currentConversationJob = viewModelScope.launch {
+            // Spinner watchdog: if the detail pane is still loading THIS conversation
+            // after a generous threshold, log it (with elapsed) so a stuck/hung load is
+            // visible in homebase.log even when it neither completed nor threw — the
+            // signature of a real "infinity spinner" report. Diagnostic only; a
+            // genuinely slow DB read is still allowed to finish.
+            val watchdog = launch {
+                delay(SPINNER_WATCHDOG_MS)
+                if (_uiState.value.selectedConversationId == conversationId &&
+                    _messagesUiState.value.isLoadingMessages
+                ) {
+                    Logger.w(tag = "ConversationListViewModel") {
+                        "chat-details still loading after ${SPINNER_WATCHDOG_MS}ms id=$conversationId " +
+                            "trigger=$trigger sinceSelected=${loadStart.elapsedNow()} — " +
+                            "load has not completed or failed"
+                    }
+                }
+            }
             try {
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
@@ -1382,22 +1404,27 @@ class ConversationListViewModel(
                     }
                 }
             } catch (_: CancellationException) {
-                // ignore
+                // ignore — a new selection cancels this job; the new job owns the
+                // loading state for the conversation being switched to.
             } catch (e: Exception) {
-                // A failed load (DB error, deserialization, etc.) must NOT leave the
-                // detail pane spinning forever: the success path only clears
-                // isLoadingMessages inside the observeMessages collect, which we never
-                // reach here. Log it (previously this was snackbar-only, invisible in
-                // homebase.log) and clear the spinner. Guard on the conversation still
-                // being selected so a late failure from a superseded job can't wipe the
-                // spinner of the conversation the user has since switched to.
+                // Previously snackbar-only (invisible in homebase.log) AND the spinner
+                // was never cleared — a failed load (DB error, deserialization, …) left
+                // the detail pane spinning forever (the reported "infinity spinner").
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "loadMessagesForConversation failed id=$conversationId trigger=$trigger: ${e.message}"
                 }
+                sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
+            } finally {
+                watchdog.cancel()
+                // Backstop so the detail pane can never spin forever: the success path
+                // clears isLoadingMessages inside the collect; this covers an error or an
+                // unexpected end (cancellation/scope teardown) while still on this
+                // conversation. Guarded so a cancellation caused by switching
+                // conversations — which already set isLoadingMessages=true for the NEW
+                // conversation — can't wipe its spinner.
                 if (_uiState.value.selectedConversationId == conversationId) {
                     _messagesUiState.update { it.copy(isLoadingMessages = false) }
                 }
-                sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
             }
         }
     }
