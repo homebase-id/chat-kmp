@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.util.extensionForMimeType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -513,10 +514,9 @@ class MomentDetailViewModel(
                     _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
                     return@launch
                 }
-                val extension = when (val raw = payload.contentType?.substringAfter("/") ?: "bin") {
-                    "jpeg" -> "jpg"
-                    else -> raw
-                }
+                val extension = payload.contentType?.let { extensionForMimeType(it) }
+                    ?: payload.contentType?.substringAfter("/")
+                    ?: "bin"
                 val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
                     bytes = bytes,
                     suffix = ".$extension",
