@@ -466,7 +466,12 @@ fun ConversationContent(
         computeBattleChainCap(conversation.conversation.participants.size)
     }
 
-    @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+        if (uiState.isSearchActive) {
+            onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
+            searchTextState.clearText()
+            return@BackHandler
+        }
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
