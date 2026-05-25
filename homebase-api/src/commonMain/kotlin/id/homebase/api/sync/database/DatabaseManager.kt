@@ -301,6 +301,37 @@ class DatabaseManager(
         }
     }
 
+    /**
+     * Run a read that uses the SQLDelight generated-query DSL (rather than raw SQL) on the
+     * read lane — the counterpart to [executeReadQuery] for the `*Wrapper` reads that call
+     * `delegate.x().executeAsList()`. Same [readDispatcher] + queue-wait/SQL split +
+     * SlowDbRead warn; [label] names the read in the log since there's no SQL string.
+     *
+     * Keep [block] to the DB read itself (executeAsList / executeAsOneOrNull) and do any
+     * mapping/deserialization outside, so a read-lane slot is held only for the SQL — not
+     * for CPU-bound row mapping.
+     */
+    suspend fun <R> readValue(label: String, block: () -> R): R {
+        val requestedAt = TimeSource.Monotonic.markNow()
+        return withContext(readDispatcher) {
+            val queueWait = requestedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                val result = block()
+                val sqlElapsed = sqlStart.elapsedNow()
+                _lastReadTiming.value =
+                    ReadTiming(queueWait.inWholeMilliseconds, sqlElapsed.inWholeMilliseconds)
+                if (queueWait + sqlElapsed > SLOW_READ_THRESHOLD) {
+                    logger.w { "SlowDbRead queueWait=$queueWait sql=$sqlElapsed read=$label" }
+                }
+                result
+            } catch (e: Exception) {
+                logger.e { "read failed [$label]: ${e.message}\nStack: ${e.stackTraceToString()}" }
+                throw e
+            }
+        }
+    }
+
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
         withContext(dispatcher) {
             database.transaction { block(database) }
