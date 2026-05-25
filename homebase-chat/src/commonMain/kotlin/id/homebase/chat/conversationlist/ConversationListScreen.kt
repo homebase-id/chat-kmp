@@ -716,7 +716,7 @@ fun ConversationListUi(
         scope.launch {
             if (messagesUiState.fullScreenOverlay != null) {
                 onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-            } else {
+            } else if (!isDesktop()) {
                 scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
             }
         }
