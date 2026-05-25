@@ -478,7 +478,7 @@ fun MomentMediaItem(
 }
 
 @Composable
-private fun VideoPreloadEffect(
+internal fun VideoPreloadEffect(
     data: VideoPlayerData,
     onPreloading: (Boolean) -> Unit,
     onProgress: (Float) -> Unit,
@@ -496,7 +496,7 @@ private fun VideoPreloadEffect(
     }
 }
 
-private fun formatDurationLabel(ms: Long): String {
+internal fun formatDurationLabel(ms: Long): String {
     val totalSec = ms / 1000
     val m = totalSec / 60
     val s = totalSec % 60

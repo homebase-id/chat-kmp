@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
@@ -61,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,8 +99,10 @@ import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
+import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
+import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.Job
@@ -457,7 +462,28 @@ private fun MomentsFeedList(
     onDismissUpload: (Uuid) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
+    // Default muted: matches the user-chosen "muted with unmute toggle"
+    // behaviour. Lifted here (not per-card) so toggling once persists across
+    // plays — same pattern as Instagram / X autoplay.
+    var isMuted by remember { mutableStateOf(true) }
+
+    // Clear playingMomentId when the playing card scrolls out of the viewport.
+    // Tracking item keys (Strings) — not firstVisibleItemIndex — because the
+    // key set is what tells us whether the playing card is still rendered.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key } }
+            .collect { visibleKeys ->
+                val playing = playingMomentId ?: return@collect
+                if (playing.toString() !in visibleKeys) {
+                    playingMomentId = null
+                }
+            }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -478,6 +504,12 @@ private fun MomentsFeedList(
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
+                isVideoPlaying = playingMomentId == moment.id,
+                onToggleVideoPlay = {
+                    playingMomentId = if (playingMomentId == moment.id) null else moment.id
+                },
+                isMuted = isMuted,
+                onToggleMute = { isMuted = !isMuted },
             )
         }
     }
@@ -495,6 +527,10 @@ private fun MomentPostCard(
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
     onDismissUpload: () -> Unit,
+    isVideoPlaying: Boolean = false,
+    onToggleVideoPlay: () -> Unit = {},
+    isMuted: Boolean = true,
+    onToggleMute: () -> Unit = {},
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -598,23 +634,54 @@ private fun MomentPostCard(
             // chips below stay readable through the scrim because they sit
             // outside this Box on the outer card.
             Box {
-                MomentMediaGallery(
-                    payloads = moment.payloads,
-                    fileId = moment.fileId,
-                    driveId = moment.driveId,
-                    previewThumbnail = moment.previewThumbnail,
-                    keyHeader = moment.keyHeader,
-                    messageId = moment.id,
-                    downloadingFiles = emptySet(),
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                    // Inner per-cell click handlers stay disabled in the feed
-                    // so the card-level multi-tap detector receives all taps
-                    // — that's what makes double/triple-tap-to-react work on
-                    // the media area itself (Instagram-style).
-                    onMediaClick = null,
-                    isUploading = uploadStatus != null,
-                )
+                val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { p ->
+                    p.contentType?.startsWith("video/") == true ||
+                        p.contentType == "application/vnd.apple.mpegurl"
+                }
+                if (singleVideoPayload != null) {
+                    // Tap-to-play tile. Inner detectTapGestures consumes single
+                    // and double taps on the video area — heart-by-double-tap
+                    // is preserved by forwarding to onAddReaction; the
+                    // triple-tap flame is lost only on the video tile itself
+                    // (still works on header / badges / engagement strip).
+                    val aspect = aspectRatioFor(singleVideoPayload) ?: 1f
+                    MomentInlineVideoTile(
+                        payload = singleVideoPayload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        keyHeader = moment.keyHeader,
+                        previewThumbnail = moment.previewThumbnail,
+                        isUploading = uploadStatus != null,
+                        isPlaying = isVideoPlaying,
+                        onPlayTap = onToggleVideoPlay,
+                        onDoubleTap = { onAddReaction(HeartEmoji) },
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(aspect),
+                    )
+                } else {
+                    MomentMediaGallery(
+                        payloads = moment.payloads,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        previewThumbnail = moment.previewThumbnail,
+                        keyHeader = moment.keyHeader,
+                        messageId = moment.id,
+                        downloadingFiles = emptySet(),
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        // Inner per-cell click handlers stay disabled in the feed
+                        // so the card-level multi-tap detector receives all taps
+                        // — that's what makes double/triple-tap-to-react work on
+                        // the media area itself (Instagram-style).
+                        onMediaClick = null,
+                        isUploading = uploadStatus != null,
+                    )
+                }
 
                 if (uploadStatus != null) {
                     MomentUploadProgressOverlay(
