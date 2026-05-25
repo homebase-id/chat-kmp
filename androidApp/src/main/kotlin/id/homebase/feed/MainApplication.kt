@@ -106,15 +106,18 @@ class MainApplication : Application(), KoinComponent {
         // homebase.log when a frame budget is exceeded — gives us a usable trace ~1s
         // before the OS would kill us at 5s.
         //
-        // TEMPORARY (diagnostic): threshold lowered 4000→800ms and throttle 30s→1s to
-        // capture the cold-boot "tap on a visible list does nothing for ~2s" stall, which
-        // sits under the normal 4s ANR-grade threshold (build 1674 log: selectedConversationId
-        // set at T but the navigation effect didn't run until T+2.2s — Main was wedged but
-        // both off-Main suspects, selectAllUnreadCount and ShareShortcutPublisher, were ruled
-        // out). The low throttle is so an earlier first-composition stall can't swallow the
-        // single report and hide the tap stall. Revert to MainThreadWatchdog() once the cold
-        // first-tap Main stack is captured and the cause is pinned.
-        MainThreadWatchdog(thresholdMs = 800, throttleMs = 1_000).start()
+        // TEMPORARY (diagnostic): tuned to catch the cold-boot "tap doesn't enter the
+        // conversation" symptom, which sits under the normal 4s ANR-grade threshold.
+        //   - thresholdMs 4000→800: the tap gap was ~1.2s (build 1710 log).
+        //   - tickIntervalMs 1000→250: a ~1.2s block can SLIP an 800ms/1000ms-tick sampler
+        //     on an unlucky phase (sentinel acked just before the block, next lands late
+        //     enough in it to ack within 800ms). At 250ms tick any block ≥~1.05s is caught
+        //     regardless of phase — so a silent watchdog now genuinely means "Main not
+        //     stalled" (→ the dropped tap is at the input/navigation layer, not Main).
+        //   - throttleMs 30s→1s: so an earlier first-composition stall can't swallow the
+        //     single report and hide the tap stall.
+        // Revert to MainThreadWatchdog() once the cause is pinned.
+        MainThreadWatchdog(thresholdMs = 800, tickIntervalMs = 250, throttleMs = 1_000).start()
 
         // Provide application context for rich notifications
         RichNotificationDisplayer.initialize(this, smallIconResId = R.mipmap.ic_launcher_monochrome)
