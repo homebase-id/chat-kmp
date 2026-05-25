@@ -152,7 +152,11 @@ class DatabaseManager(
         // on the write lane; finishes well before the user opens a conversation, so the
         // per-conversation message read picks a selective groupId index seek instead of a
         // global userDate scan. See [optimize].
-        maintenanceScope.launch { runCatching { optimize() } }
+        maintenanceScope.launch {
+            // Don't swallow silently: a failure here (e.g. a platform rejecting a pragma) would
+            // make the planner-stats fix a silent no-op, so surface it.
+            runCatching { optimize() }.onFailure { logger.w(it) { "DB optimize failed: ${it.message}" } }
+        }
     }
 
     companion object {
@@ -386,8 +390,12 @@ class DatabaseManager(
      */
     suspend fun optimize() {
         withContext(dispatcher) {
+            val mark = TimeSource.Monotonic.markNow()
             driver.execute(null, "PRAGMA analysis_limit=400", 0)
             driver.execute(null, "PRAGMA optimize", 0)
+            // Logged so a run is verifiable on-device/desktop (optimize is otherwise silent) and
+            // so we can see its cost. A failure is surfaced by the caller's onFailure (below).
+            logger.i { "DB optimize done in ${mark.elapsedNow()}" }
         }
     }
 
