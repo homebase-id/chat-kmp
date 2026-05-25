@@ -5,12 +5,16 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
+import id.homebase.api.coroutines.ioDispatcher
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 
 /**
  * One-shot signal that the local DB was just wiped because the on-disk schema
@@ -71,13 +75,36 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
     identityIdAdapter = UuidAdapter
 )
 
+/**
+ * Latency breakdown of the most recent [DatabaseManager.executeReadQuery] call,
+ * split so we can tell "the read was slow because it waited for a dispatcher
+ * slot" (`queueWaitMs`) apart from "the SQL itself was slow" (`sqlMs`). Surfaced
+ * via [DatabaseManager.lastReadTiming]; also folded into the `SlowMessageFetch`
+ * log so the split is visible on-device during a heavy sync.
+ */
+data class ReadTiming(val queueWaitMs: Long, val sqlMs: Long)
+
 class DatabaseManager(
     driverProvider: () -> SqlDriver,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    // Reads run off the single write [dispatcher] so they don't queue behind a long
+    // write transaction. True concurrency comes from each platform driver's reader
+    // pool under WAL (iOS NativeSqliteDriver.maxReaderConnections, Android's framework
+    // WAL pool, desktop's per-thread JDBC connections); where a platform can't serve a
+    // concurrent reader the reads simply serialize — benign, never incorrect. We still
+    // run on the *existing* single driver — no second managed SqlDriver/connection.
+    private val readDispatcher: CoroutineDispatcher =
+        ioDispatcher.limitedParallelism(READ_PARALLELISM)
 ) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
+
+    // Latency split of the most recent read; see [ReadTiming]. Updated on every
+    // executeReadQuery; readers should treat it as best-effort (concurrent reads
+    // race on this single cell) — it's a diagnostic, not a correctness signal.
+    private val _lastReadTiming = atomic<ReadTiming?>(null)
+    val lastReadTiming: ReadTiming? get() = _lastReadTiming.value
 
     init {
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
@@ -110,6 +137,15 @@ class DatabaseManager(
     companion object {
         private const val DATABASE_VERSION =
             5  // Increase to wipe the database and rebuild all tables
+
+        // Max concurrent reads on [readDispatcher]. Kept in step with iOS
+        // NativeSqliteDriver.maxReaderConnections so the dispatcher doesn't admit
+        // more readers than the platform pool can serve. Tunable.
+        private const val READ_PARALLELISM = 4
+
+        // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.
+        private val SLOW_READ_THRESHOLD = 50.milliseconds
+
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
@@ -230,18 +266,69 @@ class DatabaseManager(
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
+    // Reads run on [readDispatcher], NOT the single write [dispatcher], so a read
+    // issued while a long write transaction holds the writer slot starts
+    // immediately instead of queueing behind it. [requestedAt]..inside-withContext
+    // measures that queue-wait; the inner mark measures the SQL itself. The split is
+    // stored in [lastReadTiming] and warn-logged when slow, so device logs show
+    // whether read latency was scheduling or SQL.
     suspend fun <R> executeReadQuery(
         identifier: Int?,
         sql: String,
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)? = null
-    ): QueryResult<R> = withContext(dispatcher) {
-        try {
-            driver.executeQuery(identifier, sql, mapper, parameters, binders)
-        } catch (e: Exception) {
-            logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
-            throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+    ): QueryResult<R> {
+        val requestedAt = TimeSource.Monotonic.markNow()
+        return withContext(readDispatcher) {
+            val queueWait = requestedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                val result = driver.executeQuery(identifier, sql, mapper, parameters, binders)
+                val sqlElapsed = sqlStart.elapsedNow()
+                _lastReadTiming.value =
+                    ReadTiming(queueWait.inWholeMilliseconds, sqlElapsed.inWholeMilliseconds)
+                if (queueWait + sqlElapsed > SLOW_READ_THRESHOLD) {
+                    logger.w {
+                        "SlowDbRead queueWait=$queueWait sql=$sqlElapsed sqlPreview=${sql.take(120)}"
+                    }
+                }
+                result
+            } catch (e: Exception) {
+                logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
+                throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+            }
+        }
+    }
+
+    /**
+     * Run a read that uses the SQLDelight generated-query DSL (rather than raw SQL) on the
+     * read lane — the counterpart to [executeReadQuery] for the `*Wrapper` reads that call
+     * `delegate.x().executeAsList()`. Same [readDispatcher] + queue-wait/SQL split +
+     * SlowDbRead warn; [label] names the read in the log since there's no SQL string.
+     *
+     * Keep [block] to the DB read itself (executeAsList / executeAsOneOrNull) and do any
+     * mapping/deserialization outside, so a read-lane slot is held only for the SQL — not
+     * for CPU-bound row mapping.
+     */
+    suspend fun <R> readValue(label: String, block: () -> R): R {
+        val requestedAt = TimeSource.Monotonic.markNow()
+        return withContext(readDispatcher) {
+            val queueWait = requestedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                val result = block()
+                val sqlElapsed = sqlStart.elapsedNow()
+                _lastReadTiming.value =
+                    ReadTiming(queueWait.inWholeMilliseconds, sqlElapsed.inWholeMilliseconds)
+                if (queueWait + sqlElapsed > SLOW_READ_THRESHOLD) {
+                    logger.w { "SlowDbRead queueWait=$queueWait sql=$sqlElapsed read=$label" }
+                }
+                result
+            } catch (e: Exception) {
+                logger.e { "read failed [$label]: ${e.message}\nStack: ${e.stackTraceToString()}" }
+                throw e
+            }
         }
     }
 

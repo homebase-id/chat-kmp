@@ -21,6 +21,7 @@ import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.setActive
 import platform.Foundation.NSError
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.darwin.NSObject
 
@@ -50,22 +51,40 @@ class IOSAudioPlayer : AudioPlayer {
             }
         }
 
-        // Create and start player
+        // Create and start player — AVAudioPlayer's ObjC init returns nil for
+        // unplayable files, and K/N's interop bridge throws NPE for nil failable
+        // inits, so we must catch at the call site.
         val url = NSURL.fileURLWithPath(filePath)
-        memScoped {
+        val newPlayer: AVAudioPlayer? = memScoped {
             val error = alloc<ObjCObjectVar<NSError?>>()
-            player = AVAudioPlayer(url, error.ptr).also { p ->
+            try {
+                val p = AVAudioPlayer(url, error.ptr)
                 error.value?.let { err ->
                     Logger.e { "Failed to create audio player: ${err.localizedDescription}" }
-                    return
+                    return@memScoped null
                 }
-
-                p.delegate = delegate
-                p.prepareToPlay()
-                p.play()
+                p
+            } catch (_: Exception) {
+                val errMsg = error.value?.localizedDescription ?: "unknown"
+                Logger.e { "AVAudioPlayer init threw for: $filePath — $errMsg" }
+                null
             }
         }
 
+        if (newPlayer == null) {
+            val fm = NSFileManager.defaultManager
+            val exists = fm.fileExistsAtPath(filePath)
+            val attrs = fm.attributesOfItemAtPath(filePath, null)
+            val size = attrs?.get("NSFileSize") ?: "unknown"
+            Logger.e { "Audio player init failed — path=$filePath exists=$exists size=$size" }
+            delegate.observer?.onComplete()
+            return
+        }
+
+        newPlayer.delegate = delegate
+        newPlayer.prepareToPlay()
+        newPlayer.play()
+        player = newPlayer
         startPositionPolling()
     }
 
@@ -116,7 +135,7 @@ class IOSAudioPlayer : AudioPlayer {
 
         override fun audioPlayerDecodeErrorDidOccur(player: AVAudioPlayer, error: NSError?) {
             // Handle decode errors if needed
-            println("AudioPlayer decode error: ${error?.localizedDescription}")
+            Logger.e { "AudioPlayer decode error: ${error?.localizedDescription}" }
         }
     }
 }

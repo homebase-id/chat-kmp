@@ -69,8 +69,12 @@ class ChatReadCountWrapper(
      * Select all conversations (fileType 8888) from DriveMainIndex
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectAllConversations(identityId: Uuid): List<HomebaseFile> {
-        val list = delegate.selectAllCoversations(identityId).executeAsList()
+    suspend fun selectAllConversations(identityId: Uuid): List<HomebaseFile> {
+        // Read on the read lane so it doesn't serialize behind cold-load DriveSync writes
+        // on the single writer connection; map outside the lane (CPU-bound deserialize).
+        val list = databaseManager.readValue("selectAllConversations") {
+            delegate.selectAllCoversations(identityId).executeAsList()
+        }
         return list.mapNotNull {
             try {
                 OdinSystemSerializer.deserialize<HomebaseFile>(it)
@@ -109,11 +113,15 @@ class ChatReadCountWrapper(
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
 
-    fun selectAllConversationPlusLastMessage(identityId: Uuid): List<ConversationWithLastMessage> {
+    suspend fun selectAllConversationPlusLastMessage(identityId: Uuid): List<ConversationWithLastMessage> {
 
         val start = Clock.System.now().toEpochMilliseconds()
 
-        val list = delegate.selectAllConversationPlusLastMessage(identityId).executeAsList()
+        // Read on the read lane (correlated-subquery aggregate — heavy on cold cache); map
+        // outside the lane. SlowDbRead logs this read's own queueWait/sql split.
+        val list = databaseManager.readValue("selectAllConversationPlusLastMessage") {
+            delegate.selectAllConversationPlusLastMessage(identityId).executeAsList()
+        }
 
         logger.d { "Fetched rows=${list.size} in ${Clock.System.now().toEpochMilliseconds() - start}ms" }
 
@@ -183,7 +191,12 @@ class ChatReadCountWrapper(
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
     suspend fun selectAllUnreadCount(identityId: Uuid, originalAuthor: OdinId): List<ConversationUnreadCount> {
-        val list = delegate.selectAllUnreadCount(identityId, originalAuthor.domainName).executeAsList()
+        // The cold-load unread aggregate (full DriveMainIndex GROUP BY) — the read that the
+        // device log showed blocking early taps for ~2.8s while it contended with the sync
+        // writer on the single connection. On the read lane it runs concurrently instead.
+        val list = databaseManager.readValue("selectAllUnreadCount") {
+            delegate.selectAllUnreadCount(identityId, originalAuthor.domainName).executeAsList()
+        }
         return list.map {
             ConversationUnreadCount(
                 conversationId = it.groupId,

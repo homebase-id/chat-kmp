@@ -3,6 +3,8 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -255,23 +257,28 @@ fun MessageInputBar(
         modifier = modifier.hoverable(interactionSource),
     ) {
         if (isDesktopOrWeb()) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Box(
-                    modifier = Modifier.alpha(if (isHovered) 1f else 0f).size(32.dp).clickable(
-                        enabled = isHovered,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { showExpanded = !showExpanded })
-                        .pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown
-                        else Icons.Default.KeyboardArrowUp,
-                        contentDescription = if (showExpanded) stringResource(MR.string.collapse)
-                        else stringResource(MR.string.expand),
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                    )
+            AnimatedVisibility(
+                visible = isHovered,
+                enter = expandVertically(animationSpec = tween(150)),
+                exit = shrinkVertically(animationSpec = tween(150)),
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    Box(
+                        modifier = Modifier.size(32.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { showExpanded = !showExpanded })
+                            .pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown
+                            else Icons.Default.KeyboardArrowUp,
+                            contentDescription = if (showExpanded) stringResource(MR.string.collapse)
+                            else stringResource(MR.string.expand),
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                        )
+                    }
                 }
             }
         }

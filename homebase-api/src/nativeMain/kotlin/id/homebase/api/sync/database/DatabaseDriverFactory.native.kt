@@ -23,7 +23,16 @@ import platform.Foundation.NSURLIsExcludedFromBackupKey
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
         val driver = NativeSqliteDriver(
-            schema = OdinDatabase.Schema, name = DB_FILE_NAME, onConfiguration = { config ->
+            schema = OdinDatabase.Schema,
+            name = DB_FILE_NAME,
+            // Open a pool of reader connections (default is 1 = writer only) so reads
+            // dispatched off DatabaseManager's single write dispatcher run concurrently
+            // with the writer under WAL (configured below). This is the iOS half of the
+            // "reads don't queue behind writes" change — it's the same driver's internal
+            // pool, not a second managed SqlDriver. Kept in step with
+            // DatabaseManager.READ_PARALLELISM.
+            maxReaderConnections = 4,
+            onConfiguration = { config ->
                 // Configure via sqliter's typed DatabaseConfiguration fields — the idiomatic
                 // path for NativeSqliteDriver/SQLiter, not raw PRAGMA strings. This mirrors the
                 // shared SQLITE_TUNING_PRAGMAS values (desktop/Android use that map directly):
