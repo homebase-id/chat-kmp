@@ -58,9 +58,12 @@ class ConversationListDebounceTest {
                 emit(false to "storm$i")          // storm faster than the 50ms debounce
             }
         }.debounce { (dataReady, _) ->
-            conversationListDebounceMillis(dataReady = dataReady, readyAlreadyEmitted = firstReadyEmitted)
+            // Mirror the ViewModel wiring: the selector flips the flag when it grants the
+            // leading edge (0ms), so the flag is confined to the selector's coroutine.
+            val timeout = conversationListDebounceMillis(dataReady = dataReady, readyAlreadyEmitted = firstReadyEmitted)
+            if (timeout == 0L) firstReadyEmitted = true
+            timeout
         }.collect { (dataReady, _) ->
-            if (dataReady) firstReadyEmitted = true
             collected += testScheduler.currentTime to dataReady
         }
 

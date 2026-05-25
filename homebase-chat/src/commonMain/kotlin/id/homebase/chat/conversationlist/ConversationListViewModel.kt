@@ -388,13 +388,21 @@ class ConversationListViewModel(
                 // storm, so it withheld the ready list for ~half a second until the
                 // connection settled ("blocked until it goes green"). See
                 // [conversationListDebounceMillis] / ConversationListDebounceTest.
-                conversationListDebounceMillis(dataReady = dataReady, readyAlreadyEmitted = firstReadyEmitted)
+                val timeout = conversationListDebounceMillis(
+                    dataReady = dataReady,
+                    readyAlreadyEmitted = firstReadyEmitted,
+                )
+                // Flip the flag here, in the selector's own coroutine, the instant the
+                // first ready snapshot is granted the leading edge (0ms) — so storm values
+                // evaluated immediately after coalesce at 50ms instead of racing the
+                // downstream collect to set it. Keeps the var confined to one coroutine.
+                if (timeout == 0L) firstReadyEmitted = true
+                timeout
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 Logger.i(tag = "ConversationListViewModel") {
                     "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
                 }
                 if (dataReady) {
-                    firstReadyEmitted = true
                     _uiState.update {
                         it.copy(
                             activeConversations = enriched
