@@ -74,6 +74,15 @@ kotlin {
     }
 
     sourceSets {
+        // Shared Skia-backed implementations for the targets that bundle skiko:
+        // Desktop/JVM, iOS/native, and Web/wasmJs. Android is intentionally excluded —
+        // it uses android.graphics instead. Lets ImageUtils live in one place rather than
+        // three near-identical per-platform copies (only convertHeicToJpeg stays per-platform).
+        val skiaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(skiaMain)
+        nativeMain.get().dependsOn(skiaMain)
+        wasmJsMain.get().dependsOn(skiaMain)
+
         commonMain.dependencies {
             implementation(libs.atomicfu)
             implementation(libs.kotlinx.datetime)
