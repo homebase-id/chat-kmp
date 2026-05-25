@@ -76,11 +76,16 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
 )
 
 /**
- * Latency breakdown of the most recent [DatabaseManager.executeReadQuery] call,
- * split so we can tell "the read was slow because it waited for a dispatcher
- * slot" (`queueWaitMs`) apart from "the SQL itself was slow" (`sqlMs`). Surfaced
- * via [DatabaseManager.lastReadTiming]; also folded into the `SlowMessageFetch`
- * log so the split is visible on-device during a heavy sync.
+ * Latency breakdown of the most recent read, split so we can tell "the read was slow
+ * because it waited for a dispatcher slot" (`queueWaitMs`) apart from "the SQL itself was
+ * slow" (`sqlMs`).
+ *
+ * Surfaced via [DatabaseManager.lastReadTiming] — but note this is a SINGLE shared cell
+ * overwritten by every read, so it is only reliable when you control concurrency (e.g. the
+ * read-lane unit test). Do NOT read it after the fact to attribute timing to a specific
+ * query from arbitrary code — a concurrent read on another coroutine will have clobbered it
+ * (this caused garbled `queueWait` in `SlowMessageFetch`). For accurate per-query timing,
+ * use the `SlowDbRead` log line that [executeReadQuery]/[readValue] emit for that exact read.
  */
 data class ReadTiming(val queueWaitMs: Long, val sqlMs: Long)
 
@@ -130,7 +135,8 @@ class DatabaseManager(
         val busyTimeoutMs = readPragmaLong("PRAGMA busy_timeout") ?: -1L
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
         logger.i {
-            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms synchronous=$synchronous"
+            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
+                "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
         }
     }
 
@@ -139,8 +145,16 @@ class DatabaseManager(
             5  // Increase to wipe the database and rebuild all tables
 
         // Max concurrent reads on [readDispatcher]. Kept in step with iOS
-        // NativeSqliteDriver.maxReaderConnections so the dispatcher doesn't admit
-        // more readers than the platform pool can serve. Tunable.
+        // NativeSqliteDriver.maxReaderConnections=4 so the dispatcher doesn't admit more
+        // readers than the platform connection pool can serve. On Android the SQLCipher WAL
+        // pool size is platform-determined (net.zetetic's SupportOpenHelperFactory exposes no
+        // knob, unlike iOS) — if it serves fewer than this, the extra reads block in
+        // SQLiteConnectionPool.waitForConnection, which is counted inside the read's `sql=`
+        // time (the wait happens inside driver.executeQuery), so it surfaces as an inflated
+        // `sql=` in a SlowDbRead line. That's the verification signal: if device logs show a
+        // normally-fast read with a large `sql=` during a read burst, lower this to match the
+        // pool. Since reads are off the Main thread (DriveMainIndexWrapper + the list readers
+        // both route through the read lane), such a wait queues a background read, not the UI.
         private const val READ_PARALLELISM = 4
 
         // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.

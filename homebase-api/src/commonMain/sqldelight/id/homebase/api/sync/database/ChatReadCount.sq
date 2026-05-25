@@ -13,6 +13,17 @@ CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_userDate ON DriveMainIndex(gro
 CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_userDate
   ON DriveMainIndex(fileType, dataType, groupId, userDate DESC);
 
+-- Covering index for selectAllUnreadCount. The index above does NOT lead with identityId,
+-- so that query still had to hit the table per row to check identityId/originalAuthor/
+-- fileState/archivalStatus — a full GROUP BY that measured ~2.9s on a cold page cache (and
+-- tens of seconds under heavy sync while it held a SQLCipher pool connection). Leading with
+-- the equality predicates (identityId, fileType, dataType), then the GROUP BY key (groupId),
+-- then userDate and the residual filter columns makes the scan index-covering (no per-row
+-- table lookup). Applied to existing installs automatically via OdinDatabase.Schema.create's
+-- IF NOT EXISTS on next launch (one-time build cost).
+CREATE INDEX IF NOT EXISTS idx_unread_cover
+  ON DriveMainIndex(identityId, fileType, dataType, groupId, userDate, originalAuthor, fileState, archivalStatus);
+
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()
 selectAllCoversations:
