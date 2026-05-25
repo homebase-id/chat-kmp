@@ -397,6 +397,7 @@
     <string name="moments_chip_use_photo_date">Use photo date</string>
     <string name="cd_moment_date_chip">Moment date</string>
     <string name="moments_audience_title">Send to</string>
+    <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
     <string name="moments_audience_section_contacts">Contacts</string>
@@ -739,6 +740,8 @@
     <string name="chat_message_image_attachment">Image attachment</string>
     <string name="chat_message_video_thumbnail">Video thumbnail</string>
     <string name="chat_message_play_video">Play video</string>
+    <string name="moment_video_mute">Mute video</string>
+    <string name="moment_video_unmute">Unmute video</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>

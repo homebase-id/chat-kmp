@@ -57,11 +57,17 @@ class MomentAudienceViewModel(
                 _uiState.update {
                     val next = if (action.id in it.selected) it.selected - action.id
                     else it.selected + action.id
-                    it.copy(selected = next)
+                    it.copy(selected = next, selfOnly = false)
                 }
 
             is MomentAudienceUiAction.CommentsEnabledChanged ->
                 _uiState.update { it.copy(commentsEnabled = action.enabled) }
+
+            MomentAudienceUiAction.ToggleSelfOnly ->
+                _uiState.update {
+                    if (it.selfOnly) it.copy(selfOnly = false)
+                    else it.copy(selfOnly = true, selected = emptySet())
+                }
 
             MomentAudienceUiAction.PostClicked -> post()
         }

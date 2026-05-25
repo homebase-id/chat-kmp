@@ -12,6 +12,7 @@ actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
+    muted: Boolean,
 ) {
     Box(modifier = modifier)
 }

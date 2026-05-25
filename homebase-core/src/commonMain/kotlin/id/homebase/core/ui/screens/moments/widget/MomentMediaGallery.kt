@@ -420,7 +420,7 @@ private fun SquareCell(
  * metadata. Returns `null` when no thumbnail with sane dimensions is
  * available — caller decides the fallback.
  */
-private fun aspectRatioFor(payload: PayloadDescriptor): Float? {
+internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()
     val w = thumb?.pixelWidth
     val h = thumb?.pixelHeight

@@ -63,6 +63,7 @@ actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
+    muted: Boolean,
 ) {
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
@@ -81,6 +82,10 @@ actual fun VideoPlayerSurface(
         }
     }
 
+    LaunchedEffect(exoPlayer, muted) {
+        exoPlayer?.volume = if (muted) 0f else 1f
+    }
+
     LaunchedEffect(data) {
         val clickMark = TimeSource.Monotonic.markNow()
         onProgress(0f)
@@ -88,7 +93,10 @@ actual fun VideoPlayerSurface(
         // Build ExoPlayer on main thread but deferred to after the first frame,
         // avoiding a synchronous block during composition/animation.
         val (player, playerInitElapsed) = measureTimedValue {
-            ExoPlayer.Builder(context).build().apply { playWhenReady = true }
+            ExoPlayer.Builder(context).build().apply {
+                playWhenReady = true
+                volume = if (muted) 0f else 1f
+            }
         }
         Logger.d(tag = "VideoIO") { "ExoPlayer init: $playerInitElapsed" }
         exoPlayer = player
