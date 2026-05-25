@@ -625,7 +625,7 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.File -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
+                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
@@ -636,7 +636,7 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
-                        var filePath = attachment.file.toString()
+                        var filePath = attachment.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.file.name,
                             platformMimeType = attachment.file.mimeType()?.toString(),
@@ -665,7 +665,7 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.FileVideo -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
+                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
@@ -678,7 +678,7 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.Gallery -> {
-                        var filePath = attachment.image.file.toString()
+                        var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.image.fileName,
                         )
@@ -706,13 +706,13 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.Audio -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.audioFile.toString(),
+                                filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.audioFile.name,
                                     platformMimeType = attachment.audioFile.mimeType()?.toString(),
                                 ),
                                 displayName = attachment.audioFile.name,
-                                waveformFile = attachment.waveformFile?.toString(),
+                                waveformFile = attachment.waveformFile?.toUploadPath(fileOperationsProvider),
                                 audioLengthSeconds = attachment.lengthSeconds,
                             )
                         )
@@ -859,7 +859,12 @@ internal class MessageActionsHandler(
                                 .toPersistentList(),
                         )
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
+                    // Throwable, not Exception: a missing platform impl throws kotlin.NotImplementedError
+                    // (an Error, not an Exception). Catching only Exception let that escape, killing the
+                    // coroutine and leaving the bubble stuck on "Preparing" forever. Re-throw
+                    // CancellationException so structured-concurrency cancellation still propagates.
+                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
                     Logger.e(
                         throwable = e,
                         tag = TAG

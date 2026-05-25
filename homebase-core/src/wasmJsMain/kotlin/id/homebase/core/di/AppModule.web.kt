@@ -6,6 +6,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.chat.dice.ShakeDetector
+import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -54,6 +55,7 @@ actual fun platformModule(): Module = module {
                 .components {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
+                    add(PlatformFileFetcher.Factory())
                 }
                 .build()
     }

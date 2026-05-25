@@ -10,6 +10,7 @@ import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.sync.database.NativeDatabaseSizeProbe
 import id.homebase.chat.dice.IosShakeDetector
 import id.homebase.chat.dice.ShakeDetector
+import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -60,6 +61,7 @@ actual fun platformModule(): Module = module {
                     add(PHAssetFetcher.Factory())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(PlatformFileFetcher.Factory())
                 }
                 .diskCache(null)
                 .build()

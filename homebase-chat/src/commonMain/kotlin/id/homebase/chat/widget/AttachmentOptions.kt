@@ -154,7 +154,7 @@ fun AttachmentGallery(
                             ) {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = galleryImage.file.toString(),
+                                    model = galleryImage.file,
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
                                         .size(160.dp)
