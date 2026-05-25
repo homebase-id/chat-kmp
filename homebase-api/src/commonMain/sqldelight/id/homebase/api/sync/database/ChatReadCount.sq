@@ -8,10 +8,21 @@ CREATE TABLE IF NOT EXISTS ChatReadCount(
 -- To make the conversation + last-message performant
 CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_userDate ON DriveMainIndex(groupId,fileType,userDate DESC);
 
--- Speeds up message scans in selectAllConversationPlusLastMessage and selectAllUnreadCount
--- (fileType first lets SQLite seek directly to message rows without a full table scan)
-CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_userDate
-  ON DriveMainIndex(fileType, dataType, groupId, userDate DESC);
+-- Covering index for the message scans in selectAllUnreadCount,
+-- selectAllConversationPlusLastMessage, selectUnreadCountForConversation and
+-- selectOrphanedAtRestConversations. EVERY query that filters fileType/dataType on this table
+-- also filters identityId, so leading with identityId is strictly better than a fileType-
+-- leading index; including the residual filter columns makes selectAllUnreadCount index-
+-- COVERING (no per-row table lookup), which fixes its ~2.9s cold GROUP BY. EXPLAIN QUERY PLAN
+-- confirms selectAllUnreadCount and selectAllConversationPlusLastMessage (outer scan +
+-- correlated last-message subquery) all use this as a covering index.
+--
+-- This is the correct shape — it replaces the former fileType-leading
+-- idx_messages_filetype_datatype_groupid_userDate. No migration code: it's just a schema
+-- index, so new installs get it directly and existing installs that still carry the old index
+-- simply shed it whenever the DB is next rebuilt on a major (version-bump) upgrade.
+CREATE INDEX IF NOT EXISTS idx_unread_cover
+  ON DriveMainIndex(identityId, fileType, dataType, groupId, userDate, originalAuthor, fileState, archivalStatus);
 
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()

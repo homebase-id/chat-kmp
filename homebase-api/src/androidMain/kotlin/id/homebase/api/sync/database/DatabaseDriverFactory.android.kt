@@ -11,6 +11,13 @@ actual class DatabaseDriverFactory(private val context: Context) {
     actual fun createDriver(passphrase: String?): SqlDriver {
         System.loadLibrary("sqlcipher")
         val factory = SupportOpenHelperFactory((passphrase ?: "").toByteArray())
+        // Reader concurrency note: unlike iOS (NativeSqliteDriver maxReaderConnections=4),
+        // SupportOpenHelperFactory exposes no pool-size knob — the SQLCipher WAL connection
+        // pool is sized by the platform. WAL (enabled in onConfigure below) is what allows
+        // concurrent readers; DatabaseManager.READ_PARALLELISM is kept at 4 to match iOS and
+        // not over-admit readers. If the pool serves fewer, the surplus reads wait in
+        // SQLiteConnectionPool.waitForConnection (off the Main thread, since all reads route
+        // through the read lane) — see READ_PARALLELISM for the verification signal.
         return AndroidSqliteDriver(
             schema = OdinDatabase.Schema,
             context = context,
