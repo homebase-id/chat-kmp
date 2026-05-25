@@ -9,4 +9,5 @@ expect fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier = Modifier,
     onProgress: (Float) -> Unit = {},
+    muted: Boolean = false,
 )

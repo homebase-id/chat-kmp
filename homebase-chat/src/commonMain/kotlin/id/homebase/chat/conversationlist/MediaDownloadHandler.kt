@@ -7,6 +7,7 @@ import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.FFmpegUtils
+import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
@@ -69,11 +70,9 @@ internal class MediaDownloadHandler(
                     KeyHeader(payloadIv, message.keyHeader.aesKey)
                 )
                 if (bytes != null) {
-                    var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                    extension = when (extension) {
-                        "jpeg" -> "jpg"
-                        else -> extension
-                    }
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
                     // Cleartext copy of an end-to-end-encrypted Homebase
                     // payload — sequestered into the share_outbound subdir so
                     // the cold-start + foreground sweepers can reap it as a
@@ -257,14 +256,15 @@ internal class MediaDownloadHandler(
                     )
                 )
 
-                val fileName = payload.filename() ?: payload.key
-                var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                extension = when (extension) {
-                    "jpeg" -> "jpg"
-                    else -> extension
+                val rawName = payload.filename() ?: payload.key
+                val filePath = if (rawName.contains('.')) {
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName"
+                } else {
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName.$extension"
                 }
-                val filePath =
-                    "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,
