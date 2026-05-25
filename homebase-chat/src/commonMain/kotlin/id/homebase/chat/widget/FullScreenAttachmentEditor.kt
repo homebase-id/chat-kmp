@@ -228,6 +228,13 @@ fun FullScreenAttachmentEditor(
                             } else {
                                 // Duration not known yet — show poster while extractThumbnailAsync
                                 // resolves. Player mounts as soon as durationMs lands.
+                                // Video poster intentionally falls back to the file PATH string, NOT the
+                                // PlatformFile model: routing a video through PlatformFileFetcher would
+                                // read the whole video into memory just for a poster. Posters come from
+                                // VideoThumbnailExtractor.extractPosterFrame (desktop/iOS via ffmpeg,
+                                // Android via MediaMetadataRetriever). Web's extractor is unimplemented on
+                                // main, so thumbnailBytes is null and this is blank for now; the web impl
+                                // (browser <video>+canvas, no 22 MB ffmpeg core) ships with the video PR.
                                 val posterModel: Any = attachment.thumbnailBytes
                                     ?: attachment.file.toString()
                                 AsyncImage(
@@ -409,6 +416,9 @@ fun FullScreenAttachmentEditor(
                                     modifier = Modifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    // Poster falls back to the file PATH string, not the PlatformFile model
+                                    // (see the player-mount branch above for why). Blank on web until the web
+                                    // VideoThumbnailExtractor lands with the video PR.
                                     AsyncImage(
                                         imageLoader = imageLoader,
                                         model = attachment.thumbnailBytes ?: attachment.file.toString(),
