@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
@@ -644,6 +645,19 @@ fun ConversationListUi(
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
+    // DIAGNOSTIC (diag-coldstart-main-stall-watchdog only): log every scaffold
+    // destination change, so a navigation that no-ops or gets popped right back
+    // (Detail→List) during cold start is visible — that reads as a dropped tap from
+    // the user's side. Pair with ConvNav (navigateTo bracketing) and ConvRowTap.
+    LaunchedEffect(scaffoldNavigator) {
+        snapshotFlow { scaffoldNavigator.currentDestination }
+            .collect { dest ->
+                Logger.i(tag = "ConvNav") {
+                    "scaffold destination → pane=${dest?.pane} key=${dest?.contentKey}"
+                }
+            }
+    }
+
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
     // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
     // scope here. Uses a dedicated state field rather than uiEvent because the
@@ -768,10 +782,20 @@ fun ConversationListUi(
                             onConversationSelected = {
                                 Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
                                 scope.launch {
+                                    // DIAGNOSTIC (diag branch only): bracket navigateTo so we can
+                                    // tell "onClick fired but the scaffold didn't move" apart from
+                                    // a dropped tap. ConvNav scaffold-destination logger above shows
+                                    // the resulting transition (or absence of one).
+                                    Logger.i(tag = "ConvNav") {
+                                        "navigateTo start target=$it before=${scaffoldNavigator.currentDestination?.contentKey}"
+                                    }
                                     scaffoldNavigator.navigateTo(
                                         ListDetailPaneScaffoldRole.Detail,
                                         it
                                     )
+                                    Logger.i(tag = "ConvNav") {
+                                        "navigateTo done target=$it now=${scaffoldNavigator.currentDestination?.contentKey} pane=${scaffoldNavigator.currentDestination?.pane}"
+                                    }
                                 }
                             }
                         )

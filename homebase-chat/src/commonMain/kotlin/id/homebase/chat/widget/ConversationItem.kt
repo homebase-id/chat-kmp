@@ -1,8 +1,11 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import co.touchlab.kermit.Logger
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,6 +78,31 @@ fun ConversationItem(
 ) {
     var showMenu by rememberSaveable { mutableStateOf(false) }
 
+    // DIAGNOSTIC (diag-coldstart-main-stall-watchdog only): observe the row's tap
+    // gesture so a cold-boot "tap doesn't enter" can be told apart from a Main stall.
+    // The existing loadMessagesForConversation log only fires once a tap is already a
+    // confirmed click; this fires earlier:
+    //   Press            → the finger-down was received by THIS row
+    //   Release(→click)  → it became a click (onClick will run next)
+    //   Cancel(dropped)  → the gesture was cancelled before becoming a click (scroll
+    //                      stole it, or the row was recomposed/disposed under the finger)
+    // No Press at all when you tap = the touch isn't reaching the row (overlay/transition
+    // /window-focus). Remove with the rest of the diag instrumentation.
+    val interactionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            val convId = enrichedData.conversation.id
+            when (interaction) {
+                is PressInteraction.Press ->
+                    Logger.i(tag = "ConvRowTap") { "Press id=$convId" }
+                is PressInteraction.Release ->
+                    Logger.i(tag = "ConvRowTap") { "Release(→click) id=$convId" }
+                is PressInteraction.Cancel ->
+                    Logger.w(tag = "ConvRowTap") { "Cancel(dropped) id=$convId" }
+            }
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -83,6 +113,8 @@ fun ConversationItem(
                     .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
             }
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
