@@ -16,3 +16,18 @@ config.devServer.historyApiFallback = {
         { from: new RegExp('^' + escapedPublicPath + 'authorization-code-callback'), to: publicPath + 'index.html' }
     ]
 };
+
+// Open Chrome (not the OS default browser) when running `wasmJsBrowserDevelopmentRun`.
+// webpack-dev-server delegates to the `open` npm package, whose Chrome app name differs per OS.
+// If Chrome isn't installed the dev server still starts — it just won't auto-open a tab, so this
+// is safe for teammates on other setups.
+const chromeAppName =
+    process.platform === 'darwin' ? 'google chrome' :
+    process.platform === 'win32' ? 'chrome' :
+    'google-chrome';
+// Default: open plain Chrome. When HB_DEBUG_CHROME=1, suppress auto-open so a separate
+// remote-debugging Chrome (launched out-of-band with --remote-debugging-port) is the only
+// app window — lets the console be captured over CDP without a competing tab.
+config.devServer.open = process.env.HB_DEBUG_CHROME === '1'
+    ? false
+    : { app: { name: chromeAppName } };
