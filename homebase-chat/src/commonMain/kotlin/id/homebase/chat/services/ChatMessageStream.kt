@@ -438,11 +438,17 @@ class ChatMessageStream(
         val mapElapsed = mapStart.elapsedNow()
 
         if (queryElapsed + mapElapsed > 200.milliseconds) {
+            // queueWait splits dbQuery into "waited for a read slot" vs SQL. Best-effort:
+            // getMessages does a single (non-recursive) queryBatchAsync -> one
+            // executeReadQuery, so lastReadTiming normally reflects this query, but a
+            // concurrent read on another coroutine can overwrite it — it's a diagnostic.
+            val queueWaitMs = dbm.lastReadTiming?.queueWaitMs
             Logger.w(tag = "SlowMessageFetch") {
                 "conversationId=$conversationId " +
                         "rawRecords=${result.records.size} " +
                         "mappedRecords=${records.size} " +
                         "dbQuery=$queryElapsed " +
+                        "queueWait=${queueWaitMs}ms " +
                         "mapping=$mapElapsed"
             }
         }
