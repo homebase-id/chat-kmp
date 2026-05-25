@@ -340,7 +340,7 @@ class ConversationListViewModel(
                 "main list pipeline: reaching combine.collect setup at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
             }
             var firstCombineEval = true
-            var firstReadyEmitted = false
+            val listDebounce = ConversationListDebounce()
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
@@ -387,17 +387,8 @@ class ConversationListViewModel(
                 // lifecycle. A flat debounce(50) never sees 50ms of quiet during that
                 // storm, so it withheld the ready list for ~half a second until the
                 // connection settled ("blocked until it goes green"). See
-                // [conversationListDebounceMillis] / ConversationListDebounceTest.
-                val timeout = conversationListDebounceMillis(
-                    dataReady = dataReady,
-                    readyAlreadyEmitted = firstReadyEmitted,
-                )
-                // Flip the flag here, in the selector's own coroutine, the instant the
-                // first ready snapshot is granted the leading edge (0ms) — so storm values
-                // evaluated immediately after coalesce at 50ms instead of racing the
-                // downstream collect to set it. Keeps the var confined to one coroutine.
-                if (timeout == 0L) firstReadyEmitted = true
-                timeout
+                // [ConversationListDebounce] / ConversationListDebounceTest.
+                listDebounce.timeoutMillisFor(dataReady)
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 Logger.i(tag = "ConversationListViewModel") {
                     "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
@@ -1478,18 +1469,29 @@ class ConversationListViewModel(
 }
 
 /**
- * Debounce timeout (ms) for the conversation-list combine. The list's sources
+ * Leading-edge debounce policy for the conversation-list combine. The list's sources
  * (ownerSession, connectionStatusFlow) re-emit continuously through the auth/connect
- * lifecycle; a flat debounce would withhold the already-ready cached list until that
- * storm settled (~when the connection goes online — the "blocked until green" bug).
+ * lifecycle; a flat debounce would withhold the already-ready cached list until that storm
+ * settled (~when the connection goes online — the "blocked until green" bug).
  *
- * Leading-edge: 0ms for the FIRST ready snapshot so the cached list renders immediately,
- * 50ms afterwards so the connect-time storm is still coalesced into few re-sorts.
+ * The first ready snapshot is granted the leading edge (0ms) so the cached list renders
+ * immediately; everything after is coalesced at 50ms so the storm is a few re-sorts, not
+ * one per source emission.
  *
- * Pure so ConversationListDebounceTest can pin the behavior without a ViewModel.
+ * Stateful (remembers whether the first ready snapshot has been granted) — use one instance
+ * per collect, on a single coroutine. Owning the flag here keeps it out of the ViewModel
+ * and lets ConversationListDebounceTest exercise the real policy instead of a mirror.
  */
-internal fun conversationListDebounceMillis(dataReady: Boolean, readyAlreadyEmitted: Boolean): Long =
-    if (dataReady && !readyAlreadyEmitted) 0L else 50L
+internal class ConversationListDebounce {
+    private var firstReadyEmitted = false
+
+    /** Debounce timeout (ms) for a combine emission with the given [dataReady]. */
+    fun timeoutMillisFor(dataReady: Boolean): Long {
+        val timeout = if (dataReady && !firstReadyEmitted) 0L else 50L
+        if (timeout == 0L) firstReadyEmitted = true
+        return timeout
+    }
+}
 
 /**
  * Whether the message-load backstop should clear the chat-details loading spinner when a
