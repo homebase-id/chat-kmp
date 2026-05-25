@@ -51,9 +51,10 @@ private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
 private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
 
 // Debounce for coalesced unread-count enrichment: a sync burst of triggers collapses into a
-// single run after this quiet window. Small enough that a normal mark-as-read echo still
-// reflects quickly. See the coalesced-enrichment region in ConversationStream.
-private const val UNREAD_ENRICH_DEBOUNCE_MS = 250L
+// single run after this quiet window. Unread counts aren't latency-critical, so a generous
+// window is fine — it just has to settle a sync storm into one full-DB pass. See the
+// coalesced-enrichment region in ConversationStream.
+private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
