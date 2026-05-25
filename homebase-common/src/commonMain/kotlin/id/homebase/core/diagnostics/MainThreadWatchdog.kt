@@ -39,6 +39,11 @@ class MainThreadWatchdog(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     fun start() {
+        // Startup marker so a log can confirm the watchdog is actually present AND which
+        // threshold this build uses — the loop below is otherwise silent until it fires, so
+        // "no MainThreadWatchdog line" was ambiguous (not-in-build vs no-stall). The threshold
+        // value also identifies the build: 800 = the cold-tap diagnostic build, 4000 = default.
+        Logger.i(tag = TAG) { "MainThreadWatchdog started (threshold=${thresholdMs}ms, tick=${tickIntervalMs}ms)" }
         scope.launch {
             val timeSource = TimeSource.Monotonic
             var lastReportMark = timeSource.markNow()
