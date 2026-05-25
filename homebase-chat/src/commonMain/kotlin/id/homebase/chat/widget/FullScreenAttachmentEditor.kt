@@ -183,7 +183,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.FileImage -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.file.toString(),
+                            model = attachment.file,
                             contentDescription = stringResource(MR.string.cd_image_attachment),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -256,7 +256,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.Gallery -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
+                            model = attachment.image.thumbnailUri ?: attachment.image.file,
                             contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -398,7 +398,7 @@ fun FullScreenAttachmentEditor(
                             is AttachmentPendingFile.FileImage -> {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = attachment.file.toString(),
+                                    model = attachment.file,
                                     contentDescription = stringResource(MR.string.cd_image_attachment),
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -426,7 +426,7 @@ fun FullScreenAttachmentEditor(
                             is AttachmentPendingFile.Gallery -> {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
+                                    model = attachment.image.thumbnailUri ?: attachment.image.file,
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop

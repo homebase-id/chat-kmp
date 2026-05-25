@@ -10,6 +10,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
 import id.homebase.chat.dice.AndroidShakeDetector
 import id.homebase.chat.dice.ShakeDetector
+import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.core.audio.AndroidAudioPlayer
 import id.homebase.core.audio.AndroidAudioRecorder
@@ -74,6 +75,7 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(PlatformFileFetcher.Factory())
                     add(VideoFrameDecoder.Factory())
                 }
             .memoryCache {
