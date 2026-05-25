@@ -152,6 +152,7 @@ import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
@@ -385,6 +386,7 @@ fun ConversationContent(
     var keyboardHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
+    val imeState = rememberImeOffsetState()
 
     val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
 
@@ -788,13 +790,11 @@ fun ConversationContent(
                 modifier = Modifier.fillMaxSize()
                     .offset {
                         val imeHeight = imeInsets.getBottom(this)
+                        val pureImeHeight = imeState.pureImeBottomPx
                         val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
                         val sheetOffset = when {
-                            // Emoji search: keyboard + emoji sheet both visible
-                            showEmojiSheet && imeHeight > 0 -> imeHeight + sheetHeight
-                            // Regular keyboard only
-                            imeHeight > 0 -> imeHeight
-                            // Sheet only (no keyboard)
+                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
+                            imeHeight > 0 -> pureImeHeight
                             showEmojiSheet || showAttachmentSheet -> sheetHeight
                             else -> 0
                         }
@@ -1214,7 +1214,7 @@ fun ConversationContent(
                     }
                 }
 
-                Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                Surface(tonalElevation = 0.dp) {
                     if (conversation.conversation.conversationState == ConversationState.Left) {
                         Box(
                             modifier = Modifier.fillMaxWidth()
