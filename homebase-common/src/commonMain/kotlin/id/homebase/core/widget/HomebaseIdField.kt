@@ -66,6 +66,7 @@ fun HomebaseIdField(
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Uri,
             capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
             imeAction = imeAction,
         ),
         keyboardActions = KeyboardActions(
