@@ -103,9 +103,18 @@ class MainApplication : Application(), KoinComponent {
         setupCrashHandler()
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
-        // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
-        // ~1s before the OS would kill us at 5s.
-        MainThreadWatchdog().start()
+        // homebase.log when a frame budget is exceeded — gives us a usable trace ~1s
+        // before the OS would kill us at 5s.
+        //
+        // TEMPORARY (diagnostic): threshold lowered 4000→800ms and throttle 30s→1s to
+        // capture the cold-boot "tap on a visible list does nothing for ~2s" stall, which
+        // sits under the normal 4s ANR-grade threshold (build 1674 log: selectedConversationId
+        // set at T but the navigation effect didn't run until T+2.2s — Main was wedged but
+        // both off-Main suspects, selectAllUnreadCount and ShareShortcutPublisher, were ruled
+        // out). The low throttle is so an earlier first-composition stall can't swallow the
+        // single report and hide the tap stall. Revert to MainThreadWatchdog() once the cold
+        // first-tap Main stack is captured and the cause is pinned.
+        MainThreadWatchdog(thresholdMs = 800, throttleMs = 1_000).start()
 
         // Provide application context for rich notifications
         RichNotificationDisplayer.initialize(this, smallIconResId = R.mipmap.ic_launcher_monochrome)
