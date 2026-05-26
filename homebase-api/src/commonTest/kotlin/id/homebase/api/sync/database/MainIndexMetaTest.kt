@@ -7,7 +7,6 @@ import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -193,9 +192,19 @@ class MainIndexMetaTest {
         }
     }
 
+    /**
+     * `baseUpsertEntryZapZap` is the per-batch sync-side upsert that lands a
+     * `HomebaseFile` into DriveMainIndex and (when non-null) persists the
+     * batch cursor via CursorStorage. This pins the cursor round-trip:
+     * `paging` / `stop` / `next` boundary cursors all reload field-equal,
+     * and a follow-up `deleteEntryDriveMainIndex` clears every related table.
+     *
+     * The matching null-cursor case is covered by
+     * [testBaseUpsertEntryZapZapWithNullCursor]; this variant exists to
+     * exercise the persistence path when a cursor is supplied.
+     */
     @Test
-    @Ignore // michael will fix
-    fun testBaseUpsertEntryZapZapWithTags() = runTest {
+    fun testBaseUpsertEntryZapZapWithCursor() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Create isolated database manager for this test
             // Test data
@@ -273,25 +282,6 @@ class MainIndexMetaTest {
                 "priority": 300,
                 "fileByteCount": 5402950
             }"""
-
-            // Create tag records
-            val tagId1 = Uuid.random()
-            val tagId2 = Uuid.random()
-            listOf(
-                DriveTagIndex(
-                    rowId = 1L, identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId1
-                ), DriveTagIndex(
-                    rowId = 2L, identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId2
-                )
-            )
-
-            // Create local tag records
-            val localTagId1 = Uuid.random()
-            listOf(
-                DriveLocalTagIndex(
-                    rowId = 1L, identityId = identityId, driveId = driveId, fileId = fileId, tagId = localTagId1
-                )
-            )
 
             val originalCursor = QueryBatchCursor(
                 paging = TimeRowCursor(
@@ -438,10 +428,6 @@ class MainIndexMetaTest {
                 "fileByteCount": 1000
             }"""
 
-            // Create tag records
-            listOf<DriveTagIndex>()
-            listOf<DriveLocalTagIndex>()
-
             // Create FileMetadataProcessor instance to test BaseUpsertEntryZapZap
             val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
 
@@ -467,7 +453,6 @@ class MainIndexMetaTest {
     }
 
     @Test
-    @Ignore // per michael, he will fix
     fun testBaseUpsertEntryZapZapWithExistingTags() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data

@@ -200,8 +200,6 @@ class QueryBatch(
         val timeField: String
         val listWhereAnd = mutableListOf<String>()
 
-
-
         timeField = when (sortField) {
             QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId -> "created"
             QueryBatchSortField.UserDate -> "userDate"
@@ -299,25 +297,38 @@ class QueryBatch(
                 val hasMoreRows = !cursorDepleted && sqlCursor.next().value
 
                 if (count > 0) {
+                    // Carry the last-returned row's `rowId` through into the
+                    // next cursor instead of hardcoding 0L. Without this, the
+                    // next fetch's WHERE `(time, rowId) > (lastTime, 0L)`
+                    // re-matches every row at `lastTime` (because rowId is
+                    // always > 0). When the boundary userDate isn't unique
+                    // (e.g. the chat-message "no version → authorSpecificDate"
+                    // fallback produces clusters of identical userDates), the
+                    // cursor effectively doesn't advance and pagination
+                    // re-returns the same page forever — see
+                    // `QueryBatchCursorAdvanceTest`. The local `rowId` here
+                    // captures the *last* SqlCursor.getLong(0) in the loop
+                    // above; it's the boundary we want the next fetch to skip.
+                    val boundaryRowId = rowId ?: 0L
                     if (sortField === QueryBatchSortField.UserDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
                                 UnixTimeUtc(header.fileMetadata.appData.userDate ?: 0L),
-                                0L
+                                boundaryRowId
                             )
                         )
                     else if (sortField === QueryBatchSortField.AnyChangeDate || sortField === QueryBatchSortField.OnlyModifiedDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
                                 header.fileMetadata.updated,
-                                0L
+                                boundaryRowId
                             )
                         )
                     else if (sortField === QueryBatchSortField.FileId || sortField === QueryBatchSortField.CreatedDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
                                 header.fileMetadata.created,
-                                0L
+                                boundaryRowId
                             )
                         )
                     else
