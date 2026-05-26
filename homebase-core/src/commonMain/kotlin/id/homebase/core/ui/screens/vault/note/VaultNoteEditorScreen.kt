@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -219,10 +217,11 @@ fun VaultNoteEditorScreen(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
+                val pureImeBottomDp = with(imeState.density) { imeState.pureImeBottomPx.toDp() }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset { IntOffset(0, -imeState.pureImeBottomPx) },
+                        .padding(bottom = pureImeBottomDp),
                 ) {
                     NoteTitle(
                         title = uiState.title,
