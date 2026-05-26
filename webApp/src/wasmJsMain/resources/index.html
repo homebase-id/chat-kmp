@@ -101,6 +101,8 @@
     // ECDH keypair needed to finish the token exchange), then close — WITHOUT booting the heavy
     // wasm bundle inside the popup. On a normal load we inject the app scripts in order:
     //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app bundle.
+    // The ffmpeg scripts only DEFINE globals (FFmpegWASM, MP4Box, __odinFfmpeg) — they
+    // download nothing until the first video compress/segment lazily loads the core.
     // The bundle filename is substituted at build time by HtmlWebpackPlugin (see
     // webApp/webpack.config.d/html-plugin.js) — in production it's content-hashed for cache busting.
     (function () {
@@ -115,7 +117,7 @@
             window.close();
             return;
         }
-        ["sql-wasm.js", "odin-sqljs.js", "<%= htmlWebpackPlugin.files.js[0] %>"].forEach(function (src) {
+        ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "<%= htmlWebpackPlugin.files.js[0] %>"].forEach(function (src) {
             var s = document.createElement("script");
             s.src = src;
             s.async = false; // script-inserted scripts run in insertion order when async=false
