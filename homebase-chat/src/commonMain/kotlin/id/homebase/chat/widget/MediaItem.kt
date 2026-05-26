@@ -2,6 +2,8 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -53,6 +55,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.video.formatDurationLabel
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -226,7 +229,7 @@ fun MediaItem(
         contentType.startsWith("image/") -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
-                val gestureModifier = if (onClick != null || onLongPress != null) {
+                var imageModifier = if (onClick != null || onLongPress != null) {
                     finalModifier.pointerInput(onClick, onLongPress) {
                         detectTapGestures(
                             onTap = { onClick?.invoke() },
@@ -236,10 +239,25 @@ fun MediaItem(
                 } else {
                     finalModifier
                 }
+                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        imageModifier = imageModifier.sharedBounds(
+                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = { _, _ ->
+                                tween(
+                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                                    easing = FastOutSlowInEasing,
+                                )
+                            },
+                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                        )
+                    }
+                }
                 AsyncImage(
                     model = imageLocalContext.localFilePath,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = gestureModifier,
+                    modifier = imageModifier,
                     contentScale = imageContentScale,
                 )
             } else {

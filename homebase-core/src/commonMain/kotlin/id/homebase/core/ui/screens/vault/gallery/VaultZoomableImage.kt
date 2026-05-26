@@ -4,6 +4,8 @@ package id.homebase.core.ui.screens.vault.gallery
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +31,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.ZoomState
@@ -81,10 +84,26 @@ fun VaultZoomableImage(
     if (localFilePath != null) {
         ZoomableContainer(state = zoomState, onTap = onToggleUI) {
             Box(modifier = Modifier.fillMaxSize()) {
+                var imageModifier: Modifier = Modifier.fillMaxSize()
+                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        imageModifier = imageModifier.sharedBounds(
+                            rememberSharedContentState(key = "image-${file.fileId}-${descriptor.key}"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = { _, _ ->
+                                tween(
+                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                                    easing = FastOutSlowInEasing,
+                                )
+                            },
+                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                        )
+                    }
+                }
                 AsyncImage(
                     model = localFilePath,
                     contentDescription = file.label?.ifBlank { null } ?: file.fileName,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Fit,
                 )
                 if (isPending) {
