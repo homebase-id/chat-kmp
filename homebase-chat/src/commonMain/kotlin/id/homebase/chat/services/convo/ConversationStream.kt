@@ -29,6 +29,8 @@ import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +49,12 @@ import kotlin.uuid.Uuid
 private val ORPHAN_SWEEP_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0101")
 private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
 private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
+
+// Debounce for coalesced unread-count enrichment: a sync burst of triggers collapses into a
+// single run after this quiet window. Unread counts aren't latency-critical, so a generous
+// window is fine — it just has to settle a sync storm into one full-DB pass. See the
+// coalesced-enrichment region in ConversationStream.
+private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -169,6 +177,25 @@ class ConversationStream(
     }
     // endregion
 
+    // region Coalesced unread enrichment
+    //
+    // A sync burst used to fire one enrichAllConversationsWithUnreadCounts per WebSocket
+    // batch / DriveSync-Stopped, each a full-DB GROUP BY + single-writer mirror upsert. With
+    // no guard, N triggers spawned N concurrent runs that piled onto the read lane and the
+    // writer — measured at 47–131s under heavy sync. Funnel the recurring triggers through a
+    // [CoalescingTrigger]: rapid requests collapse to the latest, a short debounce batches a
+    // burst, and its single collector runs them one at a time. [enrichMutex] additionally
+    // guards against overlap with the ColdLoad direct call in start().
+    private val enrichMutex = Mutex()
+    private val unreadEnrichTrigger = CoalescingTrigger<String>(scope, UNREAD_ENRICH_DEBOUNCE_MS) {
+        enrichAllConversationsWithUnreadCounts(it)
+    }
+
+    private fun requestUnreadEnrichment(trigger: String) {
+        unreadEnrichTrigger.request(trigger)
+    }
+    // endregion
+
 
     // Two paths converge on _conversations:
     //
@@ -236,7 +263,7 @@ class ConversationStream(
                                     enrichWithLastMessages()
                                     enrichWithAdmins()
                                     if (hasDirtyUnread()) {
-                                        enrichAllConversationsWithUnreadCounts(trigger = "DriveSyncStopped")
+                                        requestUnreadEnrichment("DriveSyncStopped")
                                     }
                                 } catch (e: Exception) {
                                     Logger.e(e) {
@@ -672,15 +699,7 @@ class ConversationStream(
         // There's no Started/Stopped envelope to defer to — this batch IS the
         // whole event. If anything dirtied an unread count, run enrichAll now.
         if (hasDirtyUnread()) {
-            scope.launch {
-                try {
-                    enrichAllConversationsWithUnreadCounts(trigger = "WebSocketBatch")
-                } catch (e: Exception) {
-                    Logger.e(e) {
-                        "ConversationStream: WebSocket-batch enrich failed: ${e.message}"
-                    }
-                }
-            }
+            requestUnreadEnrichment("WebSocketBatch")
         }
     }
 
@@ -1102,7 +1121,13 @@ class ConversationStream(
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) {
+    // Serialized entry point: [enrichMutex] ensures the ColdLoad direct call (start()) and the
+    // channel-driven reruns (init collector) never overlap — each is a full-DB read + mirror
+    // write, and concurrent runs were the 47–131s pileup.
+    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) =
+        enrichMutex.withLock { enrichUnreadLocked(trigger) }
+
+    private suspend fun enrichUnreadLocked(trigger: String) {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         // Take ownership of the current dirty set as we begin work. New
         // bits set during this call's lifetime persist for the next
