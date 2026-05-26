@@ -231,6 +231,205 @@ class QueryBatchCursorAdvanceTest {
         }
     }
 
+    // ------------------------------------------------------------------------
+    // One small cursor-advance test per non-UserDate sortField branch.
+    //
+    // The fix in `QueryBatch.kt` carries the boundary `rowId` through into the
+    // next cursor for *all* five sortField branches via a shared
+    // `boundaryRowId` local — UserDate, AnyChangeDate, OnlyModifiedDate,
+    // FileId, CreatedDate. The UserDate path is covered above; these tests pin
+    // the other branches so a future regression that re-introduces a
+    // hardcoded `0L` in any of them gets caught.
+    //
+    // Each test seeds rows sharing the relevant timestamp (the condition that
+    // makes the rowId tiebreaker actually matter), fetches one page, then a
+    // second page using the returned cursor, and asserts no overlap.
+    // ------------------------------------------------------------------------
+
+    @Test
+    fun queryBatchAsync_createdDate_cursorAdvancesPastTiedCreatedRows() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            val tied = 1_700_000_000_000L
+            // Distinct userDates (irrelevant for CreatedDate sort) but identical
+            // `created`. CreatedDate's cursor builds from header.fileMetadata.created.
+            for (i in 1..6) {
+                seedChatMessage(
+                    dbm, identityId, driveId, groupId,
+                    fileId = Uuid.fromLongs(0L, 100L + i),
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = tied + i,
+                    created = tied,
+                    modified = tied + i,
+                )
+            }
+
+            val firstAndSecond = twoPagesDisjoint(
+                dbm,
+                identityId,
+                driveId,
+                groupId,
+                sortField = QueryBatchSortField.CreatedDate,
+            )
+            assertEquals(3, firstAndSecond.first.size)
+            assertEquals(3, firstAndSecond.second.size)
+        }
+    }
+
+    @Test
+    fun queryBatchAsync_fileId_cursorAdvancesPastTiedCreatedRows() {
+        // FileId shares the CreatedDate branch in QueryBatch (both read
+        // `header.fileMetadata.created` for the cursor). Same setup as above,
+        // different sortField, must produce the same disjoint pagination.
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            val tied = 1_700_000_000_000L
+            for (i in 1..6) {
+                seedChatMessage(
+                    dbm, identityId, driveId, groupId,
+                    fileId = Uuid.fromLongs(0L, 100L + i),
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = tied + i,
+                    created = tied,
+                    modified = tied + i,
+                )
+            }
+
+            val firstAndSecond = twoPagesDisjoint(
+                dbm,
+                identityId,
+                driveId,
+                groupId,
+                sortField = QueryBatchSortField.FileId,
+            )
+            assertEquals(3, firstAndSecond.first.size)
+            assertEquals(3, firstAndSecond.second.size)
+        }
+    }
+
+    @Test
+    fun queryBatchAsync_anyChangeDate_cursorAdvancesPastTiedModifiedRows() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            // AnyChangeDate adds a WHERE `modified < now()` clause, so the
+            // tied `modified` must be in the past. 1.7e12 ms ≈ 2023 — well
+            // before now and safely in the past for any reasonable CI clock.
+            val tied = 1_700_000_000_000L
+            for (i in 1..6) {
+                seedChatMessage(
+                    dbm, identityId, driveId, groupId,
+                    fileId = Uuid.fromLongs(0L, 100L + i),
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = tied + i,
+                    created = tied + i,
+                    modified = tied,  // ← tied modified — the AnyChangeDate cursor key
+                )
+            }
+
+            val firstAndSecond = twoPagesDisjoint(
+                dbm,
+                identityId,
+                driveId,
+                groupId,
+                sortField = QueryBatchSortField.AnyChangeDate,
+            )
+            assertEquals(3, firstAndSecond.first.size)
+            assertEquals(3, firstAndSecond.second.size)
+        }
+    }
+
+    @Test
+    fun queryBatchAsync_onlyModifiedDate_cursorAdvancesPastTiedModifiedRows() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            // OnlyModifiedDate additionally requires `modified != created`,
+            // so seed with distinct `created` per row and an identical `modified`.
+            val tied = 1_700_000_000_000L
+            for (i in 1..6) {
+                seedChatMessage(
+                    dbm, identityId, driveId, groupId,
+                    fileId = Uuid.fromLongs(0L, 100L + i),
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = tied + i,
+                    created = 1_500_000_000_000L + i,  // distinct, in the past, != modified
+                    modified = tied,
+                )
+            }
+
+            val firstAndSecond = twoPagesDisjoint(
+                dbm,
+                identityId,
+                driveId,
+                groupId,
+                sortField = QueryBatchSortField.OnlyModifiedDate,
+            )
+            assertEquals(3, firstAndSecond.first.size)
+            assertEquals(3, firstAndSecond.second.size)
+        }
+    }
+
+    /**
+     * Helper for the per-sortField tests: fetch two pages of 3 rows and
+     * return them as a pair. Asserts inline that both batches are full and
+     * that the second batch contains no rows from the first.
+     */
+    private suspend fun twoPagesDisjoint(
+        dbm: DatabaseManager,
+        identityId: Uuid,
+        driveId: Uuid,
+        groupId: Uuid,
+        sortField: QueryBatchSortField,
+    ): Pair<Set<Uuid>, Set<Uuid>> {
+        val qb = QueryBatch(identityId)
+        val first = qb.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 3,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+            sortField = sortField,
+            fileSystemType = 0,
+            filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+            groupIdAnyOf = listOf(groupId),
+        )
+        val second = qb.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 3,
+            cursor = first.cursor,
+            sortOrder = QueryBatchSortOrder.OldestFirst,
+            sortField = sortField,
+            fileSystemType = 0,
+            filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+            groupIdAnyOf = listOf(groupId),
+        )
+        val firstIds = first.records.map { it.fileId }.toSet()
+        val secondIds = second.records.map { it.fileId }.toSet()
+        val overlap = firstIds.intersect(secondIds)
+        assertTrue(
+            overlap.isEmpty(),
+            "[$sortField] second page must not overlap first — overlap=$overlap " +
+                "firstIds=$firstIds secondIds=$secondIds",
+        )
+        return firstIds to secondIds
+    }
+
     /**
      * Sanity check that the test setup itself can fetch by groupId — pins the
      * insert helper against schema/adapter drift so a failure in the main test
@@ -298,6 +497,8 @@ class QueryBatchCursorAdvanceTest {
         fileId: Uuid,
         uniqueId: Uuid,
         userDate: Long,
+        created: Long = userDate,
+        modified: Long = userDate,
     ) {
         val jsonHeader = buildChatMessageJson(
             fileId = fileId,
@@ -305,6 +506,8 @@ class QueryBatchCursorAdvanceTest {
             uniqueId = uniqueId,
             groupId = groupId,
             userDate = userDate,
+            created = created,
+            modified = modified,
         )
         dbm.driveMainIndex.upsertDriveMainIndex(
             identityId = identityId,
@@ -321,8 +524,8 @@ class QueryBatchCursorAdvanceTest {
             fileState = 1L,
             historyStatus = 0L,
             userDate = userDate,
-            created = userDate,
-            modified = userDate,
+            created = created,
+            modified = modified,
             fileSystemType = 0L,
             jsonHeader = jsonHeader,
         )
@@ -341,6 +544,8 @@ class QueryBatchCursorAdvanceTest {
         uniqueId: Uuid,
         groupId: Uuid,
         userDate: Long,
+        created: Long = userDate,
+        modified: Long = userDate,
     ): String = """
         {
             "fileId": "$fileId",
@@ -354,9 +559,9 @@ class QueryBatchCursorAdvanceTest {
             },
             "fileMetadata": {
                 "globalTransitId": null,
-                "created": $userDate,
-                "updated": $userDate,
-                "transitCreated": $userDate,
+                "created": $created,
+                "updated": $modified,
+                "transitCreated": $created,
                 "transitUpdated": 0,
                 "isEncrypted": false,
                 "senderOdinId": "sender.test",
