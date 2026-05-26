@@ -48,8 +48,8 @@ import kotlin.uuid.Uuid
  * Scope:
  *   - forward cursor traversal (no dups, no gaps, hasMoreRows transitions)
  *   - NewestFirst-by-userDate ordering
- *   - the rowId=0 cursor encoding's behavior at tied userDate boundaries
- *     (locked-in current behavior — see [tiedUserDateBoundary_currentBehavior])
+ *   - tied-userDate boundaries (the cursor now carries the boundary rowId,
+ *     so pagination is disjoint and exhaustive — see [tiedUserDateBoundary_paginatesDisjointly])
  *   - empty conversation
  *   - groupId isolation
  *   - stability under inserts that land "above" the cursor boundary
@@ -340,20 +340,20 @@ class ChatMessageStreamPagingTest {
     }
 
     @Test
-    fun tiedUserDateBoundary_currentBehavior() = runTest {
-        // Locks in the *current* behavior of the cursor when the boundary
-        // straddles rows that share a userDate. The cursor encoding at
-        // QueryBatch.kt:280-285 stores `TimeRowCursor(userDate, 0L)` — the rowId
-        // is hardcoded to 0 rather than the actual last row's rowId. Combined
-        // with the strict `<` comparison at QueryBatch.kt:223, this means: if
-        // the limit-th row and the (limit+1)-th row share a userDate, the
-        // (limit+1)-th row is silently dropped from the next page.
+    fun tiedUserDateBoundary_paginatesDisjointly() = runTest {
+        // Pre-fix this test was named *_currentBehavior and locked in the bug:
+        // when the limit-th and (limit+1)-th row shared a userDate, the cursor
+        // hardcoded `rowId=0` (rather than the last-returned row's actual
+        // rowId), and the next fetch's tuple comparison either silently
+        // dropped or duplicated rows at the boundary userDate (the exact
+        // failure mode depends on sortOrder — NewestFirst dropped, OldestFirst
+        // re-included). The QueryBatch cursor-encoding fix in this same PR
+        // carries the boundary rowId through, so pagination is now disjoint
+        // and exhaustive across tied userDates.
         //
-        // This is a real correctness gap that paging will surface. By asserting
-        // the current behavior here, any later change to fix it will trip this
-        // test and force the change to be made deliberately. Update this test
-        // when the cursor encoding is fixed; do not update it to "make it
-        // pass" without thinking about what fetchMessages now returns.
+        // This test pins the fixed behavior: 3 rows at the same userDate,
+        // pageSize=2, must yield page1=2 rows + page2=1 row, exhausting the
+        // set with no overlap and no drops.
         val conversationId = Uuid.random()
         val tiedUserDate = 1_700_000_000_000L
 
@@ -365,17 +365,26 @@ class ChatMessageStreamPagingTest {
         val (page1, hasMore1, cursor1) = fetchPage(conversationId, limit = 2)
         assertEquals(2, page1.size)
         assertTrue(hasMore1, "third row at the tied userDate should report hasMoreRows")
-        assertTrue(page1.all { it.id in tied })
+        val page1Ids = page1.map { it.id }.toSet()
+        assertTrue(page1Ids.all { it in tied })
 
-        // Continuing with the cursor: the rowId=0 encoding excludes everything
-        // at the tied userDate. Page 2 is empty (current behavior).
         val (page2, hasMore2, _) = fetchPage(conversationId, limit = 2, cursor = cursor1)
+        val page2Ids = page2.map { it.id }.toSet()
         assertEquals(
-            emptyList(),
-            page2.map { it.id },
-            "current cursor encoding drops the third tied-userDate row"
+            1, page2Ids.size,
+            "page 2 should return the remaining 1 of 3 tied-userDate rows",
         )
-        assertFalse(hasMore2)
+        assertTrue(page2Ids.all { it in tied })
+        assertTrue(
+            page1Ids.intersect(page2Ids).isEmpty(),
+            "page 1 and page 2 must be disjoint — overlap=" +
+                "${page1Ids.intersect(page2Ids)}",
+        )
+        assertEquals(
+            tied, page1Ids + page2Ids,
+            "union of the two pages should cover every tied-userDate row exactly once",
+        )
+        assertFalse(hasMore2, "after returning the third tied row, dataset must be exhausted")
     }
 
     @Test

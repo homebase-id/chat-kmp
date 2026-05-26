@@ -3,8 +3,8 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.query.QueryBatchCursor
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -37,23 +37,21 @@ import kotlin.uuid.Uuid
  * Patrick-conversation log lines), the next batch re-returns the same rows
  * the previous batch did.
  *
- * **The test below seeds 10 messages all sharing the same userDate**, fetches
- * the first 3 with `sortField=UserDate sortOrder=OldestFirst`, then fetches
- * the next 3 with the returned cursor. With the bug present, the second batch
- * overlaps the first (same rows). After the cursor fix (carry through the
- * last-returned `rowId` instead of `0L`), the two batches will be disjoint.
+ * **The tests below seed messages sharing a userDate** and assert that
+ * pagination returns disjoint pages (no overlap) and exhausts the dataset
+ * (`hasMore=false` on the last page). The fix carries the last-returned
+ * `rowId` through into the next cursor instead of hardcoding `0L`, so the
+ * next fetch's WHERE `(time, rowId) > (lastTime, lastRowId)` correctly
+ * skips past the boundary row even when multiple rows share `lastTime`.
  *
- * **Empirically verified bug** — un-ignoring and running this test against
- * the current code fails as expected, with `overlap` containing all three
- * fileIds the first batch returned (i.e. complete re-fetch of the same set).
- *
- * Marked `@Ignore` so this PR keeps CI green — flip it off once the cursor
- * fix lands and this assertion will hold.
+ * The fix lives at `QueryBatch.kt` (cursor-build after a batch returns).
+ * Without it, the on-device "infinity spinner on Patrick Kitchell" is
+ * deterministic — every `loadNewer` returns the same rows, `hasMore=true`
+ * stays true forever.
  */
 class QueryBatchCursorAdvanceTest {
 
     @Test
-    @Ignore  // currently FAILS — pins the cursor-advancement bug; remove @Ignore after the fix
     fun queryBatchAsync_oldestFirstUserDate_cursorAdvancesPastRowsAtSameUserDate() {
         runBlocking {
             val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
@@ -136,6 +134,99 @@ class QueryBatchCursorAdvanceTest {
                 "second fetch with the first's returned cursor must not re-include rows " +
                     "already returned in the first batch — overlap=$overlap " +
                     "(firstIds=$firstIds secondIds=$secondIds)",
+            )
+        }
+    }
+
+    /**
+     * Stronger formulation: 9 rows all at `userDate=0` (the most extreme
+     * collision possible — also the value the seeder defaults to when an
+     * appData has no userDate), paged 3 at a time. With the cursor bug, every
+     * page returns the same first 3 rows. With the fix carrying the last
+     * rowId through, the three pages cover all 9 rows disjointly and the
+     * third page reports `hasMore=false`.
+     *
+     * Asserts both invariants:
+     *  1. Page N+1's rows do not overlap with page N's rows.
+     *  2. The union of all three pages equals the seeded set.
+     */
+    @Test
+    fun queryBatchAsync_oldestFirstUserDate_paginatesDisjointlyWhenAllRowsShareUserDate() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            val totalRows = 9
+            val pageSize = 3
+            val expectedAllIds = (1..totalRows).map { i ->
+                val fileId = Uuid.fromLongs(0L, 100L + i)
+                seedChatMessage(
+                    dbm = dbm,
+                    identityId = identityId,
+                    driveId = driveId,
+                    groupId = groupId,
+                    fileId = fileId,
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = 0L,
+                )
+                fileId
+            }.toSet()
+
+            val qb = QueryBatch(identityId)
+            val pages = mutableListOf<Set<Uuid>>()
+            var cursor = QueryBatchCursor()
+            var hasMore = true
+            var safetyCounter = 0
+            while (hasMore) {
+                // Cap the loop hard so the buggy "cursor never advances"
+                // version of this test fails with a clear message instead of
+                // looping forever. With the fix in place we expect exactly
+                // 3 iterations.
+                if (++safetyCounter > 6) {
+                    error(
+                        "cursor never advanced — paged ${pages.size} times without " +
+                            "exhausting the 9-row dataset (pages so far: $pages)"
+                    )
+                }
+                val batch = qb.queryBatchAsync(
+                    dbm = dbm,
+                    driveId = driveId,
+                    noOfItems = pageSize,
+                    cursor = cursor,
+                    sortOrder = QueryBatchSortOrder.OldestFirst,
+                    sortField = QueryBatchSortField.UserDate,
+                    fileSystemType = 0,
+                    filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+                    groupIdAnyOf = listOf(groupId),
+                )
+                val pageIds = batch.records.map { it.fileId }.toSet()
+                // Overlap pin per-step so the failure points at the offending page.
+                for ((idx, prior) in pages.withIndex()) {
+                    val overlap = pageIds.intersect(prior)
+                    assertTrue(
+                        overlap.isEmpty(),
+                        "page #${pages.size + 1} overlaps with page #${idx + 1}: " +
+                            "overlap=$overlap thisPage=$pageIds priorPage=$prior",
+                    )
+                }
+                pages += pageIds
+                cursor = batch.cursor
+                hasMore = batch.hasMoreRows
+            }
+
+            assertEquals(
+                3, pages.size,
+                "with 9 rows at the same userDate and pageSize=3, pagination should " +
+                    "yield exactly 3 disjoint pages (got ${pages.size}: $pages)",
+            )
+            val union = pages.fold(emptySet<Uuid>()) { acc, p -> acc + p }
+            assertEquals(
+                expectedAllIds, union,
+                "union of all pages should equal the seeded set — missing=" +
+                    "${expectedAllIds - union} extra=${union - expectedAllIds}",
             )
         }
     }
