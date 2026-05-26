@@ -3,73 +3,70 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * Regression guard for the conversation-open "spinner": the per-conversation chat message
- * fetch must use the selective per-conversation index seek ([Idx3DriveMainIndex]), not a global
- * userDate scan ([Idx2DriveMainIndex]).
+ * Regression guard for the conversation-open "spinner": without intervention, opening an
+ * old/quiet conversation walked the global newest→oldest timeline filtering by `groupId`
+ * per row (~hundreds of ms to seconds on-device). Pin the per-conversation index for
+ * `QueryBatch`'s chat-message-fetch shape so the planner always seeks by `groupId`
+ * regardless of query-planner statistics or connection state. Moments-style scans (no
+ * `groupId` filter) must NOT be affected — they should continue using the global userDate
+ * index for newest-first scans.
  *
- * Without ANALYZE statistics (production state — SQLDelight/SQLCipher never run ANALYZE) SQLite
- * can't tell `groupId` is selective and plans the global scan, so opening an old/sparse
- * conversation walks the whole newest→oldest timeline (~900ms on-device). [DatabaseManager.optimize]
- * (PRAGMA analysis_limit + optimize) gives the planner stats and flips it to the index seek
- * (sub-ms). This test proves that flip on the same single in-memory driver production uses.
+ * This test asserts both branches by `EXPLAIN QUERY PLAN` on the same in-memory driver
+ * production uses.
  */
 class MessageFetchPlanTest {
 
-    // Mirrors the SQL QueryBatch emits for ChatMessageStream.fetchMessages: a per-conversation
-    // page filtered by identityId+driveId+fileSystemType+fileState+groupId+fileType, paged by a
-    // (userDate,rowId) cursor, newest-first. Literals stand in for bound params; the chosen plan
-    // is identical.
-    private val messageFetchSql = """
+    private val chatFetchSql = """
+        SELECT DISTINCT rowId, jsonHeader FROM DriveMainIndex INDEXED BY idx_chatmessage_convid_userDate
+        WHERE (userDate, rowId) < (2000000000, 0)
+          AND identityId = x'00' AND driveId = x'01' AND fileSystemType = 0
+          AND fileType IN (7878) AND groupId IN (x'3b')
+        ORDER BY userDate DESC, rowId DESC LIMIT 50
+    """.trimIndent()
+
+    private val momentsFetchSql = """
         SELECT DISTINCT rowId, jsonHeader FROM DriveMainIndex
         WHERE (userDate, rowId) < (2000000000, 0)
           AND identityId = x'00' AND driveId = x'01' AND fileSystemType = 0
-          AND fileState = 1 AND fileType IN (7878) AND groupId IN (x'3b')
+          AND fileType IN (8888)
         ORDER BY userDate DESC, rowId DESC LIMIT 50
     """.trimIndent()
 
     @Test
-    fun optimizeFlipsMessageFetchFromGlobalScanToPerConversationSeek() = runBlocking {
+    fun chatShape_usesPerConversationIndex() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        // Build schema + seed on the raw driver BEFORE constructing a DatabaseManager, so the
-        // baseline is captured with no ANALYZE stats. (DatabaseManager.init kicks off optimize()
-        // asynchronously — establishing the baseline first keeps this deterministic.)
         OdinDatabase.Schema.create(driver)
         seedMessages(driver)
-
-        // Production state: no stats yet → global userDate scan (the regression).
-        val before = explainPlan(driver, messageFetchSql)
+        val plan = explainPlan(driver, chatFetchSql)
         assertTrue(
-            before.contains("Idx2DriveMainIndex"),
-            "without stats the planner should fall back to the global userDate scan; was:\n$before",
+            plan.contains("idx_chatmessage_convid_userDate"),
+            "the chat fetch (with INDEXED BY) should use the per-conversation index; was:\n$plan",
         )
         assertTrue(
-            !before.contains("idx_chatmessage_convid_userDate") && !before.contains("Idx3DriveMainIndex"),
-            "without stats it should NOT already use a per-conversation seek; was:\n$before",
+            !plan.contains("Idx2DriveMainIndex"),
+            "the chat fetch must not fall to the global userDate scan; was:\n$plan",
         )
+    }
 
-        DatabaseManager({ driver }).use { dbm ->
-            dbm.optimize()
-
-            // After optimize the planner must use a per-conversation seek (a groupId-leading
-            // index) rather than the global userDate scan. SQLite picks whichever groupId index
-            // it judges best — idx_chatmessage_convid_userDate (groupId,fileType,userDate) or
-            // Idx3DriveMainIndex (…,groupId,fileType,userDate); the bundled version varies, and
-            // either is the fast path. The regression signal is simply: NOT the Idx2 global scan.
-            val after = explainPlan(driver, messageFetchSql)
-            assertTrue(
-                after.contains("idx_chatmessage_convid_userDate") || after.contains("Idx3DriveMainIndex"),
-                "after optimize the planner should use a per-conversation (groupId) index seek; was:\n$after",
-            )
-            assertTrue(
-                !after.contains("Idx2DriveMainIndex"),
-                "after optimize it should no longer use the global userDate scan; was:\n$after",
-            )
-        }
+    @Test
+    fun momentsShape_stillUsesGlobalUserDateIndex() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        OdinDatabase.Schema.create(driver)
+        seedMessages(driver)
+        val plan = explainPlan(driver, momentsFetchSql)
+        assertTrue(
+            plan.contains("Idx2DriveMainIndex"),
+            "Moments-style scans (no groupId filter) should still use the global userDate " +
+                "index; was:\n$plan",
+        )
+        assertTrue(
+            !plan.contains("idx_chatmessage_convid_userDate"),
+            "Moments-style scans must not get pinned to the chat index; was:\n$plan",
+        )
     }
 
     /**

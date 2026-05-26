@@ -8,11 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.ioDispatcher
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -109,11 +105,6 @@ class DatabaseManager(
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
 
-    // Long-lived scope for one-shot DB maintenance (e.g. the startup [optimize]). Runs on the
-    // single write [dispatcher]; SupervisorJob so a maintenance failure can't tear down the
-    // singleton DatabaseManager.
-    private val maintenanceScope = CoroutineScope(dispatcher + SupervisorJob())
-
     // Latency split of the most recent read; see [ReadTiming]. Updated on every
     // executeReadQuery; readers should treat it as best-effort (concurrent reads
     // race on this single cell) — it's a diagnostic, not a correctness signal.
@@ -146,16 +137,6 @@ class DatabaseManager(
         logger.i {
             "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
                 "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
-        }
-
-        // Refresh planner statistics off the cold-start critical path. Bounded (~ms) and runs
-        // on the write lane; finishes well before the user opens a conversation, so the
-        // per-conversation message read picks a selective groupId index seek instead of a
-        // global userDate scan. See [optimize].
-        maintenanceScope.launch {
-            // Don't swallow silently: a failure here (e.g. a platform rejecting a pragma) would
-            // make the planner-stats fix a silent no-op, so surface it.
-            runCatching { optimize() }.onFailure { logger.w(it) { "DB optimize failed: ${it.message}" } }
         }
     }
 
@@ -375,30 +356,6 @@ class DatabaseManager(
         withContext(dispatcher) { block(database) }
     }
 
-    /**
-     * Refresh SQLite's query-planner statistics (sqlite_stat1) so it picks selective per-row
-     * seeks over global scans. The concrete win this was added for: the per-conversation chat
-     * message read filters identityId+driveId+fileSystemType+fileState+groupId+fileType and has
-     * a selective groupId index available (idx_chatmessage_convid_userDate / Idx3DriveMainIndex),
-     * but with NO stats the planner can't tell groupId is selective and falls back to a global
-     * userDate scan (Idx2) — ~900ms to open an old, sparse conversation. With stats it uses the
-     * groupId seek (sub-ms). SQLDelight/SQLCipher never run ANALYZE on their own, so we do it here.
-     *
-     * `analysis_limit=400` bounds the work to a few ms regardless of table size (SQLite's
-     * recommended setting); `PRAGMA optimize` then ANALYZEs only the tables that need it. Runs
-     * on the single write lane (it writes sqlite_stat1). Cheap no-op once stats are current.
-     */
-    suspend fun optimize() {
-        withContext(dispatcher) {
-            val mark = TimeSource.Monotonic.markNow()
-            driver.execute(null, "PRAGMA analysis_limit=400", 0)
-            driver.execute(null, "PRAGMA optimize", 0)
-            // Logged so a run is verifiable on-device/desktop (optimize is otherwise silent) and
-            // so we can see its cost. A failure is surfaced by the caller's onFailure (below).
-            logger.i { "DB optimize done in ${mark.elapsedNow()}" }
-        }
-    }
-
     suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dispatcher) {
         block(database)
     }
@@ -586,7 +543,6 @@ class DatabaseManager(
     }
 
     override fun close() {
-        maintenanceScope.cancel()
         driver.close()
         logger.i { "Database closed" }
     }
