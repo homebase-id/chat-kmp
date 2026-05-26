@@ -164,7 +164,18 @@ internal class AttachmentHandler(
                         // okio first and hand the extractor that readable path (native actuals
                         // return toString() unchanged — no copy). Best-effort: a failure here
                         // must not abort the attach, it just leaves the poster blank.
-                        val path = runCatching { f.file.toUploadPath(fileOperationsProvider) }.getOrNull()
+                        // Plain try/catch rather than runCatching — the latter triggers a
+                        // Kotlin/Native link-time `Lowering ReturnsInsertion: phases [Autobox]
+                        // required, but not satisfied` compiler bug on iOS when its inline lambda
+                        // wraps a suspend call. Re-throw CancellationException so the surrounding
+                        // coroutine still cancels cleanly.
+                        val path = try {
+                            f.file.toUploadPath(fileOperationsProvider)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Throwable) {
+                            null
+                        }
                         if (path != null) extractThumbnailAsync(f.attachmentId, path)
                     }
                 }
@@ -223,10 +234,17 @@ internal class AttachmentHandler(
 
                 // Editor visible — kick off thumbnail extraction in parallel. As in
                 // handleAttachPlatformFile, materialize web-picked bytes into okio first so the
-                // extractor can read them (native: toString() unchanged, no copy).
+                // extractor can read them (native: toString() unchanged, no copy). See
+                // handleAttachPlatformFile for why this isn't runCatching (K/N link-time bug).
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
                     if (pending is AttachmentPendingFile.FileVideo) {
-                        val path = runCatching { gallery.file.toUploadPath(fileOperationsProvider) }.getOrNull()
+                        val path = try {
+                            gallery.file.toUploadPath(fileOperationsProvider)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Throwable) {
+                            null
+                        }
                         if (path != null) extractThumbnailAsync(pending.attachmentId, path)
                     }
                 }
