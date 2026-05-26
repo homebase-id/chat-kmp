@@ -90,19 +90,23 @@ class ChatReadCountWrapper(
      * set. Cheap (index-backed, empty in the normal case); intended to run once per cold
      * start after the chat drive's initial sync settles.
      */
-    fun selectOrphanedAtRestConversations(
+    suspend fun selectOrphanedAtRestConversations(
         identityId: Uuid,
         selfDomain: String,
     ): List<OrphanedAtRestConversation> {
-        return delegate.selectOrphanedAtRestConversations(identityId = identityId, selfDomain = selfDomain)
-            .executeAsList()
-            .map {
-                OrphanedAtRestConversation(
-                    conversationId = it.groupId,
-                    messageCount = it.messageCount,
-                    counterpartyAuthor = it.counterpartyAuthor,
-                )
-            }
+        val rows = databaseManager.readValue("chatReadCount.selectOrphanedAtRestConversations") {
+            delegate.selectOrphanedAtRestConversations(
+                identityId = identityId,
+                selfDomain = selfDomain,
+            ).executeAsList()
+        }
+        return rows.map {
+            OrphanedAtRestConversation(
+                conversationId = it.groupId,
+                messageCount = it.messageCount,
+                counterpartyAuthor = it.counterpartyAuthor,
+            )
+        }
     }
 
     private val logger = Logger.withTag("ConversationQueries")
@@ -171,19 +175,19 @@ class ChatReadCountWrapper(
      * Get unread message count for a specific conversation
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectUnreadCountForConversation(
+    suspend fun selectUnreadCountForConversation(
         identityId: Uuid,
         groupId: Uuid,
         selfDomain: OdinId,
     ): Long {
-        val result = delegate.selectUnreadCountForConversation(
-            identityId, groupId, selfDomain.domainName
-        ).executeAsOneOrNull()
-
-        if (result == null)
-            return 0
-
-        return result
+        val result = databaseManager.readValue("chatReadCount.selectUnreadCountForConversation") {
+            delegate.selectUnreadCountForConversation(
+                identityId,
+                groupId,
+                selfDomain.domainName,
+            ).executeAsOneOrNull()
+        }
+        return result ?: 0
     }
 
     /**
@@ -207,9 +211,10 @@ class ChatReadCountWrapper(
     }
 
     /** Raw stored lastReadTime (epoch ms) for a conversation, or null if none. */
-    fun selectLastReadTimeMs(groupId: Uuid): Long? {
-        return delegate.selectLastReadTime(groupId).executeAsOneOrNull()
-    }
+    suspend fun selectLastReadTimeMs(groupId: Uuid): Long? =
+        databaseManager.readValue("chatReadCount.selectLastReadTimeMs") {
+            delegate.selectLastReadTime(groupId).executeAsOneOrNull()
+        }
 
     /**
      * Upsert last read time for a conversation

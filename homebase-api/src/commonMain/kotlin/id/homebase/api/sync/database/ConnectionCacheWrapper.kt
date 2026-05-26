@@ -10,11 +10,18 @@ class ConnectionCacheWrapper(
 ) {
     private val delegate = ConnectionCacheQueries(driver, connectionCacheAdapter)
 
-    fun selectByIdentity(identityId: Uuid): List<ConnectionCache> =
-        delegate.selectByIdentity(identityId).executeAsList()
+    suspend fun selectByIdentity(identityId: Uuid): List<ConnectionCache> =
+        databaseManager.readValue("connectionCache.selectByIdentity") {
+            delegate.selectByIdentity(identityId).executeAsList()
+        }
 
-    fun selectByIdentityAndStatus(identityId: Uuid, status: String): List<ConnectionCache> =
-        delegate.selectByIdentityAndStatus(identityId, status).executeAsList()
+    suspend fun selectByIdentityAndStatus(
+        identityId: Uuid,
+        status: String,
+    ): List<ConnectionCache> =
+        databaseManager.readValue("connectionCache.selectByIdentityAndStatus") {
+            delegate.selectByIdentityAndStatus(identityId, status).executeAsList()
+        }
 
     suspend fun upsert(
         identityId: Uuid,
