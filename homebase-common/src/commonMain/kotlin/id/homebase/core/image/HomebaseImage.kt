@@ -151,13 +151,22 @@ fun HomebaseImage(
     ) {
         val state by painter.state.collectAsStateWithLifecycle()
 
-        // Animate blur: 10f -> 0f on success
+        // Blur only the low-res embedded preview; cached thumbnails and full
+        // images are already sharp so the target is 0f for those states.
+        val hasSharpImage = state is AsyncImagePainter.State.Success ||
+            (state is AsyncImagePainter.State.Loading &&
+                (state as AsyncImagePainter.State.Loading).painter != null)
+
         val blurRadius by
         animateFloatAsState(
-            targetValue = if (state is AsyncImagePainter.State.Success) 0f else 10f,
+            targetValue = if (hasSharpImage) 0f else 10f,
             animationSpec = tween(durationMillis = 300),
             label = "blur"
         )
+
+        // Applied to every branch so the animation transitions smoothly
+        // across state changes (e.g. blurred preview → sharp full image).
+        val blurMod = if (blurRadius >= 0.5f) Modifier.blur(blurRadius.dp) else Modifier
 
         when (state) {
             is AsyncImagePainter.State.Loading -> {
@@ -168,14 +177,14 @@ fun HomebaseImage(
                         painter = loadingPainter,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else if (previewBitmap != null) {
                     Image(
                         bitmap = previewBitmap,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
-                        modifier = Modifier.fillMaxSize().blur(blurRadius.dp)
+                        modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else {
                     placeholder?.invoke()
@@ -188,7 +197,7 @@ fun HomebaseImage(
                         bitmap = previewBitmap,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
-                        modifier = Modifier.fillMaxSize().blur(blurRadius.dp)
+                        modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else {
                     placeholder?.invoke()
@@ -197,7 +206,7 @@ fun HomebaseImage(
 
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(blurMod),
                     contentScale = contentScale
                 )
             }
@@ -212,7 +221,7 @@ fun HomebaseImage(
                             bitmap = previewBitmap,
                             contentDescription = contentDescription,
                             contentScale = contentScale,
-                            modifier = Modifier.fillMaxSize().blur(blurRadius.dp)
+                            modifier = Modifier.fillMaxSize().then(blurMod)
                         )
                     } else {
                         placeholder?.invoke()
