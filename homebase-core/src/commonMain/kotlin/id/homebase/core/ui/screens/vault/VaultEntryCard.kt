@@ -27,9 +27,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.decodeBitmap
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -247,6 +250,13 @@ private fun VaultCardThumbnail(
                 imageModifier = imageModifier.sharedBounds(
                     rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
                     animatedVisibilityScope = animatedVisibilityScope,
+                    boundsTransform = { _, _ ->
+                        tween(
+                            durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                            easing = FastOutSlowInEasing,
+                        )
+                    },
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
                 )
             }
         }

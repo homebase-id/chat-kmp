@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -202,6 +204,8 @@ fun MomentDetailPane(
                     uiState = uiState,
                     onAction = viewModel::onAction,
                     onNavigateBack = onNavigateBack,
+                    sharedTransitionScope = this@SharedTransitionLayout,
+                    animatedVisibilityScope = this@AnimatedContent,
                 )
 
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
@@ -246,6 +250,8 @@ private fun DetailContent(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onNavigateBack: (() -> Unit)?,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     Scaffold(
         topBar = {
@@ -318,6 +324,8 @@ private fun DetailContent(
                 moment = moment,
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
                 modifier = Modifier
                     .fillMaxSize()
                     .consumeWindowInsets(innerPadding)
@@ -655,6 +663,8 @@ private fun MomentDetailContent(
     moment: MomentFeedItem,
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
@@ -722,8 +732,8 @@ private fun MomentDetailContent(
                             preserveAspectRatio = false,
                             messageId = moment.id,
                             shape = RectangleShape,
-                            sharedTransitionScope = null,
-                            animatedVisibilityScope = null,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
                             onClick = {
                                 onAction(MomentDetailUiAction.MediaClicked(payload.key))
                             },
