@@ -969,6 +969,7 @@
     <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
+    <string name="video_web_large_playback_unsupported">Large videos can\'t be played in the browser yet</string>
 
     <!-- Settings section headers -->
     <string name="settings_section_general">General</string>
