@@ -15,6 +15,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.chat.services.convo.ConversationParticipantLookup
@@ -44,18 +45,34 @@ class ChatMessageActionService(
     private val chatDrive = chatTargetDrive.alias
 
 
-    suspend fun markAsReadByFiles(conversationId: Uuid, messageIds: List<Uuid>) {
+    /**
+     * Mark a set of [messages] as read in [conversationId]. The caller (the
+     * scroll-visibility watcher in `ConversationMessagesPane`, or the
+     * per-message swipe) is the *only* place that triggers this — and at the
+     * point it fires, those exact `MessageUiModel`s are already loaded in the
+     * conversation's in-memory window. So we use them directly: no DB
+     * round-trip to re-fetch what we just rendered. The model already carries
+     * every field this function reads (`localReadTimestamp`, `isDeleted`,
+     * `isPendingSend`, `fileId`, `userDate`, `isAuthoredBy(domain)`).
+     *
+     * The bulk "mark every message in the conversation" path is a different
+     * action that routes to [markAllAsRead]; this function is only the
+     * per-message variant.
+     */
+    suspend fun markAsReadByFiles(conversationId: Uuid, messages: List<MessageUiModel>) {
 
-        Logger.d(tag = TAG) { "enter convo=$conversationId messageIds=${messageIds.size}" }
+        // Empty list is a no-op — don't bother with the log spam or the
+        // suppressed-advance arc below. Defensive: the visibility watcher
+        // already filters out a pure-empty emit upstream, but a caller could
+        // pass an empty list (e.g. all-self-authored visible set collapsed
+        // before reaching here in a future caller), and we want a quiet exit.
+        if (messages.isEmpty()) return
 
-        val batch = messageLookup.getMessages(messageIds)
+        Logger.d(tag = TAG) { "enter convo=$conversationId messages=${messages.size}" }
+
         val domain = credentialsManager.requireActiveDomain()
 
-        Logger.d(tag = TAG) {
-            "lookup matched=${batch.records.size}/${messageIds.size} domain=$domain"
-        }
-
-        val unreadRecords = batch.records
+        val unreadRecords = messages
             .filter {
                 it.localReadTimestamp == null &&
                         !it.isDeleted &&
@@ -64,7 +81,7 @@ class ChatMessageActionService(
             }
 
         Logger.d(tag = TAG) {
-            val excluded = batch.records.size - unreadRecords.size
+            val excluded = messages.size - unreadRecords.size
             "filter eligible=${unreadRecords.size} excluded=$excluded " +
                     "(excluded reasons: self-authored | already-read | deleted | pending-send)"
         }
@@ -72,7 +89,7 @@ class ChatMessageActionService(
         // Local lastReadTime should advance to cover any non-deleted, non-pending message
         // the user just viewed — even self-authored or already-receipted ones (e.g. Note-to-Self
         // has no peer-eligible messages, but the user has clearly "read up to here").
-        val viewedRecords = batch.records.filter { !it.isDeleted && !it.isPendingSend }
+        val viewedRecords = messages.filter { !it.isDeleted && !it.isPendingSend }
         if (viewedRecords.isEmpty()) {
             Logger.d(tag = TAG) {
                 "no viewed records — early return; convo=$conversationId no outbox row, no local advance"

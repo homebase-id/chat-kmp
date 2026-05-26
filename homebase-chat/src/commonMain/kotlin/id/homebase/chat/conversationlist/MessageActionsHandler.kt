@@ -314,12 +314,12 @@ internal class MessageActionsHandler(
     fun handleMarkAsRead(action: ConversationListUiAction.MarkAsRead) {
         scope.launch {
             try {
-                if (action.messageIds == null) {
+                if (action.messages == null) {
                     chatMessageActionService.markAllAsRead(action.conversationId)
                 } else {
                     chatMessageActionService.markAsReadByFiles(
                         action.conversationId,
-                        action.messageIds
+                        action.messages
                     )
                 }
             } catch (e: Exception) {

@@ -201,33 +201,41 @@ fun ConversationMessagesPane(
     }
 
     val seen = remember(conversation.conversation.id) { mutableSetOf<Uuid>() }
-    val messageIdByKey = remember(uiState.messages) {
+    // Map row-key → the full MessageUiModel that's already loaded in the
+    // window. Used by the visibility watcher below to pass real models into
+    // MarkAsRead — the handler reads localReadTimestamp / isDeleted /
+    // isPendingSend / fileId / userDate / isAuthoredBy(domain) straight off
+    // the model, so we don't need to round-trip the DB to look them back up.
+    val messageByKey = remember(uiState.messages) {
         uiState.messages.associateNotNull { item ->
             if (item is MessageListContentModel.Message) {
-                item.id to item.message.id
+                item.id to item.message
             } else null
         }
     }
 
-    LaunchedEffect(conversation.conversation.id, messageIdByKey) {
+    LaunchedEffect(conversation.conversation.id, messageByKey) {
 
         snapshotFlow { listState.layoutInfo.visibleItemsInfo }
             .debounce(500)
             .map { visibleItems ->
                 visibleItems
                     .mapNotNull { it.key as? String }
-                    .mapNotNull { key -> messageIdByKey[key] }
+                    .mapNotNull { key -> messageByKey[key] }
             }
             .flowOn(Dispatchers.Default) // MOVE WORK OFF MAIN THREAD
-            .collect { visibleIds ->
+            .collect { visibleMessages ->
 
-                val newIds = visibleIds.filterNot { it in seen }
+                val newMessages = visibleMessages.filterNot { it.id in seen }
 
-                if (newIds.isNotEmpty()) {
-                    seen.addAll(newIds)
+                if (newMessages.isNotEmpty()) {
+                    seen.addAll(newMessages.map { it.id })
 
                     onUiAction(
-                        ConversationListUiAction.MarkAsRead(conversation.conversation.id, newIds)
+                        ConversationListUiAction.MarkAsRead(
+                            conversation.conversation.id,
+                            newMessages,
+                        )
                     )
                 }
             }
