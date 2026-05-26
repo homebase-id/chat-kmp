@@ -32,18 +32,20 @@ class OutboxWrapper(
         return databaseManager.withWriteValue { delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds).executeAsOneOrNull() }
     }
 
-    fun nextScheduled(): UnixTimeUtc?
-    {
-        val n = delegate.nextScheduled().executeAsOneOrNull()
-
-        return if (n == null) null else return UnixTimeUtc(n)
+    suspend fun nextScheduled(): UnixTimeUtc? {
+        val n = databaseManager.readValue("outbox.nextScheduled") {
+            delegate.nextScheduled().executeAsOneOrNull()
+        }
+        return if (n == null) null else UnixTimeUtc(n)
     }
 
-    fun selectCheckedOut(
-        checkOutStamp: Long,
-    ): Outbox? = delegate.selectCheckedOut(checkOutStamp).executeAsOneOrNull()
+    suspend fun selectCheckedOut(checkOutStamp: Long): Outbox? =
+        databaseManager.readValue("outbox.selectCheckedOut") {
+            delegate.selectCheckedOut(checkOutStamp).executeAsOneOrNull()
+        }
 
-    fun count(): Long = delegate.count().executeAsOne()
+    suspend fun count(): Long =
+        databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 
     suspend fun insert(
         driveId: Uuid,

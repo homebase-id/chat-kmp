@@ -76,8 +76,11 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
+        // Bootstrap-only sync read — seeds the StateFlow at construction. See
+        // KeyValueWrapper.selectByKeyBootstrapSync for the rationale (commonMain
+        // has no runBlocking on wasmJs).
         val bytes: ByteArray = runCatching {
-            keyValue.selectByKey(key) { _, data -> data }
+            keyValue.selectByKeyBootstrapSync(key) { _, data -> data }
         }.getOrNull() ?: return default
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
     }

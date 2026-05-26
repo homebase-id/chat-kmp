@@ -331,7 +331,7 @@ class ConversationServiceTestFixture : AutoCloseable {
         return conversationId
     }
 
-    fun outboxRowCount(): Long = dbm.outbox.count()
+    suspend fun outboxRowCount(): Long = dbm.outbox.count()
 
     /**
      * Drain the outbox (checkout everything eligible at real `now`) so callers can

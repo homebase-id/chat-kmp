@@ -12,7 +12,7 @@ class DriveLocalTagIndexWrapper(
 ) {
     private val delegate = DriveLocalTagIndexQueries(driver, driveLocalTagIndexAdapter)
 
-    fun <T : Any> selectByFile(
+    suspend fun <T : Any> selectByFile(
         identityId: Uuid,
         driveId: Uuid,
         fileId: Uuid,
@@ -23,15 +23,21 @@ class DriveLocalTagIndexWrapper(
             fileId: Uuid,
             tagId: Uuid,
         ) -> T,
-    ): List<T> = delegate.selectByFile(identityId, driveId, fileId, mapper).executeAsList()
+    ): List<T> = databaseManager.readValue("driveLocalTagIndex.selectByFile(mapper)") {
+        delegate.selectByFile(identityId, driveId, fileId, mapper).executeAsList()
+    }
 
-    fun selectByFile(
+    suspend fun selectByFile(
         identityId: Uuid,
         driveId: Uuid,
         fileId: Uuid,
-    ): List<DriveLocalTagIndex> = delegate.selectByFile(identityId, driveId, fileId).executeAsList()
+    ): List<DriveLocalTagIndex> = databaseManager.readValue("driveLocalTagIndex.selectByFile") {
+        delegate.selectByFile(identityId, driveId, fileId).executeAsList()
+    }
 
-    fun countAll(): Long = delegate.countAll().executeAsOne()
+    suspend fun countAll(): Long = databaseManager.readValue("driveLocalTagIndex.countAll") {
+        delegate.countAll().executeAsOne()
+    }
 
     suspend fun insertLocalTag(
         identityId: Uuid,

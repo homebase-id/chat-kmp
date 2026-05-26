@@ -136,7 +136,12 @@ class ConnectionCacheRepository(
         dbm.connectionCache.deleteByIdentityAndOdinId(identityId, odinId.domainName)
     }
 
-    private suspend inline fun <T> runReading(block: (kotlin.uuid.Uuid) -> T?): T? {
+    // The block runs the suspend `dbm.connectionCache.select*` reads, which
+    // route through `databaseManager.readValue(...)` for SlowDbRead
+    // instrumentation and read-lane queue-wait tracking.
+    private suspend inline fun <T> runReading(
+        crossinline block: suspend (kotlin.uuid.Uuid) -> T?,
+    ): T? {
         val identityId = try {
             credentialsManager.getActiveCredentials()?.getIdentityId()
         } catch (e: Exception) {

@@ -42,8 +42,11 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
     }
 
     private fun readInt(key: Uuid, default: Int): Int {
+        // Bootstrap-only sync read — seeds the StateFlow at construction. See
+        // KeyValueWrapper.selectByKeyBootstrapSync for the rationale (commonMain
+        // has no runBlocking on wasmJs).
         val bytes: ByteArray = runCatching {
-            keyValue.selectByKey(key)?.data_
+            keyValue.selectByKeyBootstrapSync(key)?.data_
         }.getOrNull() ?: return default
         if (bytes.size != 4) return default
         return (bytes[0].toInt() and 0xFF shl 24) or
@@ -60,8 +63,9 @@ class DiceRollPreferences(private val databaseManager: DatabaseManager) {
     )
 
     private fun readMode(): DiceRollMode {
+        // Bootstrap-only sync read — see readInt above.
         val bytes: ByteArray = runCatching {
-            keyValue.selectByKey(LAST_MODE_KEY)?.data_
+            keyValue.selectByKeyBootstrapSync(LAST_MODE_KEY)?.data_
         }.getOrNull() ?: return DEFAULT_MODE
         if (bytes.isEmpty()) return DEFAULT_MODE
         return when (bytes[0].toInt()) {

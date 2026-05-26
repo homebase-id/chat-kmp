@@ -12,7 +12,7 @@ class AppNotificationsWrapper(
 ) {
     private val delegate = AppNotificationsQueries(driver, appNotificationsAdapter)
 
-    fun <T : Any> selectByNotificationId(
+    suspend fun <T : Any> selectByNotificationId(
         identityId: Uuid,
         notificationId: Uuid,
         mapper: (
@@ -26,14 +26,19 @@ class AppNotificationsWrapper(
             created: Long,
             modified: Long,
         ) -> T,
-    ): T? = delegate.selectByNotificationId(identityId, notificationId, mapper).executeAsOneOrNull()
+    ): T? = databaseManager.readValue("appNotifications.selectByNotificationId(mapper)") {
+        delegate.selectByNotificationId(identityId, notificationId, mapper).executeAsOneOrNull()
+    }
 
-    fun selectByNotificationId(
+    suspend fun selectByNotificationId(
         identityId: Uuid,
         notificationId: Uuid,
-    ): AppNotifications? = delegate.selectByNotificationId(identityId, notificationId).executeAsOneOrNull()
+    ): AppNotifications? =
+        databaseManager.readValue("appNotifications.selectByNotificationId") {
+            delegate.selectByNotificationId(identityId, notificationId).executeAsOneOrNull()
+        }
 
-    fun <T : Any> selectFirstPage(
+    suspend fun <T : Any> selectFirstPage(
         identityId: Uuid,
         limit: Long,
         mapper: (
@@ -47,14 +52,19 @@ class AppNotificationsWrapper(
             created: Long,
             modified: Long,
         ) -> T,
-    ): List<T> = delegate.selectFirstPage(identityId, limit, mapper).executeAsList()
+    ): List<T> = databaseManager.readValue("appNotifications.selectFirstPage(mapper)") {
+        delegate.selectFirstPage(identityId, limit, mapper).executeAsList()
+    }
 
-    fun selectFirstPage(
+    suspend fun selectFirstPage(
         identityId: Uuid,
         limit: Long,
-    ): List<AppNotifications> = delegate.selectFirstPage(identityId, limit).executeAsList()
+    ): List<AppNotifications> =
+        databaseManager.readValue("appNotifications.selectFirstPage") {
+            delegate.selectFirstPage(identityId, limit).executeAsList()
+        }
 
-    fun <T : Any> selectNextPage(
+    suspend fun <T : Any> selectNextPage(
         identityId: Uuid,
         rowId: Long,
         limit: Long,
@@ -69,13 +79,18 @@ class AppNotificationsWrapper(
             created: Long,
             modified: Long,
         ) -> T,
-    ): List<T> = delegate.selectNextPage(identityId, rowId, limit, mapper).executeAsList()
+    ): List<T> = databaseManager.readValue("appNotifications.selectNextPage(mapper)") {
+        delegate.selectNextPage(identityId, rowId, limit, mapper).executeAsList()
+    }
 
-    fun selectNextPage(
+    suspend fun selectNextPage(
         identityId: Uuid,
         rowId: Long,
         limit: Long,
-    ): List<AppNotifications> = delegate.selectNextPage(identityId, rowId, limit).executeAsList()
+    ): List<AppNotifications> =
+        databaseManager.readValue("appNotifications.selectNextPage") {
+            delegate.selectNextPage(identityId, rowId, limit).executeAsList()
+        }
 
     suspend fun insertNotification(
         identityId: Uuid,
