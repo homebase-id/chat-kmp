@@ -209,6 +209,8 @@ class ChatMessageStream(
             return
         }
         val sizeBefore = window.messages.size
+        val cursorBeforeTime = window.newerCursor?.paging?.time?.milliseconds
+        val cursorBeforeRow = window.newerCursor?.paging?.row
         paginatedState.setLoadingNewer(conversationId, true)
         try {
             val start = TimeSource.Monotonic.markNow()
@@ -225,10 +227,20 @@ class ChatMessageStream(
                 hasMore = result.hasMoreRows,
             )
             val after = paginatedState.getWindow(conversationId)
+            // Cursor diagnostics — chasing the Patrick-conversation "infinity spinner".
+            // If the cursor's `time` advances by very little (or not at all) while the
+            // window doesn't grow, the deterministic dup-fetch is happening: QueryBatch
+            // emits `TimeRowCursor(userDate, 0L)` for sortField=UserDate, which on the
+            // next OldestFirst fetch's `(userDate, rowId) > (lastUDate, 0L)` clause
+            // re-includes every row at that userDate. See loadNewerMessages KDoc.
+            val cursorAfterTime = result.cursor.paging?.time?.milliseconds
+            val cursorAfterRow = result.cursor.paging?.row
             Logger.d(tag = "ChatPaging") {
                 "loadNewer($conversationId) +${result.records.size} hasMore=${result.hasMoreRows} " +
                     "windowSize=$sizeBefore→${after?.messages?.size} " +
-                    "hasOlder=${after?.hasOlderMessages} took=${start.elapsedNow()}"
+                    "hasOlder=${after?.hasOlderMessages} " +
+                    "cursor=$cursorBeforeTime/$cursorBeforeRow→$cursorAfterTime/$cursorAfterRow " +
+                    "took=${start.elapsedNow()}"
             }
         } catch (t: Throwable) {
             paginatedState.setLoadingNewer(conversationId, false)
