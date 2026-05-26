@@ -499,13 +499,29 @@ class ChatMessageStream(
     }
 
     override suspend fun getMessages(
-        messageIds: List<Uuid>
+        messageIds: List<Uuid>,
+        conversationId: Uuid,
     ): BatchResult<MessageUiModel> {
+
+        // Empty input is a no-op — no need to round-trip the driver. Note this
+        // also dodges the QueryBatch `uniqueIdAnyOf = emptyList()` shape that
+        // would otherwise emit a `uniqueId IN ()` clause SQLite rejects.
+        if (messageIds.isEmpty()) {
+            return BatchResult(
+                records = emptyList(),
+                hasMoreRows = false,
+                cursor = QueryBatchCursor(),
+            )
+        }
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
-        // TODO - inject searchQuery into actual db query
+        // Passing groupIdAnyOf alongside uniqueIdAnyOf makes the chat-shape
+        // branch in QueryBatch (kt:262) fire, pinning idx_chatmessage_convid_userDate
+        // via INDEXED BY — the lookup becomes a tight per-conversation seek
+        // rather than the global CreatedDate scan the planner picks without
+        // ANALYZE statistics. See MessageLookup.getMessages for context.
         val result =
             queryBatch.queryBatchAsync(
                 dbm = dbm,
@@ -513,10 +529,11 @@ class ChatMessageStream(
                 noOfItems = messageIds.size,
                 cursor = null,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
+                sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-                uniqueIdAnyOf = messageIds
+                groupIdAnyOf = listOf(conversationId),
+                uniqueIdAnyOf = messageIds,
             )
 
         return BatchResult(
