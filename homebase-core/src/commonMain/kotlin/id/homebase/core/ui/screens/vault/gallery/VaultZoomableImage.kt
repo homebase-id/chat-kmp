@@ -59,25 +59,26 @@ fun VaultZoomableImage(
         )
     val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
 
-    val pageImageData = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
-        val payloadIv = descriptor.iv?.let {
-            try {
-                Base64.decode(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return@remember null
-        HomebaseImageData(
-            driveId = file.driveId,
-            fileId = file.fileId,
-            payloadKey = descriptor.key,
-            previewThumbnail = file.previewThumbnail,
-            loadFullPayload = true,
-            lastModified = descriptor.lastModified,
-            isEncrypted = file.isEncrypted,
-            keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
-        )
-    }
+    val pageImageData =
+        remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
+            val payloadIv = descriptor.iv?.let {
+                try {
+                    Base64.decode(it)
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: return@remember null
+            HomebaseImageData(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                payloadKey = descriptor.key,
+                previewThumbnail = file.previewThumbnail ?: descriptor.previewThumbnail?.toEmbeddedThumb(),
+                loadFullPayload = true,
+                lastModified = descriptor.lastModified,
+                isEncrypted = file.isEncrypted,
+                keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
+            )
+        }
 
     val isPending = descriptor.iv == null
     val zoomState = remember(descriptor.key) { ZoomState() }
