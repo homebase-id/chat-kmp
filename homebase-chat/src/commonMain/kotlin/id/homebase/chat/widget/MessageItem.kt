@@ -170,7 +170,7 @@ fun MessageItem(
             )
         }
     } else { val onMarkAsRead =
-            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message.id))) } }
+            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message))) } }
 
         SwipeableMessageWrapper(
             enabled = isMobile() && !message.isDeleted,

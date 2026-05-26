@@ -32,6 +32,60 @@ import kotlinx.coroutines.test.runTest
 class ChatMessageActionServiceTest {
 
     @Test
+    fun markAsReadByFiles_doesNotHitMessageLookup_forVisibleMessages() = runTest {
+        // Regression guard: the in-memory MessageUiModel handed to
+        // markAsReadByFiles already carries every field the service reads
+        // (localReadTimestamp, isDeleted, isPendingSend, fileId, userDate,
+        // isAuthoredBy(domain)). The pre-refactor version did
+        // `messageLookup.getMessages(messageIds)` here, which (a) wasted a DB
+        // round-trip on a hot path and (b) used a `uniqueIdAnyOf` +
+        // `CreatedDate` shape that the planner could turn into a global
+        // timeline scan when no ANALYZE statistics existed. Asserting the
+        // lookup is never called pins both wins in place.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val peer = "alice.test"
+            val m1 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 100L)
+            val m2 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 200L)
+
+            service.markAsReadByFiles(convoId, listOf(m1, m2))
+
+            assertEquals(
+                0, fixture.messageLookup.getMessagesCallCount,
+                "markAsReadByFiles must not call MessageLookup.getMessages — the caller " +
+                    "already has the MessageUiModels in scope",
+            )
+
+            // Sanity: the function still did its job (receipt outbox + local advance).
+            val row = fixture.drainOutbox()
+                .single { it.uploadType == DriveOutboxUploader.SendReadReceiptByFileIds }
+            val payload = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(
+                row.json.decodeToString()
+            )
+            assertEquals(setOf(m1.fileId, m2.fileId), payload.fileIds.toSet())
+            assertEquals(200L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+        }
+    }
+
+    @Test
+    fun markAsReadByFiles_emptyList_isANoOp() = runTest {
+        // Empty input must short-circuit before the log/outbox/advance arc —
+        // a future caller passing an all-filtered-out list shouldn't churn
+        // the outbox or write a no-op log line.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+
+            service.markAsReadByFiles(convoId, emptyList())
+
+            assertTrue(fixture.drainOutbox().isEmpty())
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+        }
+    }
+
+    @Test
     fun markAsReadByFiles_enqueuesSingleOutboxRequestWithAllUnreadFileIds() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
@@ -156,7 +210,7 @@ class ChatMessageActionServiceTest {
                 row.json.decodeToString()
             )
             val eligibleFileIds = fixture.messageLookup.records
-                .filter { it.id == m1 || it.id == m2 }
+                .filter { it.id == m1.id || it.id == m2.id }
                 .map { it.fileId }
                 .toSet()
             assertEquals(eligibleFileIds, payload.fileIds.toSet())
@@ -213,7 +267,7 @@ class ChatMessageActionServiceTest {
                 row.json.decodeToString()
             )
             val eligibleFileIds = fixture.messageLookup.records
-                .filter { it.id == m1 || it.id == m2 }
+                .filter { it.id == m1.id || it.id == m2.id }
                 .map { it.fileId }
                 .toSet()
             assertEquals(eligibleFileIds, payload.fileIds.toSet())

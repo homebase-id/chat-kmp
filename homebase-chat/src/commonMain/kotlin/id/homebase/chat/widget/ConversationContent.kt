@@ -762,7 +762,7 @@ fun ConversationContent(
                                 onUiAction(
                                     ConversationListUiAction.MarkAsRead(
                                         conversation.conversation.id,
-                                        messageIds = null,
+                                        messages = null,
                                     )
                                 )
                             },
