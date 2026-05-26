@@ -200,8 +200,6 @@ class QueryBatch(
         val timeField: String
         val listWhereAnd = mutableListOf<String>()
 
-
-
         timeField = when (sortField) {
             QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId -> "created"
             QueryBatchSortField.UserDate -> "userDate"
