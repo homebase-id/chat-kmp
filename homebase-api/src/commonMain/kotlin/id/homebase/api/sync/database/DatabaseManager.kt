@@ -368,12 +368,20 @@ class DatabaseManager(
     }
 
     /**
-     * Wraps an [SqlCursor] to accumulate the wall-clock time spent in `next()`
-     * calls. Everything `next()` does is server-side / driver-side row pull
-     * work — that's the "SQL" portion. Mapper CPU (column gets, object
-     * construction, JSON deserialization) happens *between* `next()` calls and
-     * is what the surrounding wall-clock-minus-`nextNanos` measures in
-     * [executeReadQuery].
+     * Accumulates the wall-clock time spent in [SqlCursor.next] (the row-
+     * advance call) for the wrapping read. This is a close proxy for SQL
+     * time in practice — but it isn't literally "all driver work":
+     * column extraction via `getString` / `getLong` etc. is also driver
+     * work, just typically trivial against an already-fetched cursor row
+     * buffer. Whatever wall-clock the mapper spends *between* `next()`
+     * calls (column gets + object construction + JSON deserialization)
+     * is what the surrounding `total - nextNanos` in [executeReadQuery]
+     * reports as `mapper=`. The split is honest for the case that
+     * motivated it (QueryBatch's per-row `HomebaseFile` deserialization);
+     * a hypothetical mapper that pushed heavy work into `getString`
+     * callbacks (e.g. lazy column decryption) would land that work in
+     * `mapper=` even though it's driver-side — read the numbers with
+     * that nuance in mind.
      *
      * Uses Kotlin's interface delegation so `getString`/`getLong`/etc. forward
      * to the underlying cursor unchanged — only `next()` is instrumented.
