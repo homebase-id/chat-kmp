@@ -311,9 +311,24 @@ class QueryBatch(
                     // above; it's the boundary we want the next fetch to skip.
                     val boundaryRowId = rowId ?: 0L
                     if (sortField === QueryBatchSortField.UserDate)
+                        // Use `sqlUserDateMs()` — the *exact same* projection
+                        // `MainIndexMeta.kt:127-128` writes into the SQL
+                        // `userDate` column: `appData.userDate ?: created.ms`.
+                        // The earlier `appData.userDate ?: 0L` here disagreed
+                        // with the SQL column for any row whose
+                        // `appData.userDate` is null (the chat "no version,
+                        // not edited" branch). That mismatch produced cursors
+                        // of shape `(0L, lastRowId)` while the SQL had real
+                        // ms timestamps in the userDate column, so the next
+                        // fetch's `WHERE (userDate, rowId) > (0L, lastRowId)`
+                        // matched the *entire timeline* from epoch and
+                        // ORDER BY ASC returned the oldest rows — already in
+                        // the window. Window stayed the same size, hasMore
+                        // stayed true, infinity-spinner on the bottom. See
+                        // QueryBatchCursorUserDateSourceTest.
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
-                                UnixTimeUtc(header.fileMetadata.appData.userDate ?: 0L),
+                                UnixTimeUtc(header.sqlUserDateMs()),
                                 boundaryRowId
                             )
                         )

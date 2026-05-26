@@ -232,6 +232,117 @@ class QueryBatchCursorAdvanceTest {
     }
 
     /**
+     * Pins the *userDate-source* cursor bug surfaced by Patrick Kitchell's
+     * conversation on prod 1.4.1678. Distinct from the rowId-tuple bug fixed
+     * in the same QueryBatch.kt cursor-build block — that one only manifested
+     * at tied userDate boundaries. This one fires on *any* row whose
+     * `appData.userDate` is null in the JSON header (the chat "no version,
+     * not edited" branch: older Web/RN clients didn't always emit
+     * `appData.userDate`).
+     *
+     * **Production projection** at `MainIndexMeta.kt:127-128`:
+     *   SQL `userDate` column = `appData.userDate ?: created.milliseconds`
+     *
+     * **Pre-fix `QueryBatch.kt:316`** wrote the cursor's userDate as:
+     *   `UnixTimeUtc(header.fileMetadata.appData.userDate ?: 0L)`
+     *
+     * For a null-`appData.userDate` row, that was `(0L, lastRowId)`. The next
+     * fetch's `WHERE (userDate, rowId) > (0L, lastRowId) ORDER BY userDate ASC`
+     * matched *every* row (because `userDate > 0` is true for every real row)
+     * and returned the **oldest 75** — already in the window. Window stayed
+     * the same size, `hasMore=true`, infinity-spinner on the bottom.
+     *
+     * **The fix**: use `header.sqlUserDateMs()` so the cursor's userDate
+     * matches the SQL column projection exactly.
+     *
+     * Seeds 9 rows with `appData.userDate=null` and distinct `created`
+     * timestamps (so the SQL column has spread-out timestamps). Paginates
+     * 3 at a time, asserts disjoint + exhaustive pages. Pre-fix: page 2
+     * returns the same rows as page 1. Post-fix: pages tile the dataset.
+     */
+    @Test
+    fun queryBatchAsync_oldestFirstUserDate_cursorAdvances_whenAppDataUserDateIsNull() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            val totalRows = 9
+            val pageSize = 3
+            val baseCreated = 1_700_000_000_000L
+            val expectedAllIds = (1..totalRows).map { i ->
+                val fileId = Uuid.fromLongs(0L, 100L + i)
+                seedChatMessage(
+                    dbm = dbm,
+                    identityId = identityId,
+                    driveId = driveId,
+                    groupId = groupId,
+                    fileId = fileId,
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    // userDate positional arg is unused when appDataUserDate=null
+                    // — SQL column falls back to `created`. Keep a placeholder.
+                    userDate = 0L,
+                    created = baseCreated + i,
+                    modified = baseCreated + i,
+                    appDataUserDate = null,
+                )
+                fileId
+            }.toSet()
+
+            val qb = QueryBatch(identityId)
+            val pages = mutableListOf<Set<Uuid>>()
+            var cursor: QueryBatchCursor? = null
+            var hasMore = true
+            var safetyCounter = 0
+            while (hasMore) {
+                if (++safetyCounter > 6) {
+                    error(
+                        "cursor never advanced when appData.userDate=null — paged ${pages.size} " +
+                            "times without exhausting the 9-row dataset (pages so far: $pages)"
+                    )
+                }
+                val batch = qb.queryBatchAsync(
+                    dbm = dbm,
+                    driveId = driveId,
+                    noOfItems = pageSize,
+                    cursor = cursor,
+                    sortOrder = QueryBatchSortOrder.OldestFirst,
+                    sortField = QueryBatchSortField.UserDate,
+                    fileSystemType = 0,
+                    filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+                    groupIdAnyOf = listOf(groupId),
+                )
+                val pageIds = batch.records.map { it.fileId }.toSet()
+                for ((idx, prior) in pages.withIndex()) {
+                    val overlap = pageIds.intersect(prior)
+                    assertTrue(
+                        overlap.isEmpty(),
+                        "[null appData.userDate] page #${pages.size + 1} overlaps with page #${idx + 1}: " +
+                            "overlap=$overlap thisPage=$pageIds priorPage=$prior",
+                    )
+                }
+                pages += pageIds
+                cursor = batch.cursor
+                hasMore = batch.hasMoreRows
+            }
+
+            assertEquals(
+                3, pages.size,
+                "with 9 rows whose appData.userDate is null (SQL falls back to created), " +
+                    "pagination should yield exactly 3 disjoint pages (got ${pages.size}: $pages)",
+            )
+            val union = pages.fold(emptySet<Uuid>()) { acc, p -> acc + p }
+            assertEquals(
+                expectedAllIds, union,
+                "union of all pages should equal the seeded set — missing=" +
+                    "${expectedAllIds - union} extra=${union - expectedAllIds}",
+            )
+        }
+    }
+
+    /**
      * Mirror of the OldestFirst variant above but in the *opposite* direction.
      *
      * The fix sets `cursor.row` to the *last-processed* row's actual `rowId`
@@ -597,16 +708,27 @@ class QueryBatchCursorAdvanceTest {
         userDate: Long,
         created: Long = userDate,
         modified: Long = userDate,
+        // When `appDataUserDate` is null, the JSON emits `"userDate": null`
+        // and the SQL `userDate` column falls back to `created.milliseconds`
+        // (mirroring `MainIndexMeta.kt:127-128`). This is the "no version /
+        // not edited" branch in production for chat messages from older
+        // clients — and the case that exposes the cursor-userDate-source bug
+        // fixed in [queryBatchAsync_oldestFirstUserDate_cursorAdvances_whenAppDataUserDateIsNull].
+        appDataUserDate: Long? = userDate,
     ) {
         val jsonHeader = buildChatMessageJson(
             fileId = fileId,
             driveId = driveId,
             uniqueId = uniqueId,
             groupId = groupId,
-            userDate = userDate,
+            appDataUserDate = appDataUserDate,
             created = created,
             modified = modified,
         )
+        // SQL `userDate` column mirrors the production projection:
+        // `appData.userDate ?: created`. Tests that seed `appDataUserDate=null`
+        // get `created` in the SQL column, matching real-world rows.
+        val sqlUserDate = appDataUserDate ?: created
         dbm.driveMainIndex.upsertDriveMainIndex(
             identityId = identityId,
             driveId = driveId,
@@ -621,7 +743,7 @@ class QueryBatchCursorAdvanceTest {
             archivalStatus = 1L,
             fileState = 1L,
             historyStatus = 0L,
-            userDate = userDate,
+            userDate = sqlUserDate,
             created = created,
             modified = modified,
             fileSystemType = 0L,
@@ -641,9 +763,9 @@ class QueryBatchCursorAdvanceTest {
         driveId: Uuid,
         uniqueId: Uuid,
         groupId: Uuid,
-        userDate: Long,
-        created: Long = userDate,
-        modified: Long = userDate,
+        appDataUserDate: Long?,
+        created: Long,
+        modified: Long,
     ): String = """
         {
             "fileId": "$fileId",
@@ -670,7 +792,7 @@ class QueryBatchCursorAdvanceTest {
                     "fileType": $CHAT_MESSAGE_FILE_TYPE,
                     "dataType": 0,
                     "groupId": "$groupId",
-                    "userDate": $userDate,
+                    "userDate": ${appDataUserDate ?: "null"},
                     "content": "",
                     "previewThumbnail": null,
                     "archivalStatus": 0
