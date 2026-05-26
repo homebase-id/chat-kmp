@@ -3,7 +3,9 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
@@ -169,8 +171,25 @@ fun MessageItem(
                 chainCap = chainCap,
             )
         }
-    } else { val onMarkAsRead =
-            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message))) } }
+    } else {
+        // Keep `latest` tracking the freshest model: a swipe-induced
+        // mark-read sets localReadTimestamp upstream and the model
+        // recomposes with the new value. Without rememberUpdatedState
+        // here, the lambda would close over the stale model (the one
+        // present when this lambda was first remember'd, keyed by
+        // message.id), and a rapid second swipe would still see
+        // localReadTimestamp == null and re-enqueue a duplicate receipt.
+        val latest by rememberUpdatedState(message)
+        val onMarkAsRead = remember {
+            {
+                onUiAction(
+                    ConversationListUiAction.MarkAsRead(
+                        latest.conversationId,
+                        listOf(latest),
+                    )
+                )
+            }
+        }
 
         SwipeableMessageWrapper(
             enabled = isMobile() && !message.isDeleted,
