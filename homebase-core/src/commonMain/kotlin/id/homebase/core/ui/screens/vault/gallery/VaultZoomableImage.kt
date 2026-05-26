@@ -72,7 +72,7 @@ fun VaultZoomableImage(
                 driveId = file.driveId,
                 fileId = file.fileId,
                 payloadKey = descriptor.key,
-                previewThumbnail = file.previewThumbnail ?: descriptor.previewThumbnail?.toEmbeddedThumb(),
+                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb() ?: file.previewThumbnail,
                 loadFullPayload = true,
                 lastModified = descriptor.lastModified,
                 isEncrypted = file.isEncrypted,
