@@ -231,6 +231,104 @@ class QueryBatchCursorAdvanceTest {
         }
     }
 
+    /**
+     * Mirror of the OldestFirst variant above but in the *opposite* direction.
+     *
+     * The fix sets `cursor.row` to the *last-processed* row's actual `rowId`
+     * regardless of sortOrder. For OldestFirst the last-processed row is the
+     * one with the **largest** `(time, rowId)` returned this page (ORDER BY
+     * ASC), so the next page's `(time, rowId) > (lastTime, lastRowId)`
+     * correctly excludes it. For NewestFirst the last-processed row is the
+     * one with the **smallest** `(time, rowId)` returned this page (ORDER BY
+     * DESC), and the next page's `(time, rowId) < (lastTime, lastRowId)`
+     * correctly excludes that one. The fix is direction-agnostic because the
+     * `<`/`>` sign chosen at QueryBatch.kt:192-198 already encodes the
+     * direction; the cursor's `row` half just has to be "the boundary you
+     * stopped at".
+     *
+     * Starts with `cursor = null` so the first call exercises the
+     * QueryBatch initialization path (no `paging?.let` branch, no `< MAX`
+     * or `> 0` default), then threads the returned cursor through
+     * subsequent pages.
+     */
+    @Test
+    fun queryBatchAsync_newestFirstUserDate_paginatesDisjointlyWhenAllRowsShareUserDate() {
+        runBlocking {
+            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val groupId = Uuid.fromLongs(0L, 3L)
+
+            val totalRows = 9
+            val pageSize = 3
+            val expectedAllIds = (1..totalRows).map { i ->
+                val fileId = Uuid.fromLongs(0L, 100L + i)
+                seedChatMessage(
+                    dbm = dbm,
+                    identityId = identityId,
+                    driveId = driveId,
+                    groupId = groupId,
+                    fileId = fileId,
+                    uniqueId = Uuid.fromLongs(0L, 200L + i),
+                    userDate = 0L,
+                )
+                fileId
+            }.toSet()
+
+            val qb = QueryBatch(identityId)
+            val pages = mutableListOf<Set<Uuid>>()
+            // null on first call: exercises the "no incoming cursor" init path.
+            // Subsequent calls thread the returned cursor through.
+            var cursor: QueryBatchCursor? = null
+            var hasMore = true
+            var safetyCounter = 0
+            while (hasMore) {
+                if (++safetyCounter > 6) {
+                    error(
+                        "cursor never advanced for NewestFirst — paged ${pages.size} times " +
+                            "without exhausting the 9-row dataset (pages so far: $pages)"
+                    )
+                }
+                val batch = qb.queryBatchAsync(
+                    dbm = dbm,
+                    driveId = driveId,
+                    noOfItems = pageSize,
+                    cursor = cursor,
+                    sortOrder = QueryBatchSortOrder.NewestFirst,
+                    sortField = QueryBatchSortField.UserDate,
+                    fileSystemType = 0,
+                    filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+                    groupIdAnyOf = listOf(groupId),
+                )
+                val pageIds = batch.records.map { it.fileId }.toSet()
+                for ((idx, prior) in pages.withIndex()) {
+                    val overlap = pageIds.intersect(prior)
+                    assertTrue(
+                        overlap.isEmpty(),
+                        "[NewestFirst] page #${pages.size + 1} overlaps with page #${idx + 1}: " +
+                            "overlap=$overlap thisPage=$pageIds priorPage=$prior",
+                    )
+                }
+                pages += pageIds
+                cursor = batch.cursor
+                hasMore = batch.hasMoreRows
+            }
+
+            assertEquals(
+                3, pages.size,
+                "with 9 rows at the same userDate and pageSize=3, NewestFirst pagination " +
+                    "should yield exactly 3 disjoint pages (got ${pages.size}: $pages)",
+            )
+            val union = pages.fold(emptySet<Uuid>()) { acc, p -> acc + p }
+            assertEquals(
+                expectedAllIds, union,
+                "union of all NewestFirst pages should equal the seeded set — missing=" +
+                    "${expectedAllIds - union} extra=${union - expectedAllIds}",
+            )
+        }
+    }
+
     // ------------------------------------------------------------------------
     // One small cursor-advance test per non-UserDate sortField branch.
     //
