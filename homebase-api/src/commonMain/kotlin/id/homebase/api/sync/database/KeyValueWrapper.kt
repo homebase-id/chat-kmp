@@ -42,8 +42,15 @@ class KeyValueWrapper(
      *  - `DiceRollPreferences.readInt / readMode` (3 reads/cold-start)
      *  - `CursorStorage.loadCursor` (called from `DriveSync.init`, `MainIndexMeta`)
      *
-     * If you find yourself wanting this for anything else, refactor the caller
-     * to async-init instead.
+     * **KeyValue-specific by design**: the other wrappers don't expose a
+     * bootstrap-sync sibling because their callers can all afford to be
+     * suspend. If you ever need a sync read of another table at constructor
+     * time, refactor the *caller* to async-init (seed the StateFlow with a
+     * default and `scope.launch { _flow.value = read() }` in `init {}`)
+     * rather than adding another sync hatch here. Each new hatch is a place
+     * where a Main-thread caller can deadlock the DB, and they're hard to
+     * unwind once they exist. Should be tracked as a follow-up to migrate
+     * these four bootstrap callers off this API entirely.
      */
     fun <T : Any> selectByKeyBootstrapSync(
         key: Uuid,

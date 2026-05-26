@@ -174,4 +174,106 @@ class WrapperReadsRouteThroughLaneTest {
             assertEquals(viaSuspend.data_.toList(), viaSync.data_.toList())
         }
     }
+
+    // -- Mapper-variant suspend overloads -------------------------------------
+    //
+    // These exist for API symmetry with the SQLDelight-generated typed-callback
+    // signatures (callers pass a row → T mapper instead of getting back the
+    // generated row type). No production code calls them today, but they're
+    // still on the wrapper's public surface so a future caller using them must
+    // get the same read-lane routing as the no-mapper variants. Tests below
+    // pin: (a) routing through readValue, (b) the mapper actually runs and
+    // sees the column values from the row.
+
+    @Test
+    fun keyValueSuspendMapperRead_routesThroughLane_andMapperReceivesRowData() {
+        runBlocking {
+            val dbm = newDbm()
+            val key = Uuid.fromLongs(0L, 7L)
+            val payload = byteArrayOf(0x10, 0x20, 0x30)
+            dbm.keyValue.upsertValue(key, payload)
+            assertNull(
+                dbm.lastReadTiming,
+                "writes should not populate lastReadTiming (baseline)",
+            )
+
+            // The mapper is the user-supplied (key, data) -> T callback that
+            // SQLDelight invokes once per row inside executeAsOneOrNull. We
+            // ferry the payload back out so the assertion below proves the
+            // mapper actually ran against the real row, not an empty stand-in.
+            val data: ByteArray? = dbm.keyValue.selectByKey(key) { _, d -> d }
+            assertNotNull(data)
+            assertEquals(payload.toList(), data.toList())
+            assertNotNull(
+                dbm.lastReadTiming,
+                "keyValue.selectByKey(mapper) suspend variant must route through readValue",
+            )
+        }
+    }
+
+    @Test
+    fun appNotificationsSuspendMapperReads_routeThroughLane() {
+        runBlocking {
+            val dbm = newDbm()
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val notificationId = Uuid.fromLongs(0L, 9L)
+            // Empty-table reads still go through readValue (the routing happens
+            // before the SQL runs), so we don't need to seed rows to prove the
+            // contract. The functional behaviour (mapper actually runs per
+            // matched row) is the same code path as keyValue's mapper variant
+            // above; this test scopes to "does the routing fire".
+
+            dbm.appNotifications.selectByNotificationId(
+                identityId,
+                notificationId,
+            ) { rowId, _, _, _, _, _, _, _, _ -> rowId }
+            assertNotNull(
+                dbm.lastReadTiming,
+                "appNotifications.selectByNotificationId(mapper) must route through readValue",
+            )
+
+            dbm.appNotifications.selectFirstPage(
+                identityId,
+                limit = 10L,
+            ) { rowId, _, _, _, _, _, _, _, _ -> rowId }
+            assertNotNull(
+                dbm.lastReadTiming,
+                "appNotifications.selectFirstPage(mapper) must route through readValue",
+            )
+
+            dbm.appNotifications.selectNextPage(
+                identityId,
+                rowId = 0L,
+                limit = 10L,
+            ) { rowId, _, _, _, _, _, _, _, _ -> rowId }
+            assertNotNull(
+                dbm.lastReadTiming,
+                "appNotifications.selectNextPage(mapper) must route through readValue",
+            )
+        }
+    }
+
+    @Test
+    fun driveLocalTagIndexSuspendMapperRead_routesThroughLane() {
+        runBlocking {
+            val dbm = newDbm()
+            val identityId = Uuid.fromLongs(0L, 1L)
+            val driveId = Uuid.fromLongs(0L, 2L)
+            val fileId = Uuid.fromLongs(0L, 3L)
+            // Empty-table read: enough to prove the routing wraps the mapper
+            // variant. The downstream SQL plan is irrelevant — what we're
+            // pinning is "this method went through readValue, not direct
+            // executeAsList".
+
+            dbm.driveLocalTagIndex.selectByFile(
+                identityId,
+                driveId,
+                fileId,
+            ) { rowId, _, _, _, _ -> rowId }
+            assertNotNull(
+                dbm.lastReadTiming,
+                "driveLocalTagIndex.selectByFile(mapper) must route through readValue",
+            )
+        }
+    }
 }
