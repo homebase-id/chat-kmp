@@ -160,7 +160,12 @@ internal class AttachmentHandler(
                 // patch the pending FileVideo entries when they complete.
                 newFiles.forEach { f ->
                     if (f is AttachmentPendingFile.FileVideo) {
-                        extractThumbnailAsync(f.attachmentId, f.file.toString())
+                        // A web-picked PlatformFile has no path, so materialize its bytes into
+                        // okio first and hand the extractor that readable path (native actuals
+                        // return toString() unchanged — no copy). Best-effort: a failure here
+                        // must not abort the attach, it just leaves the poster blank.
+                        val path = runCatching { f.file.toUploadPath(fileOperationsProvider) }.getOrNull()
+                        if (path != null) extractThumbnailAsync(f.attachmentId, path)
                     }
                 }
             } catch (e: Exception) {
@@ -216,11 +221,13 @@ internal class AttachmentHandler(
                     )
                 }
 
-                // Editor visible — kick off thumbnail extraction in parallel, using
-                // the gallery URI directly (no resolveToFilePath copy).
+                // Editor visible — kick off thumbnail extraction in parallel. As in
+                // handleAttachPlatformFile, materialize web-picked bytes into okio first so the
+                // extractor can read them (native: toString() unchanged, no copy).
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
                     if (pending is AttachmentPendingFile.FileVideo) {
-                        extractThumbnailAsync(pending.attachmentId, gallery.file.toString())
+                        val path = runCatching { gallery.file.toUploadPath(fileOperationsProvider) }.getOrNull()
+                        if (path != null) extractThumbnailAsync(pending.attachmentId, path)
                     }
                 }
             } catch (e: Exception) {
