@@ -247,9 +247,27 @@ class QueryBatch(
 
         val orderString = "$timeField $direction, driveMainIndex.rowId $direction"
 
+        // Force the per-conversation index for the chat-message-fetch shape (groupId filter +
+        // userDate ordering). Without this hint and without ANALYZE statistics, SQLite picks
+        // the global userDate index (Idx2) and walks the whole timeline filtering groupId per
+        // row — fine for recent-anchored opens, but tens-of-ms-to-seconds for old/quiet
+        // conversations whose few rows sit deep in the timeline (the "spinner" symptom). The
+        // groupId-leading index seeks straight to the conversation regardless of how many
+        // other rows exist. fileState handling is unaffected: when filtered (note-to-self) it
+        // becomes a cheap per-row check on the few rows the groupId seek already narrowed to.
+        //
+        // Moments / feed / contacts queries also ORDER BY userDate but do NOT pass groupIdAnyOf,
+        // so this branch doesn't fire for them — they continue to use Idx2 (which is exactly
+        // right for global newest-first scans).
+        val from = if (sortField == QueryBatchSortField.UserDate && !groupIdAnyOf.isNullOrEmpty()) {
+            "driveMainIndex INDEXED BY idx_chatmessage_convid_userDate"
+        } else {
+            "driveMainIndex"
+        }
+
         // Read +1 more than requested to see if we're at the end of the dataset
         val sqlStatement =
-            "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM driveMainIndex $leftJoin WHERE ${
+            "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM $from $leftJoin WHERE ${
                 listWhereAnd.joinToString(" AND ")
             } ORDER BY $orderString LIMIT ${actualNoOfItems + 1}"
 
