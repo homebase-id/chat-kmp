@@ -979,7 +979,7 @@ class ConversationStream(
     }
 
     /** Reads the persisted orphaned-at-rest sweep version (0 when never run). */
-    private fun readOrphanSweepVersion(): Int {
+    private suspend fun readOrphanSweepVersion(): Int {
         val bytes = runCatching { dbm.keyValue.selectByKey(ORPHAN_SWEEP_KEY)?.data_ }.getOrNull() ?: return 0
         if (bytes.size != 4) return 0
         return (bytes[0].toInt() and 0xFF shl 24) or

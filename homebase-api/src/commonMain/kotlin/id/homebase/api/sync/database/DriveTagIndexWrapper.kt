@@ -25,13 +25,17 @@ class DriveTagIndexWrapper(
 //        ) -> T,
 //    ): Query<T> = delegate.selectByFile(identityId, driveId, fileId, mapper)
 
-    fun selectByFile(
+    suspend fun selectByFile(
         identityId: Uuid,
         driveId: Uuid,
         fileId: Uuid,
-    ): List<DriveTagIndex> = delegate.selectByFile(identityId, driveId, fileId).executeAsList()
+    ): List<DriveTagIndex> = databaseManager.readValue("driveTagIndex.selectByFile") {
+        delegate.selectByFile(identityId, driveId, fileId).executeAsList()
+    }
 
-    fun countAll(): Long = delegate.countAll().executeAsOne()
+    suspend fun countAll(): Long = databaseManager.readValue("driveTagIndex.countAll") {
+        delegate.countAll().executeAsOne()
+    }
 
     suspend fun insertTag(
         identityId: Uuid,
