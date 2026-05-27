@@ -18,4 +18,16 @@ expect fun VideoPlayerSurface(
      * preserve existing full-screen/single-video behaviour.
      */
     useNativeControls: Boolean = true,
+    /**
+     * Opt into the inline-tile playback optimizations: warm player pool,
+     * audio-renderer-off-when-muted, and first-frame-paint gating. Off by
+     * default so existing callers (chat full-screen, moments-detail
+     * full-screen) keep their current behaviour exactly. Set to `true` from
+     * the moments inline tile to dark-launch the optimizations there first.
+     *
+     * Each actual decides which subset of these tricks applies on its
+     * platform — Android already pools its ExoPlayers unconditionally so the
+     * flag is a no-op there; the iOS actual is the primary consumer.
+     */
+    useInlineOptimizations: Boolean = false,
 )

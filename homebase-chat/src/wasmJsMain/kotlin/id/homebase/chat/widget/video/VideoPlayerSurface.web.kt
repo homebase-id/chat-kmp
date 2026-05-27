@@ -52,6 +52,7 @@ actual fun VideoPlayerSurface(
     onProgress: (Float) -> Unit,
     muted: Boolean,
     @Suppress("UNUSED_PARAMETER") useNativeControls: Boolean,
+    @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density

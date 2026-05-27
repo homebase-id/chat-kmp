@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -71,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,8 +94,12 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
+import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
+import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
+import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -256,11 +262,12 @@ private fun DetailContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    // Local sheet toggles — pure UI state, no need to round-trip through the
-    // VM. The reactor-roster sheet (uiState.showReactionsSheet) is still VM-
-    // driven below because it loads avatars from the server.
+    // Local sheet toggle — pure UI state. The reactor-roster sheet
+    // (uiState.showReactionsSheet) is still VM-driven below because it loads
+    // avatars from the server; heart / flame counts on the action column
+    // are read directly off `moment.reactionPreview` so the user doesn't
+    // need to open a sheet to see them.
     var showCommentsSheet by remember { mutableStateOf(false) }
-    var showEmojiSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
@@ -325,7 +332,6 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
-                onOpenEmoji = { showEmojiSheet = true },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 modifier = Modifier
@@ -343,14 +349,6 @@ private fun DetailContent(
             commentsEnabled = moment.commentsEnabled,
             onAction = onAction,
             onDismiss = { showCommentsSheet = false },
-        )
-    }
-    if (showEmojiSheet && moment != null) {
-        EmojiSheet(
-            uiState = uiState,
-            moment = moment,
-            onAction = onAction,
-            onDismiss = { showEmojiSheet = false },
         )
     }
 
@@ -689,7 +687,6 @@ private fun MomentDetailContent(
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
     onOpenComments: () -> Unit,
-    onOpenEmoji: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
@@ -710,10 +707,24 @@ private fun MomentDetailContent(
         pageCount = { pageCount },
     )
 
-    val reactionCount = remember(moment.reactionPreview) {
-        moment.reactionPreview?.reactions?.values?.sumOf { it.count } ?: 0
-    }
     val commentCount = uiState.comments.size
+
+    // Share the mute toggle with the feed via the app-session singleton so a
+    // single tap persists across nav-in / nav-out of the detail screen.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
+
+    // Per-detail-screen video play state. Unlike the feed's autoplay flow
+    // there is no scroll-away to pause; the user picks play / pause via the
+    // tile's centred IconButton ([MomentInlineVideoTile.showPauseAffordance]).
+    // Cleared on page-change so swiping doesn't leave a video running on a
+    // page that's no longer visible.
+    var playingPayloadKey by remember(moment.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(pagerState, moment.id) {
+        snapshotFlow { pagerState.currentPage }.collect { _ ->
+            playingPayloadKey = null
+        }
+    }
 
     Box(modifier = modifier.background(Color.Black)) {
         // Layer 1: full-screen media pager. ContentScale.Fit (via
@@ -743,41 +754,101 @@ private fun MomentDetailContent(
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
                 val payload = moment.payloads[page]
-                MomentMediaItem(
-                    payload = payload,
-                    fileId = moment.fileId,
-                    driveId = moment.driveId,
-                    previewThumbnail = moment.previewThumbnail,
-                    keyHeader = moment.keyHeader,
-                    modifier = Modifier.fillMaxSize(),
-                    imageSize = ImageSize.THUMB_XLARGE,
-                    // Fit (not crop) — the whole post is visible, including
-                    // landscape media in a portrait viewport (and vice
-                    // versa). Letterbox bars take the Box's black
-                    // background.
-                    preserveAspectRatio = true,
-                    messageId = moment.id,
-                    shape = RectangleShape,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    // Tap is owned by the bottom-sheet trigger icons, not
-                    // the media surface — keep the surface gesture-free so
-                    // horizontal swipes drive the pager cleanly.
-                    onClick = null,
-                )
+                val contentType = payload.contentType ?: ""
+                val isVideo = contentType.startsWith("video/") ||
+                    contentType == "application/vnd.apple.mpegurl"
+
+                if (isVideo) {
+                    // Inline-playable video tile. ButtonOnly tapMode +
+                    // showPauseAffordance gives the user a centred Play
+                    // button on idle and a centred Pause button while
+                    // playing — pause UX the feed's autoplay flow doesn't
+                    // need (scroll-away handles it there).
+                    MomentInlineVideoTile(
+                        payload = payload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        keyHeader = moment.keyHeader,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: moment.previewThumbnail,
+                        isUploading = false,
+                        isPlaying = playingPayloadKey == payload.key,
+                        onPlayTap = {
+                            playingPayloadKey = if (playingPayloadKey == payload.key) {
+                                null
+                            } else {
+                                payload.key
+                            }
+                        },
+                        // Double-tap heart and triple-tap flame are owned by
+                        // the feed card detector, not the detail screen —
+                        // here a tap on the media plays/pauses.
+                        onDoubleTap = {},
+                        isMuted = isMuted,
+                        onToggleMute = videoSession::toggleMuted,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        modifier = Modifier.fillMaxSize(),
+                        tapMode = MomentVideoTapMode.ButtonOnly,
+                        showPauseAffordance = true,
+                    )
+                } else {
+                    MomentMediaItem(
+                        payload = payload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        previewThumbnail = moment.previewThumbnail,
+                        keyHeader = moment.keyHeader,
+                        modifier = Modifier.fillMaxSize(),
+                        imageSize = ImageSize.THUMB_XLARGE,
+                        // Fit (not crop) — the whole post is visible,
+                        // including landscape media in a portrait viewport
+                        // (and vice versa). Letterbox bars take the Box's
+                        // black background.
+                        preserveAspectRatio = true,
+                        messageId = moment.id,
+                        shape = RectangleShape,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        // Tap is owned by the bottom-sheet trigger icons,
+                        // not the media surface — keep gesture-free so
+                        // horizontal swipes drive the pager cleanly.
+                        onClick = null,
+                    )
+                }
             }
         }
 
-        // Layer 2: right-edge action column — emoji + comments sheet
-        // triggers. Skip when the moment has no media (there's no surface
-        // to overlay against) so the action column doesn't float in the
-        // middle of a description-only card.
+        // Layer 2: right-edge action column — heart, flame, comments. Heart
+        // and flame are direct toggles (no intermediate emoji sheet); their
+        // counts are visible on the buttons. Long-pressing either reaction
+        // button opens the existing server-loaded reactor-roster sheet so
+        // the user can still see *who* reacted with what. Skip the column
+        // entirely on description-only moments — nothing to overlay
+        // against.
         if (moment.payloads.isNotEmpty()) {
+            val heartCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
+            }
+            val flameCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, FlameEmoji)
+            }
             DetailActionColumn(
-                reactionCount = reactionCount,
+                heartCount = heartCount,
+                flameCount = flameCount,
                 commentCount = commentCount,
+                heartActive = HeartEmoji in moment.ownReactions,
+                flameActive = FlameEmoji in moment.ownReactions,
                 commentsEnabled = moment.commentsEnabled,
-                onOpenEmoji = onOpenEmoji,
+                onToggleHeart = {
+                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(HeartEmoji))
+                },
+                onToggleFlame = {
+                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(FlameEmoji))
+                },
+                onShowReactors = {
+                    onAction(MomentDetailUiAction.OpenReactionsSheet)
+                },
                 onOpenComments = onOpenComments,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -803,15 +874,23 @@ private fun MomentDetailContent(
     }
 }
 
-/** Vertical stack of bottom-sheet trigger icons on the right edge of the
- *  media. Each icon has an optional count badge underneath (only shown
- *  when the count is > 0). */
+/** Vertical stack of action buttons on the right edge of the full-screen
+ *  media: heart + count, flame + count, comments + count. The heart and
+ *  flame are direct toggles (no intermediate emoji picker) — counts are
+ *  always visible. Long-pressing either reaction button opens the existing
+ *  server-loaded reactor-roster sheet so the user can still see *who*
+ *  reacted with a given emoji. */
 @Composable
 private fun DetailActionColumn(
-    reactionCount: Int,
+    heartCount: Int,
+    flameCount: Int,
     commentCount: Int,
+    heartActive: Boolean,
+    flameActive: Boolean,
     commentsEnabled: Boolean,
-    onOpenEmoji: () -> Unit,
+    onToggleHeart: () -> Unit,
+    onToggleFlame: () -> Unit,
+    onShowReactors: () -> Unit,
     onOpenComments: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -820,11 +899,19 @@ private fun DetailActionColumn(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        OverlayActionButton(
-            icon = Icons.Default.AddReaction,
-            contentDescription = stringResource(MR.string.reactions),
-            count = reactionCount,
-            onClick = onOpenEmoji,
+        EmojiReactionButton(
+            emoji = HeartEmoji,
+            count = heartCount,
+            isActive = heartActive,
+            onClick = onToggleHeart,
+            onLongPress = onShowReactors,
+        )
+        EmojiReactionButton(
+            emoji = FlameEmoji,
+            count = flameCount,
+            isActive = flameActive,
+            onClick = onToggleFlame,
+            onLongPress = onShowReactors,
         )
         if (commentsEnabled) {
             OverlayActionButton(
@@ -832,6 +919,52 @@ private fun DetailActionColumn(
                 contentDescription = stringResource(MR.string.moments_detail_comments_section),
                 count = commentCount,
                 onClick = onOpenComments,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiReactionButton(
+    emoji: String,
+    count: Int,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    // Computed outside the Text composable so the Konsist string-literal
+    // check doesn't see a Text(...) literal — even an interpolated one.
+    val countLabel = remember(count) { count.toString() }
+    val activeTint = if (isActive) {
+        Color.White
+    } else {
+        Color.White.copy(alpha = 0.55f)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = if (isActive) 0.65f else 0.4f))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongPress,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = emoji,
+                style = MaterialTheme.typography.titleMedium,
+                color = activeTint,
+            )
+        }
+        if (count > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = countLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
             )
         }
     }
@@ -870,6 +1003,20 @@ private fun OverlayActionButton(
             )
         }
     }
+}
+
+private fun countReactionsByEmoji(
+    summary: id.homebase.api.client.drives.files.ReactionSummary?,
+    emoji: String,
+): Int {
+    if (summary == null) return 0
+    return summary.reactions.values.firstOrNull { entry ->
+        runCatching {
+            id.homebase.api.serialization.OdinSystemSerializer
+                .deserialize<id.homebase.api.client.drives.files.reactions.ReactionContent>(entry.reactionContent)
+                .emoji
+        }.getOrNull() == emoji
+    }?.count ?: 0
 }
 
 /** Page dots + description + date pill, with a translucent gradient
@@ -992,42 +1139,6 @@ private fun CommentsSheet(
                     )
                 }
             }
-        }
-    }
-}
-
-/** Reactions chips + quick-add picker, plus a link to the existing
- *  reactor-roster sheet (which loads avatars from the server). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EmojiSheet(
-    uiState: MomentDetailUiState,
-    moment: MomentFeedItem,
-    onAction: (MomentDetailUiAction) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ReactionsRow(
-                summary = moment.reactionPreview,
-                quickReactions = uiState.userDefaultReactions,
-                onToggle = { emoji ->
-                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(emoji))
-                },
-                onShowReactors = {
-                    onAction(MomentDetailUiAction.OpenReactionsSheet)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }

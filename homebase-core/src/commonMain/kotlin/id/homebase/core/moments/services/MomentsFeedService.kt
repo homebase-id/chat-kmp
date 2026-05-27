@@ -303,6 +303,20 @@ data class MomentFeedItem(
      * this is false.
      */
     val commentsEnabled: Boolean,
+    /**
+     * Emojis the current user has already reacted with on this moment. Read
+     * from `fileMetadata.localAppData.localReactions` (the per-user mirror
+     * the [id.homebase.chat.services.outbox.OptimisticWriter] maintains) and
+     * decoded to bare emoji glyphs.
+     *
+     * Drives:
+     *  - "I've reacted" indication on the detail screen's heart / flame
+     *    action buttons (filled vs outlined).
+     *  - The feed card's double / triple-tap reaction overlay so it can
+     *    play a *remove* animation when the toggle takes the reaction away
+     *    instead of adding it.
+     */
+    val ownReactions: List<String>,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -313,6 +327,12 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
             OdinSystemSerializer.deserialize<MomentPostContent>(raw)
         }.getOrNull()
     }
+    // localReactions stores the per-user reaction JSON strings the
+    // OptimisticWriter maintains. Decode each to a bare emoji so the UI can
+    // do `emoji in ownReactions` checks without re-deserialising.
+    val ownReactions = fileMetadata.localAppData?.localReactions
+        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        .orEmpty()
     return MomentFeedItem(
         id = uniqueId,
         fileId = fileId,
@@ -331,5 +351,12 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         // didn't include the field — matches the @Serializable default and
         // keeps legacy moments commentable.
         commentsEnabled = content?.commentsEnabled ?: true,
+        ownReactions = ownReactions,
     )
 }
+
+private fun decodeOwnReactionEmoji(reactionContent: String): String? = runCatching {
+    OdinSystemSerializer
+        .deserialize<id.homebase.api.client.drives.files.reactions.ReactionContent>(reactionContent)
+        .emoji
+}.getOrNull()

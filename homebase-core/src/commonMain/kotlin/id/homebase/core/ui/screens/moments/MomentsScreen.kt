@@ -597,19 +597,25 @@ private fun MomentPostCard(
     var failedSheetOpen by remember { mutableStateOf(false) }
     val failedSheetState = rememberModalBottomSheetState()
 
-    // Floating-emoji feedback for double/triple-tap reactions. Set on tap,
-    // cleared by [floatingEmojiHideJob] after the animation finishes. Job
-    // is cancelled on a follow-up tap so the next emoji re-triggers cleanly.
-    var floatingEmoji by remember { mutableStateOf<String?>(null) }
+    // Floating-emoji feedback for double/triple-tap reactions. Carries
+    // whether the toggle ADDED or REMOVED the reaction so the overlay can
+    // play a different animation — pop-in upward for an add, drift-down +
+    // fade for a remove. Cleared after [FloatingEmojiHideDelayMs]; a quick
+    // follow-up tap cancels the pending clear and re-triggers cleanly.
+    var floatingAction by remember { mutableStateOf<FloatingReactionAction?>(null) }
     var floatingEmojiHideJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun showFloatingEmoji(emoji: String) {
-        floatingEmoji = emoji
+    fun showFloatingEmoji(emoji: String, isRemoving: Boolean) {
+        floatingAction = if (isRemoving) {
+            FloatingReactionAction.Remove(emoji)
+        } else {
+            FloatingReactionAction.Add(emoji)
+        }
         floatingEmojiHideJob?.cancel()
         floatingEmojiHideJob = scope.launch {
             delay(FloatingEmojiHideDelayMs)
-            floatingEmoji = null
+            floatingAction = null
         }
     }
 
@@ -642,11 +648,13 @@ private fun MomentPostCard(
                             when (resolved) {
                                 1 -> onCardClick()
                                 2 -> {
-                                    showFloatingEmoji(HeartEmoji)
+                                    val isRemoving = HeartEmoji in moment.ownReactions
+                                    showFloatingEmoji(HeartEmoji, isRemoving)
                                     onAddReaction(HeartEmoji)
                                 }
                                 else -> if (resolved >= 3) {
-                                    showFloatingEmoji(FlameEmoji)
+                                    val isRemoving = FlameEmoji in moment.ownReactions
+                                    showFloatingEmoji(FlameEmoji, isRemoving)
                                     onAddReaction(FlameEmoji)
                                 }
                             }
@@ -839,7 +847,7 @@ private fun MomentPostCard(
         // their multi-tap registered. Drawn after all other overlays so it
         // lands on top of media + badges.
         FloatingReactionOverlay(
-            emoji = floatingEmoji,
+            action = floatingAction,
             modifier = Modifier.align(Alignment.Center),
         )
 
@@ -1210,8 +1218,8 @@ private fun decodeReactionEmoji(reactionContent: String): String? = runCatching 
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
 
-private const val HeartEmoji = "❤️"
-private const val FlameEmoji = "🔥"
+internal const val HeartEmoji = "❤️"
+internal const val FlameEmoji = "🔥"
 
 // Multi-tap disambiguation window. Slightly longer than Android's stock
 // double-tap timeout (~300ms) so the third tap of a triple-tap has comfortable
@@ -1223,48 +1231,107 @@ private const val FloatingEmojiFontSize = 96
 private const val FloatingEmojiInitialScale = 0.4f
 
 /**
- * Animated reaction confirmation. Pops in with a spring scale + fade when
- * [emoji] becomes non-null, then fades out when the parent clears it. We
- * remember the last non-null emoji so the glyph stays visible through the
- * exit transition (otherwise AnimatedVisibility unmounts the slot too early
- * and the fade-out is empty).
+ * Distinguishes "user just added a reaction" from "user just removed one"
+ * so the [FloatingReactionOverlay] can play a different animation for each.
+ * Same glyph in both cases — only the motion changes.
+ */
+internal sealed interface FloatingReactionAction {
+    val emoji: String
+    data class Add(override val emoji: String) : FloatingReactionAction
+    data class Remove(override val emoji: String) : FloatingReactionAction
+}
+
+/**
+ * Animated reaction confirmation. Two flavors:
+ *   - [FloatingReactionAction.Add]: pops in with a bouncy spring scale and
+ *     fades out — feels celebratory.
+ *   - [FloatingReactionAction.Remove]: enters at full size, shrinks and
+ *     slides downward as it fades — reads as "the reaction is going away."
+ *
+ * The last non-null action is remembered so the glyph stays visible through
+ * the exit transition (otherwise AnimatedVisibility unmounts the slot too
+ * early and the fade-out is empty).
  */
 @Composable
 private fun FloatingReactionOverlay(
-    emoji: String?,
+    action: FloatingReactionAction?,
     modifier: Modifier = Modifier,
 ) {
-    var displayedEmoji by remember { mutableStateOf<String?>(null) }
-    if (emoji != null && emoji != displayedEmoji) {
-        displayedEmoji = emoji
+    var displayed by remember { mutableStateOf<FloatingReactionAction?>(null) }
+    if (action != null && action != displayed) {
+        displayed = action
     }
-    val visible = emoji != null
+    val visible = action != null
+    val isRemoving = displayed is FloatingReactionAction.Remove
+
+    // Add: bouncy spring from small → 1.0.
+    // Remove: damped spring from 1.0 → 0.6 (final scale of the shrink).
     val scale by animateFloatAsState(
-        targetValue = if (visible) 1f else FloatingEmojiInitialScale,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        targetValue = when {
+            !visible -> if (isRemoving) FloatingEmojiRemoveEndScale else FloatingEmojiInitialScale
+            isRemoving -> FloatingEmojiRemoveEndScale
+            else -> 1f
+        },
+        animationSpec = if (isRemoving) {
+            spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium,
+            )
+        } else {
+            spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        },
         label = "floating-emoji-scale",
+    )
+    // Remove path drifts downward as it fades. Add path stays centred.
+    val translateY by animateFloatAsState(
+        targetValue = if (!visible && isRemoving) FloatingEmojiRemoveDriftPx else 0f,
+        animationSpec = tween(durationMillis = FloatingEmojiRemoveDriftMs),
+        label = "floating-emoji-translate-y",
     )
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(120)) +
-            scaleIn(initialScale = FloatingEmojiInitialScale),
-        exit = fadeOut(animationSpec = tween(180)) +
-            scaleOut(targetScale = FloatingEmojiInitialScale),
+        enter = if (isRemoving) {
+            // No pop-in — the glyph enters at the same scale it just sat at
+            // (1.0) before the user removed its reaction. The shrink + fade
+            // is what conveys "going away."
+            fadeIn(animationSpec = tween(80))
+        } else {
+            fadeIn(animationSpec = tween(120)) +
+                scaleIn(initialScale = FloatingEmojiInitialScale)
+        },
+        exit = if (isRemoving) {
+            fadeOut(animationSpec = tween(280))
+        } else {
+            fadeOut(animationSpec = tween(180)) +
+                scaleOut(targetScale = FloatingEmojiInitialScale)
+        },
         modifier = modifier,
     ) {
-        val glyph = displayedEmoji
+        val glyph = displayed?.emoji
         if (glyph != null) {
             Text(
                 text = glyph,
                 fontSize = FloatingEmojiFontSize.sp,
+                color = if (isRemoving) {
+                    Color.White.copy(alpha = 0.75f)
+                } else {
+                    Color.Unspecified
+                },
                 modifier = Modifier.graphicsLayer {
                     scaleX = scale
                     scaleY = scale
+                    translationY = translateY
                 },
             )
         }
     }
 }
+
+// Remove animation tuning. End-scale is the size the glyph shrinks to as
+// it fades out; drift is the downward distance it travels during the exit.
+private const val FloatingEmojiRemoveEndScale = 0.55f
+private const val FloatingEmojiRemoveDriftPx = 60f
+private const val FloatingEmojiRemoveDriftMs = 320

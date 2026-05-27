@@ -81,7 +81,13 @@ actual fun VideoPlayerSurface(
     onProgress: (Float) -> Unit,
     muted: Boolean,
     useNativeControls: Boolean,
+    @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
 ) {
+    // useInlineOptimizations is a no-op on Android — the player pool, audio
+    // track disable, and first-frame paint already apply unconditionally to
+    // every caller of this actual (see ExoPlayerPool / VpsState.Active /
+    // setTrackTypeDisabled below). The flag exists so the iOS actual can
+    // gate the same optimizations behind it for a phased dark-launch.
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()

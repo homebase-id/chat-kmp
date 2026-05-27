@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -52,6 +53,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.moment_video_mute
+import id.homebase.resources.moment_video_pause
 import id.homebase.resources.moment_video_unmute
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -102,6 +104,15 @@ fun MomentInlineVideoTile(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
     tapMode: MomentVideoTapMode = MomentVideoTapMode.FullTile,
+    /**
+     * When true AND [isPlaying] AND [tapMode] == [MomentVideoTapMode.ButtonOnly],
+     * render a centred Pause IconButton over the player surface so the user
+     * can stop playback with a tap. Off by default — the moments feed's
+     * autoplay flow deliberately omits any play/pause overlay during
+     * playback (scroll-away handles pause). The detail screen has no
+     * scroll-away, so it sets this to `true`.
+     */
+    showPauseAffordance: Boolean = false,
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
@@ -280,16 +291,36 @@ fun MomentInlineVideoTile(
                 // full-screen detail player still gets controls via its own
                 // VideoPlayerSurface call.
                 useNativeControls = false,
+                // Dark-launch flag for the iOS inline optimizations (warm
+                // AVPlayer pool, audio-track disable when muted, first-frame
+                // KVO gate). Off-by-default on the expect signature, so
+                // FullScreenVideoPlayer (chat + moments detail) stays on the
+                // existing path. Flip this off if a regression shows up only
+                // on inline tiles.
+                useInlineOptimizations = true,
             )
         }
 
         // Layer 3: state-specific overlays.
         if (isPlaying) {
-            // No centred play/pause overlay while playing — autoplay's
-            // raison d'être is "the video just plays." When autoplay
-            // disengages (scroll-off, or the user lands on a non-active
-            // card via swipe), isPlaying flips false and the idle branch
-            // below renders the PlayCircle as a "tap to resume" affordance.
+            // No centred play/pause overlay while playing in the feed —
+            // autoplay's raison d'être is "the video just plays" and
+            // scroll-away handles pause. The detail screen has no
+            // scroll-away, so it sets [showPauseAffordance] = true to get a
+            // centred Pause button back.
+            if (showPauseAffordance && isButtonOnly) {
+                IconButton(
+                    onClick = onPlayTap,
+                    modifier = Modifier.align(Alignment.Center).size(56.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PauseCircle,
+                        contentDescription = stringResource(MR.string.moment_video_pause),
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
             val muteLabel = stringResource(
                 if (isMuted) MR.string.moment_video_unmute else MR.string.moment_video_mute,
             )
