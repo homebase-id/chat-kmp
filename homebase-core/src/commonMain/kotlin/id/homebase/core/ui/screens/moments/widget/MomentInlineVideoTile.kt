@@ -44,18 +44,41 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.moment_video_mute
+import id.homebase.resources.moment_video_pause
 import id.homebase.resources.moment_video_unmute
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
- * Tap-to-play tile for moments whose payload set is exactly one video. The idle
- * branch shows the same thumbnail + play overlay as [MomentMediaItem]; tapping it
- * flips to [VideoPlayerSurface] in place. Active-playback coordination
- * (one tile playing at a time, pause-on-scroll-off) is owned by the caller.
+ * How play/pause taps are received on a [MomentInlineVideoTile].
+ *
+ * - [FullTile]: the existing single-video card behaviour. The entire thumbnail
+ *   is a tap target for play, and the platform's native player controls handle
+ *   pause/seek when playing. Native controls swallow horizontal drag, which is
+ *   fine when no parent gesture (e.g. carousel pager) is competing for it.
+ * - [ButtonOnly]: the carousel-friendly mode. Only a small centred IconButton
+ *   responds to taps for play (and a centred Pause IconButton when playing).
+ *   The rest of the surface ignores pointer events so the parent
+ *   [androidx.compose.foundation.pager.HorizontalPager] gets clean access to
+ *   horizontal drags. Native player controls are disabled while playing.
+ */
+enum class MomentVideoTapMode {
+    FullTile,
+    ButtonOnly,
+}
+
+/**
+ * Tap-to-play tile for a moment's video payload. The idle branch shows the same
+ * thumbnail + play overlay as [MomentMediaItem]; tapping it flips to
+ * [VideoPlayerSurface] in place. Active-playback coordination (one tile playing
+ * at a time, pause-on-scroll-off) is owned by the caller.
+ *
+ * `tapMode` controls how taps reach this tile — see [MomentVideoTapMode] for
+ * the swipe-vs-tap trade-off.
  */
 @Composable
 fun MomentInlineVideoTile(
@@ -74,6 +97,7 @@ fun MomentInlineVideoTile(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
+    tapMode: MomentVideoTapMode = MomentVideoTapMode.FullTile,
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
@@ -112,6 +136,7 @@ fun MomentInlineVideoTile(
         } else videoDescriptor?.durationMs
     }
 
+    val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
     Box(modifier = modifier) {
         if (isPlaying) {
             val fullScreenData = remember(videoPlayerData, payload) {
@@ -127,7 +152,28 @@ fun MomentInlineVideoTile(
                 data = fullScreenData,
                 modifier = Modifier.fillMaxSize(),
                 muted = isMuted,
+                // Native controls (Android PlayerView / iOS AVPlayerViewController)
+                // capture every touch, which breaks the carousel pager's drag.
+                // ButtonOnly mode supplies its own pause affordance below.
+                useNativeControls = !isButtonOnly,
             )
+            if (isButtonOnly) {
+                // Centred pause button — the only clickable element on the
+                // playing surface, so horizontal drags fall straight through
+                // to the parent pager. Mirrors the idle PlayCircle styling
+                // for visual continuity.
+                IconButton(
+                    onClick = onPlayTap,
+                    modifier = Modifier.align(Alignment.Center).size(56.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = stringResource(MR.string.moment_video_pause),
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
             val muteLabel = stringResource(
                 if (isMuted) MR.string.moment_video_unmute else MR.string.moment_video_mute,
             )
@@ -168,14 +214,22 @@ fun MomentInlineVideoTile(
                     keyHeader = perPayloadKeyHeader,
                 )
             }
-            val gestureModifier = Modifier
-                .fillMaxSize()
-                .pointerInput(onPlayTap, onDoubleTap) {
-                    detectTapGestures(
-                        onTap = { onPlayTap() },
-                        onDoubleTap = { onDoubleTap() },
-                    )
-                }
+            // Carousel (ButtonOnly) mode skips the full-tile tap detector
+            // entirely so horizontal drag gestures reach the parent pager
+            // cleanly. Play is gated through the centred IconButton below;
+            // double-tap-heart bubbles to the card's outer multi-tap detector.
+            val gestureModifier = if (isButtonOnly) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(onPlayTap, onDoubleTap) {
+                        detectTapGestures(
+                            onTap = { onPlayTap() },
+                            onDoubleTap = { onDoubleTap() },
+                        )
+                    }
+            }
             if (videoLocalContext != null) {
                 val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
                     videoLocalContext.thumbnailBytes.toImageBitmap()
@@ -199,14 +253,32 @@ fun MomentInlineVideoTile(
                 )
             }
             if (!isUploading) {
-                Icon(
-                    imageVector = Icons.Default.PlayCircle,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .align(Alignment.Center),
-                    tint = Color.White.copy(alpha = 0.85f),
-                )
+                if (isButtonOnly) {
+                    // The only clickable in ButtonOnly mode — wraps the same
+                    // PlayCircle icon as the FullTile decoration but with an
+                    // IconButton's clickable + ripple, so horizontal swipes
+                    // outside this 56dp target hit the pager.
+                    IconButton(
+                        onClick = onPlayTap,
+                        modifier = Modifier.align(Alignment.Center).size(56.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayCircle,
+                            contentDescription = stringResource(MR.string.chat_message_play_video),
+                            modifier = Modifier.size(48.dp),
+                            tint = Color.White.copy(alpha = 0.85f),
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center),
+                        tint = Color.White.copy(alpha = 0.85f),
+                    )
+                }
                 Text(
                     text = if (isHls) "HLS" else "MP4",
                     color = Color.White,

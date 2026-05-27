@@ -110,6 +110,7 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
     onProgress: (Float) -> Unit,
     muted: Boolean,
+    useNativeControls: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -242,6 +243,12 @@ actual fun VideoPlayerSurface(
                 factory = {
                     AVPlayerViewController().apply {
                         player = s.player
+                        // AVPlayerViewController's built-in transport controls
+                        // capture every touch — the carousel pager never sees
+                        // the horizontal drag. Suppress when the host renders
+                        // its own play/pause affordance (moments-feed
+                        // carousel).
+                        showsPlaybackControls = useNativeControls
                         s.player.play()
                     }
                 },

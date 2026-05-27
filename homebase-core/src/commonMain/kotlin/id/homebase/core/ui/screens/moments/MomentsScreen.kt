@@ -716,9 +716,15 @@ private fun MomentPostCard(
                         // Inner per-cell click handlers stay disabled in the feed
                         // so the card-level multi-tap detector receives all taps
                         // — that's what makes double/triple-tap-to-react work on
-                        // the media area itself (Instagram-style).
+                        // the media area itself (Instagram-style). For the
+                        // carousel path the embedded video tile handles its
+                        // own play tap; double-tap-heart bubbles up via the
+                        // onDoubleTap callback below.
                         onMediaClick = null,
                         isUploading = uploadStatus != null,
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        onDoubleTap = { onAddReaction(HeartEmoji) },
                     )
                 }
 

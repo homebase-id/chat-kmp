@@ -88,7 +88,11 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
     onProgress: (Float) -> Unit,
     muted: Boolean,
+    @Suppress("UNUSED_PARAMETER") useNativeControls: Boolean,
 ) {
+    // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
+    // built-in transport UI of its own (host renders controls). Param is
+    // accepted for API parity with the mobile actuals.
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()

@@ -64,6 +64,7 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
     onProgress: (Float) -> Unit,
     muted: Boolean,
+    useNativeControls: Boolean,
 ) {
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
@@ -201,7 +202,18 @@ actual fun VideoPlayerSurface(
             is VpsState.Error -> Text(text = s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
             VpsState.Ready -> AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply { player = exoPlayer!! }
+                    PlayerView(ctx).apply {
+                        player = exoPlayer!!
+                        // Native PlayerView's tap-to-show-controls captures
+                        // every touch, which blocks the carousel HorizontalPager
+                        // from receiving the horizontal drag. Disable when the
+                        // host UI provides its own pause affordance (the
+                        // moments-feed inline tile in carousel mode).
+                        useController = useNativeControls
+                    }
+                },
+                update = { view ->
+                    view.useController = useNativeControls
                 },
                 modifier = Modifier.fillMaxSize(),
             )
