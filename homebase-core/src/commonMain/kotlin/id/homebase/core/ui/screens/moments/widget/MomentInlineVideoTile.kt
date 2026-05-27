@@ -137,7 +137,78 @@ fun MomentInlineVideoTile(
     }
 
     val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
+
+    var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
+    var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+    if (!isUploading) {
+        VideoPreloadEffect(
+            data = videoPlayerData,
+            onPreloading = { isPreloading = it },
+            onProgress = { preloadProgress = it },
+        )
+    }
+    val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+        HomebaseImageData(
+            driveId = driveId,
+            fileId = fileId,
+            payloadKey = payload.key,
+            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                ?: previewThumbnail,
+            requestedSize = ImageSize.THUMB_MEDIUM,
+            lastModified = payload.lastModified,
+            isEncrypted = true,
+            keyHeader = perPayloadKeyHeader,
+        )
+    }
+    val uploadBitmap = videoLocalContext?.thumbnailBytes?.let { bytes ->
+        remember(bytes) { bytes.toImageBitmap() }
+    }
+    // Carousel (ButtonOnly) mode skips the full-tile tap detector entirely
+    // so horizontal drag gestures reach the parent pager cleanly. Play is
+    // gated through the centred IconButton below; double-tap-heart bubbles
+    // to the card's outer multi-tap detector. When playing, the thumbnail
+    // is purely a backdrop — the gesture is suppressed regardless of mode.
+    val thumbnailModifier = if (!isPlaying && !isButtonOnly) {
+        Modifier
+            .fillMaxSize()
+            .pointerInput(onPlayTap, onDoubleTap) {
+                detectTapGestures(
+                    onTap = { onPlayTap() },
+                    onDoubleTap = { onDoubleTap() },
+                )
+            }
+    } else {
+        Modifier.fillMaxSize()
+    }
+
     Box(modifier = modifier) {
+        // Layer 1: thumbnail. Always rendered so it stays mounted across the
+        // isPlaying transition — Compose doesn't recompose it from scratch.
+        // While playing, this acts as the backdrop visible *through* the
+        // PlayerView's TextureView (transparent shutter; texture is empty
+        // until the first frame is pushed). Result: no black flash, no
+        // visible swap; the thumbnail is overpainted naturally once the
+        // decoder produces frames.
+        if (uploadBitmap != null) {
+            Image(
+                bitmap = uploadBitmap,
+                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                modifier = thumbnailModifier,
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            HomebaseImage(
+                imageData = imageData,
+                modifier = thumbnailModifier,
+                contentScale = ContentScale.Crop,
+                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+
+        // Layer 2: video surface (only while playing). Paints over the
+        // thumbnail once frames start arriving.
         if (isPlaying) {
             val fullScreenData = remember(videoPlayerData, payload) {
                 FullScreenOverlay.VideoPlayerData(
@@ -157,11 +228,14 @@ fun MomentInlineVideoTile(
                 // ButtonOnly mode supplies its own pause affordance below.
                 useNativeControls = !isButtonOnly,
             )
+        }
+
+        // Layer 3: state-specific overlays.
+        if (isPlaying) {
             if (isButtonOnly) {
                 // Centred pause button — the only clickable element on the
                 // playing surface, so horizontal drags fall straight through
-                // to the parent pager. Mirrors the idle PlayCircle styling
-                // for visual continuity.
+                // to the parent pager.
                 IconButton(
                     onClick = onPlayTap,
                     modifier = Modifier.align(Alignment.Center).size(56.dp),
@@ -191,138 +265,76 @@ fun MomentInlineVideoTile(
                     tint = Color.White,
                 )
             }
-        } else {
-            var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
-            var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-            if (!isUploading) {
-                VideoPreloadEffect(
-                    data = videoPlayerData,
-                    onPreloading = { isPreloading = it },
-                    onProgress = { preloadProgress = it },
-                )
-            }
-            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-                HomebaseImageData(
-                    driveId = driveId,
-                    fileId = fileId,
-                    payloadKey = payload.key,
-                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
-                        ?: previewThumbnail,
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    lastModified = payload.lastModified,
-                    isEncrypted = true,
-                    keyHeader = perPayloadKeyHeader,
-                )
-            }
-            // Carousel (ButtonOnly) mode skips the full-tile tap detector
-            // entirely so horizontal drag gestures reach the parent pager
-            // cleanly. Play is gated through the centred IconButton below;
-            // double-tap-heart bubbles to the card's outer multi-tap detector.
-            val gestureModifier = if (isButtonOnly) {
-                Modifier.fillMaxSize()
-            } else {
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(onPlayTap, onDoubleTap) {
-                        detectTapGestures(
-                            onTap = { onPlayTap() },
-                            onDoubleTap = { onDoubleTap() },
-                        )
-                    }
-            }
-            if (videoLocalContext != null) {
-                val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
-                    videoLocalContext.thumbnailBytes.toImageBitmap()
-                }
-                if (uploadBitmap != null) {
-                    Image(
-                        bitmap = uploadBitmap,
-                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                        modifier = gestureModifier,
-                        contentScale = ContentScale.Crop,
-                    )
-                }
-            } else {
-                HomebaseImage(
-                    imageData = imageData,
-                    modifier = gestureModifier,
-                    contentScale = ContentScale.Crop,
-                    contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                )
-            }
-            if (!isUploading) {
-                if (isButtonOnly) {
-                    // The only clickable in ButtonOnly mode — wraps the same
-                    // PlayCircle icon as the FullTile decoration but with an
-                    // IconButton's clickable + ripple, so horizontal swipes
-                    // outside this 56dp target hit the pager.
-                    IconButton(
-                        onClick = onPlayTap,
-                        modifier = Modifier.align(Alignment.Center).size(56.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayCircle,
-                            contentDescription = stringResource(MR.string.chat_message_play_video),
-                            modifier = Modifier.size(48.dp),
-                            tint = Color.White.copy(alpha = 0.85f),
-                        )
-                    }
-                } else {
+        } else if (!isUploading) {
+            // Idle-state decorations: play affordance, codec badge, duration.
+            if (isButtonOnly) {
+                IconButton(
+                    onClick = onPlayTap,
+                    modifier = Modifier.align(Alignment.Center).size(56.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .align(Alignment.Center),
+                        contentDescription = stringResource(MR.string.chat_message_play_video),
+                        modifier = Modifier.size(48.dp),
                         tint = Color.White.copy(alpha = 0.85f),
                     )
                 }
-                Text(
-                    text = if (isHls) "HLS" else "MP4",
-                    color = Color.White,
-                    fontSize = 9.sp,
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PlayCircle,
+                    contentDescription = null,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                        .size(48.dp)
+                        .align(Alignment.Center),
+                    tint = Color.White.copy(alpha = 0.85f),
                 )
-                if (displayDurationMs != null) {
-                    Text(
-                        text = formatDurationLabel(displayDurationMs),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(4.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.55f),
-                                RoundedCornerShape(4.dp),
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
             }
-            if (isPreloading && !isUploading) {
-                Box(
-                    modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (preloadProgress > 0f) {
-                        CircularProgressIndicator(
-                            progress = { preloadProgress },
-                            modifier = Modifier.size(40.dp),
-                            color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
+            Text(
+                text = if (isHls) "HLS" else "MP4",
+                color = Color.White,
+                fontSize = 9.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            )
+            if (displayDurationMs != null) {
+                Text(
+                    text = formatDurationLabel(displayDurationMs),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(4.dp)
+                        .background(
+                            Color.Black.copy(alpha = 0.55f),
+                            RoundedCornerShape(4.dp),
                         )
-                    } else {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(40.dp),
-                            color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
-                        )
-                    }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
+
+        // Preload progress only meaningful while idle; once the user has
+        // tapped play, VideoPlayerSurface owns the loading affordance.
+        if (isPreloading && !isUploading && !isPlaying) {
+            Box(
+                modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (preloadProgress > 0f) {
+                    CircularProgressIndicator(
+                        progress = { preloadProgress },
+                        modifier = Modifier.size(40.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
                 }
             }
         }

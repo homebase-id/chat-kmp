@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Surface type is set to texture_view (instead of the PlayerView default
+  ~ surface_view) so the player composes correctly with the Compose hierarchy:
+  ~ no separate Surface "punched into" the window, no black-hole flash before
+  ~ the first frame paints, and View alpha animations are honoured.
+  ~
+  ~ Shutter is transparent because MomentInlineVideoTile keeps the encrypted
+  ~ thumbnail mounted *underneath* this PlayerView while playback is starting.
+  ~ A transparent shutter lets that thumbnail show through until ExoPlayer
+  ~ pushes its first frame to the TextureView — at which point the texture
+  ~ paints opaquely over the thumbnail. End result: zero black flash, no
+  ~ visible swap, just thumbnail → video.
+  -->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:shutter_background_color="@android:color/transparent" />

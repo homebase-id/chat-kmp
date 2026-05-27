@@ -16,6 +16,11 @@ kotlin {
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
+        // Enable the Android resource pipeline so PlayerView's XML layout in
+        // src/androidMain/res/layout/ is picked up and an R class is
+        // generated for this module's namespace. Matches homebase-common /
+        // homebase-api / image-editor-ui.
+        androidResources.enable = true
         withHostTest {}
     }
 

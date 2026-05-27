@@ -2,7 +2,9 @@ package id.homebase.chat.widget.video
 
 import android.net.Uri
 import android.util.Log
+import android.view.LayoutInflater
 import co.touchlab.kermit.Logger
+import id.homebase.chat.R
 import kotlin.time.measureTimedValue
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
@@ -202,15 +204,24 @@ actual fun VideoPlayerSurface(
             is VpsState.Error -> Text(text = s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
             VpsState.Ready -> AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer!!
-                        // Native PlayerView's tap-to-show-controls captures
-                        // every touch, which blocks the carousel HorizontalPager
-                        // from receiving the horizontal drag. Disable when the
-                        // host UI provides its own pause affordance (the
-                        // moments-feed inline tile in carousel mode).
-                        useController = useNativeControls
-                    }
+                    // Inflate the layout instead of constructing PlayerView()
+                    // directly so we can opt into `surface_type=texture_view`
+                    // + transparent shutter. Programmatic construction would
+                    // give us the default SurfaceView, which renders as a
+                    // black hole until the first frame paints (and ignores
+                    // the thumbnail layered beneath this composable in
+                    // MomentInlineVideoTile).
+                    (LayoutInflater.from(ctx)
+                        .inflate(R.layout.homebase_video_player_view, null) as PlayerView)
+                        .apply {
+                            player = exoPlayer!!
+                            // Native PlayerView's tap-to-show-controls captures
+                            // every touch, which blocks the carousel pager from
+                            // receiving the horizontal drag. Disable when the
+                            // host UI provides its own pause affordance (the
+                            // moments-feed inline tile in carousel mode).
+                            useController = useNativeControls
+                        }
                 },
                 update = { view ->
                     view.useController = useNativeControls
