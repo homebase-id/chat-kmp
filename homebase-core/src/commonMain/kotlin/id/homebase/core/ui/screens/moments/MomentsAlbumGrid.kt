@@ -129,7 +129,6 @@ private fun AlbumZoomChips(
     onChange: (MomentsAlbumZoom) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val zoomLabel = stringResource(MR.string.moments_album_zoom_label)
     val labels = mapOf(
         MomentsAlbumZoom.Day to stringResource(MR.string.moments_album_zoom_day),
         MomentsAlbumZoom.Month to stringResource(MR.string.moments_album_zoom_month),
@@ -140,11 +139,6 @@ private fun AlbumZoomChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = zoomLabel,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         MomentsAlbumZoom.entries.forEach { z ->
             FilterChip(
                 selected = z == current,

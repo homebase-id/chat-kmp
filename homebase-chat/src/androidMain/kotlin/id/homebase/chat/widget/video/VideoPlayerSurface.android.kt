@@ -54,8 +54,21 @@ import java.util.UUID
 import kotlin.uuid.Uuid
 
 private sealed interface VpsState {
+    /** Building player and resolving content; no PlayerView mounted yet. */
     data object Loading : VpsState
-    data object Ready : VpsState
+
+    /**
+     * Media source has been handed to ExoPlayer and `prepare()` was called.
+     * PlayerView mounts here so the player has a surface to render to —
+     * `onRenderedFirstFrame` cannot fire without one.
+     *
+     * A loading spinner overlays the (still-transparent) TextureView until the
+     * first decoded frame is painted. This mirrors Signal's
+     * `onPlaybackReady()` callback: the still poster (in our case the
+     * thumbnail laid down by [id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile])
+     * stays the visible content until a real video pixel exists.
+     */
+    data object Active : VpsState
     data class Error(val message: String) : VpsState
 }
 
@@ -71,37 +84,58 @@ actual fun VideoPlayerSurface(
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val playerPool = koinInject<ExoPlayerPool>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
+    var firstFramePainted by remember(data) { mutableStateOf(false) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
+    // The PlayerView is owned by AndroidView's factory; we keep a reference so
+    // we can detach the player from it on dispose before returning the player
+    // to the pool — otherwise the recycled player would keep pushing frames to
+    // a stale TextureView surface.
+    var playerView by remember(data) { mutableStateOf<PlayerView?>(null) }
 
     DisposableEffect(data) {
         onDispose {
-            exoPlayer?.release()
+            val p = exoPlayer
+            playerView?.player = null
+            if (p != null) playerPool.release(p)
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
         }
     }
 
+    // Mute by zeroing volume AND disabling the audio renderer at track-selection
+    // time. Signal does this so an inline tile doesn't even spin up an audio
+    // MediaCodec — saves a decoder slot and battery. The full-screen path
+    // reuses this surface; when the user unmutes there, the audio track is
+    // re-enabled and the renderer reattaches.
     LaunchedEffect(exoPlayer, muted) {
-        exoPlayer?.volume = if (muted) 0f else 1f
+        val player = exoPlayer ?: return@LaunchedEffect
+        player.volume = if (muted) 0f else 1f
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, muted)
+            .build()
     }
 
     LaunchedEffect(data) {
         val clickMark = TimeSource.Monotonic.markNow()
         onProgress(0f)
 
-        // Build ExoPlayer on main thread but deferred to after the first frame,
-        // avoiding a synchronous block during composition/animation.
+        // Lease a player from the warm pool. On a cold pool this still builds a
+        // fresh ExoPlayer, but every subsequent inline play in this app session
+        // reuses one of the (≤2) pooled instances — saving the ~100–200ms
+        // ExoPlayer.Builder cost that used to land on the UI thread every tap.
         val (player, playerInitElapsed) = measureTimedValue {
-            ExoPlayer.Builder(context).build().apply {
+            playerPool.acquire().apply {
                 playWhenReady = true
                 volume = if (muted) 0f else 1f
             }
         }
-        Logger.d(tag = "VideoIO") { "ExoPlayer init: $playerInitElapsed" }
+        Logger.d(tag = "VideoIO") { "ExoPlayer acquire: $playerInitElapsed" }
         exoPlayer = player
 
         withContext(Dispatchers.IO) {
@@ -143,17 +177,30 @@ actual fun VideoPlayerSurface(
                             player.setMediaSource(mediaSource)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             player.addListener(object : Player.Listener {
+                                private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
-                                    if (playbackState == Player.STATE_READY) {
+                                    if (playbackState == Player.STATE_READY && !stateReadyLogged) {
+                                        stateReadyLogged = true
                                         Logger.d(tag = "VideoIO") { "HLS prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
                                         progressJob.cancel()
                                         onProgress(1f)
-                                        player.removeListener(this)
                                     }
+                                }
+                                // Hide the loading spinner the moment a real
+                                // pixel has been pushed to the TextureView —
+                                // Signal's onPlaybackReady() equivalent. Until
+                                // this fires the still thumbnail (drawn
+                                // underneath by MomentInlineVideoTile) is what
+                                // the user sees, so there is no black flash
+                                // between "ready to play" and "playing".
+                                override fun onRenderedFirstFrame() {
+                                    Logger.d(tag = "VideoIO") { "HLS first-frame: ${clickMark.elapsedNow()}" }
+                                    firstFramePainted = true
+                                    player.removeListener(this)
                                 }
                             })
                             player.prepare()
-                            state = VpsState.Ready
+                            state = VpsState.Active
                         }
                     }
                     is VideoContent.Mp4 -> {
@@ -178,16 +225,22 @@ actual fun VideoPlayerSurface(
                             onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             player.addListener(object : Player.Listener {
+                                private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
-                                    if (playbackState == Player.STATE_READY) {
+                                    if (playbackState == Player.STATE_READY && !stateReadyLogged) {
+                                        stateReadyLogged = true
                                         Logger.d(tag = "VideoIO") { "mp4 prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
                                         onProgress(1f)
-                                        player.removeListener(this)
                                     }
+                                }
+                                override fun onRenderedFirstFrame() {
+                                    Logger.d(tag = "VideoIO") { "mp4 first-frame: ${clickMark.elapsedNow()}" }
+                                    firstFramePainted = true
+                                    player.removeListener(this)
                                 }
                             })
                             player.prepare()
-                            state = VpsState.Ready
+                            state = VpsState.Active
                         }
                     }
                 }
@@ -202,32 +255,42 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
-            VpsState.Ready -> AndroidView(
-                factory = { ctx ->
-                    // Inflate the layout instead of constructing PlayerView()
-                    // directly so we can opt into `surface_type=texture_view`
-                    // + transparent shutter. Programmatic construction would
-                    // give us the default SurfaceView, which renders as a
-                    // black hole until the first frame paints (and ignores
-                    // the thumbnail layered beneath this composable in
-                    // MomentInlineVideoTile).
-                    (LayoutInflater.from(ctx)
-                        .inflate(R.layout.homebase_video_player_view, null) as PlayerView)
-                        .apply {
-                            player = exoPlayer!!
-                            // Native PlayerView's tap-to-show-controls captures
-                            // every touch, which blocks the carousel pager from
-                            // receiving the horizontal drag. Disable when the
-                            // host UI provides its own pause affordance (the
-                            // moments-feed inline tile in carousel mode).
-                            useController = useNativeControls
-                        }
-                },
-                update = { view ->
-                    view.useController = useNativeControls
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+            VpsState.Active -> {
+                AndroidView(
+                    factory = { ctx ->
+                        // Inflate the layout instead of constructing PlayerView()
+                        // directly so we can opt into `surface_type=texture_view`
+                        // + transparent shutter. Programmatic construction would
+                        // give us the default SurfaceView, which renders as a
+                        // black hole until the first frame paints (and ignores
+                        // the thumbnail layered beneath this composable in
+                        // MomentInlineVideoTile).
+                        (LayoutInflater.from(ctx)
+                            .inflate(R.layout.homebase_video_player_view, null) as PlayerView)
+                            .apply {
+                                player = exoPlayer!!
+                                // Native PlayerView's tap-to-show-controls captures
+                                // every touch, which blocks the carousel pager from
+                                // receiving the horizontal drag. Disable when the
+                                // host UI provides its own pause affordance (the
+                                // moments-feed inline tile in carousel mode).
+                                useController = useNativeControls
+                                playerView = this
+                            }
+                    },
+                    update = { view ->
+                        view.useController = useNativeControls
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // Overlay the spinner until ExoPlayer has actually pushed a
+                // frame to the TextureView. Player.STATE_READY only means
+                // "enough buffered to start" — there is still a measurable gap
+                // before the first decoded pixel reaches the surface.
+                if (!firstFramePainted) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+            }
         }
     }
 }
