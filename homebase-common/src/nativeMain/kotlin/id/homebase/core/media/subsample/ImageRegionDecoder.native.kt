@@ -7,6 +7,10 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.Surface
 
+// Image.makeFromEncoded decodes the full image into memory. True region-only decoding
+// on iOS would require CoreGraphics CGImageSource, which is not available through Skia.
+// This is acceptable for now; a CGImageSource-backed decoder can be added later if memory
+// pressure on large images becomes an issue.
 class NativeImageRegionDecoder(
     private val imageBytes: ByteArray,
 ) : ImageRegionDecoder {

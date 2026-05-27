@@ -1,5 +1,6 @@
 package id.homebase.core.media.subsample
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
@@ -80,5 +81,54 @@ class TileGridTest {
         val size = TileGrid.gridSize(imageWidth = 4000, imageHeight = 3000, tileSize = 512)
         assertEquals(8, size.width)
         assertEquals(6, size.height)
+    }
+
+    @Test
+    fun `calculateViewport at zoom 1x returns full image`() {
+        val viewport = TileGrid.calculateViewport(
+            scale = 1f,
+            offset = Offset.Zero,
+            imageSize = IntSize(4000, 3000),
+        )
+        assertEquals(IntRect(0, 0, 4000, 3000), viewport)
+    }
+
+    @Test
+    fun `calculateViewport at zoom 2x returns half-sized viewport`() {
+        val viewport = TileGrid.calculateViewport(
+            scale = 2f,
+            offset = Offset.Zero,
+            imageSize = IntSize(4000, 3000),
+        )
+        assertEquals(2000, viewport.width)
+        assertEquals(1500, viewport.height)
+    }
+
+    @Test
+    fun `calculateViewport clamps to image bounds`() {
+        val viewport = TileGrid.calculateViewport(
+            scale = 2f,
+            offset = Offset(-5000f, -5000f),
+            imageSize = IntSize(4000, 3000),
+        )
+        assertTrue(viewport.left >= 0)
+        assertTrue(viewport.top >= 0)
+        assertTrue(viewport.right <= 4000)
+        assertTrue(viewport.bottom <= 3000)
+    }
+
+    @Test
+    fun `calculateViewport with offset shifts viewport`() {
+        val viewport = TileGrid.calculateViewport(
+            scale = 2f,
+            offset = Offset(500f, 300f),
+            imageSize = IntSize(4000, 3000),
+        )
+        val centered = TileGrid.calculateViewport(
+            scale = 2f,
+            offset = Offset.Zero,
+            imageSize = IntSize(4000, 3000),
+        )
+        assertTrue(viewport.left != centered.left || viewport.top != centered.top)
     }
 }

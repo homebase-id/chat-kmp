@@ -44,7 +44,7 @@ private fun DrawScope.drawTiles(tileState: TileState) {
             srcSize = IntSize(tile.bitmap.width, tile.bitmap.height),
             dstOffset = IntOffset(dstLeft, dstTop),
             dstSize = IntSize(dstWidth, dstHeight),
-            filterQuality = FilterQuality.High,
+            filterQuality = FilterQuality.Medium,
         )
     }
 }

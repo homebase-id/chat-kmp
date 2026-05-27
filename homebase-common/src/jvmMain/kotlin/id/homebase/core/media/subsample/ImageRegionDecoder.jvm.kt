@@ -22,6 +22,9 @@ class JvmImageRegionDecoder(
         reader.dispose()
     }
 
+    // Each call recreates an ImageReader because javax.imageio readers don't support
+    // resetting input for arbitrary region reads across all formats. The overhead is
+    // small (~1-2ms per tile) and acceptable for desktop.
     override fun decodeRegion(rect: IntRect, sampleSize: Int): ImageBitmap {
         val stream = ImageIO.createImageInputStream(ByteArrayInputStream(bytes))
         val reader = ImageIO.getImageReaders(stream).next()

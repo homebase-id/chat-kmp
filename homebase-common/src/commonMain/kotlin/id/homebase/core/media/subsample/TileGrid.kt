@@ -1,5 +1,6 @@
 package id.homebase.core.media.subsample
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.ceil
@@ -52,5 +53,22 @@ object TileGrid {
             }
         }
         return tiles
+    }
+
+    fun calculateViewport(
+        scale: Float,
+        offset: Offset,
+        imageSize: IntSize,
+    ): IntRect {
+        val viewportWidth = (imageSize.width / scale).toInt()
+        val viewportHeight = (imageSize.height / scale).toInt()
+        val centerX = imageSize.width / 2 - (offset.x / scale).toInt()
+        val centerY = imageSize.height / 2 - (offset.y / scale).toInt()
+        return IntRect(
+            left = (centerX - viewportWidth / 2).coerceAtLeast(0),
+            top = (centerY - viewportHeight / 2).coerceAtLeast(0),
+            right = (centerX + viewportWidth / 2).coerceAtMost(imageSize.width),
+            bottom = (centerY + viewportHeight / 2).coerceAtMost(imageSize.height),
+        )
     }
 }

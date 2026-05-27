@@ -19,9 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,8 +53,11 @@ fun ZoomableSubSamplingImage(
     var tileManager by remember { mutableStateOf<TileManager?>(null) }
     var fallbackState by remember { mutableStateOf<TileState?>(null) }
 
-    val previewBitmap = remember(previewThumbnail) {
-        previewThumbnail?.decodeBitmap()
+    var previewBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(previewThumbnail) {
+        previewBitmap = previewThumbnail?.let {
+            withContext(Dispatchers.Default) { it.decodeBitmap() }
+        }
     }
 
     LaunchedEffect(source) {
@@ -98,7 +100,7 @@ fun ZoomableSubSamplingImage(
             .debounce(100)
             .collectLatest { (scale, offset, imageSize) ->
                 if (imageSize.width == 0) return@collectLatest
-                val viewport = calculateViewport(
+                val viewport = TileGrid.calculateViewport(
                     scale = scale,
                     offset = offset,
                     imageSize = imageSize,
@@ -138,9 +140,10 @@ fun ZoomableSubSamplingImage(
 
     ZoomableContainer(state = zoomState, onTap = onTap, modifier = sharedModifier) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (previewBitmap != null && !hasLoadedImage) {
+            val preview = previewBitmap
+            if (preview != null && !hasLoadedImage) {
                 Image(
-                    bitmap = previewBitmap,
+                    bitmap = preview,
                     contentDescription = contentDescription,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().then(blurMod),
@@ -170,21 +173,4 @@ private fun isRegionDecodable(bytes: ByteArray): Boolean {
     // SVG: starts with '<' (potentially "<?xml" or "<svg")
     if (bytes[0] == 0x3C.toByte()) return false
     return true
-}
-
-private fun calculateViewport(
-    scale: Float,
-    offset: Offset,
-    imageSize: IntSize,
-): IntRect {
-    val viewportWidth = (imageSize.width / scale).toInt()
-    val viewportHeight = (imageSize.height / scale).toInt()
-    val centerX = imageSize.width / 2 - (offset.x / scale).toInt()
-    val centerY = imageSize.height / 2 - (offset.y / scale).toInt()
-    return IntRect(
-        left = (centerX - viewportWidth / 2).coerceAtLeast(0),
-        top = (centerY - viewportHeight / 2).coerceAtLeast(0),
-        right = (centerX + viewportWidth / 2).coerceAtMost(imageSize.width),
-        bottom = (centerY + viewportHeight / 2).coerceAtMost(imageSize.height),
-    )
 }
