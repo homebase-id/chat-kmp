@@ -19,82 +19,32 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
-actual object VideoThumbnailExtractor {
-    private const val TAG = "VideoThumbnailExtractor"
-    private const val TARGET_PX = 640
-    private const val JPEG_QUALITY = 80
+/**
+ * Native Android decoder. Handles both filesystem paths and `content://` URIs (gallery picks /
+ * share sheet) — no copy-to-cache is needed because `MediaMetadataRetriever` and `MediaCodec`
+ * both accept `(Context, Uri)` directly. Internally tiered for the strip path:
+ * `VideoThumbnailsMediaCodec` (single-pass hardware decode) → `MediaMetadataRetriever`
+ * (per-frame fallback) when MediaCodec refuses the stream or stops short.
+ *
+ * No FFmpeg tier on Android — both native options together already cover the codec mix we see in
+ * the wild. If that ever changes, layer an FFmpeg decoder in via [TieredVideoDecoder].
+ */
+internal class AndroidNativeVideoDecoder : VideoDecoder {
 
-    actual suspend fun extractPosterFrame(videoPath: String): ByteArray? =
+    override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireApplicationContext()
-            val isContentUri = videoPath.startsWith("content://") || videoPath.startsWith("content:")
-
-            if (isContentUri) {
-                tryLoadThumbnail(context, videoPath)?.let { return@withContext it }
-                tryMediaMetadataRetrieverForUri(context, videoPath)?.let { return@withContext it }
-            } else {
-                tryMediaMetadataRetrieverForPath(videoPath)?.let { return@withContext it }
+            when (val s = videoPath.toAndroidVideoSource()) {
+                is AndroidVideoSource.ContentUri -> {
+                    tryLoadThumbnail(context, s.uriString)?.let { return@withContext it }
+                    tryMediaMetadataRetrieverForUri(context, s.uriString)
+                }
+                is AndroidVideoSource.Path -> tryMediaMetadataRetrieverForPath(s.path)
             }
-
-            null
         }
 
-    private fun tryLoadThumbnail(context: Context, contentUri: String): ByteArray? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        return try {
-            val bitmap = context.contentResolver.loadThumbnail(
-                contentUri.toUri(),
-                Size(TARGET_PX, TARGET_PX),
-                CancellationSignal(),
-            )
-            bitmap.toJpegBytes().also { bitmap.recycle() }
-        } catch (e: Exception) {
-            Log.d(TAG, "loadThumbnail failed for $contentUri: ${e.message}")
-            null
-        }
-    }
-
-    private fun tryMediaMetadataRetrieverForUri(context: Context, contentUri: String): ByteArray? {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(context, contentUri.toUri())
-            retriever.frameAtZero()?.let { it.toJpegBytes().also { _ -> it.recycle() } }
-        } catch (e: Exception) {
-            Log.d(TAG, "MMR(uri) failed for $contentUri: ${e.message}")
-            null
-        } finally {
-            retriever.runCatching { release() }
-        }
-    }
-
-    private fun tryMediaMetadataRetrieverForPath(filePath: String): ByteArray? {
-        val file = File(filePath)
-        if (!file.exists()) return null
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(filePath)
-            retriever.frameAtZero()?.let { it.toJpegBytes().also { _ -> it.recycle() } }
-        } catch (e: Exception) {
-            Log.d(TAG, "MMR(path) failed for $filePath: ${e.message}")
-            null
-        } finally {
-            retriever.runCatching { release() }
-        }
-    }
-
-    private fun MediaMetadataRetriever.frameAtZero(): Bitmap? =
-        getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-
-    private fun Bitmap.toJpegBytes(quality: Int = JPEG_QUALITY): ByteArray {
-        val out = ByteArrayOutputStream()
-        compress(Bitmap.CompressFormat.JPEG, quality, out)
-        return out.toByteArray()
-    }
-
-    private const val STRIP_JPEG_QUALITY = 60
-
-    actual fun extractThumbnailStrip(
-        filePath: String,
+    override fun extractThumbnailStrip(
+        videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
@@ -102,13 +52,15 @@ actual object VideoThumbnailExtractor {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
 
         val context = ActivityProvider.requireApplicationContext()
-        val isContentUri = filePath.startsWith("content://") || filePath.startsWith("content:")
-        if (!isContentUri && !File(filePath).exists()) return@channelFlow
+        val androidSource = videoPath.toAndroidVideoSource()
+        if (androidSource is AndroidVideoSource.Path && !File(androidSource.path).exists()) {
+            return@channelFlow
+        }
 
-        val source: VideoThumbnailsMediaCodec.Source = if (isContentUri) {
-            VideoThumbnailsMediaCodec.Source.ContentUri(context, filePath.toUri())
-        } else {
-            VideoThumbnailsMediaCodec.Source.Path(filePath)
+        val codecSource: VideoThumbnailsMediaCodec.Source = when (androidSource) {
+            is AndroidVideoSource.ContentUri ->
+                VideoThumbnailsMediaCodec.Source.ContentUri(context, androidSource.uriString.toUri())
+            is AndroidVideoSource.Path -> VideoThumbnailsMediaCodec.Source.Path(androidSource.path)
         }
 
         // Even spacing over [0, duration], biased to mid-step so the first frame isn't always
@@ -122,7 +74,7 @@ actual object VideoThumbnailExtractor {
         var emitted = 0
         var lastFailure: Throwable? = null
         VideoThumbnailsMediaCodec.extract(
-            source = source,
+            source = codecSource,
             count = frameCount,
             targetHeightPx = targetHeightPx,
             callback = object : VideoThumbnailsMediaCodec.Callback {
@@ -147,14 +99,13 @@ actual object VideoThumbnailExtractor {
         // (codec refused the stream / threw) or stopped short. Skip any indices we already
         // emitted on tier 1 so the scrubber doesn't see duplicates.
         if (lastFailure != null) {
-            Log.w(TAG, "MediaCodec path failed; falling back to MMR for $filePath", lastFailure)
+            Log.w(TAG, "MediaCodec path failed; falling back to MMR for $androidSource", lastFailure)
         } else if (emitted in 1 until frameCount) {
             Log.w(TAG, "MediaCodec path produced only $emitted/$frameCount frames; filling gaps via MMR")
         }
         extractStripViaMmr(
             context = context,
-            filePath = filePath,
-            isContentUri = isContentUri,
+            source = androidSource,
             durationMs = durationMs,
             frameCount = frameCount,
             targetHeightPx = targetHeightPx,
@@ -164,8 +115,7 @@ actual object VideoThumbnailExtractor {
 
     private suspend fun ProducerScope<IndexedFrame>.extractStripViaMmr(
         context: Context,
-        filePath: String,
-        isContentUri: Boolean,
+        source: AndroidVideoSource,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
@@ -173,10 +123,9 @@ actual object VideoThumbnailExtractor {
     ) {
         val retriever = MediaMetadataRetriever()
         try {
-            if (isContentUri) {
-                retriever.setDataSource(context, filePath.toUri())
-            } else {
-                retriever.setDataSource(filePath)
+            when (source) {
+                is AndroidVideoSource.ContentUri -> retriever.setDataSource(context, source.uriString.toUri())
+                is AndroidVideoSource.Path -> retriever.setDataSource(source.path)
             }
 
             val step = durationMs.toDouble() / frameCount
@@ -214,9 +163,69 @@ actual object VideoThumbnailExtractor {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "MMR fallback failed for $filePath", e)
+            Log.w(TAG, "MMR fallback failed for $source", e)
         } finally {
             retriever.runCatching { release() }
         }
     }
+
+    private fun tryLoadThumbnail(context: Context, contentUri: String): ByteArray? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        return try {
+            val bitmap = context.contentResolver.loadThumbnail(
+                contentUri.toUri(),
+                Size(TARGET_PX, TARGET_PX),
+                CancellationSignal(),
+            )
+            bitmap.toJpegBytes(POSTER_JPEG_QUALITY).also { bitmap.recycle() }
+        } catch (e: Exception) {
+            Log.d(TAG, "loadThumbnail failed for $contentUri: ${e.message}")
+            null
+        }
+    }
+
+    private fun tryMediaMetadataRetrieverForUri(context: Context, contentUri: String): ByteArray? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, contentUri.toUri())
+            retriever.frameAtZero()?.let { it.toJpegBytes(POSTER_JPEG_QUALITY).also { _ -> it.recycle() } }
+        } catch (e: Exception) {
+            Log.d(TAG, "MMR(uri) failed for $contentUri: ${e.message}")
+            null
+        } finally {
+            retriever.runCatching { release() }
+        }
+    }
+
+    private fun tryMediaMetadataRetrieverForPath(filePath: String): ByteArray? {
+        val file = File(filePath)
+        if (!file.exists()) return null
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(filePath)
+            retriever.frameAtZero()?.let { it.toJpegBytes(POSTER_JPEG_QUALITY).also { _ -> it.recycle() } }
+        } catch (e: Exception) {
+            Log.d(TAG, "MMR(path) failed for $filePath: ${e.message}")
+            null
+        } finally {
+            retriever.runCatching { release() }
+        }
+    }
+
+    private fun MediaMetadataRetriever.frameAtZero(): Bitmap? =
+        getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+
+    private fun Bitmap.toJpegBytes(quality: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        compress(Bitmap.CompressFormat.JPEG, quality, out)
+        return out.toByteArray()
+    }
+
+    companion object {
+        private const val TAG = "AndroidNativeVideoDecoder"
+        private const val TARGET_PX = 640
+        private const val POSTER_JPEG_QUALITY = 80
+        private const val STRIP_JPEG_QUALITY = 60
+    }
 }
+

@@ -9,8 +9,14 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 
-actual object VideoThumbnailExtractor {
-    actual suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+/**
+ * Desktop / JVM decoder. ffmpeg-only by necessity — there is no Kotlin-friendly OS-native
+ * decoder on Windows / macOS / Linux from the JVM. Don't bolt on a Tier 1: it would either be
+ * a no-op or duplicate logic that ffmpeg already does correctly.
+ */
+class FFmpegSubprocessVideoDecoder : VideoDecoder {
+
+    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
         val thumbPath = FFmpegUtils.grabThumbnail(videoPath) ?: return null
         return try {
             File(thumbPath).readBytes()
@@ -21,15 +27,15 @@ actual object VideoThumbnailExtractor {
         }
     }
 
-    actual fun extractThumbnailStrip(
-        filePath: String,
+    override fun extractThumbnailStrip(
+        videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         if (!FFmpegBinaryManager.isAvailable()) return@channelFlow
-        if (!File(filePath).exists()) return@channelFlow
+        if (!File(videoPath).exists()) return@channelFlow
 
         val outputDir = File(
             System.getProperty("java.io.tmpdir"),
@@ -46,7 +52,7 @@ actual object VideoThumbnailExtractor {
                 FFmpegBinaryManager.ffmpegPath(),
                 "-y",
                 "-loglevel", "error",
-                "-i", filePath,
+                "-i", videoPath,
                 "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
                 "-frames:v", frameCount.toString(),
                 "-q:v", "5",

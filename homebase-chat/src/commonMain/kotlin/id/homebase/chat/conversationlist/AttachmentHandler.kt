@@ -2,7 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.VideoThumbnailExtractor
+import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.core.audio.AudioFileInfo
@@ -64,7 +64,7 @@ internal class AttachmentHandler(
 
     internal fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
         val deferred = scope.async {
-            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
+            runCatching { VideoThumbnailService.extractPosterFrame(videoPath) }.getOrNull()
         }
         pendingThumbnails[attachmentId] = deferred
         // Duration is needed by the trim screen and is cheap to read; kick it off in

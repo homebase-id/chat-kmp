@@ -60,7 +60,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.video.IndexedFrame
-import id.homebase.api.video.VideoThumbnailExtractor
+import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.video.TrimDurationLabel
@@ -145,8 +145,8 @@ fun FullScreenAttachmentEditor(
         if (dur <= 0L) return@LaunchedEffect
         val map = framesByAtt.getOrPut(v.attachmentId) { mutableStateMapOf() }
         if (map.size >= frameStripCount) return@LaunchedEffect
-        VideoThumbnailExtractor.extractThumbnailStrip(
-            filePath = v.file.toString(),
+        VideoThumbnailService.extractThumbnailStrip(
+            videoPath = v.file.toString(),
             durationMs = dur,
             frameCount = frameStripCount,
             targetHeightPx = 96,
