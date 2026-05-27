@@ -1,11 +1,16 @@
 package id.homebase.core.media
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 @Stable
 class ZoomState(
@@ -53,6 +58,25 @@ class ZoomState(
             )
         } else {
             offset = Offset.Zero
+        }
+    }
+
+    suspend fun animateToZoom(targetScale: Float, targetOffset: Offset) {
+        val clampedScale = targetScale.coerceIn(minScale, maxScale)
+        val clampedOffset = if (clampedScale <= minScale) Offset.Zero else targetOffset
+        val scaleAnimatable = Animatable(scale)
+        val offsetAnimatable = Animatable(offset, Offset.VectorConverter)
+        coroutineScope {
+            launch {
+                scaleAnimatable.animateTo(clampedScale, spring()) {
+                    scale = value
+                }
+            }
+            launch {
+                offsetAnimatable.animateTo(clampedOffset, spring()) {
+                    offset = value
+                }
+            }
         }
     }
 
