@@ -100,6 +100,7 @@ import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentSource
+import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
@@ -127,6 +128,7 @@ import id.homebase.resources.upload_failed_action_dismiss
 import id.homebase.resources.upload_failed_sheet_body
 import id.homebase.resources.upload_failed_sheet_title
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -475,22 +477,51 @@ private fun MomentsFeedList(
 ) {
     val listState = rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
-    // Default muted: matches the user-chosen "muted with unmute toggle"
-    // behaviour. Lifted here (not per-card) so toggling once persists across
-    // plays — same pattern as Instagram / X autoplay.
-    var isMuted by remember { mutableStateOf(true) }
+    // Session-scoped mute state: a Koin singleton so it survives navigating
+    // away from the moments tab and back. Default muted on every fresh app
+    // launch (Instagram-style); once the user unmutes, every subsequent
+    // autoplay in this session follows.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
 
-    // Clear playingMomentId when the playing card scrolls out of the viewport.
-    // Tracking item keys (Strings) — not firstVisibleItemIndex — because the
-    // key set is what tells us whether the playing card is still rendered.
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key } }
-            .collect { visibleKeys ->
-                val playing = playingMomentId ?: return@collect
-                if (playing.toString() !in visibleKeys) {
-                    playingMomentId = null
+    // Precompute the set of moments that have *any* video payload — we only
+    // ever autoplay cards backed by a video. Recomputes when the feed list
+    // changes (new posts, deletions); a single membership-test per scroll
+    // frame is fine.
+    val videoMomentIds = remember(moments) {
+        moments.asSequence()
+            .filter { m ->
+                m.payloads.any { p ->
+                    val ct = p.contentType ?: ""
+                    ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
                 }
             }
+            .map { it.id.toString() }
+            .toSet()
+    }
+
+    // Autoplay driver: the most-centred *video* moment in the viewport
+    // becomes the playing one. snapshotFlow already dedups via structural
+    // equality, so no extra distinctUntilChanged — emissions only happen
+    // when the active key actually changes (see CLAUDE.md note on the
+    // double-equality-check trap).
+    LaunchedEffect(listState, videoMomentIds) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            if (info.visibleItemsInfo.isEmpty() || videoMomentIds.isEmpty()) return@snapshotFlow null
+            val viewportCenter =
+                (info.viewportStartOffset + info.viewportEndOffset) / 2
+            info.visibleItemsInfo
+                .filter { (it.key as? String) in videoMomentIds }
+                .minByOrNull {
+                    kotlin.math.abs((it.offset + it.size / 2) - viewportCenter)
+                }
+                ?.key as? String
+        }.collect { activeKey ->
+            playingMomentId = activeKey?.let {
+                runCatching { Uuid.parse(it) }.getOrNull()
+            }
+        }
     }
 
     LazyColumn(
@@ -505,6 +536,7 @@ private fun MomentsFeedList(
         reverseLayout = true,
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
+            val isActive = playingMomentId == moment.id
             MomentPostCard(
                 moment = moment,
                 uploadStatus = uploadProgress[moment.id],
@@ -516,12 +548,24 @@ private fun MomentsFeedList(
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
-                isVideoPlaying = playingMomentId == moment.id,
+                // playingMomentId is now visibility-driven (see snapshotFlow
+                // above), so a single-video card autoplays as soon as it
+                // becomes the most-centred video moment in the viewport.
+                // The onToggleVideoPlay tap path stays as a manual override
+                // for the rare "user explicitly wanted to stop or restart"
+                // case — taps still toggle, autoplay re-engages on the next
+                // visibility update.
+                isVideoPlaying = isActive,
                 onToggleVideoPlay = {
-                    playingMomentId = if (playingMomentId == moment.id) null else moment.id
+                    playingMomentId = if (isActive) null else moment.id
                 },
+                // autoplayActive feeds the carousel branch: when the card is
+                // the active one, the carousel auto-plays whichever video
+                // page is currently visible (and pauses when the user swipes
+                // to a non-video page or away from this card).
+                autoplayActive = isActive,
                 isMuted = isMuted,
-                onToggleMute = { isMuted = !isMuted },
+                onToggleMute = videoSession::toggleMuted,
             )
         }
     }
@@ -542,6 +586,7 @@ private fun MomentPostCard(
     onDismissUpload: () -> Unit,
     isVideoPlaying: Boolean = false,
     onToggleVideoPlay: () -> Unit = {},
+    autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
 ) {
@@ -725,6 +770,7 @@ private fun MomentPostCard(
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
                         onDoubleTap = { onAddReaction(HeartEmoji) },
+                        autoplayActive = autoplayActive,
                     )
                 }
 

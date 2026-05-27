@@ -57,6 +57,11 @@ fun MomentMediaGallery(
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
+    // True when the host moment is currently the most-centred video card in
+    // the viewport. The carousel uses it to autoplay whichever page is
+    // visible (if that page is a video). Ignored by SingleImageLayout —
+    // single videos autoplay via the parent setting playingMomentId.
+    autoplayActive: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -94,6 +99,7 @@ fun MomentMediaGallery(
                 onDoubleTap = onDoubleTap,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                autoplayActive = autoplayActive,
             )
         }
     }

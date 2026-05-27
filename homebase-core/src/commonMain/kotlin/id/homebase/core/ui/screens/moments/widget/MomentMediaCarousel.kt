@@ -71,6 +71,13 @@ fun MomentMediaCarousel(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
+    // True when the host moment is the most-centred video card in the feed.
+    // Drives Instagram-style autoplay: the current page autoplays if it is
+    // a video, pauses on page-change to a non-video, and resumes if the
+    // user swipes back. Clears when the parent says the card is no longer
+    // active (scroll off → autoplay disengages → LazyColumn eventually
+    // disposes the tile and tears the player down).
+    autoplayActive: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -82,9 +89,30 @@ fun MomentMediaCarousel(
     // so the previous video pauses without the user having to tap again.
     var playingPayloadKey by remember(messageId) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(pagerState, messageId) {
-        snapshotFlow { pagerState.currentPage }.collect { _ ->
-            playingPayloadKey = null
+    // Two modes share this effect:
+    //   - autoplayActive=true (card is the visible / active card): autoplay
+    //     the current page if it's a video; clear on swipe-to-non-video.
+    //   - autoplayActive=false (card is in the feed but not the active one):
+    //     don't drive playback automatically, but DO clear playingPayloadKey
+    //     whenever the user manually swipes pages, so a manually-played
+    //     video on page N pauses when page N+1 scrolls in.
+    // snapshotFlow dedups via structural equality, so emissions only land
+    // when the active key actually changes — no per-frame churn on scroll.
+    LaunchedEffect(pagerState, payloads, autoplayActive, messageId) {
+        if (!autoplayActive) {
+            snapshotFlow { pagerState.currentPage }.collect { _ ->
+                playingPayloadKey = null
+            }
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val payload = payloads.getOrNull(pagerState.currentPage)
+                ?: return@snapshotFlow null
+            val ct = payload.contentType ?: ""
+            val isVideo = ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
+            if (isVideo) payload.key else null
+        }.collect { autoplayKey ->
+            playingPayloadKey = autoplayKey
         }
     }
 
