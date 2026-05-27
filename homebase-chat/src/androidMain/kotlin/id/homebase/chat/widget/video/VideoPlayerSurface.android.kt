@@ -33,6 +33,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -285,6 +286,20 @@ actual fun VideoPlayerSurface(
                                 // when we own the gesture stack ourselves.
                                 isClickable = useNativeControls
                                 isFocusable = useNativeControls
+                                // Inline tiles (no native controls) share their
+                                // bounds with a thumbnail laid down underneath
+                                // (see MomentInlineVideoTile) which uses
+                                // ContentScale.Crop. Without ZOOM the video would
+                                // letterbox to FIT inside a portrait carousel
+                                // box, showing black bars over a thumbnail that's
+                                // already cropped to fill — visually inconsistent.
+                                // ZOOM mirrors the thumbnail's crop-to-fill so
+                                // the transition is seamless.
+                                resizeMode = if (useNativeControls) {
+                                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                } else {
+                                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                }
                                 playerView = this
                             }
                     },
@@ -292,6 +307,11 @@ actual fun VideoPlayerSurface(
                         view.useController = useNativeControls
                         view.isClickable = useNativeControls
                         view.isFocusable = useNativeControls
+                        view.resizeMode = if (useNativeControls) {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        } else {
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )

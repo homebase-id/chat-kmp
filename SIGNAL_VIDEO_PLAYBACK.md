@@ -192,3 +192,228 @@ The pieces we *don't* need to copy: aggressive `LoadControl` tuning, manual
 prefetching, custom `HandlerThread` for ExoPlayer. Signal proves you can leave
 those at framework defaults if the pool, the scheduler, and the upload pipeline
 are right.
+
+---
+
+# How Signal iOS Plays Video Smoothly
+
+A distilled writeup of how `signal-ios` (at `/Users/todd/src/odin/signal-ios/`)
+achieves smooth video playback in inline cells (gallery, conversation feed) and
+the full-screen media gallery. Captured by reading the actual source so we can
+borrow the right pieces for our KMP iOS target.
+
+Headline: **iOS doesn't replicate Android's player pool or center-of-viewport
+scheduler.** Instead, the architecture leans on three things — (a) one
+`AVPlayer` per visible cell with cells managing their own lifetime via
+UICollectionView recycling, (b) a UIView subclass whose `layerClass` is
+`AVPlayerLayer` (no `AVPlayerViewController` in tile contexts), and (c) an
+`AVAssetResourceLoaderDelegate` that decrypts encrypted attachments on the fly
+without ever decrypting the whole file to disk. The sender side does
+faststart-and-moov-to-front via `AVAssetExportSession.shouldOptimizeForNetworkUse`.
+
+## 1. Player class
+
+- **`AVPlayer`** is the only player class, wrapped by two thin Swift types:
+  - `SignalUI/AV/VideoPlayer.swift:13` — `VideoPlayer` owns one `AVPlayer` for
+    full-screen / interactive playback (controls, scrubbing).
+  - `SignalUI/Views/LoopingVideoView.swift:35` — `LoopingVideoPlayer`
+    *subclasses* `AVPlayer` and auto-rewinds on completion. Used for inline
+    GIF-as-MP4 cells.
+- No `AVQueuePlayer`, no `AVPlayerLooper`. Looping is implemented manually by
+  observing playback completion and seeking back to zero.
+- No `AVPlayerViewController` anywhere in the inline-cell paths. It's only
+  reached when the user enters the full-screen scrubbable player, and even
+  there Signal prefers their own custom controls layered over a bare
+  `AVPlayer`.
+
+## 2. Pool / lifecycle — there isn't one
+
+- **No pool.** Every cell that needs to play video builds a fresh
+  `LoopingVideoView` (and the `LoopingVideoPlayer` inside it). The cost is
+  swallowed because:
+  - `UICollectionView` cell recycling is the de facto scheduler — offscreen
+    cells get reused and their videos are torn down via `unloadMedia()`
+    (`Signal/ConversationView/CellViews/CVMediaView.swift:59`).
+  - `MediaPageViewController` (full-screen gallery) explicitly stops the
+    previous page on swipe (`stopVideoIfPlaying()` at line 295 — only the
+    centered page is allowed to be playing).
+- The one reuse pattern that *does* show up: `replaceCurrentItem(with:)`
+  (`LoopingVideoView.swift:68-88`). When the same `LoopingVideoView` cell is
+  rebound to a different attachment (typical when scrolling reuses cells), the
+  player is kept and just retargeted — `AVPlayer` allocation is avoided.
+
+This is the part most worth internalizing: **on iOS the cell is the pool of
+one**, and the platform's view recycling handles concurrency for free. We
+don't need to invent a Signal-Android-style scheduler if we use Compose's
+disposal correctly.
+
+## 3. Surface / view hierarchy
+
+The trick that gives Signal iOS its smooth cell-level playback is a
+**plain `UIView` subclass that returns `AVPlayerLayer` from its `layerClass`**:
+
+`SignalUI/Views/LoopingVideoView.swift:157`:
+
+```swift
+override class var layerClass: AVPlayerLayer.Type {
+    return AVPlayerLayer.self
+}
+```
+
+Why not `AVPlayerViewController`:
+- `AVPlayerViewController` brings the iOS system transport controls and a
+  gesture recognizer that intercepts taps/pans — fatal in any tile context
+  where the parent owns gestures (a pager, a collection view, a tap-to-open
+  detector).
+- A `UIView` whose root layer is `AVPlayerLayer` gives you raw rendering and
+  zero gesture conflicts. Tap/long-press recognizers on the parent fire
+  cleanly.
+
+First-frame flash mitigation:
+- Inline thumbnails are loaded first; the video view mounts only when
+  playback is asked for (`MediaItemViewController.swift:36, 114-157`).
+- Looping cells wait on KVO of `AVPlayerItem.status` and only call `play()`
+  once it transitions to `.readyToPlay` (`LoopingVideoView.swift:108-114`).
+- There's no explicit `isReadyForDisplay` observation — they trust KVO of
+  status as the "we're about to paint a real frame" signal.
+
+## 4. Buffering / preload — defaults all the way
+
+- No `preferredForwardBufferDuration`, no `preferredPeakBitRate`, no
+  `automaticallyWaitsToMinimizeStalling` tuning anywhere.
+- No prefetch of the next gallery item. They trust AVPlayer to start fetching
+  on `replaceCurrentItem(with:)`.
+- Same philosophy as the Android side: get the upload pipeline and the
+  decrypt path right, and the framework defaults are fine for short clips.
+
+## 5. Encrypted attachment streaming — `AVAssetResourceLoaderDelegate`
+
+This is the most replicable trick for us. `AVAsset+Attachment.swift:22-196`:
+
+- `AttachmentStream.decryptedAVAsset()` returns an `AVURLAsset` whose URL uses
+  a custom scheme (`signal://`) — AVFoundation does not know how to fetch
+  that, so it falls back to the asset's `resourceLoader.delegate`.
+- The delegate is `EncryptedFileResourceLoader` (lines 119-196). For every
+  `dataRequest` (byte range) AVPlayer issues, it:
+  1. Translates the plaintext offset → encrypted offset via
+     `EncryptedFileHandle`,
+  2. Decrypts in ~4 KB chunks on a dedicated `videoDecryptionQueue`
+     (line 50, 155),
+  3. Feeds each chunk back via `dataRequest.respond(with:)`.
+- `contentInformationRequest` answers plaintext length + MIME type once
+  (lines 142-152) and sets `byteRangeAccessSupported = true` so AVPlayer is
+  free to seek inside the file.
+- The delegate is retained out-of-band via
+  `ObjectRetainer.retainObject()` (line 109) because
+  `AVAssetResourceLoader.delegate` is held *weakly* — drop the reference and
+  AVFoundation silently stops calling you back.
+
+Plaintext frames live only in memory and only for as long as AVPlayer needs
+them. The encrypted file on disk is the only persistent representation.
+
+## 6. Encoding / format — `AVAssetExportSession`
+
+`PreviewableAttachment.swift:132-207`:
+
+```swift
+let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset640x480)
+exporter.outputFileType = .mp4
+exporter.shouldOptimizeForNetworkUse = true
+exporter.metadataItemFilter = .forSharing()
+```
+
+- `AVAssetExportPreset640x480` — a known, well-supported preset. iOS doesn't
+  expose granular bitrate/codec control through the public API, so the preset
+  is the lever.
+- `shouldOptimizeForNetworkUse = true` is the **moov-to-front** flag — the
+  exact iOS analog of Android's `Mp4FaststartPostProcessor`. Without this,
+  receivers can't start playback before the whole file lands.
+- `.metadataItemFilter = .forSharing()` strips EXIF/geolocation. Worth
+  mirroring on our upload pipeline for the same privacy reason.
+
+## 7. Inline autoplay / GIF-as-MP4
+
+- GIFs are not animated GIFs at runtime — they're converted to MP4 on send
+  and replayed via `LoopingVideoView`. iOS has no `Fresco` analog because it
+  doesn't need one; `AVPlayer` plus a `UIView`+`AVPlayerLayer` is the
+  cheapest possible looper.
+- `isMuted = true` is set on the `LoopingVideoPlayer` at init
+  (`LoopingVideoView.swift:63`). There is **no AVFoundation equivalent of
+  Android's "disable the audio renderer entirely"** — once the audio track is
+  in the asset, AVPlayer will decode it. The only knobs are `isMuted` (mixer
+  level) and `volume = 0` (output level). For our purposes muting is fine.
+- Autoplay decision is implicit: the `LoopingVideoView` starts playing the
+  moment its `video` property is assigned, regardless of viewport position.
+  The "only the centered cell plays" property comes from the cell lifecycle,
+  not a scheduler.
+
+## 8. Small cleverness
+
+- `CVMediaCache` (`Signal/ConversationView/CellViews/ReusableMediaView.swift`)
+  is an in-memory cache keyed by attachment ID that holds the decrypted
+  `LoopingVideo` assets so reusing a cell for the same attachment doesn't
+  re-decrypt.
+- Layer scaling: `magnificationFilter = .trilinear` /
+  `minificationFilter = .trilinear` on the player view's layer — keeps the
+  thumbnail-to-video crossover from showing aliasing artifacts during scaling
+  animations.
+- KVO observers on `status`, `timeControlStatus`, `rate`, and a periodic time
+  observer at 10 ms intervals (`VideoPlayerView.swift:118-140`) drive UI
+  state. Equivalent of media3's `Player.Listener` callbacks.
+
+---
+
+## What we'd need to change in our KMP iOS path
+
+For context: our current iOS implementation is in
+`homebase-chat/src/nativeMain/kotlin/id/homebase/chat/widget/video/VideoPlayerSurface.native.kt`.
+Compared with Signal iOS, two things stand out:
+
+1. **We use `AVPlayerViewController`.** Fine for the full-screen player, wrong
+   for inline tiles — its built-in controls and tap gesture will fight the
+   moments carousel pager the same way `PlayerView`'s controller fights it on
+   Android. The carousel-friendly path on iOS should be a `UIKitView` whose
+   underlying `UIView`'s `layerClass` is `AVPlayerLayer`. Signal's
+   `LoopingVideoView.swift:157` is the template.
+
+2. **We stream encrypted bytes through `LocalVideoServer`** (a loopback HTTP
+   server registered on a localhost port). That works, but it has more moving
+   parts than necessary: a TCP listener, a port-binding retry loop, a session
+   table, and a network round-trip for every chunk AVPlayer asks for. Signal's
+   `EncryptedFileResourceLoader` (`AVAsset+Attachment.swift:119-196`)
+   accomplishes the same job inside AVFoundation's own
+   `AVAssetResourceLoaderDelegate` — no socket, no server, no port. Worth a
+   future migration when we have appetite for it; the perf win is small but
+   the surface-area reduction is large.
+
+Concrete actions, in priority order:
+
+1. **Add an inline-tile iOS surface backed by `AVPlayerLayer`**, separate from
+   the existing `AVPlayerViewController`-based full-screen path. Use it from
+   the moments carousel. Mirror the Compose API of
+   `VideoPlayerSurface.android.kt` (TextureView + transparent shutter) so the
+   thumbnail behind shows through until the first frame paints.
+
+2. **Observe `AVPlayerItem.status` KVO** and only fade out the spinner / start
+   playback once it transitions to `.readyToPlay`. This is the iOS analog of
+   `onRenderedFirstFrame`. We can't see frame rendering directly on iOS, but
+   `readyToPlay` is the closest signal and is what Signal uses.
+
+3. **Set `shouldOptimizeForNetworkUse = true`** in our `AVAssetExportSession`
+   transcode path (the iOS upload pipeline). This is upstream of playback —
+   the receiver of a non-faststart MP4 can't begin playback until the whole
+   file lands, no matter how good the player code is.
+
+4. **Apply `.metadataItemFilter = .forSharing()`** on the same export path.
+   One line, strips location metadata for free.
+
+5. **Later (optional):** swap `LocalVideoServer` for an
+   `AVAssetResourceLoaderDelegate`. The performance delta is modest, but it
+   eliminates the loopback socket and its port-binding fallback. Not urgent.
+
+Things we **don't** need to copy from Signal iOS:
+- A player pool (their architecture is one-per-cell and so is ours).
+- An active-playback coordinator (Compose disposal does it).
+- `preferredForwardBufferDuration` tuning (defaults are fine).
+- A custom `AVPlayer` subclass for looping (we can call `seek(.zero); play()`
+  on end-of-play notification, same as them).

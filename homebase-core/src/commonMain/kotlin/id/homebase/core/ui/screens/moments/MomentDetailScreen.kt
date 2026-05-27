@@ -63,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,6 +75,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,6 +92,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
@@ -253,10 +256,23 @@ private fun DetailContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    // Local sheet toggles — pure UI state, no need to round-trip through the
+    // VM. The reactor-roster sheet (uiState.showReactionsSheet) is still VM-
+    // driven below because it loads avatars from the server.
+    var showCommentsSheet by remember { mutableStateOf(false) }
+    var showEmojiSheet by remember { mutableStateOf(false) }
+
     Scaffold(
+        // Black so the letterbox bars around a Fit-scaled image or video
+        // read as part of the cinematic surface rather than the surface
+        // colour of the rest of the app.
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.moments_label)) },
+                // No screen title in the full-screen view — the post itself
+                // is the title. Keep the bar transparent so it floats over
+                // the media.
+                title = {},
                 navigationIcon = {
                     // Embedded (desktop wide) pane: no nav target, so suppress
                     // the back arrow rather than offering a tap that does
@@ -266,6 +282,7 @@ private fun DetailContent(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back),
+                                tint = Color.White,
                             )
                         }
                     }
@@ -280,31 +297,14 @@ private fun DetailContent(
                             onDeleteClick = {
                                 onAction(MomentDetailUiAction.RequestDeleteMoment)
                             },
+                            iconTint = Color.White,
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
-        },
-        bottomBar = {
-            // Sticky composer so the keyboard never hides what the user is
-            // typing. Empty (no surface) while the moment is loading or when
-            // the author disabled commenting — Scaffold treats a no-op
-            // composable as zero-height, so the body extends to the bottom.
-            val moment = uiState.moment
-            if (moment != null && moment.commentsEnabled) {
-                Surface(tonalElevation = 3.dp) {
-                    AddCommentRow(
-                        draft = uiState.commentDraft,
-                        isPosting = uiState.isPostingComment,
-                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
-                        onSend = { onAction(MomentDetailUiAction.PostComment) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .imePadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
-            }
         },
     ) { innerPadding ->
         val moment = uiState.moment
@@ -316,7 +316,7 @@ private fun DetailContent(
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
-                if (uiState.isLoading) CircularProgressIndicator()
+                if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
             }
         } else {
             MomentDetailContent(
@@ -324,6 +324,8 @@ private fun DetailContent(
                 moment = moment,
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
+                onOpenComments = { showCommentsSheet = true },
+                onOpenEmoji = { showEmojiSheet = true },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 modifier = Modifier
@@ -332,6 +334,24 @@ private fun DetailContent(
                     .padding(innerPadding),
             )
         }
+    }
+
+    val moment = uiState.moment
+    if (showCommentsSheet && moment != null) {
+        CommentsSheet(
+            uiState = uiState,
+            commentsEnabled = moment.commentsEnabled,
+            onAction = onAction,
+            onDismiss = { showCommentsSheet = false },
+        )
+    }
+    if (showEmojiSheet && moment != null) {
+        EmojiSheet(
+            uiState = uiState,
+            moment = moment,
+            onAction = onAction,
+            onDismiss = { showEmojiSheet = false },
+        )
     }
 
     if (uiState.showDeleteDialog) {
@@ -383,6 +403,7 @@ private fun DetailContent(
 private fun MomentOverflowMenu(
     isDeleting: Boolean,
     onDeleteClick: () -> Unit,
+    iconTint: Color = Color.Unspecified,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -396,11 +417,15 @@ private fun MomentOverflowMenu(
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
+                    color = if (iconTint == Color.Unspecified) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else iconTint,
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = stringResource(MR.string.moments_detail_menu_more),
+                    tint = iconTint,
                 )
             }
         }
@@ -663,6 +688,8 @@ private fun MomentDetailContent(
     moment: MomentFeedItem,
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
+    onOpenComments: () -> Unit,
+    onOpenEmoji: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
@@ -683,77 +710,313 @@ private fun MomentDetailContent(
         pageCount = { pageCount },
     )
 
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(bottom = 24.dp),
-    ) {
-        // Media — pager when there are multiple payloads, single MomentMediaItem otherwise.
-        // Constrain to ~60% of the pane width on wide layouts (the desktop
-        // embedded pane can be 800dp+) and cap at MediaMaxWidth. Below
-        // MediaWideBreakpoint the media stays full-width so phones/narrow
-        // tablets are unchanged.
-        item {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val mediaWidth = if (maxWidth >= MediaWideBreakpoint) {
-                    (maxWidth * MediaWidthFraction).coerceAtMost(MediaMaxWidth)
-                } else {
-                    maxWidth
-                }
-                Box(
-                    modifier = Modifier
-                        .width(mediaWidth)
-                        .align(Alignment.Center),
-                ) {
-                if (moment.payloads.isEmpty()) {
-                    // Description-only moment — keep a square placeholder so the
-                    // top-of-screen rhythm doesn't collapse.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+    val reactionCount = remember(moment.reactionPreview) {
+        moment.reactionPreview?.reactions?.values?.sumOf { it.count } ?: 0
+    }
+    val commentCount = uiState.comments.size
+
+    Box(modifier = modifier.background(Color.Black)) {
+        // Layer 1: full-screen media pager. ContentScale.Fit (via
+        // preserveAspectRatio = true) so the whole image or video is visible
+        // — letterbox bars take the Box's black background. No inner
+        // pointer detector so taps fall through (the surrounding sheets are
+        // opened by the right-edge IconButtons below).
+        if (moment.payloads.isEmpty()) {
+            // Description-only moment — there's no media to render, so fill
+            // with the description text centred over the black backdrop.
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (moment.description.isNotBlank()) {
+                    Text(
+                        text = moment.description,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(32.dp),
                     )
-                } else {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f),
-                    ) { page ->
-                        val payload = moment.payloads[page]
-                        MomentMediaItem(
-                            payload = payload,
-                            fileId = moment.fileId,
-                            driveId = moment.driveId,
-                            previewThumbnail = moment.previewThumbnail,
-                            keyHeader = moment.keyHeader,
-                            modifier = Modifier.fillMaxSize(),
-                            imageSize = ImageSize.THUMB_XLARGE,
-                            preserveAspectRatio = false,
-                            messageId = moment.id,
-                            shape = RectangleShape,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            onClick = {
-                                onAction(MomentDetailUiAction.MediaClicked(payload.key))
-                            },
-                        )
-                    }
-                    if (moment.payloads.size > 1) {
-                        PagerDots(
-                            pageCount = moment.payloads.size,
-                            currentPage = pagerState.currentPage,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp),
-                        )
-                    }
                 }
-                }
+            }
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                val payload = moment.payloads[page]
+                MomentMediaItem(
+                    payload = payload,
+                    fileId = moment.fileId,
+                    driveId = moment.driveId,
+                    previewThumbnail = moment.previewThumbnail,
+                    keyHeader = moment.keyHeader,
+                    modifier = Modifier.fillMaxSize(),
+                    imageSize = ImageSize.THUMB_XLARGE,
+                    // Fit (not crop) — the whole post is visible, including
+                    // landscape media in a portrait viewport (and vice
+                    // versa). Letterbox bars take the Box's black
+                    // background.
+                    preserveAspectRatio = true,
+                    messageId = moment.id,
+                    shape = RectangleShape,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    // Tap is owned by the bottom-sheet trigger icons, not
+                    // the media surface — keep the surface gesture-free so
+                    // horizontal swipes drive the pager cleanly.
+                    onClick = null,
+                )
             }
         }
 
-        item {
+        // Layer 2: right-edge action column — emoji + comments sheet
+        // triggers. Skip when the moment has no media (there's no surface
+        // to overlay against) so the action column doesn't float in the
+        // middle of a description-only card.
+        if (moment.payloads.isNotEmpty()) {
+            DetailActionColumn(
+                reactionCount = reactionCount,
+                commentCount = commentCount,
+                commentsEnabled = moment.commentsEnabled,
+                onOpenEmoji = onOpenEmoji,
+                onOpenComments = onOpenComments,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp),
+            )
+        }
+
+        // Layer 3: bottom overlay — page dots, description, compact
+        // metadata. Translucent gradient backdrop so text reads cleanly
+        // over any photo. Only shown when there's media (the description-
+        // only branch above already renders the description centred).
+        if (moment.payloads.isNotEmpty()) {
+            DetailBottomOverlay(
+                description = moment.description,
+                userDateMs = moment.userDateMs,
+                pageCount = if (moment.payloads.size > 1) moment.payloads.size else 0,
+                currentPage = pagerState.currentPage,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** Vertical stack of bottom-sheet trigger icons on the right edge of the
+ *  media. Each icon has an optional count badge underneath (only shown
+ *  when the count is > 0). */
+@Composable
+private fun DetailActionColumn(
+    reactionCount: Int,
+    commentCount: Int,
+    commentsEnabled: Boolean,
+    onOpenEmoji: () -> Unit,
+    onOpenComments: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        OverlayActionButton(
+            icon = Icons.Default.AddReaction,
+            contentDescription = stringResource(MR.string.reactions),
+            count = reactionCount,
+            onClick = onOpenEmoji,
+        )
+        if (commentsEnabled) {
+            OverlayActionButton(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = stringResource(MR.string.moments_detail_comments_section),
+                count = commentCount,
+                onClick = onOpenComments,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    count: Int,
+    onClick: () -> Unit,
+) {
+    // Computed outside the Text composable so the Konsist string-literal
+    // check (homebase-common's ArchitectureTest) doesn't see a Text(...)
+    // literal — even an interpolated one. See CLAUDE.md.
+    val countLabel = remember(count) { count.toString() }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(44.dp)
+                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color.White,
+            )
+        }
+        if (count > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = countLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+/** Page dots + description + date pill, with a translucent gradient
+ *  backdrop so the text reads against any photo. */
+@Composable
+private fun DetailBottomOverlay(
+    description: String,
+    userDateMs: Long,
+    pageCount: Int,
+    currentPage: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.Black.copy(alpha = 0.7f),
+                    ),
+                ),
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (pageCount > 1) {
+            PagerDots(
+                pageCount = pageCount,
+                currentPage = currentPage,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
+        if (description.isNotBlank()) {
+            Text(
+                text = description,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        MomentDatePill(
+            timestamp = kotlin.time.Instant.fromEpochMilliseconds(userDateMs),
+        )
+    }
+}
+
+/** Comments list + composer in a ModalBottomSheet. Replaces the
+ *  always-visible LazyColumn section + sticky bottomBar of the original
+ *  layout. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommentsSheet(
+    uiState: MomentDetailUiState,
+    commentsEnabled: Boolean,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CommentsHeader(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            if (uiState.comments.isEmpty()) {
+                CommentsEmpty(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
+                    // Service emits newest-first; reverse for chat-style
+                    // chronological ordering (oldest at top, newest just
+                    // above the composer).
+                    items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
+                        val isMine = comment.senderOdinId == null ||
+                            (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+                        CommentRow(
+                            comment = comment,
+                            isMine = isMine,
+                            isEditing = uiState.editingCommentId == comment.id,
+                            editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+                            isSaving = uiState.isSavingCommentEdit,
+                            isDeleting = uiState.deletingCommentIds.contains(comment.id),
+                            quickReactions = uiState.userDefaultReactions,
+                            onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+                            onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+                            onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+                            onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                            onDeleteClick = {
+                                onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
+                            },
+                            onToggleReaction = { emoji ->
+                                onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+            if (commentsEnabled) {
+                Surface(tonalElevation = 3.dp) {
+                    AddCommentRow(
+                        draft = uiState.commentDraft,
+                        isPosting = uiState.isPostingComment,
+                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                        onSend = { onAction(MomentDetailUiAction.PostComment) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Reactions chips + quick-add picker, plus a link to the existing
+ *  reactor-roster sheet (which loads avatars from the server). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiSheet(
+    uiState: MomentDetailUiState,
+    moment: MomentFeedItem,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             ReactionsRow(
                 summary = moment.reactionPreview,
                 quickReactions = uiState.userDefaultReactions,
@@ -763,89 +1026,8 @@ private fun MomentDetailContent(
                 onShowReactors = {
                     onAction(MomentDetailUiAction.OpenReactionsSheet)
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
-        }
-
-        item {
-            DescriptionSection(
-                description = moment.description,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-
-        item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-
-        item {
-            MetadataSection(
-                capturedAtMs = moment.userDateMs,
-                sharedWith = uiState.sharedWith,
-                sharedWithExpanded = uiState.sharedWithExpanded,
-                onToggleSharedWith = { expanded ->
-                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(expanded))
-                },
-                isMine = uiState.isMine,
-                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
-                recipientDeliveries = uiState.recipientDeliveries,
-                recipientAvatars = uiState.recipientAvatars,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-
-        // Comments — live stream from MomentCommentsService via the VM. The
-        // author may have disabled commenting at post time; hide the whole
-        // section (header, list, empty state) in that case. The composer
-        // lives in the Scaffold's bottomBar and is hidden by the same flag
-        // up there.
-        if (moment.commentsEnabled) {
-            item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                CommentsHeader(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-            if (uiState.comments.isEmpty()) {
-                item {
-                    CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                }
-            } else {
-                // Service emits newest-first; reverse for chat-style chronological
-                // ordering (oldest at top, newest just above the input).
-                items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                    val isMine = comment.senderOdinId == null ||
-                        (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
-                    CommentRow(
-                        comment = comment,
-                        isMine = isMine,
-                        isEditing = uiState.editingCommentId == comment.id,
-                        editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
-                        isSaving = uiState.isSavingCommentEdit,
-                        isDeleting = uiState.deletingCommentIds.contains(comment.id),
-                        quickReactions = uiState.userDefaultReactions,
-                        onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
-                        onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
-                        onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
-                        onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
-                        onDeleteClick = {
-                            onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
-                        },
-                        onToggleReaction = { emoji ->
-                            onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-            }
         }
     }
 }

@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,8 +30,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -218,9 +223,48 @@ fun MomentInlineVideoTile(
                     payload = payload,
                 )
             }
+            val haptic = LocalHapticFeedback.current
             VideoPlayerSurface(
                 data = fullScreenData,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Long-press on a playing tile pauses it. Native controls
+                    // are universally disabled below, so this is the only
+                    // manual pause path (autoplay otherwise pauses on
+                    // scroll-off).
+                    //
+                    // We deliberately do NOT use `detectTapGestures` here:
+                    // `detectTapGestures` consumes the up event for every
+                    // gesture it observes (even with only `onLongPress`
+                    // registered), which would block the card-level
+                    // multi-tap detector in MomentsScreen from seeing the
+                    // single/double/triple taps that drive open-detail and
+                    // heart/flame reactions on the playing tile.
+                    //
+                    // Using the lower-level `awaitLongPressOrCancellation`
+                    // observes events without consuming them — short taps,
+                    // double-taps and triple-taps fall straight through to
+                    // the parent. We only consume *after* a real long-press
+                    // has fired (the long-press change + every subsequent
+                    // event until release), so the parent doesn't also
+                    // register a tap when the user lifts their finger.
+                    .pointerInput(onPlayTap, haptic) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val longPressed = awaitLongPressOrCancellation(down.id)
+                                ?: return@awaitEachGesture
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onPlayTap()
+                            longPressed.consume()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: break
+                                change.consume()
+                                if (!change.pressed) break
+                            }
+                        }
+                    },
                 muted = isMuted,
                 // Native controls (Android PlayerView / iOS AVPlayerViewController)
                 // intercept every touch on the surface:

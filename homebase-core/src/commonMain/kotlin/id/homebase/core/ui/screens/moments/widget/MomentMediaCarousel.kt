@@ -38,14 +38,26 @@ private val DotSize = 6.dp
 private val DotSpacing = 4.dp
 
 /**
+ * Standardised portrait aspect for multi-payload moment carousels. Mirrors
+ * Instagram's "portrait" carousel post (1080×1350 = 4:5). All pages crop to
+ * fill this shape, so a landscape first item no longer forces every
+ * subsequent portrait item into a short wide letterbox.
+ */
+private const val CarouselAspectRatio = 4f / 5f
+
+/**
  * Instagram-style horizontal swipe carousel for moments whose payload set has
  * more than one media item. Used by [MomentMediaGallery] in the feed when
  * `payloads.size > 1`. Single-payload moments keep the existing aspect-fitted
  * single-cell rendering (see `SingleImageLayout` / `MomentInlineVideoTile`).
  *
- * Aspect ratio: locked to the first payload's thumbnail ratio (falls back to
- * 1:1 when no metadata is available). Mirrors Instagram — every page in a
- * carousel post shares the first item's aspect; later items crop to fit.
+ * Aspect ratio: every carousel renders into a standardised [CarouselAspectRatio]
+ * (4:5 portrait), and each page crops to fill that box. We deliberately do NOT
+ * lock to the first payload's natural ratio — that produced very short rows
+ * for landscape-first moments and crushed subsequent portrait items into the
+ * same short letterbox. The trade-off: a landscape image in a portrait
+ * carousel loses its side margins; for users who care, they can post a
+ * single-payload moment which keeps its natural aspect via [SingleImageLayout].
  *
  * Videos: the page renders [MomentInlineVideoTile] in place, so the user can
  * play any video without leaving the feed. Only one video plays at a time per
@@ -82,7 +94,11 @@ fun MomentMediaCarousel(
     if (payloads.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = { payloads.size })
-    val aspect = aspectRatioFor(payloads[0]) ?: 1f
+    // Standardised portrait container — see [CarouselAspectRatio] for the
+    // rationale. Sweeping aspectRatioFor(payloads[0]) here would let a
+    // landscape first item determine every page's frame, which crushed
+    // portrait items in the rest of the carousel.
+    val aspect = CarouselAspectRatio
 
     // Only one tile in the carousel can be in the playing state at a time.
     // Keyed by payload key — cleared when the user swipes to a different page
