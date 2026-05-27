@@ -48,8 +48,35 @@ kotlin {
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        browser()
+        browser {
+            // Wire ffmpeg.wasm into the Karma test browser so `FfmpegDecoderCommonTest` can
+            // exercise the real ffmpeg fallback (not a mock). odin-ffmpeg.js boots the worker
+            // and sets `globalThis.__odinFfmpeg`; karma.config.d/01-ffmpeg.js loads it before
+            // tests run.
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
         binaries.executable()
+    }
+
+    // Mirror webApp's ffmpeg.wasm runtime assets (odin-ffmpeg.js, ffmpeg-wrapper.js,
+    // mp4box.all.min.js, plus the ~22 MB ffmpeg-core.wasm + esm loader) into the wasmJsTest
+    // resources directory so Karma can serve them at `/base/...`. Source-of-truth lives in
+    // webApp; this task keeps the test target's copy in sync without checking in duplicate
+    // binaries.
+    val mirrorWebAppFfmpegAssetsForTest by tasks.registering(Copy::class) {
+        val webAppRes = rootProject.projectDir.resolve("webApp/src/wasmJsMain/resources")
+        from(webAppRes.resolve("odin-ffmpeg.js"))
+        from(webAppRes.resolve("ffmpeg-wrapper.js"))
+        from(webAppRes.resolve("mp4box.all.min.js"))
+        from(webAppRes.resolve("ffmpeg-wasm")) { into("ffmpeg-wasm") }
+        into(layout.projectDirectory.dir("src/wasmJsTest/resources"))
+    }
+    tasks.matching { it.name == "wasmJsTestProcessResources" }.configureEach {
+        dependsOn(mirrorWebAppFfmpegAssetsForTest)
     }
 
     // For iOS targets, this is also where you should
@@ -67,6 +94,30 @@ kotlin {
             baseName = "homebase-api"
             isStatic = true
         }
+
+        // Cinterop the bundled FFmpegKit xcframework into the iOS *test* compilation only so
+        // FfmpegDecoderCommonTest can stand up a real FFmpegKitBridge implementation (see
+        // src/nativeTest/.../TestFFmpegKitBridge.kt) instead of stubbing the iOS leg green.
+        // The xcframework is checked in under homebase-api/libs/ — the same artifact iosApp's
+        // pbxproj already references — so this is purely a test-link concern and doesn't
+        // touch the production framework export above.
+        val frameworkSlice = when (iosTarget.name) {
+            "iosArm64" -> "ios-arm64"
+            "iosSimulatorArm64" -> "ios-arm64_x86_64-simulator"
+            else -> error("Unexpected iOS target: ${iosTarget.name}")
+        }
+        val ffmpegKitFrameworkDir =
+            project.projectDir.resolve("libs/ffmpegkit-bundled.xcframework/ffmpegkit.xcframework/$frameworkSlice").absolutePath
+
+        iosTarget.compilations.getByName("test").cinterops.create("ffmpegkit") {
+            defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
+            compilerOpts("-F$ffmpegKitFrameworkDir")
+        }
+        iosTarget.binaries.getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
+            .linkerOpts(
+                "-F$ffmpegKitFrameworkDir",
+                "-framework", "ffmpegkit",
+            )
     }
 
     compilerOptions {
@@ -114,6 +165,17 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
         }
+
+        // Tests that use blocking coroutine APIs (runBlocking et al.) — JVM + native only;
+        // wasmJs's kotlinx-coroutines has no blocking variants. Keeps the wasmJs test target
+        // compilable for the cross-platform FfmpegDecoderCommonTest without losing JVM/iOS
+        // coverage of these tests.
+        val jvmAndNativeTest by creating { dependsOn(commonTest.get()) }
+        jvmTest.get().dependsOn(jvmAndNativeTest)
+        nativeTest.get().dependsOn(jvmAndNativeTest)
+        // The androidHostTest source set also inherits commonTest by default; mirror the
+        // dependency on jvmAndNativeTest so blocking-coroutine tests show up there too.
+        getByName("androidHostTest").dependsOn(jvmAndNativeTest)
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
