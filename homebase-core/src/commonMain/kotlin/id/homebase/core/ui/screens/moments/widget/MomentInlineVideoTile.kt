@@ -47,7 +47,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.moment_video_mute
-import id.homebase.resources.moment_video_pause
 import id.homebase.resources.moment_video_unmute
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -232,22 +231,11 @@ fun MomentInlineVideoTile(
 
         // Layer 3: state-specific overlays.
         if (isPlaying) {
-            if (isButtonOnly) {
-                // Centred pause button — the only clickable element on the
-                // playing surface, so horizontal drags fall straight through
-                // to the parent pager.
-                IconButton(
-                    onClick = onPlayTap,
-                    modifier = Modifier.align(Alignment.Center).size(56.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = stringResource(MR.string.moment_video_pause),
-                        modifier = Modifier.size(48.dp),
-                        tint = Color.White.copy(alpha = 0.85f),
-                    )
-                }
-            }
+            // No centred play/pause overlay while playing — autoplay's
+            // raison d'être is "the video just plays." When autoplay
+            // disengages (scroll-off, or the user lands on a non-active
+            // card via swipe), isPlaying flips false and the idle branch
+            // below renders the PlayCircle as a "tap to resume" affordance.
             val muteLabel = stringResource(
                 if (isMuted) MR.string.moment_video_unmute else MR.string.moment_video_mute,
             )
@@ -255,7 +243,11 @@ fun MomentInlineVideoTile(
                 onClick = onToggleMute,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(8.dp)
+                    // Sit below the card's TopEnd date pill (which is rendered
+                    // by MomentPostCard's outer Box). Without this extra
+                    // vertical offset the two top-right elements stack on
+                    // top of each other.
+                    .padding(top = 48.dp, end = 8.dp)
                     .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50)),
             ) {
                 Icon(
