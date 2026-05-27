@@ -21,6 +21,7 @@ import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.IOSGalleryLibraryObserver
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
+import id.homebase.core.image.HeicDecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PHAssetFetcher
@@ -62,6 +63,7 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                     add(PlatformFileFetcher.Factory())
+                    add(HeicDecoder.Factory())
                 }
                 .diskCache(null)
                 .build()
