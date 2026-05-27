@@ -25,11 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -50,9 +48,6 @@ fun VaultZoomableImage(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
-    val imageLoader: HomebaseImageLoader = koinInject()
-    val fileOperationsProvider: FileOperationsProvider = koinInject()
-
     val localImage by localAttachmentStore.observe(file.uniqueId, descriptor.key)
         .collectAsStateWithLifecycle(
             initialValue = localAttachmentStore.get(file.uniqueId, descriptor.key),
@@ -69,48 +64,44 @@ fun VaultZoomableImage(
         PendingOverlay(onTap = onToggleUI)
     } else if (localFilePath != null) {
         val source = remember(localFilePath) {
-            SubSamplingImageSource.LocalFile(
-                filePath = localFilePath,
-                readFileBytes = fileOperationsProvider::readFileBytes,
-            )
+            SubSamplingImageSource.LocalFile(filePath = localFilePath)
         }
         ZoomableSubSamplingImage(
             source = source,
             modifier = Modifier.fillMaxSize(),
             contentDescription = file.label?.ifBlank { null } ?: file.fileName,
-            previewThumbnail = previewThumbnail,
             onTap = onToggleUI,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
             sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
         )
     } else {
-        val remoteSource = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
-            val payloadIv = descriptor.iv?.let {
-                try {
-                    Base64.decode(it)
-                } catch (_: Exception) {
-                    null
-                }
-            } ?: return@remember null
-            val imageData = HomebaseImageData(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                payloadKey = descriptor.key,
-                previewThumbnail = previewThumbnail,
-                loadFullPayload = true,
-                lastModified = descriptor.lastModified,
-                isEncrypted = file.isEncrypted,
-                keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
-            )
-            SubSamplingImageSource.Remote(imageData, imageLoader)
-        }
+        val remoteSource =
+            remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
+                val payloadIv = descriptor.iv?.let {
+                    try {
+                        Base64.decode(it)
+                    } catch (_: Exception) {
+                        null
+                    }
+                } ?: return@remember null
+                val imageData = HomebaseImageData(
+                    driveId = file.driveId,
+                    fileId = file.fileId,
+                    payloadKey = descriptor.key,
+                    previewThumbnail = previewThumbnail,
+                    loadFullPayload = true,
+                    lastModified = descriptor.lastModified,
+                    isEncrypted = file.isEncrypted,
+                    keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
+                )
+                SubSamplingImageSource.Remote(imageData)
+            }
         if (remoteSource != null) {
             ZoomableSubSamplingImage(
                 source = remoteSource,
                 modifier = Modifier.fillMaxSize(),
                 contentDescription = file.label?.ifBlank { null } ?: file.fileName,
-                previewThumbnail = previewThumbnail,
                 onTap = onToggleUI,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,

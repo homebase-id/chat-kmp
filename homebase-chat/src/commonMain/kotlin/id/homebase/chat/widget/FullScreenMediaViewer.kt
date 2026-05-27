@@ -56,7 +56,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.media.MediaPager
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
@@ -118,14 +117,11 @@ fun FullScreenMediaViewer(
             pageCount = data.payloads.size,
             modifier = Modifier.fillMaxSize(),
             state = pagerState,
-            swipeToDismiss = true,
-            onDismiss = onDismiss,
         ) { page ->
             val payload = data.payloads[page]
             val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
 
             payloadIv?.let { iv ->
-                val imageLoader: HomebaseImageLoader = koinInject()
                 val source = remember(data.driveId, data.fileId, payload.key, iv) {
                     val imageData = HomebaseImageData(
                         driveId = data.driveId,
@@ -139,12 +135,11 @@ fun FullScreenMediaViewer(
                             aesKey = data.keyHeader.aesKey,
                         ),
                     )
-                    SubSamplingImageSource.Remote(imageData, imageLoader)
+                    SubSamplingImageSource.Remote(imageData)
                 }
                 ZoomableSubSamplingImage(
                     source = source,
                     contentDescription = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     onTap = { showUI = !showUI },
                     sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                     animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,

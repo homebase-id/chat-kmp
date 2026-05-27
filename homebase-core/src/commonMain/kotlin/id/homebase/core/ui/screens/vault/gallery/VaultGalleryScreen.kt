@@ -172,9 +172,6 @@ fun VaultGalleryScreen(
                 MediaPager(
                     pageCount = pages.size,
                     state = pagerState,
-                    swipeToDismiss = true,
-                    swipeToDismissEnabled = scaffoldState.bottomSheetState.currentValue != SheetValue.Expanded,
-                    onDismiss = onDismiss,
                 ) { page ->
                     if (pages.isEmpty()) return@MediaPager
                     val descriptor = pages[page]
