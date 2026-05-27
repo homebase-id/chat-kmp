@@ -56,10 +56,12 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.media.MediaPager
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
-import id.homebase.core.media.ZoomableContainer
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
@@ -68,6 +70,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.share
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -121,33 +124,31 @@ fun FullScreenMediaViewer(
             val payload = data.payloads[page]
             val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
 
-            ZoomableContainer(
-                onTap = { showUI = !showUI },
-            ) {
-                payloadIv?.let { iv ->
-                    val imageData = remember(data.driveId, data.fileId, payload.key, iv) {
-                        HomebaseImageData(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            payloadKey = payload.key,
-                            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                            loadFullPayload = true,
-                            lastModified = payload.lastModified,
-                            keyHeader = KeyHeader(
-                                iv = iv,
-                                aesKey = data.keyHeader.aesKey
-                            )
-                        )
-                    }
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        contentDescription = payload.descriptorContent,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
-                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
+            payloadIv?.let { iv ->
+                val imageLoader: HomebaseImageLoader = koinInject()
+                val source = remember(data.driveId, data.fileId, payload.key, iv) {
+                    val imageData = HomebaseImageData(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                        loadFullPayload = true,
+                        lastModified = payload.lastModified,
+                        keyHeader = KeyHeader(
+                            iv = iv,
+                            aesKey = data.keyHeader.aesKey,
+                        ),
                     )
+                    SubSamplingImageSource.Remote(imageData, imageLoader)
                 }
+                ZoomableSubSamplingImage(
+                    source = source,
+                    contentDescription = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                    onTap = { showUI = !showUI },
+                    sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
+                    animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                )
             }
         }
 
