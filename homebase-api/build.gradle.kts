@@ -106,30 +106,49 @@ kotlin {
     // the production framework export above. We only wire iosSimulatorArm64: we never run
     // device-target tests (no `iosArm64Test` job exists), so configuring cinterop + linker
     // for iosArm64's test binary would be dead-weight that confuses the next reader.
-    val ffmpegKitFrameworkDir = project.projectDir
-        .resolve("libs/ffmpegkit-bundled.xcframework/ffmpegkit.xcframework/ios-arm64_x86_64-simulator")
-        .absolutePath
+    // ffmpegkit-bundled.xcframework ships ffmpegkit + seven sibling FFmpeg libraries
+    // (libav*, libsw*). Each is a separate .xcframework; ffmpegkit.framework's binary has
+    // `@rpath/libavdevice.framework/libavdevice` (etc.) baked in, so the test binary needs
+    // *every* sibling's simulator-slice directory on its rpath at runtime. Production iOS
+    // gets these from iosApp's pbxproj "Embed Frameworks" step.
+    val ffmpegKitBundleRoot = project.projectDir
+        .resolve("libs/ffmpegkit-bundled.xcframework")
+    val ffmpegKitSimulatorFrameworkDirs = listOf(
+        "ffmpegkit",
+        "libavcodec",
+        "libavdevice",
+        "libavfilter",
+        "libavformat",
+        "libavutil",
+        "libswresample",
+        "libswscale",
+    ).map { name ->
+        ffmpegKitBundleRoot.resolve("$name.xcframework/ios-arm64_x86_64-simulator").absolutePath
+    }
+    val ffmpegKitFrameworkDir = ffmpegKitSimulatorFrameworkDirs.first()  // ffmpegkit slice
+
     iosSimulatorArm64().compilations.getByName("test").cinterops.create("ffmpegkit") {
         defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
         compilerOpts("-F$ffmpegKitFrameworkDir")
     }
+    // dyld needs a search path at runtime as well; the test binary is started outside
+    // iosApp's `Embed Frameworks` step, so without explicit rpath dyld can't locate
+    // ffmpegkit.framework OR its bundled FFmpeg-lib siblings. Baking the absolute paths is
+    // OK because the test binary only runs in the build environment and never ships.
+    //
+    // Production iOS app links libsqlite3 via iosApp's Xcode project — for the gradle
+    // test binary we have to wire it in explicitly so SQLDelight's sqliter cinterop has its
+    // underlying symbols at link time. Previously unnoticed because iosSimulatorArm64Test
+    // was never run in CI (test.yml has been disabled).
+    val testBinaryLinkerOpts = buildList {
+        add("-F$ffmpegKitFrameworkDir")
+        add("-framework"); add("ffmpegkit")
+        ffmpegKitSimulatorFrameworkDirs.forEach { add("-rpath"); add(it) }
+        add("-lsqlite3")
+    }
     iosSimulatorArm64().binaries
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
-        .linkerOpts(
-            "-F$ffmpegKitFrameworkDir",
-            "-framework", "ffmpegkit",
-            // dyld needs a search path at runtime as well; the test binary is started
-            // outside iosApp's `Embed Frameworks` step, so without explicit rpath dyld
-            // can't locate the dynamic ffmpegkit.framework. Baking the absolute path is
-            // OK because the test binary only runs in the build environment and never
-            // ships to a device or to users.
-            "-rpath", ffmpegKitFrameworkDir,
-            // Production iOS app links libsqlite3 via iosApp's Xcode project — for the
-            // gradle test binary we have to wire it in explicitly so SQLDelight's sqliter
-            // cinterop has its underlying symbols at link time. Previously unnoticed because
-            // iosSimulatorArm64Test was never run in CI (test.yml has been disabled).
-            "-lsqlite3",
-        )
+        .linkerOpts(testBinaryLinkerOpts)
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
