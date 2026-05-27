@@ -692,14 +692,41 @@ private fun MomentDetailContent(
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
+
+    // Share the mute toggle with the feed via the app-session singleton so a
+    // single tap persists across nav-in / nav-out of the detail screen.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
+
+    // Feed → detail playback handoff. If the user tapped a video that was
+    // autoplaying in the feed, MomentsVideoSession will hold the captured
+    // position for one of this moment's payloads. We use that to (a) open
+    // the pager on the matching payload's page and (b) seed
+    // `playingPayloadKey` so the detail comes up already playing — instead
+    // of the default "paused, waiting for the user to hit play."
+    //
+    // The actual seek to the saved position is handled inside
+    // `MomentInlineVideoTile`, which reads from the same session. Here we
+    // only decide which page lands and whether it auto-starts.
+    val handoffPayloadKey = remember(moment.id, moment.fileId) {
+        moment.payloads
+            .firstOrNull { p ->
+                videoSession.readPlaybackPosition(moment.fileId, p.key) != null
+            }
+            ?.key
+    }
+
     // Read once per (moment.id, initialPayloadKey) — `rememberPagerState`'s
     // `initialPage` only fires on first composition, so subsequent re-emissions
     // of the same moment (e.g. a description-edit replay) won't snap the user
-    // back to the seeded page.
-    val initialPage = remember(moment.id, initialPayloadKey) {
-        if (initialPayloadKey == null) 0
+    // back to the seeded page. Explicit `initialPayloadKey` (e.g. from a
+    // share/deeplink) wins over a handoff; otherwise the handoff page is
+    // preferred over page 0.
+    val initialPage = remember(moment.id, initialPayloadKey, handoffPayloadKey) {
+        val seedKey = initialPayloadKey ?: handoffPayloadKey
+        if (seedKey == null) 0
         else moment.payloads
-            .indexOfFirst { it.key == initialPayloadKey }
+            .indexOfFirst { it.key == seedKey }
             .coerceAtLeast(0)
     }
     val pagerState = rememberPagerState(
@@ -709,17 +736,14 @@ private fun MomentDetailContent(
 
     val commentCount = uiState.comments.size
 
-    // Share the mute toggle with the feed via the app-session singleton so a
-    // single tap persists across nav-in / nav-out of the detail screen.
-    val videoSession = koinInject<MomentsVideoSession>()
-    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
-
     // Per-detail-screen video play state. Unlike the feed's autoplay flow
     // there is no scroll-away to pause; the user picks play / pause via the
     // tile's centred IconButton ([MomentInlineVideoTile.showPauseAffordance]).
     // Cleared on page-change so swiping doesn't leave a video running on a
-    // page that's no longer visible.
-    var playingPayloadKey by remember(moment.id) { mutableStateOf<String?>(null) }
+    // page that's no longer visible. Seeded with the feed-handoff payload key
+    // (if any) so a tap-into-detail picks up playing at the same timestamp
+    // the feed was at.
+    var playingPayloadKey by remember(moment.id) { mutableStateOf(handoffPayloadKey) }
     LaunchedEffect(pagerState, moment.id) {
         snapshotFlow { pagerState.currentPage }.collect { _ ->
             playingPayloadKey = null

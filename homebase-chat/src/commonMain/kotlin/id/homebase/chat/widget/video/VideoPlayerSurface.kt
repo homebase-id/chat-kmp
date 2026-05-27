@@ -30,4 +30,20 @@ expect fun VideoPlayerSurface(
      * flag is a no-op there; the iOS actual is the primary consumer.
      */
     useInlineOptimizations: Boolean = false,
+    /**
+     * Initial playback position the underlying player should seek to after
+     * `prepare()`. Used for the feed→detail (and detail→feed) handoff so the
+     * second screen picks up where the first left off. Pass `0L` (the
+     * default) for "start at the beginning."
+     */
+    startPositionMs: Long = 0L,
+    /**
+     * Invoked periodically with the current playback position while the
+     * video is playing. Callers are expected to throttle their own writes
+     * downstream — the actual fires no more frequently than ~once per
+     * 500 ms. Used by the inline tile to push the latest position into
+     * [id.homebase.core.moments.services.MomentsVideoSession] so the
+     * handoff is fresh whenever the user navigates away.
+     */
+    onPositionUpdate: (Long) -> Unit = {},
 )

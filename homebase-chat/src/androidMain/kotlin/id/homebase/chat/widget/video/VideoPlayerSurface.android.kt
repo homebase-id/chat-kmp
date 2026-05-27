@@ -45,6 +45,7 @@ import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -82,6 +83,8 @@ actual fun VideoPlayerSurface(
     muted: Boolean,
     useNativeControls: Boolean,
     @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
+    startPositionMs: Long,
+    onPositionUpdate: (Long) -> Unit,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -111,6 +114,21 @@ actual fun VideoPlayerSurface(
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
+        }
+    }
+
+    // Pump the current playback position back out to the caller every
+    // ~500 ms while the player is playing. Used by the moments inline tile
+    // to keep MomentsVideoSession's handoff slot fresh, so a tap-to-detail
+    // hop picks up at the same timestamp. Stops automatically when the
+    // player is null (composable disposing) or when the effect's data key
+    // changes (different payload).
+    LaunchedEffect(exoPlayer) {
+        val player = exoPlayer ?: return@LaunchedEffect
+        while (true) {
+            val pos = player.currentPosition
+            if (pos > 0L) onPositionUpdate(pos)
+            delay(500)
         }
     }
 
@@ -206,6 +224,11 @@ actual fun VideoPlayerSurface(
                                     player.removeListener(this)
                                 }
                             })
+                            // Seek BEFORE prepare so ExoPlayer buffers from
+                            // the target position instead of re-buffering
+                            // after a post-prepare seek. Used by the moments
+                            // feed↔detail playback handoff.
+                            if (startPositionMs > 0) player.seekTo(startPositionMs)
                             player.prepare()
                             state = VpsState.Active
                         }
@@ -246,6 +269,7 @@ actual fun VideoPlayerSurface(
                                     player.removeListener(this)
                                 }
                             })
+                            if (startPositionMs > 0) player.seekTo(startPositionMs)
                             player.prepare()
                             state = VpsState.Active
                         }
@@ -306,6 +330,29 @@ actual fun VideoPlayerSurface(
                                 } else {
                                     AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                 }
+                                // Force the underlying TextureView to be
+                                // non-opaque. By default TextureView reports
+                                // itself as opaque (`isOpaque = true`), which
+                                // tells the view-hierarchy compositor it can
+                                // skip drawing siblings beneath it. But its
+                                // own pixel buffer is *transparent* until the
+                                // first decoded frame arrives — so for the
+                                // ~50–150 ms window between PlayerView mount
+                                // and onRenderedFirstFrame, Android composites
+                                // transparent pixels against the window
+                                // background instead of the thumbnail we
+                                // carefully drew behind. That's the
+                                // light-coloured "background coming through"
+                                // blip visible when autoplay engages mid-swipe
+                                // in the carousel. Setting isOpaque=false
+                                // makes the compositor blend the texture with
+                                // the thumbnail (which is what we want), so
+                                // the pre-first-frame window is invisible.
+                                // PlayerView creates this view at inflate via
+                                // surface_type=texture_view; getVideoSurfaceView()
+                                // is the canonical accessor.
+                                (videoSurfaceView as? android.view.TextureView)
+                                    ?.isOpaque = false
                                 playerView = this
                             }
                     },

@@ -47,6 +47,8 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.moments.services.MomentsVideoSession
+import org.koin.compose.koinInject
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
@@ -152,6 +154,21 @@ fun MomentInlineVideoTile(
     }
 
     val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
+
+    // Feed↔detail playback handoff. The session holds at most one entry — the
+    // most recently-playing inline video — keyed by (fileId, payloadKey).
+    //
+    // - On compose, snapshot any matching position into `startPositionMs`.
+    //   `remember(fileId, payload.key)` makes this a one-shot read per mount:
+    //   we don't want to keep snapping the player back as the user actually
+    //   plays past the saved position.
+    // - While playing, push current position back into the session every
+    //   ~500 ms via `onPositionUpdate`, so the next mount (feed→detail or
+    //   detail→feed) finds a fresh handoff.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val startPositionMs = remember(fileId, payload.key) {
+        videoSession.readPlaybackPosition(fileId, payload.key) ?: 0L
+    }
 
     var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
     var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
@@ -298,6 +315,10 @@ fun MomentInlineVideoTile(
                 // existing path. Flip this off if a regression shows up only
                 // on inline tiles.
                 useInlineOptimizations = true,
+                startPositionMs = startPositionMs,
+                onPositionUpdate = { ms ->
+                    videoSession.savePlaybackPosition(fileId, payload.key, ms)
+                },
             )
         }
 

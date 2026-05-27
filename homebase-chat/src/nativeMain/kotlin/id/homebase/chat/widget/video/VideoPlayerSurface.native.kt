@@ -72,6 +72,7 @@ import platform.AVFoundation.rate
 import platform.AVFoundation.reasonForWaitingToPlay
 import platform.AVFoundation.removeTimeObserver
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
+import platform.AVFoundation.seekToTime
 import platform.AVFoundation.setMuted
 import platform.AVFoundation.statusOfValueForKey
 import platform.AVFoundation.timeControlStatus
@@ -118,6 +119,8 @@ actual fun VideoPlayerSurface(
     muted: Boolean,
     useNativeControls: Boolean,
     useInlineOptimizations: Boolean,
+    startPositionMs: Long,
+    onPositionUpdate: (Long) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -152,6 +155,21 @@ actual fun VideoPlayerSurface(
             }
             notificationObservers.clear()
             tempDir?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+        }
+    }
+
+    // Pump the current playback position back to the caller every ~500 ms so
+    // the moments inline tile can keep MomentsVideoSession's handoff slot
+    // fresh. Mirrors the Android side. Off-thread isn't required —
+    // `player.currentTime()` is cheap and main-safe.
+    LaunchedEffect(state) {
+        val player = (state as? VpsState.Playing)?.player ?: return@LaunchedEffect
+        while (true) {
+            val seconds = CMTimeGetSeconds(player.currentTime())
+            if (seconds.isFinite() && seconds > 0.0) {
+                onPositionUpdate((seconds * 1000.0).toLong())
+            }
+            kotlinx.coroutines.delay(500)
         }
     }
 
@@ -247,6 +265,13 @@ actual fun VideoPlayerSurface(
                         if (useInlineOptimizations) {
                             awaitReadyToPlay(playerItem)
                         }
+                        // Resume from the moments feed↔detail handoff
+                        // position. AVPlayer queues seek if the asset isn't
+                        // fully ready, so this is safe to call regardless of
+                        // the readyToPlay gate above.
+                        if (startPositionMs > 0L) {
+                            player.seekToTime(CMTimeMakeWithSeconds(startPositionMs / 1000.0, 600))
+                        }
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
@@ -283,6 +308,9 @@ actual fun VideoPlayerSurface(
                             // AVPlayerViewController so the spinner
                             // smoothly hands over to the first frame.
                             player.currentItem?.let { awaitReadyToPlay(it) }
+                        }
+                        if (startPositionMs > 0L) {
+                            player.seekToTime(CMTimeMakeWithSeconds(startPositionMs / 1000.0, 600))
                         }
                         state = VpsState.Playing(
                             player = player,
