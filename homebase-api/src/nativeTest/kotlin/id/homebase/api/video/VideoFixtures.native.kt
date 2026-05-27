@@ -12,6 +12,7 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.create
 import platform.Foundation.writeToFile
 
 /**
@@ -31,11 +32,12 @@ internal actual suspend fun stageSampleVideoForFfmpegTest(): String? {
     val path = "$cacheDir/vidfixture_${NSUUID.UUID().UUIDString}.mp4"
 
     val bytes = SampleVideoFixture.bytes
-    memScoped {
+    val written = memScoped {
         val buffer = allocArrayOf(bytes)
-        val data = NSData.dataWithBytes(bytes = buffer, length = bytes.size.toULong())
-        if (!data.writeToFile(path, true)) return null
+        val data = NSData.create(bytes = buffer, length = bytes.size.toULong()) ?: return@memScoped false
+        data.writeToFile(path, true)
     }
+    if (!written) return null
     return path
 }
 

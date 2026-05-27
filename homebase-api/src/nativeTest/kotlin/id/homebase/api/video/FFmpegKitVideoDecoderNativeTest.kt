@@ -20,6 +20,8 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.create
+import platform.Foundation.writeToFile
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -136,12 +138,7 @@ class FFmpegKitVideoDecoderNativeTest {
         val cacheDir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
             .firstOrNull() as? String ?: NSTemporaryDirectory()
         val path = "$cacheDir/ffmpegkit_test_${NSUUID.UUID().UUIDString}.mp4"
-        val bytes = SampleVideoFixture.bytes
-        memScoped {
-            val buffer = allocArrayOf(bytes)
-            val data = NSData.dataWithBytes(buffer, bytes.size.toULong())
-            check(data.writeToFile(path, true)) { "could not stage fixture at $path" }
-        }
+        writeBytesToPath(SampleVideoFixture.bytes, path)
         return path
     }
 
@@ -155,10 +152,15 @@ class FFmpegKitVideoDecoderNativeTest {
             this[0] = 0xFF.toByte()
             this[1] = 0xD8.toByte()
         }
+        writeBytesToPath(bytes, path)
+    }
+
+    private fun writeBytesToPath(bytes: ByteArray, path: String) {
         memScoped {
             val buffer = allocArrayOf(bytes)
-            val data = NSData.dataWithBytes(buffer, bytes.size.toULong())
-            check(data.writeToFile(path, true)) { "could not write fake JPEG at $path" }
+            val data = NSData.create(bytes = buffer, length = bytes.size.toULong())
+                ?: error("could not allocate NSData for $path")
+            check(data.writeToFile(path, true)) { "could not write bytes to $path" }
         }
     }
 }
