@@ -70,6 +70,6 @@ class TileManager(
     fun close() {
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
-        decoder.close()
+        try { decoder.close() } catch (_: Exception) {}
     }
 }

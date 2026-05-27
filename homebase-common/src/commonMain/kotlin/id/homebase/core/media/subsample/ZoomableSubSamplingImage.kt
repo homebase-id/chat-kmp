@@ -33,6 +33,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.decodeToImageBitmap
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -48,6 +49,7 @@ fun ZoomableSubSamplingImage(
     val scope = rememberCoroutineScope()
     val zoomState = remember { ZoomState() }
     var tileManager by remember { mutableStateOf<TileManager?>(null) }
+    var fallbackState by remember { mutableStateOf<TileState?>(null) }
 
     val previewBitmap = remember(previewThumbnail) {
         previewThumbnail?.decodeBitmap()
@@ -56,6 +58,20 @@ fun ZoomableSubSamplingImage(
     LaunchedEffect(source) {
         val bytes = withContext(Dispatchers.Default) { source.loadBytes() }
             ?: return@LaunchedEffect
+
+        if (!isRegionDecodable(bytes)) {
+            val fullBitmap = withContext(Dispatchers.Default) {
+                try { bytes.decodeToImageBitmap() } catch (_: Exception) { null }
+            }
+            if (fullBitmap != null) {
+                fallbackState = TileState(
+                    baseLayer = fullBitmap,
+                    imageSize = IntSize(fullBitmap.width, fullBitmap.height),
+                )
+            }
+            return@LaunchedEffect
+        }
+
         val decoder = withContext(Dispatchers.Default) {
             try {
                 createImageRegionDecoder(bytes)
@@ -88,9 +104,9 @@ fun ZoomableSubSamplingImage(
         onDispose { tileManager?.close() }
     }
 
-    val hasLoadedTiles = currentManager != null
+    val hasLoadedImage = currentManager != null || fallbackState != null
     val blurRadius by animateFloatAsState(
-        targetValue = if (hasLoadedTiles) 0f else 10f,
+        targetValue = if (hasLoadedImage) 0f else 10f,
         animationSpec = tween(durationMillis = 300),
         label = "blur",
     )
@@ -98,7 +114,7 @@ fun ZoomableSubSamplingImage(
 
     ZoomableContainer(state = zoomState, onTap = onTap, modifier = modifier) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (previewBitmap != null && currentManager == null) {
+            if (previewBitmap != null && !hasLoadedImage) {
                 Image(
                     bitmap = previewBitmap,
                     contentDescription = contentDescription,
@@ -113,9 +129,23 @@ fun ZoomableSubSamplingImage(
                     tileState = tileState,
                     modifier = Modifier.fillMaxSize(),
                 )
+            } else if (fallbackState != null) {
+                SubSamplingImage(
+                    tileState = fallbackState!!,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }
+}
+
+private fun isRegionDecodable(bytes: ByteArray): Boolean {
+    if (bytes.size < 4) return false
+    // GIF: starts with "GIF" (0x47 0x49 0x46)
+    if (bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte()) return false
+    // SVG: starts with '<' (potentially "<?xml" or "<svg")
+    if (bytes[0] == 0x3C.toByte()) return false
+    return true
 }
 
 private fun calculateViewport(
