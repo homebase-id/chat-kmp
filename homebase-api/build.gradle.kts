@@ -118,6 +118,11 @@ kotlin {
         .linkerOpts(
             "-F$ffmpegKitFrameworkDir",
             "-framework", "ffmpegkit",
+            // Production iOS app links libsqlite3 via iosApp's Xcode project — for the
+            // gradle test binary we have to wire it in explicitly so SQLDelight's sqliter
+            // cinterop has its underlying symbols at link time. Previously unnoticed because
+            // iosSimulatorArm64Test was never run in CI (test.yml has been disabled).
+            "-lsqlite3",
         )
 
     compilerOptions {

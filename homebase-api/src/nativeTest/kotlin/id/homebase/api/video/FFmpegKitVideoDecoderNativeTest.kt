@@ -159,7 +159,6 @@ class FFmpegKitVideoDecoderNativeTest {
         memScoped {
             val buffer = allocArrayOf(bytes)
             val data = NSData.create(bytes = buffer, length = bytes.size.toULong())
-                ?: error("could not allocate NSData for $path")
             check(data.writeToFile(path, true)) { "could not write bytes to $path" }
         }
     }

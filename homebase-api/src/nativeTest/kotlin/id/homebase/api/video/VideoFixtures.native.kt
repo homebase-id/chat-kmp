@@ -34,7 +34,7 @@ internal actual suspend fun stageSampleVideoForFfmpegTest(): String? {
     val bytes = SampleVideoFixture.bytes
     val written = memScoped {
         val buffer = allocArrayOf(bytes)
-        val data = NSData.create(bytes = buffer, length = bytes.size.toULong()) ?: return@memScoped false
+        val data = NSData.create(bytes = buffer, length = bytes.size.toULong())
         data.writeToFile(path, true)
     }
     if (!written) return null
