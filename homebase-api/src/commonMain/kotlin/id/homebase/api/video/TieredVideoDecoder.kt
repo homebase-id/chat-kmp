@@ -47,8 +47,9 @@ class TieredVideoDecoder(
         val emitted = BooleanArray(frameCount)
         // Carry a caller-supplied skipMask through into our own emitted bookkeeping so a
         // chained TieredVideoDecoder (nested fallback) doesn't re-decode work already done
-        // further up. The primary itself still ignores skipMask (it's the fast path; cheaper
-        // to decode everything than branch per index), so we only use it for filtering.
+        // further up. The primary itself can ignore skipMask if it wants (today's primaries
+        // do — see their class comments), but we pass it through so the contract is "every
+        // decoder receives the same mask the runner sees."
         if (skipMask != null) {
             for (i in 0 until frameCount) {
                 if (i < skipMask.size && skipMask[i]) emitted[i] = true
@@ -57,14 +58,19 @@ class TieredVideoDecoder(
         var emittedCount = emitted.count { it }
 
         try {
-            primary.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)
-                .collect { f ->
-                    if (f.index in 0 until frameCount && !emitted[f.index]) {
-                        emitted[f.index] = true
-                        emittedCount++
-                        trySend(f)
-                    }
+            primary.extractThumbnailStrip(
+                videoPath = videoPath,
+                durationMs = durationMs,
+                frameCount = frameCount,
+                targetHeightPx = targetHeightPx,
+                skipMask = if (skipMask != null) emitted.copyOf() else null,
+            ).collect { f ->
+                if (f.index in 0 until frameCount && !emitted[f.index]) {
+                    emitted[f.index] = true
+                    emittedCount++
+                    trySend(f)
                 }
+            }
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Throwable) {

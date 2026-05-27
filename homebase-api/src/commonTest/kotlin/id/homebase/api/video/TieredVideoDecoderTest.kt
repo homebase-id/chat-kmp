@@ -144,6 +144,38 @@ class TieredVideoDecoderTest {
     }
 
     @Test
+    fun strip_passesIncomingSkipMaskToPrimaryToo() = runTest {
+        // Contract: every decoder the runner calls receives the same mask the runner is
+        // working against. Today's primaries ignore it, but propagating ensures a future
+        // skipMask-honoring primary works correctly when chained.
+        val primary = FakeDecoder(stripFrames = (1..2).map { frame(it) })
+        val fallback = FakeDecoder()
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        val incoming = booleanArrayOf(true, false, false)
+        tiered.extractThumbnailStrip("any", 3000, 3, 96, skipMask = incoming).toList()
+
+        // Primary's mask should reflect ONLY the incoming caller skip — not any primary's own
+        // emissions, since the call happens before primary runs.
+        val mask = assertNotNull(primary.lastSkipMask, "primary must receive skipMask snapshot")
+        assertEquals(listOf(true, false, false), mask.toList())
+    }
+
+    @Test
+    fun strip_doesNotPassMaskToPrimaryWhenIncomingNull() = runTest {
+        // If the caller didn't supply a mask, neither primary nor fallback should be handed
+        // an empty BooleanArray — that's wasted allocation and a subtle "is this populated?"
+        // ambiguity for honoring decoders. Null in, null to primary.
+        val primary = FakeDecoder(stripFrames = (0..2).map { frame(it) })
+        val fallback = FakeDecoder()
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        tiered.extractThumbnailStrip("any", 3000, 3, 96).toList()
+
+        assertNull(primary.lastSkipMask, "primary mask must be null when no incoming mask")
+    }
+
+    @Test
     fun strip_passesEmittedIndicesAsSkipMaskToFallback() = runTest {
         // Primary fills 0 and 2, leaves 1 missing. The fallback must see skipMask[0] and
         // skipMask[2] as true, skipMask[1] as false. That's how MmrVideoDecoder on Android
