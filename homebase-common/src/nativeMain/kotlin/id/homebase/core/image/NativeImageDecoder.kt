@@ -39,6 +39,8 @@ object NativeImageDecoder {
     private const val MAX_PIXEL_BYTES = Int.MAX_VALUE.toLong()
 
     fun decode(imageBytes: ByteArray): SkiaImage? {
+        if (imageBytes.isEmpty()) return null
+
         val nsData = imageBytes.usePinned { pinned ->
             NSData.dataWithBytes(pinned.addressOf(0), imageBytes.size.toULong())
         }
