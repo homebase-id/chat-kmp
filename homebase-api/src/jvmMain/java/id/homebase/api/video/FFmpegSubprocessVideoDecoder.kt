@@ -27,11 +27,14 @@ class FFmpegSubprocessVideoDecoder : VideoDecoder {
         }
     }
 
+    // `skipMask` is ignored: single ffmpeg invocation per call. Same reasoning as the iOS and
+    // web ffmpeg decoders — see VideoDecoder.extractThumbnailStrip KDoc.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         if (!FFmpegBinaryManager.isAvailable()) return@channelFlow

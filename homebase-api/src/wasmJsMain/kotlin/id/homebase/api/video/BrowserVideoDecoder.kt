@@ -27,11 +27,15 @@ internal class BrowserVideoDecoder : VideoDecoder {
         return Base64.decode(out)
     }
 
+    // Primary decoder — TieredVideoDecoder only populates `skipMask` for fallbacks. Even if
+    // we wanted to honor it, our JS shim seeks through all timestamps in one Promise; per-
+    // index skipping isn't a meaningful optimization.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         val bytes = readBytes(videoPath) ?: return@channelFlow

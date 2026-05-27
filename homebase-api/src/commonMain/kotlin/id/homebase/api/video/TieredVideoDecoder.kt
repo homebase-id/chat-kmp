@@ -41,10 +41,20 @@ class TieredVideoDecoder(
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         val emitted = BooleanArray(frameCount)
-        var emittedCount = 0
+        // Carry a caller-supplied skipMask through into our own emitted bookkeeping so a
+        // chained TieredVideoDecoder (nested fallback) doesn't re-decode work already done
+        // further up. The primary itself still ignores skipMask (it's the fast path; cheaper
+        // to decode everything than branch per index), so we only use it for filtering.
+        if (skipMask != null) {
+            for (i in 0 until frameCount) {
+                if (i < skipMask.size && skipMask[i]) emitted[i] = true
+            }
+        }
+        var emittedCount = emitted.count { it }
 
         try {
             primary.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)
@@ -64,12 +74,21 @@ class TieredVideoDecoder(
         if (emittedCount >= frameCount) return@channelFlow
         val fb = fallback ?: return@channelFlow
 
-        fb.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)
-            .collect { f ->
-                if (f.index in 0 until frameCount && !emitted[f.index]) {
-                    emitted[f.index] = true
-                    trySend(f)
-                }
+        // Hand the fallback a SNAPSHOT of which indices we've already produced. Decoders that
+        // can act on this (today only MmrVideoDecoder on Android — see VideoDecoder.kt KDoc)
+        // skip those decodes entirely. We copy so the fallback's iteration can't race the
+        // collect lambda's mutation of `emitted`.
+        fb.extractThumbnailStrip(
+            videoPath = videoPath,
+            durationMs = durationMs,
+            frameCount = frameCount,
+            targetHeightPx = targetHeightPx,
+            skipMask = emitted.copyOf(),
+        ).collect { f ->
+            if (f.index in 0 until frameCount && !emitted[f.index]) {
+                emitted[f.index] = true
+                trySend(f)
             }
+        }
     }
 }

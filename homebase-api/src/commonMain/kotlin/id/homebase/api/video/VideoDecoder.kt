@@ -58,11 +58,21 @@ interface VideoDecoder {
      * scrubber fills progressively. The ffmpeg.wasm backend on web resolves a single
      * Promise at end-of-run and then bulk-emits — Promise-driven, no mid-run polling
      * hook. Don't depend on every emission landing on a separate scheduler tick.
+     *
+     * @param skipMask Optional snapshot of which indices an earlier tier already produced.
+     *   When non-null, `skipMask[i] == true` means the runner already has frame `i` and the
+     *   implementation MAY skip its decode. Honoring this is an optimization, not a contract
+     *   — implementations are free to ignore the mask and decode all N (the [TieredVideoDecoder]
+     *   drops dupes either way). Only [MmrVideoDecoder] honors it today; the ffmpeg-backed
+     *   decoders run a single bulk invocation per call (one fps-filter `-frames:v N`) and
+     *   ignore the mask. Always `null` when called from the production [VideoThumbnailService]
+     *   entry point — populated only by [TieredVideoDecoder] when handing work to a fallback.
      */
     fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray? = null,
     ): Flow<IndexedFrame>
 }

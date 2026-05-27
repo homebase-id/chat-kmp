@@ -49,8 +49,9 @@ object VideoThumbnailService : VideoDecoder {
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> =
-        delegate.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)
+        delegate.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx, skipMask)
 }
 
 /** Per-platform factory: builds the [VideoDecoder] used by [VideoThumbnailService]. */

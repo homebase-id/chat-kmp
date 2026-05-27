@@ -42,6 +42,7 @@ internal class MmrVideoDecoder : VideoDecoder {
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
 
@@ -61,6 +62,11 @@ internal class MmrVideoDecoder : VideoDecoder {
             val step = durationMs.toDouble() / frameCount
             for (i in 0 until frameCount) {
                 if (!isActive) break
+                // Skip indices an earlier tier already produced — the tier-runner would drop
+                // their duplicates anyway, but each MMR `getScaledFrameAtTime` is ~10-30 ms on
+                // hardware, so honoring the mask saves the wasted decode entirely. See the
+                // KDoc on VideoDecoder.extractThumbnailStrip for why other decoders ignore it.
+                if (skipMask != null && i < skipMask.size && skipMask[i]) continue
                 val targetMs = (step * (i + 0.5)).toLong().coerceIn(0L, durationMs - 1)
                 val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     retriever.getScaledFrameAtTime(

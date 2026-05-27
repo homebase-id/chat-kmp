@@ -39,11 +39,15 @@ internal class MediaCodecVideoDecoder : VideoDecoder {
             }
         }
 
+    // Primary decoder — `skipMask` is always null in production (TieredVideoDecoder only sets
+    // it for fallbacks), so we ignore it. Even if set, branching per-index inside the codec
+    // walk would cost more than the wasted decode itself.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
 

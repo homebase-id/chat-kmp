@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -143,6 +144,55 @@ class TieredVideoDecoderTest {
     }
 
     @Test
+    fun strip_passesEmittedIndicesAsSkipMaskToFallback() = runTest {
+        // Primary fills 0 and 2, leaves 1 missing. The fallback must see skipMask[0] and
+        // skipMask[2] as true, skipMask[1] as false. That's how MmrVideoDecoder on Android
+        // avoids re-decoding indices the primary already produced.
+        val primary = FakeDecoder(stripFrames = listOf(frame(0), frame(2)))
+        val fallback = FakeDecoder(stripFrames = listOf(frame(1)))
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        tiered.extractThumbnailStrip("any", 3000, 3, 96).toList()
+
+        val mask = assertNotNull(fallback.lastSkipMask, "fallback must receive a non-null skipMask snapshot")
+        assertEquals(listOf(true, false, true), mask.toList())
+    }
+
+    @Test
+    fun strip_doesNotShareMaskInstanceWithFallback() = runTest {
+        // The mask the fallback sees must be a snapshot — if the runner kept mutating the
+        // same BooleanArray (which the collect lambda DOES, after the fallback starts), a
+        // fallback iterating its mask in parallel would observe inconsistent state.
+        val primary = FakeDecoder(stripFrames = listOf(frame(0)))
+        val fallback = FakeDecoder(stripFrames = listOf(frame(1), frame(2)))
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        tiered.extractThumbnailStrip("any", 3000, 3, 96).toList()
+
+        // After the strip completes the runner's `emitted` array would be all true. The
+        // fallback's snapshot must NOT reflect the post-fallback state.
+        val mask = assertNotNull(fallback.lastSkipMask)
+        assertEquals(listOf(true, false, false), mask.toList())
+    }
+
+    @Test
+    fun strip_carriesIncomingSkipMaskThroughToFallback() = runTest {
+        // Chained TieredVideoDecoder: an outer runner has already filled some indices and
+        // passes its own skipMask in. The inner runner must merge it with its primary's
+        // emissions when computing the fallback mask.
+        val primary = FakeDecoder(stripFrames = listOf(frame(1)))   // fills 1
+        val fallback = FakeDecoder(stripFrames = listOf(frame(2)))
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        val incoming = booleanArrayOf(true, false, false)            // caller already has 0
+        tiered.extractThumbnailStrip("any", 3000, 3, 96, skipMask = incoming).toList()
+
+        // 0 from caller, 1 from primary, 2 still missing.
+        val mask = assertNotNull(fallback.lastSkipMask)
+        assertEquals(listOf(true, true, false), mask.toList())
+    }
+
+    @Test
     fun strip_emptyFrameCount_isNoOp() = runTest {
         val primary = FakeDecoder(stripFrames = (0..2).map { frame(it) })
         val fallback = FakeDecoder(stripFrames = (0..2).map { frame(it) })
@@ -166,6 +216,8 @@ private class FakeDecoder(
 ) : VideoDecoder {
     var posterCalls = 0
     var stripCalls = 0
+    /** Snapshot of the skipMask the runner handed to this decoder on its last invocation. */
+    var lastSkipMask: BooleanArray? = null
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
         posterCalls++
@@ -178,8 +230,10 @@ private class FakeDecoder(
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> {
         stripCalls++
+        lastSkipMask = skipMask?.copyOf()
         if (stripFlow != null) return stripFlow
         return if (stripFrames.isEmpty()) emptyFlow() else flow { stripFrames.forEach { emit(it) } }
     }

@@ -48,11 +48,16 @@ class FFmpegKitVideoDecoder : VideoDecoder {
         }
     }
 
+    // `skipMask` is ignored: this decoder runs ffmpeg as a single invocation with one fps
+    // filter that emits all N frames. Skipping a specific index would mean a separate ffmpeg
+    // run per gap — way more expensive than the wasted decodes we'd avoid. See the KDoc on
+    // VideoDecoder.extractThumbnailStrip.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         val fileManager = NSFileManager.defaultManager

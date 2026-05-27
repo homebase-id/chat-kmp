@@ -33,11 +33,14 @@ class FFmpegWasmVideoDecoder : VideoDecoder {
         return out?.takeIf { it.size >= 16 }
     }
 
+    // `skipMask` is ignored: single ffmpeg.wasm invocation per call. Same reasoning as the
+    // other ffmpeg decoders — see VideoDecoder.extractThumbnailStrip KDoc.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         val bytes = readBytes(videoPath) ?: return@channelFlow

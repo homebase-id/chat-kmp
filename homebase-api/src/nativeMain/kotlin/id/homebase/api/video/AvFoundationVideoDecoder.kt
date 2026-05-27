@@ -58,11 +58,15 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         }
     }
 
+    // Primary decoder — TieredVideoDecoder only populates `skipMask` for fallbacks, so we
+    // ignore it on the iOS primary. AVAssetImageGenerator processes the whole request as one
+    // async batch; per-index skipping isn't a meaningful optimization here.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
         frameCount: Int,
         targetHeightPx: Int,
+        skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         if (!NSFileManager.defaultManager.fileExistsAtPath(videoPath)) return@channelFlow
