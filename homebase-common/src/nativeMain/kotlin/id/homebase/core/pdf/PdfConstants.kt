@@ -1,4 +1,5 @@
 package id.homebase.core.pdf
 
-// kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little → BGRA in memory
-internal val PDF_BITMAP_INFO: UInt = 2u or 8192u
+import id.homebase.core.image.CG_BGRA_PREMUL_BITMAP_INFO
+
+internal val PDF_BITMAP_INFO: UInt = CG_BGRA_PREMUL_BITMAP_INFO
