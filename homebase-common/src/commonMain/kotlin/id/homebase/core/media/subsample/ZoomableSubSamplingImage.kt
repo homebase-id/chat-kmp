@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
+import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import com.github.panpf.zoomimage.CoilZoomAsyncImage
@@ -30,6 +31,7 @@ fun ZoomableSubSamplingImage(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     sharedContentStateKey: String? = null,
 ) {
+    val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
     val generators = remember(homebaseImageLoader) {
         persistentListOf(HomebaseSubsamplingImageGenerator(homebaseImageLoader))
@@ -70,6 +72,7 @@ fun ZoomableSubSamplingImage(
     CoilZoomAsyncImage(
         model = model,
         contentDescription = contentDescription,
+        imageLoader = coilImageLoader,
         modifier = imageModifier,
         contentScale = ContentScale.Fit,
         zoomState = zoomState,

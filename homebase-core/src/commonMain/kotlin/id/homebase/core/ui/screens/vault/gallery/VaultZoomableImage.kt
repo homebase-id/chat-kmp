@@ -60,21 +60,26 @@ fun VaultZoomableImage(
 
     val isPending = descriptor.iv == null
 
-    if (isPending) {
-        PendingOverlay(onTap = onToggleUI)
-    } else if (localFilePath != null) {
+    if (localFilePath != null) {
         val source = remember(localFilePath) {
             SubSamplingImageSource.LocalFile(filePath = localFilePath)
         }
-        ZoomableSubSamplingImage(
-            source = source,
-            modifier = Modifier.fillMaxSize(),
-            contentDescription = file.label?.ifBlank { null } ?: file.fileName,
-            onTap = onToggleUI,
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-            sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            ZoomableSubSamplingImage(
+                source = source,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = file.label?.ifBlank { null } ?: file.fileName,
+                onTap = onToggleUI,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
+            )
+            if (isPending) {
+                PendingOverlay(onTap = onToggleUI)
+            }
+        }
+    } else if (isPending) {
+        PendingOverlay(onTap = onToggleUI)
     } else {
         val remoteSource =
             remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
