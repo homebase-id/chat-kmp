@@ -55,7 +55,7 @@ class FFmpegSubprocessVideoDecoder : VideoDecoder {
                 "-i", videoPath,
                 "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
                 "-frames:v", frameCount.toString(),
-                "-q:v", "5",
+                "-q:v", VideoThumbnailQuality.STRIP_FFMPEG_QSCALE.toString(),
                 File(outputDir, "f_%04d.jpg").absolutePath,
             )
 

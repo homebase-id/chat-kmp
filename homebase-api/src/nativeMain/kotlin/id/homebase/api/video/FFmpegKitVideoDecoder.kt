@@ -1,14 +1,16 @@
 package id.homebase.api.video
 
+import id.homebase.api.foundation.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
@@ -17,12 +19,16 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.NSUUID
 import platform.Foundation.dataWithContentsOfFile
-import platform.posix.memcpy
 import kotlin.math.roundToInt
 
 /**
  * FFmpegKit fallback decoder for iOS. Engaged when [AvFoundationVideoDecoder] refuses the
  * container — typically some MKV variants or legacy codecs that AVFoundation doesn't support.
+ *
+ * Strip emission is progressive: the ffmpeg invocation is driven via
+ * [FFmpegKitBridge.executeFFmpegAsync] while a polling loop drains newly-written JPEGs from
+ * the per-extraction cache directory, mirroring the JVM decoder's approach. Flow cancellation
+ * cancels the bridge session and clears the cache dir.
  */
 @OptIn(ExperimentalForeignApi::class)
 class FFmpegKitVideoDecoder : VideoDecoder {
@@ -54,28 +60,39 @@ class FFmpegKitVideoDecoder : VideoDecoder {
         val outDir = "${cacheDir()}/vts_${NSUUID.UUID().UUIDString}"
         fileManager.createDirectoryAtPath(outDir, true, null, null)
 
+        val completion = CompletableDeferred<FFmpegResult>()
+        val emitted = HashSet<Int>()
+        val step = durationMs.toDouble() / frameCount
+
         try {
             val durationS = durationMs / 1000.0
             val fps = frameCount.toDouble() / durationS.coerceAtLeast(0.001)
             val pattern = "$outDir/f_%04d.jpg"
             val command = "-y -loglevel error -i \"$videoPath\" " +
                 "-vf \"fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}\" " +
-                "-frames:v $frameCount -q:v 5 \"$pattern\""
+                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.FFMPEG_QSCALE} \"$pattern\""
 
-            val result = bridge.executeFFmpeg(command)
-            if (!result.isSuccess) return@channelFlow
+            bridge.executeFFmpegAsync(
+                command = command,
+                onProgress = { /* unused — we drive emission via dir polling */ },
+                onComplete = { result -> completion.complete(result) },
+            )
 
-            val step = durationMs.toDouble() / frameCount
-            for (i in 0 until frameCount) {
-                // ffmpeg writes 1-based names from the fps filter.
-                val path = "$outDir/f_${(i + 1).toString().padStart(4, '0')}.jpg"
-                if (!fileManager.fileExistsAtPath(path)) continue
-                val bytes = NSData.dataWithContentsOfFile(path)?.toByteArray() ?: continue
-                if (bytes.size < 16) continue
-                val timeMs = (step * (i + 0.5)).toLong()
-                trySend(IndexedFrame(i, timeMs, bytes))
+            // Poll while ffmpeg runs. Same idiom as FFmpegSubprocessVideoDecoder on JVM —
+            // gives the trim scrubber progressive emissions instead of a single end-of-run dump.
+            while (!completion.isCompleted && isActive) {
+                drainNewFrames(outDir, emitted, frameCount, step) { trySend(it) }
+                delay(POLL_INTERVAL_MS)
             }
+            // Final sweep — ffmpeg may have written files just before exiting.
+            drainNewFrames(outDir, emitted, frameCount, step) { trySend(it) }
         } finally {
+            // If the consumer cancelled mid-run, tear the ffmpeg session down too. Bridge-wide
+            // cancel is acceptable for the current single-job upload flow (see FFmpegKitBridge
+            // KDoc). If concurrent ffmpeg jobs are ever introduced, swap to per-session cancel.
+            if (!completion.isCompleted) {
+                runCatching { bridge.cancelAllFFmpegSessions() }
+            }
             runCatching {
                 val contents = fileManager.contentsOfDirectoryAtPath(outDir, null) ?: emptyList<Any>()
                 for (name in contents) {
@@ -85,6 +102,32 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun drainNewFrames(
+        outDir: String,
+        emitted: HashSet<Int>,
+        frameCount: Int,
+        stepMs: Double,
+        emit: (IndexedFrame) -> Unit,
+    ) {
+        val fileManager = NSFileManager.defaultManager
+        val contents = fileManager.contentsOfDirectoryAtPath(outDir, null) ?: return
+        // ffmpeg's fps filter writes 1-based sequence numbers — sort for stable ordering.
+        val names = contents.mapNotNull { it as? String }.sorted()
+        for (name in names) {
+            if (!name.startsWith("f_") || !name.endsWith(".jpg")) continue
+            val n = name.removePrefix("f_").removeSuffix(".jpg").toIntOrNull() ?: continue
+            val zeroBased = n - 1
+            if (zeroBased !in 0 until frameCount) continue
+            if (zeroBased in emitted) continue
+            val path = "$outDir/$name"
+            val bytes = NSData.dataWithContentsOfFile(path)?.toByteArray() ?: continue
+            if (bytes.size < MIN_JPEG_BYTES) continue
+            emitted.add(zeroBased)
+            val timeMs = (stepMs * (zeroBased + 0.5)).toLong()
+            emit(IndexedFrame(zeroBased, timeMs, bytes))
+        }
+    }
 
     private fun cacheDir(): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
@@ -96,13 +139,9 @@ class FFmpegKitVideoDecoder : VideoDecoder {
         val frac = ((value - whole) * 1_000_000).roundToInt().coerceAtLeast(0)
         return "$whole.${frac.toString().padStart(6, '0')}"
     }
-}
 
-@OptIn(ExperimentalForeignApi::class)
-internal fun NSData.toByteArray(): ByteArray {
-    val bytes = ByteArray(length.toInt())
-    if (length.toInt() > 0) {
-        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), this.bytes, length) }
+    companion object {
+        private const val POLL_INTERVAL_MS = 40L
+        private const val MIN_JPEG_BYTES = 16
     }
-    return bytes
 }

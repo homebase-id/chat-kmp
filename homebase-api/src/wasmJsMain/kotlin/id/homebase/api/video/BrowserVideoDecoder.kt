@@ -21,7 +21,8 @@ internal class BrowserVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
         val bytes = readBytes(videoPath) ?: return null
-        val out = extractPosterFrameJs(Base64.encode(bytes)).await<JsString>().toString()
+        val out = extractPosterFrameJs(Base64.encode(bytes), mimeFromPath(videoPath))
+            .await<JsString>().toString()
         if (out.isBlank()) return null
         return Base64.decode(out)
     }
@@ -43,7 +44,7 @@ internal class BrowserVideoDecoder : VideoDecoder {
         // One JS call seeks to all N timestamps with a single <video>, returning an "index|jpeg"
         // record per line. We re-derive timeMs from the index here so the JS side doesn't need
         // to echo it back.
-        val raw = extractStripFramesJs(Base64.encode(bytes), timesCsv, targetHeightPx)
+        val raw = extractStripFramesJs(Base64.encode(bytes), mimeFromPath(videoPath), timesCsv, targetHeightPx)
             .await<JsString>().toString()
         if (raw.isBlank()) return@channelFlow
 
@@ -66,7 +67,24 @@ internal class BrowserVideoDecoder : VideoDecoder {
         runCatching { systemFileSystem.read(path.toPath()) { readByteArray() } }.getOrNull()
 }
 
-private fun extractPosterFrameJs(videoBase64: String): Promise<JsString> = js(
+/**
+ * Map a file extension to a Blob MIME so the `<video>` element picks the right demuxer. Most
+ * browsers will sniff anyway, but Safari (iOS, macOS) is stricter — `video/mp4` on a `.mov`
+ * file can be refused. Falls back to `'video/mp4'` for unknown extensions because that's the
+ * dominant capture format in our upload pipeline.
+ */
+private fun mimeFromPath(path: String): String =
+    when (path.substringAfterLast('.', "").lowercase()) {
+        "mp4", "m4v" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "webm" -> "video/webm"
+        "mkv" -> "video/x-matroska"
+        "avi" -> "video/x-msvideo"
+        "3gp", "3gpp" -> "video/3gpp"
+        else -> "video/mp4"
+    }
+
+private fun extractPosterFrameJs(videoBase64: String, mimeType: String): Promise<JsString> = js(
     """{
         return new Promise(function (resolve) {
             var done = false;
@@ -81,7 +99,7 @@ private fun extractPosterFrameJs(videoBase64: String): Promise<JsString> = js(
                 var bin = atob(videoBase64);
                 var arr = new Uint8Array(bin.length);
                 for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                url = URL.createObjectURL(new Blob([arr], { type: 'video/mp4' }));
+                url = URL.createObjectURL(new Blob([arr], { type: mimeType }));
 
                 var video = document.createElement('video');
                 video.muted = true;
@@ -108,7 +126,8 @@ private fun extractPosterFrameJs(videoBase64: String): Promise<JsString> = js(
                                 }
                                 finish(btoa(s));
                             }, function () { finish(''); });
-                        }, 'image/jpeg', 0.8);
+                        // Quality literal must mirror VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1.
+                        }, 'image/jpeg', 0.75);
                     } catch (e) { finish(''); }
                 }
 
@@ -137,6 +156,7 @@ private fun extractPosterFrameJs(videoBase64: String): Promise<JsString> = js(
  */
 private fun extractStripFramesJs(
     videoBase64: String,
+    mimeType: String,
     timesMsCsv: String,
     targetH: Int,
 ): Promise<JsString> = js(
@@ -154,7 +174,7 @@ private fun extractStripFramesJs(
                 var bin = atob(videoBase64);
                 var arr = new Uint8Array(bin.length);
                 for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                url = URL.createObjectURL(new Blob([arr], { type: 'video/mp4' }));
+                url = URL.createObjectURL(new Blob([arr], { type: mimeType }));
 
                 var times = timesMsCsv.split(',').map(function (s) { return parseInt(s, 10); });
                 var video = document.createElement('video');
@@ -178,6 +198,7 @@ private fun extractStripFramesJs(
                     }
                     ctx.drawImage(video, 0, 0, outW, outH);
                     try {
+                        // Quality literal must mirror VideoThumbnailQuality.STRIP_JPEG_QUALITY_0_TO_1.
                         return canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || '';
                     } catch (e) {
                         return '';

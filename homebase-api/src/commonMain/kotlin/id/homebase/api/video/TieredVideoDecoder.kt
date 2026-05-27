@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 
@@ -8,10 +9,15 @@ import kotlinx.coroutines.flow.channelFlow
  * indices (strip). The fallback itself is unaware of which indices the primary filled — it just
  * emits its own N frames and this runner drops the ones whose index was already produced.
  *
- * Used by the iOS and Web factories. Android keeps an internal native-only two-tier path
- * (MediaCodec → MediaMetadataRetriever) because the second tier can target arbitrary missing
- * indices directly without re-decoding the whole strip. JVM has no useful primary in front of
- * ffmpeg, so its decoder isn't wrapped at all.
+ * Used by the iOS and Web factories. Android composes the same way (MediaCodec primary,
+ * MediaMetadataRetriever fallback). JVM has no useful primary in front of ffmpeg, so its
+ * decoder isn't wrapped at all.
+ *
+ * **Cancellation discipline.** We catch `Throwable` from the primary so a codec failure flows
+ * into the fallback — but `CancellationException` is rethrown unchanged so cooperative
+ * cancellation from the calling scope still tears everything down. The same project foot-gun is
+ * called out at `AttachmentHandler.kt:167-171` for `runCatching`; using explicit `try/catch`
+ * here keeps cancellation correct.
  */
 class TieredVideoDecoder(
     private val primary: VideoDecoder,
@@ -19,7 +25,13 @@ class TieredVideoDecoder(
 ) : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
-        val first = runCatching { primary.extractPosterFrame(videoPath) }.getOrNull()
+        val first = try {
+            primary.extractPosterFrame(videoPath)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            null
+        }
         if (first != null) return first
         return fallback?.extractPosterFrame(videoPath)
     }
@@ -32,18 +44,24 @@ class TieredVideoDecoder(
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         val emitted = BooleanArray(frameCount)
+        var emittedCount = 0
 
-        runCatching {
+        try {
             primary.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)
                 .collect { f ->
                     if (f.index in 0 until frameCount && !emitted[f.index]) {
                         emitted[f.index] = true
+                        emittedCount++
                         trySend(f)
                     }
                 }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            // Primary errored — fallback will take over below.
         }
 
-        if (emitted.all { it }) return@channelFlow
+        if (emittedCount >= frameCount) return@channelFlow
         val fb = fallback ?: return@channelFlow
 
         fb.extractThumbnailStrip(videoPath, durationMs, frameCount, targetHeightPx)

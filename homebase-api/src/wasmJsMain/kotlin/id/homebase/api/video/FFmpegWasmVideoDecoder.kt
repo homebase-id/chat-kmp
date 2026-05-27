@@ -23,7 +23,7 @@ class FFmpegWasmVideoDecoder : VideoDecoder {
                 "-i", MEMFS_INPUT,
                 "-ss", "0.1",
                 "-frames:v", "1",
-                "-q:v", "2",
+                "-q:v", VideoThumbnailQuality.POSTER_FFMPEG_QSCALE.toString(),
                 MEMFS_POSTER,
             )
         )
@@ -52,7 +52,7 @@ class FFmpegWasmVideoDecoder : VideoDecoder {
                 "-i", MEMFS_INPUT,
                 "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
                 "-frames:v", frameCount.toString(),
-                "-q:v", "5",
+                "-q:v", VideoThumbnailQuality.STRIP_FFMPEG_QSCALE.toString(),
                 MEMFS_STRIP_PATTERN,
             )
             val status = FFmpegBridge.exec(args)

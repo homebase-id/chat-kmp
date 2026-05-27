@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import id.homebase.api.foundation.toByteArray
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.awaitClose
@@ -104,8 +105,8 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
     companion object {
         private const val POSTER_MAX_PX = 640
         private const val POSTER_TARGET_MS = 100L
-        private const val POSTER_JPEG_QUALITY = 0.8
-        private const val STRIP_JPEG_QUALITY = 0.6
+        private val POSTER_JPEG_QUALITY = VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1
+        private val STRIP_JPEG_QUALITY = VideoThumbnailQuality.STRIP_JPEG_QUALITY_0_TO_1
     }
 }
 

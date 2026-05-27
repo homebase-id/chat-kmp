@@ -47,11 +47,17 @@ interface VideoDecoder {
 
     /**
      * Extract [frameCount] thumbnails evenly spaced across `[0, durationMs]`. Frames are
-     * emitted onto the returned [Flow] as they become ready (out-of-order is allowed), so
-     * the UI paints the trim bar progressively.
+     * emitted onto the returned [Flow] as they become ready (out-of-order is allowed), and
+     * each frame is decoded at the closest sync (keyframe) to its target time, scaled to
+     * approximately [targetHeightPx] tall (preserving aspect ratio), and JPEG-encoded.
      *
-     * Each frame is decoded at the closest sync (keyframe) to its target time and scaled to
-     * approximately [targetHeightPx] tall, preserving aspect ratio. JPEG-encoded.
+     * **Emission timing varies by backend.** Native primary decoders
+     * ([AvFoundationVideoDecoder] on iOS, [BrowserVideoDecoder] on Web,
+     * `MediaCodec` on Android) emit frames as the hardware produces them, and the ffmpeg
+     * backends on JVM and iOS poll their output dir during the ffmpeg run, so the trim
+     * scrubber fills progressively. The ffmpeg.wasm backend on web resolves a single
+     * Promise at end-of-run and then bulk-emits — Promise-driven, no mid-run polling
+     * hook. Don't depend on every emission landing on a separate scheduler tick.
      */
     fun extractThumbnailStrip(
         videoPath: String,

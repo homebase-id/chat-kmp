@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
@@ -7,6 +8,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -114,6 +116,30 @@ class TieredVideoDecoderTest {
 
         assertEquals(listOf(0, 1, 2), frames.map { it.index })
         assertEquals(0, fallback.stripCalls)
+    }
+
+    @Test
+    fun poster_rethrowsCancellation_doesNotCallFallback() = runTest {
+        val primary = FakeDecoder(posterThrows = CancellationException("scope cancelled"))
+        val fallback = FakeDecoder(posterBytes = byteArrayOf(9))
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        assertFailsWith<CancellationException> { tiered.extractPosterFrame("any") }
+        assertEquals(0, fallback.posterCalls, "fallback must not run on cancellation")
+    }
+
+    @Test
+    fun strip_rethrowsCancellation_doesNotRunFallback() = runTest {
+        val primary = FakeDecoder(
+            stripFlow = flow<IndexedFrame> { throw CancellationException("scope cancelled") },
+        )
+        val fallback = FakeDecoder(stripFrames = (0..2).map { frame(it) })
+        val tiered = TieredVideoDecoder(primary, fallback)
+
+        assertFailsWith<CancellationException> {
+            tiered.extractThumbnailStrip("any", 3000, 3, 96).toList()
+        }
+        assertEquals(0, fallback.stripCalls, "fallback must not run on cancellation")
     }
 
     @Test
