@@ -32,7 +32,10 @@ import org.jetbrains.skia.Surface
  */
 actual fun ByteArray.toImageBitmap(): ImageBitmap? {
     return try {
-        Image.makeFromEncoded(this).toComposeImageBitmap()
+        val inputBytes = if (ImageFormatDetector.isHeic(this)) {
+            convertHeicToJpeg(this) ?: return null
+        } else this
+        Image.makeFromEncoded(inputBytes).toComposeImageBitmap()
     } catch (e: Exception) {
         null
     }
