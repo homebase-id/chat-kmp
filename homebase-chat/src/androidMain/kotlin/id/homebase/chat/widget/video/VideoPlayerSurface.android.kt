@@ -275,11 +275,23 @@ actual fun VideoPlayerSurface(
                                 // host UI provides its own pause affordance (the
                                 // moments-feed inline tile in carousel mode).
                                 useController = useNativeControls
+                                // PlayerView's constructor unconditionally calls
+                                // setClickable(true) + setFocusable(true), so even
+                                // with useController=false the View still consumes
+                                // ACTION_DOWN. Compose treats the down as consumed
+                                // and the card-level multi-tap detector on
+                                // MomentPostCard never fires for double/triple-
+                                // tap-react over the video surface. Flip both off
+                                // when we own the gesture stack ourselves.
+                                isClickable = useNativeControls
+                                isFocusable = useNativeControls
                                 playerView = this
                             }
                     },
                     update = { view ->
                         view.useController = useNativeControls
+                        view.isClickable = useNativeControls
+                        view.isFocusable = useNativeControls
                     },
                     modifier = Modifier.fillMaxSize(),
                 )

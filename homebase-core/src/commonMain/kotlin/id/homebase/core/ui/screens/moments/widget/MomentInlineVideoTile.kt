@@ -223,9 +223,19 @@ fun MomentInlineVideoTile(
                 modifier = Modifier.fillMaxSize(),
                 muted = isMuted,
                 // Native controls (Android PlayerView / iOS AVPlayerViewController)
-                // capture every touch, which breaks the carousel pager's drag.
-                // ButtonOnly mode supplies its own pause affordance below.
-                useNativeControls = !isButtonOnly,
+                // intercept every touch on the surface:
+                //   - Android: PlayerView's onTouchEvent + setClickable(true)
+                //     consume ACTION_DOWN, so MomentPostCard's outer multi-tap
+                //     detector never sees the double / triple-tap that triggers
+                //     heart / flame reactions.
+                //   - iOS: AVPlayerViewController's built-in transport UI eats
+                //     the gesture stack the same way.
+                // Autoplay in the feed doesn't need a scrubber or pause button
+                // anyway (scroll-away pauses, mute icon is in the corner), so
+                // disable native controls universally for the inline tile. The
+                // full-screen detail player still gets controls via its own
+                // VideoPlayerSurface call.
+                useNativeControls = false,
             )
         }
 
