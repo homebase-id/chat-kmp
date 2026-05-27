@@ -33,6 +33,29 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         )
     }
 
+    func executeFFmpegAsyncArgs(
+        args: [String],
+        onProgress: @escaping (KotlinLong) -> Void,
+        onComplete: @escaping (FFmpegResult) -> Void
+    ) {
+        // executeWithArgumentsAsync skips FFmpegKit's shell-style argv parser entirely, so
+        // arguments containing spaces / quotes / shell metacharacters pass through verbatim.
+        // Use this whenever a path or user-supplied value is in the args.
+        FFmpegKit.executeWithArgumentsAsync(
+            args,
+            withCompleteCallback: { session in
+                let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+                let failStackTrace = session?.getFailStackTrace()
+                onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                let timeMs = Int64(stats?.getTime() ?? 0)
+                onProgress(KotlinLong(value: timeMs))
+            }
+        )
+    }
+
     func cancelAllFFmpegSessions() {
         FFmpegKit.cancel()
     }

@@ -96,31 +96,29 @@ kotlin {
             baseName = "homebase-api"
             isStatic = true
         }
-
-        // Cinterop the bundled FFmpegKit xcframework into the iOS *test* compilation only so
-        // FfmpegDecoderCommonTest can stand up a real FFmpegKitBridge implementation (see
-        // src/nativeTest/.../TestFFmpegKitBridge.kt) instead of stubbing the iOS leg green.
-        // The xcframework is checked in under homebase-api/libs/ — the same artifact iosApp's
-        // pbxproj already references — so this is purely a test-link concern and doesn't
-        // touch the production framework export above.
-        val frameworkSlice = when (iosTarget.name) {
-            "iosArm64" -> "ios-arm64"
-            "iosSimulatorArm64" -> "ios-arm64_x86_64-simulator"
-            else -> error("Unexpected iOS target: ${iosTarget.name}")
-        }
-        val ffmpegKitFrameworkDir =
-            project.projectDir.resolve("libs/ffmpegkit-bundled.xcframework/ffmpegkit.xcframework/$frameworkSlice").absolutePath
-
-        iosTarget.compilations.getByName("test").cinterops.create("ffmpegkit") {
-            defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
-            compilerOpts("-F$ffmpegKitFrameworkDir")
-        }
-        iosTarget.binaries.getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
-            .linkerOpts(
-                "-F$ffmpegKitFrameworkDir",
-                "-framework", "ffmpegkit",
-            )
     }
+
+    // Cinterop the bundled FFmpegKit xcframework into the iOS simulator *test* compilation
+    // only so FfmpegDecoderCommonTest can stand up a real FFmpegKitBridge implementation
+    // (see src/nativeTest/.../TestFFmpegKitBridge.kt) instead of stubbing the iOS leg green.
+    // The xcframework is checked in under homebase-api/libs/ — the same artifact iosApp's
+    // pbxproj already references — so this is purely a test-link concern and doesn't touch
+    // the production framework export above. We only wire iosSimulatorArm64: we never run
+    // device-target tests (no `iosArm64Test` job exists), so configuring cinterop + linker
+    // for iosArm64's test binary would be dead-weight that confuses the next reader.
+    val ffmpegKitFrameworkDir = project.projectDir
+        .resolve("libs/ffmpegkit-bundled.xcframework/ffmpegkit.xcframework/ios-arm64_x86_64-simulator")
+        .absolutePath
+    iosSimulatorArm64().compilations.getByName("test").cinterops.create("ffmpegkit") {
+        defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
+        compilerOpts("-F$ffmpegKitFrameworkDir")
+    }
+    iosSimulatorArm64().binaries
+        .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
+        .linkerOpts(
+            "-F$ffmpegKitFrameworkDir",
+            "-framework", "ffmpegkit",
+        )
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
@@ -175,9 +173,12 @@ kotlin {
         val jvmAndNativeTest by creating { dependsOn(commonTest.get()) }
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
-        // The androidHostTest source set also inherits commonTest by default; mirror the
-        // dependency on jvmAndNativeTest so blocking-coroutine tests show up there too.
+        // Both Android test source sets inherit commonTest by default; mirror the dependency
+        // on jvmAndNativeTest so blocking-coroutine tests (and any other JVM-or-native-only
+        // shared tests) show up on Android host AND device tests too. Lost coverage on
+        // androidDeviceTest was a regression in this refactor — see DriveWebSocketUpsertWorkerTest.
         getByName("androidHostTest").dependsOn(jvmAndNativeTest)
+        getByName("androidDeviceTest").dependsOn(jvmAndNativeTest)
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)

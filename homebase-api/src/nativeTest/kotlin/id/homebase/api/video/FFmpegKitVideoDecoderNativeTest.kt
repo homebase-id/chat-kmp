@@ -2,17 +2,17 @@
 
 package id.homebase.api.video
 
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
@@ -81,43 +81,51 @@ class FFmpegKitVideoDecoderNativeTest {
 
     @Test
     fun extractThumbnailStrip_drainsFramesProgressively() = runBlocking {
-        // Bridge that captures the output pattern from the command, lets the test drop fake
-        // JPEGs into the per-extraction dir while the "ffmpeg" run is still pending, then
-        // completes successfully. Exercises the poll-and-drain code path that
-        // `TestFFmpegKitBridge` (sync executeFFmpegAsync) never enters.
+        // Bridge captures the per-extraction outDir from the command and defers onComplete
+        // until the test releases it. The test writes a fake JPEG, then awaits exactly that
+        // index from the decoder's emission channel before writing the next — turning the
+        // poll-loop drain into a deterministic per-emission handoff. No `delay(N)` races.
         val bridge = DriverBridge()
         FFmpegKitBridgeHolder.setBridge(bridge)
 
         val fixturePath = stageFixtureOnDisk()
+        val emissions = Channel<IndexedFrame>(Channel.UNLIMITED)
         try {
-            val framesAsync = async(Dispatchers.Default) {
-                FFmpegKitVideoDecoder().extractThumbnailStrip(
-                    videoPath = fixturePath,
-                    durationMs = 6_000L,
-                    frameCount = 3,
-                    targetHeightPx = 96,
-                ).toList()
+            val collectJob = launch(Dispatchers.Default) {
+                FFmpegKitVideoDecoder()
+                    .extractThumbnailStrip(
+                        videoPath = fixturePath,
+                        durationMs = 6_000L,
+                        frameCount = 3,
+                        targetHeightPx = 96,
+                    )
+                    .collect { emissions.send(it) }
+                emissions.close()
             }
 
-            // Wait for the command to reach the bridge and parse the output dir.
             val outDir = bridge.awaitOutDir()
-            // Write 3 fake JPEGs into outDir at staggered intervals, simulating ffmpeg's
-            // sequential writes. Each write should be picked up by the next poll cycle.
-            for (i in 1..3) {
-                withContext(Dispatchers.Default) {
-                    writeFakeJpeg("$outDir/f_${i.toString().padStart(4, '0')}.jpg")
-                    delay(60)  // > the decoder's 40 ms POLL_INTERVAL_MS
-                }
-            }
-            bridge.completeSuccessfully()
 
-            val frames = framesAsync.await()
-            assertEquals(3, frames.size, "expected 3 frames; got ${frames.size}")
-            assertEquals(listOf(0, 1, 2), frames.map { it.index })
-            // Each frame body must be the fake-JPEG bytes we wrote (which are ≥ MIN_JPEG_BYTES).
-            assertTrue(frames.all { it.jpegBytes.size >= 16 })
+            // Write each fake JPEG, then wait — with a generous timeout — for the decoder's
+            // poll loop to pick it up and emit. The timeout dwarfs the 40 ms poll interval,
+            // so we'd only hit it if the drain path was genuinely broken (the failure mode
+            // we want to detect). No "did the poll happen to land between writes?" race.
+            for (i in 0 until 3) {
+                writeFakeJpeg("$outDir/f_${(i + 1).toString().padStart(4, '0')}.jpg")
+                val emitted = withTimeout(5_000) { emissions.receive() }
+                assertEquals(i, emitted.index, "expected emission index $i, got ${emitted.index}")
+                assertTrue(
+                    emitted.jpegBytes.size >= 16,
+                    "frame $i bytes too small (${emitted.jpegBytes.size})",
+                )
+            }
+
+            bridge.completeSuccessfully()
+            collectJob.join()
+            // No additional emissions should land after the three indexes the test produced.
+            assertTrue(emissions.isClosedForReceive, "channel should be closed after completion")
         } finally {
             cleanup(fixturePath)
+            emissions.close()
         }
     }
 
@@ -175,6 +183,15 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         // Intentionally never invoke onComplete — simulate a long-running session.
     }
 
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ) {
+        executeAsyncCalled = true
+        // Same shape — never complete; simulate a hung ffmpeg session.
+    }
+
     override fun cancelAllFFmpegSessions() {
         cancelAllCalls++
     }
@@ -207,13 +224,24 @@ private class DriverBridge : FFmpegKitBridge {
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
     ) {
-        // The command's output pattern is the last quoted token, of the form
-        //   ".../vts_<uuid>/f_%04d.jpg"
-        // Split on '"' and find the segment ending in `f_%04d.jpg`.
+        // Legacy shell-style command path. Not used by the strip decoder anymore (it migrated
+        // to executeFFmpegAsyncArgs to dodge shell quoting), so this branch is now defensive.
+        // Parse the output pattern by finding the quoted segment ending in `f_%04d.jpg`.
         val outPattern = command.split('"').firstOrNull { it.endsWith("f_%04d.jpg") }
             ?: error("could not find output pattern in: $command")
-        val outDir = outPattern.substringBeforeLast("/f_%04d.jpg")
-        outDirReady.complete(outDir)
+        outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
+        pendingCompletion = onComplete
+    }
+
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ) {
+        // The output pattern is whichever arg ends in `f_%04d.jpg` — no shell parsing.
+        val outPattern = args.firstOrNull { it.endsWith("f_%04d.jpg") }
+            ?: error("could not find output pattern in args: $args")
+        outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
         pendingCompletion = onComplete
     }
 

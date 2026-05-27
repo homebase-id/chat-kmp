@@ -74,12 +74,22 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             val durationS = durationMs / 1000.0
             val fps = frameCount.toDouble() / durationS.coerceAtLeast(0.001)
             val pattern = "$outDir/f_%04d.jpg"
-            val command = "-y -loglevel error -i \"$videoPath\" " +
-                "-vf \"fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}\" " +
-                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.STRIP_FFMPEG_QSCALE} \"$pattern\""
+            // Use the arg-list variant — `executeWithArguments` skips FFmpegKit's shell-style
+            // argv parser, so `videoPath` and `pattern` pass through verbatim without any
+            // quote-escaping risk. Mirrors what FFmpegSubprocessVideoDecoder on JVM gets for
+            // free from ProcessBuilder(List<String>).
+            val args = listOf(
+                "-y",
+                "-loglevel", "error",
+                "-i", videoPath,
+                "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
+                "-frames:v", frameCount.toString(),
+                "-q:v", VideoThumbnailQuality.STRIP_FFMPEG_QSCALE.toString(),
+                pattern,
+            )
 
-            bridge.executeFFmpegAsync(
-                command = command,
+            bridge.executeFFmpegAsyncArgs(
+                args = args,
                 onProgress = { /* unused — we drive emission via dir polling */ },
                 onComplete = { result -> completion.complete(result) },
             )

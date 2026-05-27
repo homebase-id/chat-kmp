@@ -27,6 +27,19 @@ interface FFmpegKitBridge {
     )
 
     /**
+     * Same shape as [executeFFmpegAsync] but takes an arg list instead of a single shell-style
+     * command string. Use this for any command containing user-supplied paths (or anything
+     * else that might contain quotes / spaces / shell metacharacters) — FFmpegKit's
+     * `executeWithArgumentsAsync` skips its argv parser entirely, so the arg list is the
+     * `ProcessBuilder(List<String>)` equivalent.
+     */
+    fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    )
+
+    /**
      * Cancel all in-flight ffmpeg sessions. Invoked from coroutine
      * cancellation to kill the work when the caller navigates away mid-job.
      * Bridge-wide cancel — fine for the current single-job flow, but if

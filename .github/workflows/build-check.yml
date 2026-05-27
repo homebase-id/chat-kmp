@@ -103,6 +103,16 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
+      # iOS simulator tests for homebase-api — covers FfmpegDecoderCommonTest (real FFmpegKit
+      # via cinterop) and FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by
+      # mock bridges). The dedicated `test.yml` workflow is disabled in repo settings; running
+      # the iOS sim test here keeps the iOS-specific test coverage executing on every PR.
+      - name: Run iOS simulator tests
+        if: ${{ matrix.name == 'iOS' }}
+        run: ./gradlew :homebase-api:iosSimulatorArm64Test
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
       - name: Verify Android build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
         run: find androidApp/build/outputs/apk/debug -name "*.apk"

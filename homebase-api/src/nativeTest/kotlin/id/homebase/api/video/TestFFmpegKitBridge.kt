@@ -5,6 +5,8 @@ package id.homebase.api.video
 import ffmpegkit.FFmpegKit
 import ffmpegkit.FFmpegKitConfig
 import ffmpegkit.ReturnCode
+import platform.Foundation.NSArray
+import platform.Foundation.arrayWithArray
 
 /**
  * Kotlin/Native test implementation of [FFmpegKitBridge]. Calls the FFmpegKit Objective-C API
@@ -44,6 +46,21 @@ internal class TestFFmpegKitBridge : FFmpegKitBridge {
         // Sync-then-fire is sufficient for the cross-platform test surface. See class KDoc.
         val result = executeFFmpeg(command)
         onComplete(result)
+    }
+
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ) {
+        // Real FFmpegKit invocation via the cinterop binding. `executeWithArguments` skips
+        // the shell-style argv parser — the array is the argv. Sync execution is fine for
+        // the test surface (same reasoning as executeFFmpegAsync above).
+        val nsArgs = NSArray.arrayWithArray(args)
+        val session = FFmpegKit.executeWithArguments(nsArgs)
+        val isSuccess = ReturnCode.isSuccess(session?.returnCode)
+        val failStackTrace = session?.failStackTrace
+        onComplete(FFmpegResult(isSuccess = isSuccess, failStackTrace = failStackTrace))
     }
 
     override fun cancelAllFFmpegSessions() {
