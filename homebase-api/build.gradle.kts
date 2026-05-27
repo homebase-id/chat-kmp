@@ -118,6 +118,12 @@ kotlin {
         .linkerOpts(
             "-F$ffmpegKitFrameworkDir",
             "-framework", "ffmpegkit",
+            // dyld needs a search path at runtime as well; the test binary is started
+            // outside iosApp's `Embed Frameworks` step, so without explicit rpath dyld
+            // can't locate the dynamic ffmpegkit.framework. Baking the absolute path is
+            // OK because the test binary only runs in the build environment and never
+            // ships to a device or to users.
+            "-rpath", ffmpegKitFrameworkDir,
             // Production iOS app links libsqlite3 via iosApp's Xcode project — for the
             // gradle test binary we have to wire it in explicitly so SQLDelight's sqliter
             // cinterop has its underlying symbols at link time. Previously unnoticed because
