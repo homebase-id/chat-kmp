@@ -1,7 +1,5 @@
 package id.homebase.core.image
 
-import androidx.compose.ui.graphics.asSkiaBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import coil3.ImageLoader
 import coil3.Uri
 import coil3.asImage
@@ -11,11 +9,15 @@ import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.impl.use
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSData
 import platform.Photos.PHAsset
@@ -124,14 +126,36 @@ class PHAssetFetcher(
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun imageFromNSData(nsData: NSData): FetchResult {
-        val bytes = ByteArray(nsData.length.toInt())
-        bytes.usePinned { pinned ->
-            memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
+        // Peek at header to detect HEIC without copying the full image
+        val header = ByteArray(minOf(12, nsData.length.toInt()))
+        if (header.isNotEmpty()) {
+            header.usePinned { pinned ->
+                memcpy(pinned.addressOf(0), nsData.bytes, header.size.toULong())
+            }
         }
-        val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
-        val imageBitmap = skiaImage.toComposeImageBitmap()
+
+        val skiaImage = if (ImageFormatDetector.isHeic(header)) {
+            NativeImageDecoder.decode(nsData)
+                ?: throw IllegalStateException("Failed to decode HEIC image via native decoder")
+        } else {
+            val bytes = ByteArray(nsData.length.toInt())
+            bytes.usePinned { pinned ->
+                memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
+            }
+            org.jetbrains.skia.Image.makeFromEncoded(bytes)
+        }
+
+        val bitmap = Bitmap()
+        if (!bitmap.allocN32Pixels(skiaImage.width, skiaImage.height)) {
+            skiaImage.close()
+            throw IllegalStateException("Failed to allocate bitmap for ${skiaImage.width}x${skiaImage.height} image")
+        }
+        Canvas(bitmap).use { canvas -> canvas.drawImage(skiaImage, 0f, 0f) }
+        bitmap.setImmutable()
+        skiaImage.close()
+
         return ImageFetchResult(
-            image = imageBitmap.asSkiaBitmap().asImage(),
+            image = bitmap.asImage(),
             isSampled = false,
             dataSource = DataSource.DISK,
         )
