@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +82,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
@@ -192,6 +194,7 @@ fun MomentsScreen(
         WideMomentsLayout(
             moments = uiState.moments,
             uploadProgress = uiState.uploadProgress,
+            pendingLocalPreviews = uiState.pendingLocalPreviews,
             ownerSession = uiState.ownerSession,
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
@@ -210,6 +213,7 @@ fun MomentsScreen(
         CompactMomentsLayout(
             moments = uiState.moments,
             uploadProgress = uiState.uploadProgress,
+            pendingLocalPreviews = uiState.pendingLocalPreviews,
             ownerSession = uiState.ownerSession,
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
@@ -233,6 +237,7 @@ fun MomentsScreen(
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    pendingLocalPreviews: ImmutableMap<Uuid, String>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -280,6 +285,7 @@ private fun CompactMomentsLayout(
             MomentsViewMode.Timeline -> MomentsFeedList(
                 moments = moments,
                 uploadProgress = uploadProgress,
+                pendingLocalPreviews = pendingLocalPreviews,
                 selfOdinId = ownerSession?.odinId,
                 onOpenMoment = onOpenMoment,
                 onAddReaction = onAddReaction,
@@ -294,6 +300,7 @@ private fun CompactMomentsLayout(
                 zoom = albumZoom,
                 onZoomChange = onAlbumZoomChange,
                 onOpenMoment = onOpenMoment,
+                pendingLocalPreviews = pendingLocalPreviews,
                 modifier = contentModifier,
             )
         }
@@ -318,6 +325,7 @@ private fun CompactMomentsLayout(
 private fun WideMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    pendingLocalPreviews: ImmutableMap<Uuid, String>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -393,6 +401,7 @@ private fun WideMomentsLayout(
                 MomentsViewMode.Timeline -> MomentsFeedList(
                     moments = moments,
                     uploadProgress = uploadProgress,
+                    pendingLocalPreviews = pendingLocalPreviews,
                     selfOdinId = ownerSession?.odinId,
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
@@ -411,6 +420,7 @@ private fun WideMomentsLayout(
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
                     },
+                    pendingLocalPreviews = pendingLocalPreviews,
                     modifier = contentModifier,
                 )
             }
@@ -453,6 +463,7 @@ private val FeedPaneMaxWidth = 480.dp
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
     selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     onAddReaction: (Uuid, String) -> Unit,
@@ -497,6 +508,7 @@ private fun MomentsFeedList(
             MomentPostCard(
                 moment = moment,
                 uploadStatus = uploadProgress[moment.id],
+                pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { onOpenMoment(moment.id.toString(), null) },
@@ -520,6 +532,7 @@ private fun MomentsFeedList(
 private fun MomentPostCard(
     moment: MomentFeedItem,
     uploadStatus: UploadStatus?,
+    pendingLocalPreviewUri: String?,
     selfOdinId: OdinId?,
     isSelected: Boolean,
     onCardClick: () -> Unit,
@@ -615,18 +628,44 @@ private fun MomentPostCard(
             },
     ) {
         if (moment.payloads.isEmpty()) {
-            // Description-only / corrupt-payload moment — still render a tile so
-            // the user sees something tappable.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(24.dp),
-            ) {
-                Text(
-                    text = moment.description.ifBlank { "—" },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            if (pendingLocalPreviewUri != null) {
+                // Placeholder window after postMomentAsync: the optimistic row
+                // exists but thumbnail generation / encryption are still
+                // running on the post sender's background scope. Render the
+                // user's selected source file straight from disk so the tile
+                // shows the picked photo immediately, with the upload overlay
+                // (Preparing → Sending → …) on top. Once writeUpdate lands
+                // real payload descriptors, this branch stops firing and the
+                // normal MomentMediaGallery path takes over.
+                Box {
+                    AsyncImage(
+                        model = pendingLocalPreviewUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    if (uploadStatus != null) {
+                        MomentUploadProgressOverlay(
+                            status = uploadStatus,
+                            modifier = Modifier.matchParentSize(),
+                            onPermanentFailureTap = { failedSheetOpen = true },
+                        )
+                    }
+                }
+            } else {
+                // Description-only / corrupt-payload moment — still render a tile so
+                // the user sees something tappable.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .padding(24.dp),
+                ) {
+                    Text(
+                        text = moment.description.ifBlank { "—" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         } else {
             // Wrap the gallery so the upload-progress overlay can size to the

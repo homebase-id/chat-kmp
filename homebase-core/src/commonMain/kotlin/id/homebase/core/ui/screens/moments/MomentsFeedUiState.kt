@@ -19,6 +19,17 @@ data class MomentsFeedUiState(
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    /**
+     * Transient map of (moment uniqueId → local file URI) for moments whose
+     * placeholder row has been written but whose real thumbnails/payloads are
+     * still being generated. Lets the feed tile render the user's source image
+     * directly during the "Preparing…" window — without it, the tile would be
+     * a description-only fallback until thumbnails land.
+     *
+     * Populated by [id.homebase.core.moments.services.MomentsPostSenderService]
+     * and cleared once the real optimistic write installs the embedded preview.
+     */
+    val pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
     val viewMode: MomentsViewMode = MomentsViewMode.Timeline,
     val albumZoom: MomentsAlbumZoom = MomentsAlbumZoom.Day,
 )
