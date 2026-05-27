@@ -82,6 +82,7 @@ fun VaultZoomableImage(
             onTap = onToggleUI,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
+            sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
         )
     } else {
         val remoteSource = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
@@ -113,6 +114,7 @@ fun VaultZoomableImage(
                 onTap = onToggleUI,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
             )
         } else {
             UnavailablePlaceholder(

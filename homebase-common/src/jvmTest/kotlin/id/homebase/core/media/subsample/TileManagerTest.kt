@@ -3,6 +3,7 @@ package id.homebase.core.media.subsample
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,7 +21,7 @@ class TileManagerTest {
     @Test
     fun `loads base layer on init`() = runTest {
         val decoder = createTestDecoder()
-        val manager = TileManager(decoder, tileSize = 512, scope = this)
+        val manager = TileManager(decoder, tileSize = 512, scope = this, decodeDispatcher = UnconfinedTestDispatcher(testScheduler))
         manager.loadBaseLayer()
         advanceUntilIdle()
         assertNotNull(manager.state.value.baseLayer)
@@ -30,7 +31,7 @@ class TileManagerTest {
     @Test
     fun `loads visible tiles on viewport change`() = runTest {
         val decoder = createTestDecoder()
-        val manager = TileManager(decoder, tileSize = 512, scope = this)
+        val manager = TileManager(decoder, tileSize = 512, scope = this, decodeDispatcher = UnconfinedTestDispatcher(testScheduler))
         manager.onViewportChanged(IntRect(0, 0, 512, 512), zoom = 5f)
         advanceUntilIdle()
         assertTrue(manager.state.value.tiles.isNotEmpty())
@@ -40,7 +41,7 @@ class TileManagerTest {
     @Test
     fun `evicts tiles when viewport moves`() = runTest {
         val decoder = createTestDecoder()
-        val manager = TileManager(decoder, tileSize = 512, scope = this)
+        val manager = TileManager(decoder, tileSize = 512, scope = this, decodeDispatcher = UnconfinedTestDispatcher(testScheduler))
         manager.onViewportChanged(IntRect(0, 0, 512, 512), zoom = 5f)
         advanceUntilIdle()
         val firstTiles = manager.state.value.tiles.keys.toSet()
@@ -54,7 +55,7 @@ class TileManagerTest {
     @Test
     fun `reports correct image size`() = runTest {
         val decoder = createTestDecoder()
-        val manager = TileManager(decoder, tileSize = 512, scope = this)
+        val manager = TileManager(decoder, tileSize = 512, scope = this, decodeDispatcher = UnconfinedTestDispatcher(testScheduler))
         assertEquals(IntSize(2048, 2048), manager.state.value.imageSize)
         manager.close()
     }

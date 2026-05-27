@@ -2,18 +2,22 @@ package id.homebase.core.media.subsample
 
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TileManager(
     private val decoder: ImageRegionDecoder,
     private val tileSize: Int = 512,
     private val scope: CoroutineScope,
+    private val decodeDispatcher: CoroutineContext = Dispatchers.Default,
 ) {
     private val _state = MutableStateFlow(
         TileState(imageSize = IntSize(decoder.imageWidth, decoder.imageHeight))
@@ -23,7 +27,7 @@ class TileManager(
     private val activeJobs = mutableMapOf<TileKey, Job>()
 
     fun loadBaseLayer() {
-        scope.launch {
+        scope.launch(decodeDispatcher) {
             val baseSample = TileGrid.sampleSizeForZoom(1f).coerceAtLeast(4)
             val bitmap = decoder.decodeRegion(
                 IntRect(0, 0, decoder.imageWidth, decoder.imageHeight),
@@ -56,7 +60,9 @@ class TileManager(
             activeJobs[key] = scope.launch {
                 try {
                     val rect = TileGrid.tileRect(key.col, key.row, tileSize, decoder.imageWidth, decoder.imageHeight)
-                    val bitmap = decoder.decodeRegion(rect, key.sampleSize)
+                    val bitmap = withContext(decodeDispatcher) {
+                        decoder.decodeRegion(rect, key.sampleSize)
+                    }
                     _state.update { it.copy(tiles = it.tiles + (key to DecodedTile(key, bitmap, rect))) }
                 } catch (_: Exception) {
                     // Tile decode failed — base layer remains visible

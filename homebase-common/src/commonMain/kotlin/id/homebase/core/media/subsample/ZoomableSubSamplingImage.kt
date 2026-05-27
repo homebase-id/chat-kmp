@@ -2,6 +2,7 @@ package id.homebase.core.media.subsample
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.decodeBitmap
 import id.homebase.core.media.ZoomState
 import id.homebase.core.media.ZoomableContainer
@@ -45,6 +47,7 @@ fun ZoomableSubSamplingImage(
     onTap: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedContentStateKey: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     val zoomState = remember { ZoomState() }
@@ -56,6 +59,10 @@ fun ZoomableSubSamplingImage(
     }
 
     LaunchedEffect(source) {
+        tileManager?.close()
+        tileManager = null
+        fallbackState = null
+
         val bytes = withContext(Dispatchers.Default) { source.loadBytes() }
             ?: return@LaunchedEffect
 
@@ -112,7 +119,24 @@ fun ZoomableSubSamplingImage(
     )
     val blurMod = if (blurRadius >= 0.5f) Modifier.blur(blurRadius.dp) else Modifier
 
-    ZoomableContainer(state = zoomState, onTap = onTap, modifier = modifier) {
+    var sharedModifier = modifier
+    if (sharedContentStateKey != null && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            sharedModifier = sharedModifier.sharedBounds(
+                rememberSharedContentState(key = sharedContentStateKey),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = { _, _ ->
+                    tween(
+                        durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                        easing = FastOutSlowInEasing,
+                    )
+                },
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            )
+        }
+    }
+
+    ZoomableContainer(state = zoomState, onTap = onTap, modifier = sharedModifier) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (previewBitmap != null && !hasLoadedImage) {
                 Image(

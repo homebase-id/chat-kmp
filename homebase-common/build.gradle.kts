@@ -99,7 +99,6 @@ kotlin {
             api(libs.filekit.core)
             api(libs.koin.core)
             api(libs.koin.compose)
-            implementation(libs.telephoto.zoomable)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

@@ -148,6 +148,7 @@ fun FullScreenMediaViewer(
                     onTap = { showUI = !showUI },
                     sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                     animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                    sharedContentStateKey = "image-${data.fileId}-${payload.key}",
                 )
             }
         }

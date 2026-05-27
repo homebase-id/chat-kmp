@@ -72,7 +72,6 @@ buildconfig = "6.0.9"
 play-app-update = "2.1.0"
 play-services-location = "21.3.0"
 metadataExtractor = "2.19.0"
-telephoto = "0.19.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -200,7 +199,6 @@ nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notific
 nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }
 nucleus-notification-macos = { module = "io.github.kdroidfilter:nucleus.notification-macos", version.ref = "nucleus" }
 nucleus-notification-linux = { module = "io.github.kdroidfilter:nucleus.notification-linux", version.ref = "nucleus" }
-telephoto-zoomable = { module = "me.saket.telephoto:zoomable", version.ref = "telephoto" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
