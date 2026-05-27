@@ -114,7 +114,16 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             // deleting, leaving an orphan file in the cache dir until the next CacheSweeper run.
             // Bounded wait: if cancellation doesn't take effect, give up after the timeout and
             // delete anyway (the orphan is annoying, but blocking finally{} forever is worse).
-            runCatching { withTimeoutOrNull(TEARDOWN_WAIT_MS) { completion.await() } }
+            //
+            // Explicit try/catch (not runCatching) because runCatching wrapping a suspend call
+            // hits the Kotlin/Native compiler bug "Lowering ReturnsInsertion: phases [Autobox,
+            // Coroutines] are required, but not satisfied". Same foot-gun called out in
+            // CLAUDE.md and AttachmentHandler.kt:167-171. CancellationException is swallowed
+            // here on purpose — we're already in finally{} cleanup; letting it through would
+            // abort the dir teardown below and orphan all of outDir.
+            try {
+                withTimeoutOrNull(TEARDOWN_WAIT_MS) { completion.await() }
+            } catch (_: Throwable) { }
             runCatching {
                 val contents = fileManager.contentsOfDirectoryAtPath(outDir, null) ?: emptyList<Any>()
                 for (name in contents) {
