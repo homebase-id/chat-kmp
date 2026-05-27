@@ -89,6 +89,7 @@ class TileGridTest {
             scale = 1f,
             offset = Offset.Zero,
             imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(1080, 1920),
         )
         assertEquals(IntRect(0, 0, 4000, 3000), viewport)
     }
@@ -99,6 +100,7 @@ class TileGridTest {
             scale = 2f,
             offset = Offset.Zero,
             imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(1080, 810),
         )
         assertEquals(2000, viewport.width)
         assertEquals(1500, viewport.height)
@@ -110,6 +112,7 @@ class TileGridTest {
             scale = 2f,
             offset = Offset(-5000f, -5000f),
             imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(1080, 810),
         )
         assertTrue(viewport.left >= 0)
         assertTrue(viewport.top >= 0)
@@ -123,12 +126,43 @@ class TileGridTest {
             scale = 2f,
             offset = Offset(500f, 300f),
             imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(1080, 810),
         )
         val centered = TileGrid.calculateViewport(
             scale = 2f,
             offset = Offset.Zero,
             imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(1080, 810),
         )
         assertTrue(viewport.left != centered.left || viewport.top != centered.top)
+    }
+
+    @Test
+    fun `calculateViewport offset scales correctly with screen-to-image ratio`() {
+        val screenSize = IntSize(1080, 810)
+        val imageSize = IntSize(4000, 3000)
+        val viewport = TileGrid.calculateViewport(
+            scale = 3f,
+            offset = Offset(540f, 0f),
+            imageSize = imageSize,
+            screenSize = screenSize,
+        )
+        // offset 540 screen px = 540 * 4000 / (3 * 1080) = 666 image px shift
+        // center = 2000 - 666 = 1334
+        // viewport width = 4000/3 = 1333
+        // left = 1334 - 666 = 668 (approx)
+        assertTrue(viewport.left > 600, "Left edge should shift significantly: ${viewport.left}")
+        assertTrue(viewport.left < 750, "Left edge should not overshoot: ${viewport.left}")
+    }
+
+    @Test
+    fun `calculateViewport with zero screen size returns full image`() {
+        val viewport = TileGrid.calculateViewport(
+            scale = 3f,
+            offset = Offset(100f, 100f),
+            imageSize = IntSize(4000, 3000),
+            screenSize = IntSize(0, 0),
+        )
+        assertEquals(IntRect(0, 0, 4000, 3000), viewport)
     }
 }

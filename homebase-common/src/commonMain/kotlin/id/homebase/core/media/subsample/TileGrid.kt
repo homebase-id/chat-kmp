@@ -59,11 +59,15 @@ object TileGrid {
         scale: Float,
         offset: Offset,
         imageSize: IntSize,
+        screenSize: IntSize,
     ): IntRect {
+        if (screenSize.width == 0 || screenSize.height == 0) {
+            return IntRect(0, 0, imageSize.width, imageSize.height)
+        }
         val viewportWidth = (imageSize.width / scale).toInt()
         val viewportHeight = (imageSize.height / scale).toInt()
-        val centerX = imageSize.width / 2 - (offset.x / scale).toInt()
-        val centerY = imageSize.height / 2 - (offset.y / scale).toInt()
+        val centerX = imageSize.width / 2 - (offset.x * imageSize.width / (scale * screenSize.width)).toInt()
+        val centerY = imageSize.height / 2 - (offset.y * imageSize.height / (scale * screenSize.height)).toInt()
         return IntRect(
             left = (centerX - viewportWidth / 2).coerceAtLeast(0),
             top = (centerY - viewportHeight / 2).coerceAtLeast(0),

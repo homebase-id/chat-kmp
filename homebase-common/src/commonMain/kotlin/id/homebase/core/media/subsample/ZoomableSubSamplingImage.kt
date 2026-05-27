@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,6 +53,7 @@ fun ZoomableSubSamplingImage(
     val zoomState = remember { ZoomState() }
     var tileManager by remember { mutableStateOf<TileManager?>(null) }
     var fallbackState by remember { mutableStateOf<TileState?>(null) }
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
 
     var previewBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(previewThumbnail) {
@@ -96,14 +98,18 @@ fun ZoomableSubSamplingImage(
     val currentManager = tileManager
     LaunchedEffect(currentManager) {
         if (currentManager == null) return@LaunchedEffect
-        snapshotFlow { Triple(zoomState.scale, zoomState.offset, currentManager.state.value.imageSize) }
+        snapshotFlow {
+            Triple(zoomState.scale, zoomState.offset, currentManager.state.value.imageSize) to screenSize
+        }
             .debounce(100)
-            .collectLatest { (scale, offset, imageSize) ->
-                if (imageSize.width == 0) return@collectLatest
+            .collectLatest { (triple, screen) ->
+                val (scale, offset, imageSize) = triple
+                if (imageSize.width == 0 || screen.width == 0) return@collectLatest
                 val viewport = TileGrid.calculateViewport(
                     scale = scale,
                     offset = offset,
                     imageSize = imageSize,
+                    screenSize = screen,
                 )
                 currentManager.onViewportChanged(viewport, scale)
             }
@@ -138,7 +144,11 @@ fun ZoomableSubSamplingImage(
         }
     }
 
-    ZoomableContainer(state = zoomState, onTap = onTap, modifier = sharedModifier) {
+    ZoomableContainer(
+        state = zoomState,
+        onTap = onTap,
+        modifier = sharedModifier.onSizeChanged { screenSize = it },
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val preview = previewBitmap
             if (preview != null && !hasLoadedImage) {
