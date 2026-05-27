@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
@@ -70,7 +71,7 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             val pattern = "$outDir/f_%04d.jpg"
             val command = "-y -loglevel error -i \"$videoPath\" " +
                 "-vf \"fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}\" " +
-                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.FFMPEG_QSCALE} \"$pattern\""
+                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.STRIP_FFMPEG_QSCALE} \"$pattern\""
 
             bridge.executeFFmpegAsync(
                 command = command,
@@ -93,6 +94,12 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             if (!completion.isCompleted) {
                 runCatching { bridge.cancelAllFFmpegSessions() }
             }
+            // Wait for ffmpeg's worker to actually settle before we wipe the dir — otherwise a
+            // last-millisecond flush from ffmpeg writes a JPEG into a folder we're already
+            // deleting, leaving an orphan file in the cache dir until the next CacheSweeper run.
+            // Bounded wait: if cancellation doesn't take effect, give up after the timeout and
+            // delete anyway (the orphan is annoying, but blocking finally{} forever is worse).
+            runCatching { withTimeoutOrNull(TEARDOWN_WAIT_MS) { completion.await() } }
             runCatching {
                 val contents = fileManager.contentsOfDirectoryAtPath(outDir, null) ?: emptyList<Any>()
                 for (name in contents) {
@@ -143,5 +150,13 @@ class FFmpegKitVideoDecoder : VideoDecoder {
     companion object {
         private const val POLL_INTERVAL_MS = 40L
         private const val MIN_JPEG_BYTES = 16
+
+        /**
+         * Upper bound on how long we wait for ffmpeg's worker to flush after we've signalled
+         * cancellation, before tearing down the cache dir anyway. 500 ms is well above the
+         * observed flush time on Apple silicon (single-digit ms for a 10-frame strip) and
+         * still short enough that a stuck session doesn't lock up the flow's finally{}.
+         */
+        private const val TEARDOWN_WAIT_MS = 500L
     }
 }

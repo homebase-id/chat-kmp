@@ -44,9 +44,6 @@ internal object VideoThumbnailQuality {
     const val STRIP_JPEG_QUALITY_0_TO_100: Int = 60
     const val STRIP_JPEG_QUALITY_0_TO_1: Double = 0.6
 
-    /** Legacy alias for old `-q:v 5` strip default — used until normalization. */
+    /** ffmpeg `-q:v` qscale for strip frames. 7 ≈ JPEG quality 60. */
     const val STRIP_FFMPEG_QSCALE: Int = 7
-
-    /** Convenience for files that previously hard-coded `5` as the ffmpeg strip qscale. */
-    const val FFMPEG_QSCALE: Int = STRIP_FFMPEG_QSCALE
 }

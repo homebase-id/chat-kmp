@@ -212,7 +212,12 @@ private fun extractStripFramesJs(
                     try {
                         video.currentTime = tSec;
                     } catch (e) {
-                        idx++; next();
+                        // Defer the retry through the task queue so a codec that throws on
+                        // every seek can't blow the JS stack via deep recursion. Cheap on the
+                        // happy path because `currentTime` doesn't throw, so we never reach
+                        // this branch in normal operation.
+                        idx++;
+                        setTimeout(next, 0);
                     }
                 }
 
