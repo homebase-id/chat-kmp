@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
  * directly to validate the MMR path against the existing
  * `androidDeviceTest/assets/test_videos/sample.mp4` fixture.
  */
-class MmrVideoDecoder : VideoDecoder {
+internal class MmrVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
         withContext(Dispatchers.IO) {

@@ -63,20 +63,22 @@ kotlin {
     }
 
     // Mirror webApp's ffmpeg.wasm runtime assets (odin-ffmpeg.js, ffmpeg-wrapper.js,
-    // mp4box.all.min.js, plus the ~22 MB ffmpeg-core.wasm + esm loader) into the wasmJsTest
-    // resources directory so Karma can serve them at `/base/...`. Source-of-truth lives in
-    // webApp; this task keeps the test target's copy in sync without checking in duplicate
-    // binaries.
+    // mp4box.all.min.js, plus the ~22 MB ffmpeg-core.wasm + esm loader) into a build-dir that
+    // Karma serves alongside the wasmJsTest harness — see karma.config.d/01-ffmpeg.js for the
+    // loader wiring. Source-of-truth lives in webApp; writing into `build/` (rather than the
+    // source tree) keeps `gradle clean` honest and means an offline / partial build can't
+    // silently feed off stale checked-in copies.
+    val mirrorWebAppFfmpegAssetsForTestDir = layout.buildDirectory.dir("generated/wasmJsTestFfmpegAssets")
     val mirrorWebAppFfmpegAssetsForTest by tasks.registering(Copy::class) {
-        val webAppRes = rootProject.projectDir.resolve("webApp/src/wasmJsMain/resources")
+        val webAppRes = project(":webApp").projectDir.resolve("src/wasmJsMain/resources")
         from(webAppRes.resolve("odin-ffmpeg.js"))
         from(webAppRes.resolve("ffmpeg-wrapper.js"))
         from(webAppRes.resolve("mp4box.all.min.js"))
         from(webAppRes.resolve("ffmpeg-wasm")) { into("ffmpeg-wasm") }
-        into(layout.projectDirectory.dir("src/wasmJsTest/resources"))
+        into(mirrorWebAppFfmpegAssetsForTestDir)
     }
-    tasks.matching { it.name == "wasmJsTestProcessResources" }.configureEach {
-        dependsOn(mirrorWebAppFfmpegAssetsForTest)
+    sourceSets.getByName("wasmJsTest") {
+        resources.srcDir(mirrorWebAppFfmpegAssetsForTest)
     }
 
     // For iOS targets, this is also where you should

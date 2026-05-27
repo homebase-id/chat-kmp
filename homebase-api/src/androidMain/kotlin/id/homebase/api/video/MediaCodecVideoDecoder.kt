@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
  * the gap. Posters that `loadThumbnail` can't satisfy (pre-Q, file paths, unsupported
  * providers) fall through to MMR as well.
  */
-class MediaCodecVideoDecoder : VideoDecoder {
+internal class MediaCodecVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
         withContext(Dispatchers.IO) {

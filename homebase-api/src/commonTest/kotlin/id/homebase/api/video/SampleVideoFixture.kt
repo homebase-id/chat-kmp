@@ -9,11 +9,11 @@ import kotlin.io.encoding.Base64
  * base64 in a Kotlin source file so every test target — JVM, iOS simulator, wasmJs browser —
  * can stage the same bytes without needing platform-specific resource-bundle plumbing.
  *
- * Source: the same `sample.mp4` checked in at
- * `homebase-api/src/jvmTest/resources/test_videos/sample.mp4` (6 s 320x180 H.264, ~26 KB).
- * Regenerate with:
+ * Bytes mirror `homebase-chat/src/jvmTest/resources/test_videos/sample.mp4` (the long-lived
+ * fixture used by `FFmpegPipelineCoverageJvmTest`): 6 s 320x180 H.264, ~26 KB. Regenerate
+ * (e.g. after an ffmpeg upgrade changes the canonical clip) with:
  *
- *   base64 -w 80 homebase-api/src/jvmTest/resources/test_videos/sample.mp4
+ *   base64 -w 80 homebase-chat/src/jvmTest/resources/test_videos/sample.mp4
  */
 internal object SampleVideoFixture {
 

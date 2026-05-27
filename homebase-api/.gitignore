@@ -1,6 +1,0 @@
-# Mirrored from webApp by the mirrorWebAppFfmpegAssetsForTest gradle task so Karma can serve
-# the ffmpeg.wasm runtime. Source of truth lives in webApp/src/wasmJsMain/resources/.
-/src/wasmJsTest/resources/odin-ffmpeg.js
-/src/wasmJsTest/resources/ffmpeg-wrapper.js
-/src/wasmJsTest/resources/mp4box.all.min.js
-/src/wasmJsTest/resources/ffmpeg-wasm/
