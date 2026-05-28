@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +57,8 @@ import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.chat_message_video_thumbnail
+import id.homebase.resources.moment_video_fill_screen
+import id.homebase.resources.moment_video_fit_screen
 import id.homebase.resources.moment_video_mute
 import id.homebase.resources.moment_video_pause
 import id.homebase.resources.moment_video_unmute
@@ -132,6 +136,21 @@ fun MomentInlineVideoTile(
      * transition doesn't visibly re-crop the image.
      */
     useNativeControls: Boolean = false,
+    /**
+     * When [useNativeControls] is true, swap the default fit-with-letterbox
+     * for crop-to-fill (Reels-style). Also flips the thumbnail underlay back
+     * to [ContentScale.Crop] so the thumbnail → first-frame transition stays
+     * seamless. The detail screen wires this to a session-scoped toggle so
+     * the user can flip it via the corner icon below; the feed carousel
+     * ignores it (it's always crop-to-fill).
+     */
+    useZoomFill: Boolean = false,
+    /**
+     * Tapped when the user wants to toggle [useZoomFill]. When non-null
+     * AND [useNativeControls] is true, an aspect-toggle icon is rendered
+     * next to the mute icon so the user can flip fit ↔ crop on the fly.
+     */
+    onToggleZoomFill: (() -> Unit)? = null,
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
@@ -314,6 +333,7 @@ fun MomentInlineVideoTile(
                     videoSession.savePlaybackPosition(fileId, payload.key, ms)
                 },
                 onFirstFrame = { firstFramePainted = true },
+                useZoomFill = useZoomFill,
             )
         }
 
@@ -330,11 +350,16 @@ fun MomentInlineVideoTile(
         // on some Android GPUs that produces visible horizontal slices of
         // the thumbnail bleeding through the first decoded frame.
         val thumbnailAlpha = if (isPlaying && firstFramePainted) 0f else 1f
-        // Match the player's resize mode: native controls → RESIZE_MODE_FIT
-        // (letterbox), so the thumbnail must also Fit; otherwise we get a
-        // visible re-crop the moment the first frame paints. Crop everywhere
-        // else (feed carousel, single-video card) where the player ZOOMs.
-        val thumbnailContentScale = if (useNativeControls) ContentScale.Fit else ContentScale.Crop
+        // Match the player's resize mode so the thumbnail → first-frame
+        // hand-off doesn't visibly re-crop the image:
+        //   - Native controls, no zoom-fill → RESIZE_MODE_FIT → Fit.
+        //   - Native controls, zoom-fill → RESIZE_MODE_ZOOM → Crop.
+        //   - No native controls (feed carousel) → RESIZE_MODE_ZOOM → Crop.
+        val thumbnailContentScale = if (useNativeControls && !useZoomFill) {
+            ContentScale.Fit
+        } else {
+            ContentScale.Crop
+        }
         if (uploadBitmap != null) {
             Image(
                 bitmap = uploadBitmap,
@@ -393,6 +418,36 @@ fun MomentInlineVideoTile(
                     contentDescription = muteLabel,
                     tint = Color.White,
                 )
+            }
+            // Aspect-ratio toggle. Only meaningful when the host owns the
+            // resize choice (useNativeControls = true on the detail screen);
+            // the feed carousel always crops to fill its locked aspect, so
+            // there's nothing to toggle there. The icon shows the action the
+            // tap will take, not the current state: Fullscreen ↔ "tap to
+            // crop-to-fill"; FullscreenExit ↔ "tap to fit-with-letterbox."
+            val toggleZoom = onToggleZoomFill
+            if (useNativeControls && toggleZoom != null) {
+                val zoomLabel = stringResource(
+                    if (useZoomFill) MR.string.moment_video_fit_screen
+                    else MR.string.moment_video_fill_screen,
+                )
+                IconButton(
+                    onClick = toggleZoom,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        // Stack directly below the mute button. 48dp (mute's
+                        // top inset) + 48dp (icon-button hit target) = 96dp
+                        // — pushes this one fully below without overlap.
+                        .padding(top = 96.dp, end = 8.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50)),
+                ) {
+                    Icon(
+                        imageVector = if (useZoomFill) Icons.Default.FullscreenExit
+                        else Icons.Default.Fullscreen,
+                        contentDescription = zoomLabel,
+                        tint = Color.White,
+                    )
+                }
             }
         } else if (!isUploading) {
             // Idle-state decorations: play affordance, codec badge, duration.

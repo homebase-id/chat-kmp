@@ -858,6 +858,7 @@ private fun MomentDetailContent(
     // single tap persists across nav-in / nav-out of the detail screen.
     val videoSession = koinInject<MomentsVideoSession>()
     val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
+    val isZoomedToFill by videoSession.isZoomedToFill.collectAsStateWithLifecycle()
 
     // Feed → detail playback handoff. If the user tapped a video that was
     // autoplaying in the feed, MomentsVideoSession will hold the captured
@@ -921,6 +922,11 @@ private fun MomentDetailContent(
             playingPayloadKey = null
         }
     }
+
+    // Same animation as the feed card's double/triple-tap reaction. The
+    // detail screen's heart and flame buttons feed this controller so the
+    // visual confirmation is identical across surfaces.
+    val floatingController = rememberFloatingReactionController()
 
     Box(modifier = modifier.background(Color.Black)) {
         // Layer 1: full-screen media pager. ContentScale.Fit (via
@@ -990,6 +996,8 @@ private fun MomentDetailContent(
                         tapMode = MomentVideoTapMode.ButtonOnly,
                         showPauseAffordance = false,
                         useNativeControls = true,
+                        useZoomFill = isZoomedToFill,
+                        onToggleZoomFill = videoSession::toggleZoomedToFill,
                     )
                 } else {
                     MomentMediaItem(
@@ -1040,9 +1048,18 @@ private fun MomentDetailContent(
                 flameActive = FlameEmoji in moment.ownReactions,
                 commentsEnabled = moment.commentsEnabled,
                 onToggleHeart = {
+                    // Check ownReactions BEFORE the toggle dispatch so we
+                    // know whether to play the add or remove animation. The
+                    // dispatch is async (optimistic write hits the store
+                    // first, but the uiState combine has its own latency),
+                    // so reading post-dispatch could race.
+                    val isRemoving = HeartEmoji in moment.ownReactions
+                    floatingController.show(HeartEmoji, isRemoving)
                     onAction(MomentDetailUiAction.ToggleReactionOnMoment(HeartEmoji))
                 },
                 onToggleFlame = {
+                    val isRemoving = FlameEmoji in moment.ownReactions
+                    floatingController.show(FlameEmoji, isRemoving)
                     onAction(MomentDetailUiAction.ToggleReactionOnMoment(FlameEmoji))
                 },
                 onShowReactors = {
@@ -1070,6 +1087,14 @@ private fun MomentDetailContent(
                     .fillMaxWidth(),
             )
         }
+
+        // Layer 4: floating reaction confirmation — same animation the feed
+        // card uses for double/triple-tap reactions. Drawn last so it lands
+        // on top of media + action column + bottom overlay.
+        FloatingReactionOverlay(
+            display = floatingController.display,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 

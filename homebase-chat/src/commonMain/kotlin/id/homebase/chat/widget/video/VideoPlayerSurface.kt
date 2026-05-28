@@ -57,4 +57,17 @@ expect fun VideoPlayerSurface(
      * web): may fire on "ready to play" instead, which is a few frames early.
      */
     onFirstFrame: () -> Unit = {},
+    /**
+     * Override the video's resize behaviour when the caller is using native
+     * controls. `false` (default) → fit-with-letterbox (Android
+     * `RESIZE_MODE_FIT` / iOS `.resizeAspect`): whole frame visible, black
+     * bars fill the aspect-ratio mismatch. `true` → crop-to-fill (Android
+     * `RESIZE_MODE_ZOOM` / iOS `.resizeAspectFill`): the video fills the
+     * surface edge-to-edge; portions that don't match the surface aspect are
+     * cropped off the edges.
+     *
+     * Ignored when [useNativeControls] is false — that branch is the feed
+     * carousel, which always crops to its own locked aspect.
+     */
+    useZoomFill: Boolean = false,
 )

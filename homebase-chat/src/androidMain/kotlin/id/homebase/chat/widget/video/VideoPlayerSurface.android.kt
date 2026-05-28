@@ -86,6 +86,7 @@ actual fun VideoPlayerSurface(
     startPositionMs: Long,
     onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
+    useZoomFill: Boolean,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -328,10 +329,17 @@ actual fun VideoPlayerSurface(
                                 // already cropped to fill — visually inconsistent.
                                 // ZOOM mirrors the thumbnail's crop-to-fill so
                                 // the transition is seamless.
-                                resizeMode = if (useNativeControls) {
-                                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                } else {
-                                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                //
+                                // Detail screen (useNativeControls=true) defaults
+                                // to FIT (whole frame visible, letterbox bars on
+                                // mismatched aspects). The caller can opt into
+                                // ZOOM (crop-to-fill, Reels-style) via
+                                // [useZoomFill] — the moments detail screen
+                                // exposes this as a session-scoped toggle.
+                                resizeMode = when {
+                                    !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 }
                                 // Leave the underlying TextureView at its
                                 // default `isOpaque = true`. The earlier code
@@ -357,10 +365,10 @@ actual fun VideoPlayerSurface(
                         view.useController = useNativeControls
                         view.isClickable = useNativeControls
                         view.isFocusable = useNativeControls
-                        view.resizeMode = if (useNativeControls) {
-                            AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        } else {
-                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        view.resizeMode = when {
+                            !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     modifier = Modifier.fillMaxSize(),

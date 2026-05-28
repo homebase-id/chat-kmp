@@ -93,6 +93,7 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") startPositionMs: Long,
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") useZoomFill: Boolean,
 ) {
     // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
     // built-in transport UI of its own (host renders controls). Param is

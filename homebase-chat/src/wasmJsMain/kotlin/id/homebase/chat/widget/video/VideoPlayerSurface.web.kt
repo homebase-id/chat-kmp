@@ -56,6 +56,7 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") startPositionMs: Long,
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") useZoomFill: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density
