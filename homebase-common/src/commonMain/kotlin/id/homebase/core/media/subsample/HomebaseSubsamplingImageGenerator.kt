@@ -22,10 +22,10 @@ class HomebaseSubsamplingImageGenerator(
         imageLoader: ImageLoader,
         result: SuccessResult,
         painter: Painter,
-    ): SubsamplingImageGenerateResult {
+    ): SubsamplingImageGenerateResult? {
         val model = result.request.data
         if (model !is HomebaseImageData) {
-            return SubsamplingImageGenerateResult.Error("Not a HomebaseImageData model")
+            return null
         }
         val payload = this.imageLoader.loadFullPayload(model)
             ?: return SubsamplingImageGenerateResult.Error("Failed to load payload bytes")

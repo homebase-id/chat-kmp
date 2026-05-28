@@ -37,7 +37,7 @@ import id.homebase.resources.vault_error_image_unavailable
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
+
 
 @Composable
 fun VaultZoomableImage(

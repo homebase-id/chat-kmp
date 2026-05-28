@@ -119,7 +119,15 @@ fun FullScreenMediaViewer(
             state = pagerState,
         ) { page ->
             val payload = data.payloads[page]
-            val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
+            val payloadIv = remember(payload.iv) {
+                payload.iv?.let {
+                    try {
+                        Base64.decode(it)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
 
             payloadIv?.let { iv ->
                 val source = remember(data.driveId, data.fileId, payload.key, iv) {
