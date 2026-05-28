@@ -155,6 +155,34 @@ kotlin {
     // reproduces and CI captures a stack trace. Filter will be restored on the parent branch
     // until the underlying sqliter+coroutines interaction is fixed.
 
+    // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every
+    // commonTest that calls `createInMemoryDatabase` blows up on wasmJs (see
+    // src/wasmJsTest/.../TestDatabaseHelper.web.kt). Exclude those classes so the wasmJs
+    // test job stays green for the things that actually work (FFmpeg decoder, image
+    // header parser, video preloader, etc). Drop this filter once the sql.js test driver
+    // lands — at that point every excluded class should start passing on wasm.
+    val wasmJsDbBackedTestClasses = listOf(
+        "id.homebase.api.sync.database.ChatReadCountWrapperTest",
+        "id.homebase.api.sync.database.CursorSyncTest",
+        "id.homebase.api.sync.database.DriveLocalTagIndexTest",
+        "id.homebase.api.sync.database.DriveMainIndexTest",
+        "id.homebase.api.sync.database.DriveTagIndexTest",
+        "id.homebase.api.sync.database.FileStateFilterTest",
+        "id.homebase.api.sync.database.MainIndexMetaTest",
+        "id.homebase.api.sync.database.OutboxSyncTest",
+        "id.homebase.api.sync.database.OutboxTest",
+        "id.homebase.api.sync.DriveSyncManagerTest",
+        "id.homebase.api.sync.DriveSyncTest",
+        "id.homebase.api.sync.LogoutLoginRoundTripTest",
+    )
+    tasks.withType(org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest::class.java)
+        .matching { it.name == "wasmJsBrowserTest" }
+        .configureEach {
+            wasmJsDbBackedTestClasses.forEach { fqcn ->
+                filter.excludeTestsMatching("$fqcn.*")
+            }
+        }
+
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }
