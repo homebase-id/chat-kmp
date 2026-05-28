@@ -281,6 +281,17 @@ private fun MomentDetailLoadedPager(
         // Larger windows compound the VM-accumulation footprint above — 1 is
         // enough for the eye to never see a blank page.
         beyondViewportPageCount = 1,
+        // Mirror the feed's chat-style layout (reverseLayout=true in
+        // MomentsFeedList) so the visual top↔bottom orientation matches:
+        // newest moment at the bottom, older moments above. Without this
+        // the pager flipped the user's mental model — they'd open a
+        // moment that was at the bottom of the timeline and find it at
+        // the top of the pager, breaking gesture continuity (swipe up to
+        // see older). With reverseLayout=true, page 0 lands at the
+        // bottom and the same finger gesture (swipe up) reveals the next
+        // higher-index page coming from above — same as scrolling up the
+        // timeline to see older posts.
+        reverseLayout = true,
     ) { page ->
         val moment = feed[page]
         val pageMomentId = moment.id
