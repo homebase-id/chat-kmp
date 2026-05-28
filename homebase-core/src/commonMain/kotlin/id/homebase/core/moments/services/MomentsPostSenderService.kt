@@ -17,6 +17,8 @@ import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
@@ -29,7 +31,14 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -42,81 +51,89 @@ class MomentsPostSenderService(
     private val optimisticWriter: OptimisticWriter,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
+    private val eventBus: EventBus,
     private val scope: CoroutineScope,
 ) {
+
+    /**
+     * Local file URI (from the user's picker) for the first renderable attachment
+     * of an in-flight moment. Populated by [postMomentAsync] right after the
+     * placeholder DB write, cleared once the real optimistic write lands (real
+     * `previewThumbnail` bytes are then available on `MomentFeedItem`).
+     *
+     * The feed VM mirrors this into `MomentsFeedUiState.pendingLocalPreviews`
+     * so the tile can show the user's source image during the brief
+     * "Preparing…" window before thumbnails are generated.
+     */
+    private val _pendingLocalPreviews = MutableStateFlow<PersistentMap<Uuid, String>>(persistentMapOf())
+    val pendingLocalPreviews: StateFlow<PersistentMap<Uuid, String>> = _pendingLocalPreviews.asStateFlow()
     companion object {
         private const val TAG = "MomentsPostSenderService"
     }
 
     private val drive = momentsLabeledDrive.drive.alias
 
-    suspend fun postMoment(
+    /**
+     * Two-phase post that returns as soon as the local placeholder row exists
+     * in the DB. Sequence:
+     *
+     *   1. SYNCHRONOUS (suspend, fast): generate the moment's uniqueId + key
+     *      header, write a placeholder DriveMainIndex row carrying the
+     *      description / recipients / source (and no payloads), stash the first
+     *      attachment's local URI in `pendingLocalPreviews`, and emit
+     *      `PayloadBundlingEvent.Preparing`. The feed picks this up via the
+     *      `BatchReceived` the optimistic writer already emits — the tile
+     *      appears immediately with a "Preparing…" overlay.
+     *
+     *   2. BACKGROUND (on the service's singleton scope): build thumbnails,
+     *      encrypt the payload bundle, enqueue the upload, and `writeUpdate`
+     *      the placeholder row with the real payload descriptors and preview
+     *      thumbnail. The pending-preview cache entry is cleared once the
+     *      real row lands so the tile transitions to the proper thumbnail
+     *      without flicker.
+     *
+     *  Returns immediately after phase 1 — the dialog can dismiss now.
+     */
+    suspend fun postMomentAsync(
         attachments: List<AttachmentInput>,
         description: String,
         recipients: List<OdinId>,
         momentUniqueId: Uuid = Uuid.random(),
         userDate: UnixTimeUtc? = null,
         source: MomentSource? = null,
-        /**
-         * Per-attachment image metadata aligned with [attachments] (same length
-         * and order). Null entries are dropped — the resulting MomentPostContent
-         * only carries entries for images the user opted in for.
-         */
         mediaInfoByAttachment: List<MediaInfo?>? = null,
         commentsEnabled: Boolean = true,
     ): PostMomentResult {
         Logger.d(tag = TAG) {
-            "postMoment: starting moment=$momentUniqueId attachments=${attachments.size} recipients=${recipients.size} source=$source"
+            "postMomentAsync: enqueueing moment=$momentUniqueId attachments=${attachments.size} recipients=${recipients.size} source=$source"
         }
 
-        // Server constraint: payload keys must match ^[a-z0-9_]{8,10}$. The
-        // padStart keeps the key fixed at 8 chars across single- and multi-digit
-        // indices (mmt_0000 .. mmt_9999). Capturing as a local so the same scheme
-        // names both the bundle payloads and the MediaInfo map keys.
-        val keyForIndex: (Int) -> String = { i -> "mmt_${i.toString().padStart(4, '0')}" }
-        val bundle = MessageAttachmentBuilder.build(
-            attachments = attachments,
-            fileOperationsProvider = fileOps,
-        ) { index, _ -> keyForIndex(index) }
-
-        val keyedMediaInfo: Map<String, MediaInfo>? = mediaInfoByAttachment
-            ?.mapIndexedNotNull { i, mi -> mi?.let { keyForIndex(i) to it } }
-            ?.toMap()
-            ?.takeIf { it.isNotEmpty() }
-
         val keyHeader = KeyHeader.newRandom16()
-        val encrypted = payloadBundleEncryptor.encryptBundle(
-            uniqueId = momentUniqueId,
-            bundle = bundle,
-            aesKey = keyHeader.aesKey,
-            scope = scope,
-        )
-
-        val isLocalOnly = recipients.isEmpty()
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
+        val isLocalOnly = recipients.isEmpty()
 
-        val content = OdinSystemSerializer.serialize(
+        // Placeholder content carries only what we know without doing any
+        // build/encrypt work: description, audience, comments policy. The real
+        // optimistic write later replaces this with the same content plus the
+        // mediaInfo keys generated during encryption.
+        val placeholderContent = OdinSystemSerializer.serialize(
             MomentPostContent(
                 version = MomentsProtocol.MomentPostVersionNumberOne,
                 description = description,
                 recipients = recipients,
                 source = source,
-                mediaInfo = keyedMediaInfo,
+                mediaInfo = null,
                 commentsEnabled = commentsEnabled,
             )
         )
 
-        // Unencrypted, queryable: lets callers find moments tied to a
-        // source (conversation id or any of the audience's groups) via
-        // `tagsMatchAtLeastOne = listOf(...)` without decrypting
-        // `MomentPostContent`.
         val tags: List<Uuid>? = when (source) {
             is MomentSource.Conversation -> listOf(source.conversationId)
             is MomentSource.Audience -> source.groupIds.ifEmpty { null }
             null -> null
         }
 
-        val unencryptedMetadata = UploadFileMetadata(
+        val placeholderMetadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
             isEncrypted = true,
             appData = UploadAppFileMetaData(
@@ -124,81 +141,224 @@ class MomentsPostSenderService(
                 tags = tags,
                 fileType = MomentsProtocol.MomentPostFileType,
                 userDate = effectiveUserDate.milliseconds,
-                content = content,
-                previewThumbnail = encrypted.previewThumbs.minByOrNull { it.pixelWidth },
+                content = placeholderContent,
+                previewThumbnail = null,
             ),
         )
 
-        val request = UploadFileRequest(
-            driveId = drive,
-            keyHeader = keyHeader,
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = recipients,
-                sendContents = SendContents.All,
-                useAppNotification = !isLocalOnly,
-                appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                    appId = MomentsProtocol.MomentsAppId.toString(),
-                    typeId = momentUniqueId.toString(),
-                    tagId = momentUniqueId.toString(),
-                    silent = false,
-                    unEncryptedMessage = "New moment posted",
-                ),
-            ),
-            payloads = encrypted.payloads,
-            thumbnails = encrypted.thumbnails,
-        )
-
-        val enqueued = outboxSync.tryEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = null,
-        )
-
-        if (!enqueued) {
-            error("Failed to enqueue moment for upload")
+        // Cache the first renderable attachment's local URI BEFORE writing the
+        // placeholder. The optimistic writer immediately emits BatchReceived,
+        // so the feed VM resolves the tile in the same dispatch loop — by
+        // the time it asks `pendingLocalPreviews[id]`, the entry must already
+        // be there.
+        val firstRenderableUri = attachments.firstOrNull { input ->
+            input.contentType.startsWith("image/") || input.contentType.startsWith("video/")
+        }?.filePath
+        if (firstRenderableUri != null) {
+            _pendingLocalPreviews.update { it.put(momentUniqueId, firstRenderableUri) }
         }
 
-        Logger.d(tag = TAG) { "postMoment: outbox enqueued moment=$momentUniqueId" }
-
-        // Best-effort optimistic write — surfaces the moment in the feed
-        // immediately so the user sees their own post without waiting for
-        // outbox drain → server → sync replay. If this fails the outbox
-        // delivery + sync will still bring it back.
-        @OptIn(ExperimentalEncodingApi::class)
-        val payloadDescriptors = encrypted.payloads.map { payload ->
-            PayloadDescriptor(
-                key = payload.key,
-                contentType = payload.contentType.ifEmpty { null },
-                iv = payload.iv?.let { Base64.encode(it) },
-                descriptorContent = payload.descriptorContent,
-                previewThumbnail = payload.previewThumbnail?.let {
-                    ThumbnailDescriptor(
-                        pixelWidth = it.pixelWidth,
-                        pixelHeight = it.pixelHeight,
-                        contentType = it.contentType,
-                        content = it.content,
-                    )
-                },
-            )
-        }.ifEmpty { null }
         try {
             optimisticWriter.writeNewFile(
                 driveId = drive,
                 keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
+                unecryptedMetadata = placeholderMetadata,
                 originalRecipientCount = recipients.size,
                 fileSystemType = FileSystemType.Standard,
-                payloadDescriptors = payloadDescriptors,
+                payloadDescriptors = null,
             )
-            Logger.d(tag = TAG) { "postMoment: optimistic write complete moment=$momentUniqueId" }
         } catch (e: Exception) {
+            // Without a placeholder row the feed has nothing to attach the
+            // overlay to. Fail loudly so the dialog can surface the error
+            // instead of pretending the post succeeded.
+            _pendingLocalPreviews.update { it.remove(momentUniqueId) }
             Logger.e(throwable = e, tag = TAG) {
-                "postMoment: optimistic write failed (non-fatal) moment=$momentUniqueId"
+                "postMomentAsync: placeholder write failed moment=$momentUniqueId"
             }
+            throw e
+        }
+
+        eventBus.emit(BackendEvent.PayloadBundlingEvent.Preparing(uniqueId = momentUniqueId))
+
+        // Heavy work — build/encrypt/enqueue/finalize — runs on the service's
+        // singleton scope so it survives the dialog's ViewModel being cleared.
+        scope.launch {
+            finalizeMomentSend(
+                momentUniqueId = momentUniqueId,
+                attachments = attachments,
+                description = description,
+                recipients = recipients,
+                userDate = effectiveUserDate,
+                source = source,
+                mediaInfoByAttachment = mediaInfoByAttachment,
+                commentsEnabled = commentsEnabled,
+                keyHeader = keyHeader,
+                tags = tags,
+                isLocalOnly = isLocalOnly,
+            )
         }
 
         return PostMomentResult(uniqueId = momentUniqueId)
+    }
+
+    /**
+     * Background half of [postMomentAsync]: thumbnail generation + encryption +
+     * outbox enqueue + final optimistic update. Failures here leave the
+     * placeholder row in the feed marked with `isPendingSendTag`; the user
+     * sees a Failed overlay via the outbox events / dropped fallback.
+     */
+    private suspend fun finalizeMomentSend(
+        momentUniqueId: Uuid,
+        attachments: List<AttachmentInput>,
+        description: String,
+        recipients: List<OdinId>,
+        userDate: UnixTimeUtc,
+        source: MomentSource?,
+        mediaInfoByAttachment: List<MediaInfo?>?,
+        commentsEnabled: Boolean,
+        keyHeader: KeyHeader,
+        tags: List<Uuid>?,
+        isLocalOnly: Boolean,
+    ) {
+        // Once the outbox has accepted the request its event stream drives the
+        // tile's status (Sending → Uploading → Completed/Failed). Before that,
+        // any failure here means the moment never went anywhere — roll the
+        // placeholder back so the user doesn't see a tile stuck in Preparing.
+        var enqueued = false
+        try {
+            // Server constraint: payload keys must match ^[a-z0-9_]{8,10}$.
+            val keyForIndex: (Int) -> String = { i -> "mmt_${i.toString().padStart(4, '0')}" }
+            val bundle = MessageAttachmentBuilder.build(
+                attachments = attachments,
+                fileOperationsProvider = fileOps,
+            ) { index, _ -> keyForIndex(index) }
+
+            val keyedMediaInfo: Map<String, MediaInfo>? = mediaInfoByAttachment
+                ?.mapIndexedNotNull { i, mi -> mi?.let { keyForIndex(i) to it } }
+                ?.toMap()
+                ?.takeIf { it.isNotEmpty() }
+
+            val encrypted = payloadBundleEncryptor.encryptBundle(
+                uniqueId = momentUniqueId,
+                bundle = bundle,
+                aesKey = keyHeader.aesKey,
+                scope = scope,
+            )
+
+            val content = OdinSystemSerializer.serialize(
+                MomentPostContent(
+                    version = MomentsProtocol.MomentPostVersionNumberOne,
+                    description = description,
+                    recipients = recipients,
+                    source = source,
+                    mediaInfo = keyedMediaInfo,
+                    commentsEnabled = commentsEnabled,
+                )
+            )
+
+            val unencryptedMetadata = UploadFileMetadata(
+                allowDistribution = !isLocalOnly,
+                isEncrypted = true,
+                appData = UploadAppFileMetaData(
+                    uniqueId = momentUniqueId,
+                    tags = tags,
+                    fileType = MomentsProtocol.MomentPostFileType,
+                    userDate = userDate.milliseconds,
+                    content = content,
+                    previewThumbnail = encrypted.previewThumbs.minByOrNull { it.pixelWidth },
+                ),
+            )
+
+            val request = UploadFileRequest(
+                driveId = drive,
+                keyHeader = keyHeader,
+                metadata = unencryptedMetadata.encryptContent(keyHeader),
+                transitOptions = TransitOptions(
+                    recipients = recipients,
+                    sendContents = SendContents.All,
+                    useAppNotification = !isLocalOnly,
+                    appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
+                        appId = MomentsProtocol.MomentsAppId.toString(),
+                        typeId = momentUniqueId.toString(),
+                        tagId = momentUniqueId.toString(),
+                        silent = false,
+                        unEncryptedMessage = "New moment posted",
+                    ),
+                ),
+                payloads = encrypted.payloads,
+                thumbnails = encrypted.thumbnails,
+            )
+
+            enqueued = outboxSync.tryEnqueue(
+                request,
+                priority = 1,
+                dependencyUniqueId = null,
+            )
+
+            if (!enqueued) {
+                error("Failed to enqueue moment for upload")
+            }
+
+            Logger.d(tag = TAG) { "finalizeMomentSend: outbox enqueued moment=$momentUniqueId" }
+
+            @OptIn(ExperimentalEncodingApi::class)
+            val payloadDescriptors = encrypted.payloads.map { payload ->
+                PayloadDescriptor(
+                    key = payload.key,
+                    contentType = payload.contentType.ifEmpty { null },
+                    iv = payload.iv?.let { Base64.encode(it) },
+                    descriptorContent = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.let {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = it.content,
+                        )
+                    },
+                )
+            }.ifEmpty { null }
+
+            try {
+                optimisticWriter.writeUpdate(
+                    driveId = drive,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = unencryptedMetadata,
+                    payloadDescriptors = payloadDescriptors,
+                )
+                Logger.d(tag = TAG) { "finalizeMomentSend: optimistic update complete moment=$momentUniqueId" }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "finalizeMomentSend: optimistic update failed (non-fatal) moment=$momentUniqueId"
+                }
+            }
+        } catch (e: Throwable) {
+            if (!enqueued) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "finalizeMomentSend: failed before enqueue moment=$momentUniqueId — rolling back placeholder"
+                }
+                runCatching {
+                    optimisticWriter.removeOptimisticFile(drive, momentUniqueId)
+                }.onFailure { rb ->
+                    Logger.e(throwable = rb, tag = TAG) {
+                        "finalizeMomentSend: rollback also failed moment=$momentUniqueId"
+                    }
+                }
+            } else {
+                // Outbox already owns the lifecycle (retry → OutboxItemDropped
+                // → OptimisticRollback flow handles it). Just log so we know
+                // the post-enqueue finalize update never landed.
+                Logger.e(throwable = e, tag = TAG) {
+                    "finalizeMomentSend: post-enqueue work failed moment=$momentUniqueId — outbox owns retry"
+                }
+            }
+        } finally {
+            // Real thumbnail (if any) is now on the row, so the transient
+            // local-file preview is no longer needed. Always clear, even on
+            // error paths — keeping the entry would pin a file URI the user
+            // may have just deleted from their picker.
+            _pendingLocalPreviews.update { it.remove(momentUniqueId) }
+        }
     }
 
     /**
