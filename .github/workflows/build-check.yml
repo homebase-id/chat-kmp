@@ -34,10 +34,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Run JVM unit tests
+      - name: Set up Chrome
+        # Required by Karma to run wasmJs tests headless.
+        uses: browser-actions/setup-chrome@latest
+
+      - name: Run JVM + Android unit tests
         # Unqualified `jvmTest` fans out to every subproject's jvmTest, so newly
         # added modules are covered automatically (no per-module allow-list to drift).
-        run: ./gradlew jvmTest
+        # `testDebugUnitTest` runs the androidApp module's unit tests (jvmTest
+        # doesn't reach those — androidApp has no jvm target).
+        run: ./gradlew jvmTest testDebugUnitTest
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+          CI: true
+
+      - name: Run wasmJs tests
+        # ffmpeg.wasm assets are mirrored into wasmJsTest resources by the
+        # `mirrorWebAppFfmpegAssetsForTest` task in homebase-api/build.gradle.kts
+        # (see karma.config.d/01-ffmpeg.js). wasmJs gradle tasks don't support
+        # Gradle's configuration-cache or parallel-project execution (KT-52074
+        # and friends), hence the two flags below.
+        run: ./gradlew :homebase-api:wasmJsTest --no-configuration-cache --no-parallel
         env:
           JDK_21: ${{ env.JAVA_HOME }}
           CI: true
@@ -48,7 +65,19 @@ jobs:
         with:
           files: |
             **/build/test-results/jvmTest/TEST-*.xml
-          check_name: JVM Test Results
+            **/build/test-results/testDebugUnitTest/TEST-*.xml
+            **/build/test-results/wasmJsTest/TEST-*.xml
+          check_name: Unit Test Results
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 30
 
   build:
     strategy:
@@ -105,13 +134,43 @@ jobs:
 
       # iOS simulator tests for homebase-api — covers FfmpegDecoderCommonTest (real FFmpegKit
       # via cinterop) and FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by
-      # mock bridges). The dedicated `test.yml` workflow is disabled in repo settings; running
-      # the iOS sim test here keeps the iOS-specific test coverage executing on every PR.
+      # mock bridges). Runs verbose (--info) on this diagnostic branch so a segfault in
+      # OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure produces enough
+      # output to identify the failing dispatch frame.
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
-        run: ./gradlew :homebase-api:iosSimulatorArm64Test
+        run: ./gradlew :homebase-api:iosSimulatorArm64Test --info
         env:
           JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Upload iOS test reports
+        if: ${{ matrix.name == 'iOS' && always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-test-reports
+          path: |
+            homebase-api/build/reports/tests/iosSimulatorArm64Test/
+            homebase-api/build/test-results/iosSimulatorArm64Test/
+          retention-days: 30
+
+      - name: Capture macOS crash reports
+        if: ${{ matrix.name == 'iOS' && failure() }}
+        run: |
+          mkdir -p crash-reports
+          # System-level crash logs that the OS writes when a native binary
+          # segfaults. .ips on macOS 12+; .crash on older. Copy both forms.
+          cp -v ~/Library/Logs/DiagnosticReports/*.ips crash-reports/ 2>/dev/null || true
+          cp -v ~/Library/Logs/DiagnosticReports/*.crash crash-reports/ 2>/dev/null || true
+          ls -la crash-reports/ || true
+
+      - name: Upload macOS crash reports
+        if: ${{ matrix.name == 'iOS' && failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-crash-reports
+          path: crash-reports/
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Verify Android build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
