@@ -150,21 +150,10 @@ kotlin {
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
         .linkerOpts(testBinaryLinkerOpts)
 
-    // TODO(iOS sync test segfault): OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure
-    // segfaults on the iOS simulator runtime (kotlinx.coroutines DarwinGlobalQueueDispatcher
-    // path inside the SQLDelight/sqliter combine). All 335 other commonTest cases pass on iOS.
-    // Excluded here only so the iOS test job can prove the rest of the suite green; please
-    // either fix the sqliter+coroutines interaction or move the test out of commonTest.
-    // First surfaced when iosSimulatorArm64Test was wired into build-check.yml in this PR;
-    // pre-existing failure mode that had been silent because the iOS test target was never
-    // executed (the dedicated test.yml workflow has been disabled in repo settings).
-    tasks.withType(org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest::class.java)
-        .matching { it.name == "iosSimulatorArm64Test" }
-        .configureEach {
-            filter.excludeTestsMatching(
-                "id.homebase.api.sync.database.OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure"
-            )
-        }
+    // DIAGNOSTIC RUN: exclude filter for OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure
+    // has been removed on this branch (`diagnose-outbox-ios-segfault`) so the iOS sim segfault
+    // reproduces and CI captures a stack trace. Filter will be restored on the parent branch
+    // until the underlying sqliter+coroutines interaction is fixed.
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
