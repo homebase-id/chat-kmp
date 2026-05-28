@@ -92,6 +92,7 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
     @Suppress("UNUSED_PARAMETER") startPositionMs: Long,
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
 ) {
     // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
     // built-in transport UI of its own (host renders controls). Param is
@@ -229,7 +230,10 @@ actual fun VideoPlayerSurface(
             is VpsState.Playing -> VlcjPlayer(
                 videoPath = s.videoPath,
                 modifier = Modifier.fillMaxSize(),
-                onFirstFrameRendered = { onProgress(1f) },
+                onFirstFrameRendered = {
+                    onProgress(1f)
+                    onFirstFrame()
+                },
                 muted = muted,
             )
         }

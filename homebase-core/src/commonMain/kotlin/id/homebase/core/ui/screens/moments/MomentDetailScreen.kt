@@ -18,9 +18,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -83,6 +85,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
@@ -93,13 +96,20 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
+import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.drop
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -164,6 +174,135 @@ import org.jetbrains.compose.resources.stringResource
  * presentation and the embedded pane share this composable. The caller picks
  * the VM (parameterized by `momentId`) and supplies `onNavigateBack`.
  */
+/**
+ * Instagram-Reels-style vertical pager over the in-memory moments feed. The
+ * user lands on the moment they tapped and can swipe up/down to walk through
+ * adjacent moments without popping back to the feed list. Each page is a
+ * fully-featured [MomentDetailPane] with its own [MomentDetailViewModel] —
+ * comments, reactions, full-screen overlays, etc. all work per moment.
+ *
+ * Source list: [MomentsFeedService.feed], the same flow the feed list
+ * subscribes to. No load-more here — the service keeps every moment for the
+ * active drive in memory, so the pager surfaces exactly what's already
+ * loaded.
+ *
+ * VM lifetime: each page allocates a Koin-scoped VM keyed by `momentId`. The
+ * VMs are tied to the nav back-stack entry, so they outlive page
+ * scroll-away but get cleared in bulk on back-press. With
+ * [VerticalPager.beyondViewportPageCount] = 1 only three pages are in
+ * composition at a time, but VMs slowly accumulate as the user pages — this
+ * is bounded by the number of moments they actually visit in a single
+ * detail session and acceptable in practice. If it becomes a memory
+ * pressure point later, the fix is a per-page Koin scope that releases
+ * VMs when the page leaves composition.
+ *
+ * @param initialMomentId the moment the user tapped to enter detail.
+ * @param initialPayloadKey forwarded only to the initial page so a deep-link
+ *   into a specific carousel item lands on that item. Adjacent moments
+ *   reached by vertical swipe always start on their first payload.
+ */
+@Composable
+fun MomentDetailPager(
+    initialMomentId: Uuid,
+    initialPayloadKey: String?,
+    onNavigateBack: () -> Unit,
+) {
+    val feedService = koinInject<MomentsFeedService>()
+    val momentsPreferences = koinInject<MomentsPreferences>()
+    val feed by feedService.feed.collectAsStateWithLifecycle()
+    val viewMode by momentsPreferences.viewMode.collectAsStateWithLifecycle()
+
+    // The service emits its own canonical (userDate) order, but the feed
+    // screens re-sort by view mode in [MomentsFeedViewModel] — Timeline by
+    // createdMs, Album by userDateMs. We mirror that here so the pager's
+    // order matches whatever ordering the user just left, and so the
+    // initial-page index lookup against `initialMomentId` lands in the
+    // right slot. (Without this, posts where createdMs differs from
+    // userDateMs land in different positions across the two surfaces,
+    // which reads as "doubles" / "wrong next moment" on vertical swipe.)
+    val orderedFeed = remember(feed, viewMode) {
+        when (viewMode) {
+            MomentsViewMode.Timeline -> feed.sortedByDescending { it.createdMs }
+            MomentsViewMode.Album -> feed.sortedByDescending { it.userDateMs }
+        }
+    }
+
+    if (orderedFeed.isEmpty()) {
+        // Cold-load may still be in flight (deep-link / process restart).
+        // Black background to match the detail screen's container colour
+        // so the transition into a loaded page doesn't flash a different
+        // surface colour underneath.
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(color = Color.White)
+        }
+        return
+    }
+
+    MomentDetailLoadedPager(
+        feed = orderedFeed,
+        initialMomentId = initialMomentId,
+        initialPayloadKey = initialPayloadKey,
+        onNavigateBack = onNavigateBack,
+    )
+}
+
+/**
+ * Body of [MomentDetailPager], extracted so [rememberPagerState]'s
+ * `initialPage` is computed against a known-non-empty feed. If we resolved
+ * the index in the outer composable and feed was empty at first
+ * composition, the pager would lock onto page 0 forever even after the
+ * feed populated.
+ */
+@Composable
+private fun MomentDetailLoadedPager(
+    feed: List<MomentFeedItem>,
+    initialMomentId: Uuid,
+    initialPayloadKey: String?,
+    onNavigateBack: () -> Unit,
+) {
+    // Resolve once. Subsequent feed updates (new posts arriving, optimistic
+    // deletes) shift indices around but the pager's current page anchors to
+    // whichever moment the user has settled on via its own state.
+    val initialIndex = remember(initialMomentId) {
+        feed.indexOfFirst { it.id == initialMomentId }.coerceAtLeast(0)
+    }
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex,
+        pageCount = { feed.size },
+    )
+
+    VerticalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        // Pre-mount the moments above and below so the swipe feels instant.
+        // Larger windows compound the VM-accumulation footprint above — 1 is
+        // enough for the eye to never see a blank page.
+        beyondViewportPageCount = 1,
+    ) { page ->
+        val moment = feed[page]
+        val pageMomentId = moment.id
+        val isInitialPage = pageMomentId == initialMomentId
+        val pageVm: MomentDetailViewModel = koinViewModel(
+            key = "moment-detail-pager-$pageMomentId",
+        ) {
+            // Only the initial page receives the tapped payload key (deep-
+            // link into a specific carousel item). Vertically-swiped-into
+            // pages start on their own first payload.
+            parametersOf(
+                pageMomentId,
+                if (isInitialPage) initialPayloadKey else null,
+            )
+        }
+        MomentDetailPane(
+            viewModel = pageVm,
+            onNavigateBack = onNavigateBack,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun MomentDetailPane(
@@ -314,13 +453,25 @@ private fun DetailContent(
             )
         },
     ) { innerPadding ->
+        // Immersive layout — the TopAppBar above is transparent and meant to
+        // float over the media (back arrow / overflow menu sit directly on
+        // the photo or video). Zero out the top inset so the content extends
+        // *behind* the bar instead of being pushed below it; keep the
+        // horizontal + bottom insets so the bottom-overlay description and
+        // page dots clear the system nav bar.
+        val layoutDirection = LocalLayoutDirection.current
+        val contentPadding = PaddingValues(
+            start = innerPadding.calculateStartPadding(layoutDirection),
+            end = innerPadding.calculateEndPadding(layoutDirection),
+            top = 0.dp,
+            bottom = innerPadding.calculateBottomPadding(),
+        )
         val moment = uiState.moment
         if (moment == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .consumeWindowInsets(innerPadding)
-                    .padding(innerPadding),
+                    .padding(contentPadding),
                 contentAlignment = Alignment.Center,
             ) {
                 if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
@@ -336,8 +487,7 @@ private fun DetailContent(
                 animatedVisibilityScope = animatedVisibilityScope,
                 modifier = Modifier
                     .fillMaxSize()
-                    .consumeWindowInsets(innerPadding)
-                    .padding(innerPadding),
+                    .padding(contentPadding),
             )
         }
     }
@@ -740,12 +890,23 @@ private fun MomentDetailContent(
     // there is no scroll-away to pause; the user picks play / pause via the
     // tile's centred IconButton ([MomentInlineVideoTile.showPauseAffordance]).
     // Cleared on page-change so swiping doesn't leave a video running on a
-    // page that's no longer visible. Seeded with the feed-handoff payload key
-    // (if any) so a tap-into-detail picks up playing at the same timestamp
-    // the feed was at.
-    var playingPayloadKey by remember(moment.id) { mutableStateOf(handoffPayloadKey) }
+    // page that's no longer visible.
+    //
+    // Seeded with the feed-handoff payload key ONLY when the initial page is
+    // the handoff page — otherwise opening to a photo while a different page
+    // had been autoplaying in the feed would silently start that off-screen
+    // video. With that gate in place, a tap-into-detail on a video resumes
+    // from the saved timestamp; a tap on a still page just opens the still.
+    val initialPlayingKey = remember(moment.id, initialPage, handoffPayloadKey) {
+        moment.payloads.getOrNull(initialPage)?.key?.takeIf { it == handoffPayloadKey }
+    }
+    var playingPayloadKey by remember(moment.id) { mutableStateOf(initialPlayingKey) }
     LaunchedEffect(pagerState, moment.id) {
-        snapshotFlow { pagerState.currentPage }.collect { _ ->
+        // drop(1) skips snapshotFlow's initial emission of the seeded
+        // currentPage — without it the collector fires on first composition
+        // and immediately clears the seeded playingPayloadKey, defeating
+        // the feed→detail playback handoff.
+        snapshotFlow { pagerState.currentPage }.drop(1).collect { _ ->
             playingPayloadKey = null
         }
     }
@@ -783,11 +944,13 @@ private fun MomentDetailContent(
                     contentType == "application/vnd.apple.mpegurl"
 
                 if (isVideo) {
-                    // Inline-playable video tile. ButtonOnly tapMode +
-                    // showPauseAffordance gives the user a centred Play
-                    // button on idle and a centred Pause button while
-                    // playing — pause UX the feed's autoplay flow doesn't
-                    // need (scroll-away handles it there).
+                    // Inline-playable video tile. ButtonOnly tapMode handles
+                    // the idle Play button; once playing, [useNativeControls]
+                    // hands play/pause + a scrub bar over to the platform
+                    // PlayerView / AVPlayerViewController, which auto-hide
+                    // after a few seconds of no interaction. The Compose
+                    // showPauseAffordance overlay stays off so we don't
+                    // double up on pause buttons.
                     MomentInlineVideoTile(
                         payload = payload,
                         fileId = moment.fileId,
@@ -814,7 +977,8 @@ private fun MomentDetailContent(
                         animatedVisibilityScope = animatedVisibilityScope,
                         modifier = Modifier.fillMaxSize(),
                         tapMode = MomentVideoTapMode.ButtonOnly,
-                        showPauseAffordance = true,
+                        showPauseAffordance = false,
+                        useNativeControls = true,
                     )
                 } else {
                     MomentMediaItem(

@@ -85,6 +85,7 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
     startPositionMs: Long,
     onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -221,6 +222,7 @@ actual fun VideoPlayerSurface(
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "HLS first-frame: ${clickMark.elapsedNow()}" }
                                     firstFramePainted = true
+                                    onFirstFrame()
                                     player.removeListener(this)
                                 }
                             })
@@ -266,6 +268,7 @@ actual fun VideoPlayerSurface(
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "mp4 first-frame: ${clickMark.elapsedNow()}" }
                                     firstFramePainted = true
+                                    onFirstFrame()
                                     player.removeListener(this)
                                 }
                             })
@@ -330,29 +333,23 @@ actual fun VideoPlayerSurface(
                                 } else {
                                     AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                 }
-                                // Force the underlying TextureView to be
-                                // non-opaque. By default TextureView reports
-                                // itself as opaque (`isOpaque = true`), which
-                                // tells the view-hierarchy compositor it can
-                                // skip drawing siblings beneath it. But its
-                                // own pixel buffer is *transparent* until the
-                                // first decoded frame arrives — so for the
-                                // ~50–150 ms window between PlayerView mount
-                                // and onRenderedFirstFrame, Android composites
-                                // transparent pixels against the window
-                                // background instead of the thumbnail we
-                                // carefully drew behind. That's the
-                                // light-coloured "background coming through"
-                                // blip visible when autoplay engages mid-swipe
-                                // in the carousel. Setting isOpaque=false
-                                // makes the compositor blend the texture with
-                                // the thumbnail (which is what we want), so
-                                // the pre-first-frame window is invisible.
-                                // PlayerView creates this view at inflate via
-                                // surface_type=texture_view; getVideoSurfaceView()
-                                // is the canonical accessor.
-                                (videoSurfaceView as? android.view.TextureView)
-                                    ?.isOpaque = false
+                                // Leave the underlying TextureView at its
+                                // default `isOpaque = true`. The earlier code
+                                // here flipped it to false so the thumbnail
+                                // drawn *underneath* the player could show
+                                // through during decoder warm-up — but the
+                                // pre-first-frame texture state isn't cleanly
+                                // alpha=0; some Adreno/Mali drivers hand back
+                                // uninitialized GL memory and the compositor
+                                // reads that garbage as per-pixel alpha,
+                                // bleeding thin slices of the thumbnail
+                                // *through* the decoded video frame for the
+                                // first ~1–2 frames. With an opaque texture
+                                // the slices can't happen; the empty/garbage
+                                // window is hidden instead by the thumbnail
+                                // overlay drawn *over* this surface in
+                                // [id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile]
+                                // (controlled by the onFirstFrame callback).
                                 playerView = this
                             }
                     },

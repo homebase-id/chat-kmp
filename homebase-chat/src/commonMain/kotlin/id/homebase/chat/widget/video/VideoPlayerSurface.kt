@@ -46,4 +46,15 @@ expect fun VideoPlayerSurface(
      * handoff is fresh whenever the user navigates away.
      */
     onPositionUpdate: (Long) -> Unit = {},
+    /**
+     * Fires once per mount, when the underlying player has pushed its first
+     * decoded frame to the rendering surface. Callers use this to drop a
+     * thumbnail overlay drawn over the player — the moments inline tile keeps
+     * the thumbnail visible until this fires so the user never sees the
+     * empty/garbage texture state during decoder warm-up.
+     *
+     * Best-effort on platforms without an exact first-frame callback (iOS,
+     * web): may fire on "ready to play" instead, which is a few frames early.
+     */
+    onFirstFrame: () -> Unit = {},
 )

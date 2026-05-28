@@ -55,6 +55,7 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
     @Suppress("UNUSED_PARAMETER") startPositionMs: Long,
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density
@@ -131,6 +132,11 @@ actual fun VideoPlayerSurface(
         if (!started && widthCss > 0.0 && heightCss > 0.0) {
             started = true
             playVideoOverlay(el)
+            // The DOM <video> paints over the Compose canvas, so any inline-
+            // tile thumbnail overlay must drop now or it would block the
+            // video. Approximation: fires right after play() is called, a
+            // few frames before the actual first decoded frame paints.
+            onFirstFrame()
         }
     }
 

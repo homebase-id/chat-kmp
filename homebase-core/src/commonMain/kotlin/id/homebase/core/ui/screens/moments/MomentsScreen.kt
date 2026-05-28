@@ -543,7 +543,7 @@ private fun MomentsFeedList(
                 pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
-                onCardClick = { onOpenMoment(moment.id.toString(), null) },
+                onCardClick = { payloadKey -> onOpenMoment(moment.id.toString(), payloadKey) },
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
@@ -579,7 +579,11 @@ private fun MomentPostCard(
     pendingLocalPreviewUri: String?,
     selfOdinId: OdinId?,
     isSelected: Boolean,
-    onCardClick: () -> Unit,
+    // Carries the payload key of whichever carousel page was visible at tap
+    // time so the detail screen can open at the same page (and resume the
+    // playing video where the feed left off). `null` for description-only
+    // moments and falls through to "open at page 0" downstream.
+    onCardClick: (payloadKey: String?) -> Unit,
     onAddReaction: (emoji: String) -> Unit,
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
@@ -625,6 +629,15 @@ private fun MomentPostCard(
     var tapCount by remember { mutableStateOf(0) }
     var dispatchJob by remember { mutableStateOf<Job?>(null) }
 
+    // Tracks which carousel page the user is currently looking at so a
+    // tap-to-detail opens on the same page. Defaults to the first payload
+    // (correct for single-payload moments where the carousel isn't shown);
+    // updated by MomentMediaGallery's onVisiblePayloadChanged callback when
+    // the moment has multiple payloads.
+    var visiblePayloadKey by remember(moment.id) {
+        mutableStateOf(moment.payloads.firstOrNull()?.key)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -646,7 +659,7 @@ private fun MomentPostCard(
                             val resolved = tapCount
                             tapCount = 0
                             when (resolved) {
-                                1 -> onCardClick()
+                                1 -> onCardClick(visiblePayloadKey)
                                 2 -> {
                                     val isRemoving = HeartEmoji in moment.ownReactions
                                     showFloatingEmoji(HeartEmoji, isRemoving)
@@ -675,7 +688,7 @@ private fun MomentPostCard(
             // the raw pointerInput above isn't visible to them.
             .semantics {
                 onClick(label = onClickLabel) {
-                    onCardClick()
+                    onCardClick(visiblePayloadKey)
                     true
                 }
             },
@@ -779,6 +792,7 @@ private fun MomentPostCard(
                         onToggleMute = onToggleMute,
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
+                        onVisiblePayloadChanged = { visiblePayloadKey = it },
                     )
                 }
 

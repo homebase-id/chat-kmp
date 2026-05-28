@@ -54,6 +54,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.moments_compose_continue
 import id.homebase.resources.moments_compose_empty_hero
 import id.homebase.resources.moments_compose_title
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.mimeType
@@ -109,17 +110,20 @@ fun MomentComposeScreen(
         }
     }
 
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
-            val ct = it.mimeType()?.toString().orEmpty()
-            val pending = when {
-                ct.startsWith("video/") ->
-                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
-
-                else -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
+        val pending = files.map { f ->
+            val ct = f.mimeType()?.toString().orEmpty()
+            if (ct.startsWith("video/")) {
+                AttachmentPendingFile.FileVideo(Uuid.generateV7(), f, thumbnailBytes = null)
+            } else {
+                AttachmentPendingFile.FileImage(Uuid.generateV7(), f)
             }
-            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
         }
+        viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(pending))
     }
 
     val fileLauncher = rememberFilePickerLauncher { file ->

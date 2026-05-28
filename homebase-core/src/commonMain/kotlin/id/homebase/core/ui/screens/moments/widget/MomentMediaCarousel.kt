@@ -90,6 +90,10 @@ fun MomentMediaCarousel(
     // active (scroll off → autoplay disengages → LazyColumn eventually
     // disposes the tile and tears the player down).
     autoplayActive: Boolean = false,
+    // Fires with the payload key of whichever page is currently centred so
+    // the host can pass it to the tap-into-detail navigation — opening the
+    // detail at the page the user was looking at, not always page 0.
+    onVisiblePayloadChanged: (String) -> Unit = {},
 ) {
     if (payloads.isEmpty()) return
 
@@ -114,6 +118,12 @@ fun MomentMediaCarousel(
     //     video on page N pauses when page N+1 scrolls in.
     // snapshotFlow dedups via structural equality, so emissions only land
     // when the active key actually changes — no per-frame churn on scroll.
+    LaunchedEffect(pagerState, payloads, messageId) {
+        snapshotFlow { pagerState.currentPage }.collect { idx ->
+            payloads.getOrNull(idx)?.key?.let(onVisiblePayloadChanged)
+        }
+    }
+
     LaunchedEffect(pagerState, payloads, autoplayActive, messageId) {
         if (!autoplayActive) {
             snapshotFlow { pagerState.currentPage }.collect { _ ->

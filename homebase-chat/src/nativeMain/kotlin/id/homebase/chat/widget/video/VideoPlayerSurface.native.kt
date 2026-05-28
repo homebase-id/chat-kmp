@@ -121,6 +121,7 @@ actual fun VideoPlayerSurface(
     useInlineOptimizations: Boolean,
     startPositionMs: Long,
     onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -347,6 +348,13 @@ actual fun VideoPlayerSurface(
                         // carousel).
                         showsPlaybackControls = useNativeControls
                         s.player.play()
+                        // Approximate "first frame ready" signal: status is
+                        // already .readyToPlay (awaitReadyToPlay gated us
+                        // here) and the AVPlayerViewController has just been
+                        // configured. The actual first decoded frame paints a
+                        // few ms later — close enough for the inline tile's
+                        // thumbnail-overlay drop.
+                        onFirstFrame()
                     }
                 },
                 modifier = Modifier.fillMaxSize(),

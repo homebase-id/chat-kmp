@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -107,14 +108,30 @@ fun MomentInlineVideoTile(
     modifier: Modifier = Modifier,
     tapMode: MomentVideoTapMode = MomentVideoTapMode.FullTile,
     /**
-     * When true AND [isPlaying] AND [tapMode] == [MomentVideoTapMode.ButtonOnly],
-     * render a centred Pause IconButton over the player surface so the user
-     * can stop playback with a tap. Off by default — the moments feed's
-     * autoplay flow deliberately omits any play/pause overlay during
-     * playback (scroll-away handles pause). The detail screen has no
-     * scroll-away, so it sets this to `true`.
+     * When true AND [isPlaying] AND [tapMode] == [MomentVideoTapMode.ButtonOnly]
+     * AND [useNativeControls] is false, render a centred Pause IconButton over
+     * the player surface so the user can stop playback with a tap. Off by
+     * default — the moments feed's autoplay flow deliberately omits any
+     * play/pause overlay during playback (scroll-away handles pause). The
+     * detail screen has no scroll-away; it gets pause + a scrub bar from
+     * [useNativeControls] instead.
      */
     showPauseAffordance: Boolean = false,
+    /**
+     * Hand playback UI to the platform's native player view — Android
+     * PlayerView (with its play/pause + scrubber + time labels that auto-hide
+     * after a few seconds), iOS AVPlayerViewController (same idea). Off in
+     * the feed because the card-level multi-tap detector needs every touch
+     * (double/triple-tap reactions) and the carousel pager needs clean
+     * horizontal drag. On in the detail screen, where neither of those
+     * constraints applies and the user wants to scrub.
+     *
+     * Also flips the player surface to letterbox-fit (matching the rest of
+     * the detail screen's still-image presentation) and switches the
+     * thumbnail underlay to [ContentScale.Fit] so the thumbnail → first-frame
+     * transition doesn't visibly re-crop the image.
+     */
+    useNativeControls: Boolean = false,
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
@@ -213,34 +230,16 @@ fun MomentInlineVideoTile(
         Modifier.fillMaxSize()
     }
 
-    Box(modifier = modifier) {
-        // Layer 1: thumbnail. Always rendered so it stays mounted across the
-        // isPlaying transition — Compose doesn't recompose it from scratch.
-        // While playing, this acts as the backdrop visible *through* the
-        // PlayerView's TextureView (transparent shutter; texture is empty
-        // until the first frame is pushed). Result: no black flash, no
-        // visible swap; the thumbnail is overpainted naturally once the
-        // decoder produces frames.
-        if (uploadBitmap != null) {
-            Image(
-                bitmap = uploadBitmap,
-                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                modifier = thumbnailModifier,
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            HomebaseImage(
-                imageData = imageData,
-                modifier = thumbnailModifier,
-                contentScale = ContentScale.Crop,
-                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-            )
-        }
+    // Tracks whether the underlying player has pushed its first decoded
+    // frame to the surface. Drives the thumbnail-overlay drop below. Reset
+    // on every isPlaying transition so a swipe-away-and-back lands on a
+    // fresh "no frame yet → thumbnail covers player" state.
+    var firstFramePainted by remember(payload.key, isPlaying) { mutableStateOf(false) }
 
-        // Layer 2: video surface (only while playing). Paints over the
-        // thumbnail once frames start arriving.
+    Box(modifier = modifier) {
+        // Layer 1: video surface (only while playing). Rendered FIRST so it
+        // sits at the bottom of the stack; the thumbnail above covers it
+        // until the first decoded frame is on screen.
         if (isPlaying) {
             val fullScreenData = remember(videoPlayerData, payload) {
                 FullScreenOverlay.VideoPlayerData(
@@ -295,19 +294,14 @@ fun MomentInlineVideoTile(
                     },
                 muted = isMuted,
                 // Native controls (Android PlayerView / iOS AVPlayerViewController)
-                // intercept every touch on the surface:
-                //   - Android: PlayerView's onTouchEvent + setClickable(true)
-                //     consume ACTION_DOWN, so MomentPostCard's outer multi-tap
-                //     detector never sees the double / triple-tap that triggers
-                //     heart / flame reactions.
-                //   - iOS: AVPlayerViewController's built-in transport UI eats
-                //     the gesture stack the same way.
-                // Autoplay in the feed doesn't need a scrubber or pause button
-                // anyway (scroll-away pauses, mute icon is in the corner), so
-                // disable native controls universally for the inline tile. The
-                // full-screen detail player still gets controls via its own
-                // VideoPlayerSurface call.
-                useNativeControls = false,
+                // intercept touches on the surface — Android PlayerView's
+                // onTouchEvent + setClickable(true) consume ACTION_DOWN and iOS
+                // AVPlayerViewController's transport UI does the equivalent —
+                // so the moments feed keeps this off so MomentPostCard's outer
+                // multi-tap detector can see double/triple taps for reactions.
+                // The detail screen opts in via [useNativeControls] above
+                // because it wants the auto-hiding play/pause + scrubber.
+                useNativeControls = useNativeControls,
                 // Dark-launch flag for the iOS inline optimizations (warm
                 // AVPlayer pool, audio-track disable when muted, first-frame
                 // KVO gate). Off-by-default on the expect signature, so
@@ -319,6 +313,43 @@ fun MomentInlineVideoTile(
                 onPositionUpdate = { ms ->
                     videoSession.savePlaybackPosition(fileId, payload.key, ms)
                 },
+                onFirstFrame = { firstFramePainted = true },
+            )
+        }
+
+        // Layer 2: thumbnail. Always mounted across the isPlaying transition
+        // so Compose doesn't recompose it from scratch on swipe-back. While
+        // the video is loading and during decoder warm-up it sits *over* the
+        // player surface, hiding the empty/uninitialized texture. We drop it
+        // (zero alpha) once VideoPlayerSurface's onFirstFrame callback has
+        // fired, revealing the now-painting video.
+        //
+        // We deliberately put the thumbnail above the player rather than
+        // below + isOpaque=false — that approach blends the GL texture's
+        // (possibly uninitialized) alpha channel against the thumbnail, and
+        // on some Android GPUs that produces visible horizontal slices of
+        // the thumbnail bleeding through the first decoded frame.
+        val thumbnailAlpha = if (isPlaying && firstFramePainted) 0f else 1f
+        // Match the player's resize mode: native controls → RESIZE_MODE_FIT
+        // (letterbox), so the thumbnail must also Fit; otherwise we get a
+        // visible re-crop the moment the first frame paints. Crop everywhere
+        // else (feed carousel, single-video card) where the player ZOOMs.
+        val thumbnailContentScale = if (useNativeControls) ContentScale.Fit else ContentScale.Crop
+        if (uploadBitmap != null) {
+            Image(
+                bitmap = uploadBitmap,
+                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                modifier = thumbnailModifier.alpha(thumbnailAlpha),
+                contentScale = thumbnailContentScale,
+            )
+        } else {
+            HomebaseImage(
+                imageData = imageData,
+                modifier = thumbnailModifier.alpha(thumbnailAlpha),
+                contentScale = thumbnailContentScale,
+                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
 
