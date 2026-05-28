@@ -11,6 +11,7 @@ import id.homebase.api.sync.database.NativeDatabaseSizeProbe
 import id.homebase.chat.dice.IosShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
+import id.homebase.chat.widget.video.AVPlayerPool
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -54,6 +55,11 @@ actual fun platformModule(): Module = module {
     single<DatabaseSizeProbe> { NativeDatabaseSizeProbe() }
     single<UpdateAppManager> { IOSUpdateAppManager(get()) }
     single<ShakeDetector> { IosShakeDetector() }
+    // Warm pool of AVPlayer instances reused across moments inline-tile
+    // plays when `useInlineOptimizations = true`. Mirrors ExoPlayerPool on
+    // Android. Only resolved from VideoPlayerSurface.native.kt — see
+    // AVPlayerPool.kt for the rationale.
+    single { AVPlayerPool() }
     single<NotificationBackend> { KMPNotifierBackend() }
     single(createdAtStart = true) {
         ImageLoader.Builder(PlatformContext.INSTANCE)

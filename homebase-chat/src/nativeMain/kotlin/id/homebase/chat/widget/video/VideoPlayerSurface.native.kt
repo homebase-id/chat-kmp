@@ -29,9 +29,12 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
+import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeErrorKey
@@ -50,12 +53,14 @@ import platform.AVFoundation.AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRa
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.accessLog
 import platform.AVFoundation.addPeriodicTimeObserverForInterval
+import platform.AVFoundation.currentItem
 import platform.AVFoundation.currentTime
 import platform.AVFoundation.duration
 import platform.AVFoundation.errorLog
 import platform.AVFoundation.hasProtectedContent
 import platform.AVFoundation.loadValuesAsynchronouslyForKeys
 import platform.AVFoundation.loadedTimeRanges
+import platform.AVFoundation.mediaType
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
 import platform.AVFoundation.playable
@@ -66,6 +71,8 @@ import platform.AVFoundation.presentationSize
 import platform.AVFoundation.rate
 import platform.AVFoundation.reasonForWaitingToPlay
 import platform.AVFoundation.removeTimeObserver
+import platform.AVFoundation.replaceCurrentItemWithPlayerItem
+import platform.AVFoundation.seekToTime
 import platform.AVFoundation.setMuted
 import platform.AVFoundation.statusOfValueForKey
 import platform.AVFoundation.timeControlStatus
@@ -110,9 +117,14 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
     onProgress: (Float) -> Unit,
     muted: Boolean,
+    useNativeControls: Boolean,
+    useInlineOptimizations: Boolean,
+    startPositionMs: Long,
+    onPositionUpdate: (Long) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val playerPool = koinInject<AVPlayerPool>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
@@ -128,6 +140,15 @@ actual fun VideoPlayerSurface(
                     // so the encrypted-bytes endpoint can't be hit on a stale id.
                     scope.launch { LocalVideoServer.shared().unregister(id) }
                 }
+                // Observers + sessionId must be torn down BEFORE returning
+                // the player to the pool — otherwise the recycled player
+                // would keep firing notifications + log entries for the
+                // wrong session. notificationObservers.forEach below does
+                // that for NSNotificationCenter; the time observer was
+                // already removed above.
+                if (useInlineOptimizations) {
+                    playerPool.release(playing.player)
+                }
             }
             notificationObservers.forEach {
                 NSNotificationCenter.defaultCenter.removeObserver(it)
@@ -137,8 +158,44 @@ actual fun VideoPlayerSurface(
         }
     }
 
+    // Pump the current playback position back to the caller every ~500 ms so
+    // the moments inline tile can keep MomentsVideoSession's handoff slot
+    // fresh. Mirrors the Android side. Off-thread isn't required —
+    // `player.currentTime()` is cheap and main-safe.
+    LaunchedEffect(state) {
+        val player = (state as? VpsState.Playing)?.player ?: return@LaunchedEffect
+        while (true) {
+            val seconds = CMTimeGetSeconds(player.currentTime())
+            if (seconds.isFinite() && seconds > 0.0) {
+                onPositionUpdate((seconds * 1000.0).toLong())
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
+
     LaunchedEffect(state, muted) {
-        (state as? VpsState.Playing)?.player?.setMuted(muted)
+        val player = (state as? VpsState.Playing)?.player ?: return@LaunchedEffect
+        player.setMuted(muted)
+        // When the inline-optimization flag is on, also disable the audio
+        // track itself so the AAC decoder never runs on a muted tile. Pure
+        // `setMuted` is a mixer-level knob — the decoder still spins up.
+        // Disabling the track stops the decoder entirely. Safe to toggle
+        // mid-playback per AVFoundation docs; the renderer attaches when we
+        // re-enable on unmute.
+        //
+        // playerItem.tracks is populated by the asset metadata load, so this
+        // only finds tracks once the playerItem has reached at least
+        // `.readyToPlay` — which is the moment we flip state to Playing in
+        // the opt-in path. For the non-opt-in path the loop is a no-op
+        // anyway (gate below is false).
+        if (useInlineOptimizations) {
+            player.currentItem?.tracks?.forEach { track ->
+                val pit = track as? AVPlayerItemTrack ?: return@forEach
+                if (pit.assetTrack?.mediaType == AVMediaTypeAudio) {
+                    pit.setEnabled(!muted)
+                }
+            }
+        }
     }
 
     LaunchedEffect(data) {
@@ -189,9 +246,32 @@ actual fun VideoPlayerSurface(
                         kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
-                        val player = AVPlayer(playerItem = playerItem)
+                        val player = if (useInlineOptimizations) {
+                            playerPool.acquire().also {
+                                it.replaceCurrentItemWithPlayerItem(playerItem)
+                            }
+                        } else {
+                            AVPlayer(playerItem = playerItem)
+                        }
                         val timeObserver = attachPlaybackTicker(player, playerItem, fileId = data.fileId.toString())
                         progressJob.cancel()
+                        // Inline-optimization path waits for AVPlayerItem
+                        // status → .readyToPlay before flipping state, so
+                        // the spinner stays up until the asset has actually
+                        // parsed. Without this gate, UIKitViewController
+                        // mounts on a not-yet-ready item and shows a black
+                        // square until the first frame arrives (Signal's
+                        // `onPlaybackReady()` analog).
+                        if (useInlineOptimizations) {
+                            awaitReadyToPlay(playerItem)
+                        }
+                        // Resume from the moments feed↔detail handoff
+                        // position. AVPlayer queues seek if the asset isn't
+                        // fully ready, so this is safe to call regardless of
+                        // the readyToPlay gate above.
+                        if (startPositionMs > 0L) {
+                            player.seekToTime(CMTimeMakeWithSeconds(startPositionMs / 1000.0, 600))
+                        }
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
@@ -214,8 +294,26 @@ actual fun VideoPlayerSurface(
                             url
                         }
                         onProgress(0.8f)
+                        val player = if (useInlineOptimizations) {
+                            val item = AVPlayerItem(uRL = mp4Url)
+                            playerPool.acquire().also {
+                                it.replaceCurrentItemWithPlayerItem(item)
+                            }
+                        } else {
+                            AVPlayer(uRL = mp4Url)
+                        }
+                        if (useInlineOptimizations) {
+                            // Same `.readyToPlay` gate as the HLS path —
+                            // wait for asset parse before mounting the
+                            // AVPlayerViewController so the spinner
+                            // smoothly hands over to the first frame.
+                            player.currentItem?.let { awaitReadyToPlay(it) }
+                        }
+                        if (startPositionMs > 0L) {
+                            player.seekToTime(CMTimeMakeWithSeconds(startPositionMs / 1000.0, 600))
+                        }
                         state = VpsState.Playing(
-                            player = AVPlayer(uRL = mp4Url),
+                            player = player,
                         )
                         onProgress(1f)
                     }
@@ -242,6 +340,12 @@ actual fun VideoPlayerSurface(
                 factory = {
                     AVPlayerViewController().apply {
                         player = s.player
+                        // AVPlayerViewController's built-in transport controls
+                        // capture every touch — the carousel pager never sees
+                        // the horizontal drag. Suppress when the host renders
+                        // its own play/pause affordance (moments-feed
+                        // carousel).
+                        showsPlaybackControls = useNativeControls
                         s.player.play()
                     }
                 },
@@ -254,6 +358,32 @@ actual fun VideoPlayerSurface(
 @OptIn(BetaInteropApi::class)
 private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
     NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
+}
+
+/**
+ * Suspend until [playerItem] reports `.readyToPlay`. Returns early on
+ * `.failed` so the calling state machine can fall through and present
+ * whatever AVPlayer surfaces (or stay in Loading and let the periodic
+ * diagnostic ticker reveal the failure). Capped at 10 s so a dead asset
+ * doesn't trap the spinner forever — the existing non-opt-in path also
+ * silently shows a black square in that scenario, so this is at worst the
+ * same outcome.
+ *
+ * The poll cadence is intentionally tight (20 ms): the wait is happening on
+ * the main thread inside a `LaunchedEffect`, and a fast cadence is what
+ * makes the "spinner → first frame" handover feel instant on a healthy
+ * asset. KVO would be more elegant but requires NSObject subclassing in
+ * Kotlin/Native, which is more glue than this gate is worth.
+ */
+private suspend fun awaitReadyToPlay(playerItem: AVPlayerItem) {
+    withTimeoutOrNull(10_000) {
+        while (true) {
+            when (playerItem.status) {
+                AVPlayerItemStatusReadyToPlay, AVPlayerItemStatusFailed -> return@withTimeoutOrNull
+                else -> delay(20)
+            }
+        }
+    }
 }
 
 private fun attachHlsDiagnostics(

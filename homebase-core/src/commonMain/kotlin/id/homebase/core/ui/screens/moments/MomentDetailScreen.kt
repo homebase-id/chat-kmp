@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,10 +72,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,7 +94,12 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.ui.screens.moments.widget.MomentDatePill
+import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
+import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
+import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -253,10 +262,24 @@ private fun DetailContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    // Local sheet toggle — pure UI state. The reactor-roster sheet
+    // (uiState.showReactionsSheet) is still VM-driven below because it loads
+    // avatars from the server; heart / flame counts on the action column
+    // are read directly off `moment.reactionPreview` so the user doesn't
+    // need to open a sheet to see them.
+    var showCommentsSheet by remember { mutableStateOf(false) }
+
     Scaffold(
+        // Black so the letterbox bars around a Fit-scaled image or video
+        // read as part of the cinematic surface rather than the surface
+        // colour of the rest of the app.
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.moments_label)) },
+                // No screen title in the full-screen view — the post itself
+                // is the title. Keep the bar transparent so it floats over
+                // the media.
+                title = {},
                 navigationIcon = {
                     // Embedded (desktop wide) pane: no nav target, so suppress
                     // the back arrow rather than offering a tap that does
@@ -266,6 +289,7 @@ private fun DetailContent(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back),
+                                tint = Color.White,
                             )
                         }
                     }
@@ -280,31 +304,14 @@ private fun DetailContent(
                             onDeleteClick = {
                                 onAction(MomentDetailUiAction.RequestDeleteMoment)
                             },
+                            iconTint = Color.White,
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
-        },
-        bottomBar = {
-            // Sticky composer so the keyboard never hides what the user is
-            // typing. Empty (no surface) while the moment is loading or when
-            // the author disabled commenting — Scaffold treats a no-op
-            // composable as zero-height, so the body extends to the bottom.
-            val moment = uiState.moment
-            if (moment != null && moment.commentsEnabled) {
-                Surface(tonalElevation = 3.dp) {
-                    AddCommentRow(
-                        draft = uiState.commentDraft,
-                        isPosting = uiState.isPostingComment,
-                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
-                        onSend = { onAction(MomentDetailUiAction.PostComment) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .imePadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
-            }
         },
     ) { innerPadding ->
         val moment = uiState.moment
@@ -316,7 +323,7 @@ private fun DetailContent(
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
-                if (uiState.isLoading) CircularProgressIndicator()
+                if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
             }
         } else {
             MomentDetailContent(
@@ -324,6 +331,7 @@ private fun DetailContent(
                 moment = moment,
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
+                onOpenComments = { showCommentsSheet = true },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 modifier = Modifier
@@ -332,6 +340,16 @@ private fun DetailContent(
                     .padding(innerPadding),
             )
         }
+    }
+
+    val moment = uiState.moment
+    if (showCommentsSheet && moment != null) {
+        CommentsSheet(
+            uiState = uiState,
+            commentsEnabled = moment.commentsEnabled,
+            onAction = onAction,
+            onDismiss = { showCommentsSheet = false },
+        )
     }
 
     if (uiState.showDeleteDialog) {
@@ -383,6 +401,7 @@ private fun DetailContent(
 private fun MomentOverflowMenu(
     isDeleting: Boolean,
     onDeleteClick: () -> Unit,
+    iconTint: Color = Color.Unspecified,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -396,11 +415,15 @@ private fun MomentOverflowMenu(
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
+                    color = if (iconTint == Color.Unspecified) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else iconTint,
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = stringResource(MR.string.moments_detail_menu_more),
+                    tint = iconTint,
                 )
             }
         }
@@ -663,19 +686,47 @@ private fun MomentDetailContent(
     moment: MomentFeedItem,
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
+    onOpenComments: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
+
+    // Share the mute toggle with the feed via the app-session singleton so a
+    // single tap persists across nav-in / nav-out of the detail screen.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
+
+    // Feed → detail playback handoff. If the user tapped a video that was
+    // autoplaying in the feed, MomentsVideoSession will hold the captured
+    // position for one of this moment's payloads. We use that to (a) open
+    // the pager on the matching payload's page and (b) seed
+    // `playingPayloadKey` so the detail comes up already playing — instead
+    // of the default "paused, waiting for the user to hit play."
+    //
+    // The actual seek to the saved position is handled inside
+    // `MomentInlineVideoTile`, which reads from the same session. Here we
+    // only decide which page lands and whether it auto-starts.
+    val handoffPayloadKey = remember(moment.id, moment.fileId) {
+        moment.payloads
+            .firstOrNull { p ->
+                videoSession.readPlaybackPosition(moment.fileId, p.key) != null
+            }
+            ?.key
+    }
+
     // Read once per (moment.id, initialPayloadKey) — `rememberPagerState`'s
     // `initialPage` only fires on first composition, so subsequent re-emissions
     // of the same moment (e.g. a description-edit replay) won't snap the user
-    // back to the seeded page.
-    val initialPage = remember(moment.id, initialPayloadKey) {
-        if (initialPayloadKey == null) 0
+    // back to the seeded page. Explicit `initialPayloadKey` (e.g. from a
+    // share/deeplink) wins over a handoff; otherwise the handoff page is
+    // preferred over page 0.
+    val initialPage = remember(moment.id, initialPayloadKey, handoffPayloadKey) {
+        val seedKey = initialPayloadKey ?: handoffPayloadKey
+        if (seedKey == null) 0
         else moment.payloads
-            .indexOfFirst { it.key == initialPayloadKey }
+            .indexOfFirst { it.key == seedKey }
             .coerceAtLeast(0)
     }
     val pagerState = rememberPagerState(
@@ -683,166 +734,432 @@ private fun MomentDetailContent(
         pageCount = { pageCount },
     )
 
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(bottom = 24.dp),
-    ) {
-        // Media — pager when there are multiple payloads, single MomentMediaItem otherwise.
-        // Constrain to ~60% of the pane width on wide layouts (the desktop
-        // embedded pane can be 800dp+) and cap at MediaMaxWidth. Below
-        // MediaWideBreakpoint the media stays full-width so phones/narrow
-        // tablets are unchanged.
-        item {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val mediaWidth = if (maxWidth >= MediaWideBreakpoint) {
-                    (maxWidth * MediaWidthFraction).coerceAtMost(MediaMaxWidth)
-                } else {
-                    maxWidth
+    val commentCount = uiState.comments.size
+
+    // Per-detail-screen video play state. Unlike the feed's autoplay flow
+    // there is no scroll-away to pause; the user picks play / pause via the
+    // tile's centred IconButton ([MomentInlineVideoTile.showPauseAffordance]).
+    // Cleared on page-change so swiping doesn't leave a video running on a
+    // page that's no longer visible. Seeded with the feed-handoff payload key
+    // (if any) so a tap-into-detail picks up playing at the same timestamp
+    // the feed was at.
+    var playingPayloadKey by remember(moment.id) { mutableStateOf(handoffPayloadKey) }
+    LaunchedEffect(pagerState, moment.id) {
+        snapshotFlow { pagerState.currentPage }.collect { _ ->
+            playingPayloadKey = null
+        }
+    }
+
+    Box(modifier = modifier.background(Color.Black)) {
+        // Layer 1: full-screen media pager. ContentScale.Fit (via
+        // preserveAspectRatio = true) so the whole image or video is visible
+        // — letterbox bars take the Box's black background. No inner
+        // pointer detector so taps fall through (the surrounding sheets are
+        // opened by the right-edge IconButtons below).
+        if (moment.payloads.isEmpty()) {
+            // Description-only moment — there's no media to render, so fill
+            // with the description text centred over the black backdrop.
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (moment.description.isNotBlank()) {
+                    Text(
+                        text = moment.description,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(32.dp),
+                    )
                 }
-                Box(
-                    modifier = Modifier
-                        .width(mediaWidth)
-                        .align(Alignment.Center),
-                ) {
-                if (moment.payloads.isEmpty()) {
-                    // Description-only moment — keep a square placeholder so the
-                    // top-of-screen rhythm doesn't collapse.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            }
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                val payload = moment.payloads[page]
+                val contentType = payload.contentType ?: ""
+                val isVideo = contentType.startsWith("video/") ||
+                    contentType == "application/vnd.apple.mpegurl"
+
+                if (isVideo) {
+                    // Inline-playable video tile. ButtonOnly tapMode +
+                    // showPauseAffordance gives the user a centred Play
+                    // button on idle and a centred Pause button while
+                    // playing — pause UX the feed's autoplay flow doesn't
+                    // need (scroll-away handles it there).
+                    MomentInlineVideoTile(
+                        payload = payload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        keyHeader = moment.keyHeader,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: moment.previewThumbnail,
+                        isUploading = false,
+                        isPlaying = playingPayloadKey == payload.key,
+                        onPlayTap = {
+                            playingPayloadKey = if (playingPayloadKey == payload.key) {
+                                null
+                            } else {
+                                payload.key
+                            }
+                        },
+                        // Double-tap heart and triple-tap flame are owned by
+                        // the feed card detector, not the detail screen —
+                        // here a tap on the media plays/pauses.
+                        onDoubleTap = {},
+                        isMuted = isMuted,
+                        onToggleMute = videoSession::toggleMuted,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        modifier = Modifier.fillMaxSize(),
+                        tapMode = MomentVideoTapMode.ButtonOnly,
+                        showPauseAffordance = true,
                     )
                 } else {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f),
-                    ) { page ->
-                        val payload = moment.payloads[page]
-                        MomentMediaItem(
-                            payload = payload,
-                            fileId = moment.fileId,
-                            driveId = moment.driveId,
-                            previewThumbnail = moment.previewThumbnail,
-                            keyHeader = moment.keyHeader,
-                            modifier = Modifier.fillMaxSize(),
-                            imageSize = ImageSize.THUMB_XLARGE,
-                            preserveAspectRatio = false,
-                            messageId = moment.id,
-                            shape = RectangleShape,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            onClick = {
-                                onAction(MomentDetailUiAction.MediaClicked(payload.key))
-                            },
-                        )
-                    }
-                    if (moment.payloads.size > 1) {
-                        PagerDots(
-                            pageCount = moment.payloads.size,
-                            currentPage = pagerState.currentPage,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp),
-                        )
-                    }
-                }
+                    MomentMediaItem(
+                        payload = payload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        previewThumbnail = moment.previewThumbnail,
+                        keyHeader = moment.keyHeader,
+                        modifier = Modifier.fillMaxSize(),
+                        imageSize = ImageSize.THUMB_XLARGE,
+                        // Fit (not crop) — the whole post is visible,
+                        // including landscape media in a portrait viewport
+                        // (and vice versa). Letterbox bars take the Box's
+                        // black background.
+                        preserveAspectRatio = true,
+                        messageId = moment.id,
+                        shape = RectangleShape,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        // Tap is owned by the bottom-sheet trigger icons,
+                        // not the media surface — keep gesture-free so
+                        // horizontal swipes drive the pager cleanly.
+                        onClick = null,
+                    )
                 }
             }
         }
 
-        item {
-            ReactionsRow(
-                summary = moment.reactionPreview,
-                quickReactions = uiState.userDefaultReactions,
-                onToggle = { emoji ->
-                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(emoji))
+        // Layer 2: right-edge action column — heart, flame, comments. Heart
+        // and flame are direct toggles (no intermediate emoji sheet); their
+        // counts are visible on the buttons. Long-pressing either reaction
+        // button opens the existing server-loaded reactor-roster sheet so
+        // the user can still see *who* reacted with what. Skip the column
+        // entirely on description-only moments — nothing to overlay
+        // against.
+        if (moment.payloads.isNotEmpty()) {
+            val heartCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
+            }
+            val flameCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, FlameEmoji)
+            }
+            DetailActionColumn(
+                heartCount = heartCount,
+                flameCount = flameCount,
+                commentCount = commentCount,
+                heartActive = HeartEmoji in moment.ownReactions,
+                flameActive = FlameEmoji in moment.ownReactions,
+                commentsEnabled = moment.commentsEnabled,
+                onToggleHeart = {
+                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(HeartEmoji))
+                },
+                onToggleFlame = {
+                    onAction(MomentDetailUiAction.ToggleReactionOnMoment(FlameEmoji))
                 },
                 onShowReactors = {
                     onAction(MomentDetailUiAction.OpenReactionsSheet)
                 },
+                onOpenComments = onOpenComments,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp),
             )
         }
 
-        item {
-            DescriptionSection(
+        // Layer 3: bottom overlay — page dots, description, compact
+        // metadata. Translucent gradient backdrop so text reads cleanly
+        // over any photo. Only shown when there's media (the description-
+        // only branch above already renders the description centred).
+        if (moment.payloads.isNotEmpty()) {
+            DetailBottomOverlay(
                 description = moment.description,
+                userDateMs = moment.userDateMs,
+                pageCount = if (moment.payloads.size > 1) moment.payloads.size else 0,
+                currentPage = pagerState.currentPage,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** Vertical stack of action buttons on the right edge of the full-screen
+ *  media: heart + count, flame + count, comments + count. The heart and
+ *  flame are direct toggles (no intermediate emoji picker) — counts are
+ *  always visible. Long-pressing either reaction button opens the existing
+ *  server-loaded reactor-roster sheet so the user can still see *who*
+ *  reacted with a given emoji. */
+@Composable
+private fun DetailActionColumn(
+    heartCount: Int,
+    flameCount: Int,
+    commentCount: Int,
+    heartActive: Boolean,
+    flameActive: Boolean,
+    commentsEnabled: Boolean,
+    onToggleHeart: () -> Unit,
+    onToggleFlame: () -> Unit,
+    onShowReactors: () -> Unit,
+    onOpenComments: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        EmojiReactionButton(
+            emoji = HeartEmoji,
+            count = heartCount,
+            isActive = heartActive,
+            onClick = onToggleHeart,
+            onLongPress = onShowReactors,
+        )
+        EmojiReactionButton(
+            emoji = FlameEmoji,
+            count = flameCount,
+            isActive = flameActive,
+            onClick = onToggleFlame,
+            onLongPress = onShowReactors,
+        )
+        if (commentsEnabled) {
+            OverlayActionButton(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = stringResource(MR.string.moments_detail_comments_section),
+                count = commentCount,
+                onClick = onOpenComments,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiReactionButton(
+    emoji: String,
+    count: Int,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    // Computed outside the Text composable so the Konsist string-literal
+    // check doesn't see a Text(...) literal — even an interpolated one.
+    val countLabel = remember(count) { count.toString() }
+    val activeTint = if (isActive) {
+        Color.White
+    } else {
+        Color.White.copy(alpha = 0.55f)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = if (isActive) 0.65f else 0.4f))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongPress,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = emoji,
+                style = MaterialTheme.typography.titleMedium,
+                color = activeTint,
+            )
+        }
+        if (count > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = countLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    count: Int,
+    onClick: () -> Unit,
+) {
+    // Computed outside the Text composable so the Konsist string-literal
+    // check (homebase-common's ArchitectureTest) doesn't see a Text(...)
+    // literal — even an interpolated one. See CLAUDE.md.
+    val countLabel = remember(count) { count.toString() }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(44.dp)
+                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color.White,
+            )
+        }
+        if (count > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = countLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+private fun countReactionsByEmoji(
+    summary: id.homebase.api.client.drives.files.ReactionSummary?,
+    emoji: String,
+): Int {
+    if (summary == null) return 0
+    return summary.reactions.values.firstOrNull { entry ->
+        runCatching {
+            id.homebase.api.serialization.OdinSystemSerializer
+                .deserialize<id.homebase.api.client.drives.files.reactions.ReactionContent>(entry.reactionContent)
+                .emoji
+        }.getOrNull() == emoji
+    }?.count ?: 0
+}
+
+/** Page dots + description + date pill, with a translucent gradient
+ *  backdrop so the text reads against any photo. */
+@Composable
+private fun DetailBottomOverlay(
+    description: String,
+    userDateMs: Long,
+    pageCount: Int,
+    currentPage: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.Black.copy(alpha = 0.7f),
+                    ),
+                ),
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (pageCount > 1) {
+            PagerDots(
+                pageCount = pageCount,
+                currentPage = currentPage,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
+        if (description.isNotBlank()) {
+            Text(
+                text = description,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        MomentDatePill(
+            timestamp = kotlin.time.Instant.fromEpochMilliseconds(userDateMs),
+        )
+    }
+}
+
+/** Comments list + composer in a ModalBottomSheet. Replaces the
+ *  always-visible LazyColumn section + sticky bottomBar of the original
+ *  layout. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommentsSheet(
+    uiState: MomentDetailUiState,
+    commentsEnabled: Boolean,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CommentsHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
-        }
-
-        item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-
-        item {
-            MetadataSection(
-                capturedAtMs = moment.userDateMs,
-                sharedWith = uiState.sharedWith,
-                sharedWithExpanded = uiState.sharedWithExpanded,
-                onToggleSharedWith = { expanded ->
-                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(expanded))
-                },
-                isMine = uiState.isMine,
-                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
-                recipientDeliveries = uiState.recipientDeliveries,
-                recipientAvatars = uiState.recipientAvatars,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-
-        // Comments — live stream from MomentCommentsService via the VM. The
-        // author may have disabled commenting at post time; hide the whole
-        // section (header, list, empty state) in that case. The composer
-        // lives in the Scaffold's bottomBar and is hidden by the same flag
-        // up there.
-        if (moment.commentsEnabled) {
-            item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                CommentsHeader(
+            if (uiState.comments.isEmpty()) {
+                CommentsEmpty(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
                 )
-            }
-            if (uiState.comments.isEmpty()) {
-                item {
-                    CommentsEmpty(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                }
             } else {
-                // Service emits newest-first; reverse for chat-style chronological
-                // ordering (oldest at top, newest just above the input).
-                items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                    val isMine = comment.senderOdinId == null ||
-                        (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
-                    CommentRow(
-                        comment = comment,
-                        isMine = isMine,
-                        isEditing = uiState.editingCommentId == comment.id,
-                        editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
-                        isSaving = uiState.isSavingCommentEdit,
-                        isDeleting = uiState.deletingCommentIds.contains(comment.id),
-                        quickReactions = uiState.userDefaultReactions,
-                        onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
-                        onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
-                        onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
-                        onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
-                        onDeleteClick = {
-                            onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
-                        },
-                        onToggleReaction = { emoji ->
-                            onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
-                        },
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
+                    // Service emits newest-first; reverse for chat-style
+                    // chronological ordering (oldest at top, newest just
+                    // above the composer).
+                    items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
+                        val isMine = comment.senderOdinId == null ||
+                            (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+                        CommentRow(
+                            comment = comment,
+                            isMine = isMine,
+                            isEditing = uiState.editingCommentId == comment.id,
+                            editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+                            isSaving = uiState.isSavingCommentEdit,
+                            isDeleting = uiState.deletingCommentIds.contains(comment.id),
+                            quickReactions = uiState.userDefaultReactions,
+                            onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+                            onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+                            onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+                            onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+                            onDeleteClick = {
+                                onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
+                            },
+                            onToggleReaction = { emoji ->
+                                onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+            if (commentsEnabled) {
+                Surface(tonalElevation = 3.dp) {
+                    AddCommentRow(
+                        draft = uiState.commentDraft,
+                        isPosting = uiState.isPostingComment,
+                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                        onSend = { onAction(MomentDetailUiAction.PostComment) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                 }
             }

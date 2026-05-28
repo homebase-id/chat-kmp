@@ -167,6 +167,17 @@ sealed interface BackendEvent {
 
     sealed interface PayloadBundlingEvent : BackendEvent {
 
+        /**
+         * Emitted right after the sender has written a placeholder row to the
+         * local DB but before thumbnail generation / encryption start. Lets
+         * the UI show an indeterminate "Preparing…" overlay on the new tile
+         * until a later event (video phase progress, ItemEnqueued, etc.)
+         * supersedes it.
+         */
+        data class Preparing(
+            val uniqueId: Uuid,
+        ) : PayloadBundlingEvent
+
         /* ---------- VIDEO ---------- */
 
         sealed interface Video : PayloadBundlingEvent {

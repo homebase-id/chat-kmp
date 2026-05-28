@@ -102,7 +102,12 @@ class MomentAudienceViewModel(
 
         viewModelScope.launch {
             try {
-                postSender.postMoment(
+                // postMomentAsync only blocks on the synchronous placeholder
+                // write + Preparing event emit (~ms); the heavy work (thumbnail
+                // generation, encryption, upload, final optimistic update) runs
+                // on the service's singleton scope and is tracked by the feed
+                // tile via the existing BackendEvent → UploadStatus pipeline.
+                postSender.postMomentAsync(
                     // Editor stores AttachmentPendingFile so back-nav can
                     // rehydrate the composer; convert to AttachmentInput at
                     // the post boundary (HEIC/trim/etc. metadata flows through).

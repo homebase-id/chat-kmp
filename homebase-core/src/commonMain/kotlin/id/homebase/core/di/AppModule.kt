@@ -83,6 +83,7 @@ import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.moments.services.MomentsRecipientMruStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -155,6 +156,7 @@ val appModule = module {
     }
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
+    singleOf(::MomentsVideoSession)
     singleOf(::MomentCommentsService)
     singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
