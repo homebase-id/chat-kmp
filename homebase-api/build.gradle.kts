@@ -219,12 +219,13 @@ kotlin {
         val jvmAndNativeTest by creating { dependsOn(commonTest.get()) }
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
-        // Both Android test source sets inherit commonTest by default; mirror the dependency
-        // on jvmAndNativeTest so blocking-coroutine tests (and any other JVM-or-native-only
-        // shared tests) show up on Android host AND device tests too. Lost coverage on
-        // androidDeviceTest was a regression in this refactor — see DriveWebSocketUpsertWorkerTest.
+        // androidHostTest is in the "test" source-set tree (runs on the host JVM with the
+        // Android framework stubbed), so it can depend on jvmAndNativeTest. androidDeviceTest
+        // is in the "instrumented" tree and KGP refuses cross-tree dependsOn — so the
+        // blocking-coroutine tests in jvmAndNativeTest aren't reachable from device tests.
+        // If any of them ever genuinely needs device-side coverage, copy it directly into
+        // androidDeviceTest rather than trying to wire the inheritance.
         getByName("androidHostTest").dependsOn(jvmAndNativeTest)
-        getByName("androidDeviceTest").dependsOn(jvmAndNativeTest)
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
