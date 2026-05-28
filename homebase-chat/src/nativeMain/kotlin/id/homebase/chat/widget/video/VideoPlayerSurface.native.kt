@@ -80,6 +80,8 @@ import platform.AVFoundation.tracks
 import kotlinx.cinterop.useContents
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMakeWithSeconds
+import platform.AVFoundation.AVLayerVideoGravityResizeAspect
+import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
 import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
 import platform.Foundation.NSDate
@@ -121,6 +123,8 @@ actual fun VideoPlayerSurface(
     useInlineOptimizations: Boolean,
     startPositionMs: Long,
     onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
+    useZoomFill: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -346,8 +350,34 @@ actual fun VideoPlayerSurface(
                         // its own play/pause affordance (moments-feed
                         // carousel).
                         showsPlaybackControls = useNativeControls
+                        // Fit-with-letterbox vs crop-to-fill, controlled by
+                        // the caller. The feed carousel (useNativeControls
+                        // false) always wants resizeAspectFill so the video
+                        // matches its crop-to-fill thumbnail. The detail
+                        // screen passes through the user's session-scoped
+                        // toggle via [useZoomFill].
+                        videoGravity = if (!useNativeControls || useZoomFill) {
+                            AVLayerVideoGravityResizeAspectFill
+                        } else {
+                            AVLayerVideoGravityResizeAspect
+                        }
                         s.player.play()
+                        // Approximate "first frame ready" signal: status is
+                        // already .readyToPlay (awaitReadyToPlay gated us
+                        // here) and the AVPlayerViewController has just been
+                        // configured. The actual first decoded frame paints a
+                        // few ms later — close enough for the inline tile's
+                        // thumbnail-overlay drop.
+                        onFirstFrame()
                     }
+                },
+                update = { controller ->
+                    (controller as? AVPlayerViewController)?.videoGravity =
+                        if (!useNativeControls || useZoomFill) {
+                            AVLayerVideoGravityResizeAspectFill
+                        } else {
+                            AVLayerVideoGravityResizeAspect
+                        }
                 },
                 modifier = Modifier.fillMaxSize(),
             )

@@ -46,4 +46,28 @@ expect fun VideoPlayerSurface(
      * handoff is fresh whenever the user navigates away.
      */
     onPositionUpdate: (Long) -> Unit = {},
+    /**
+     * Fires once per mount, when the underlying player has pushed its first
+     * decoded frame to the rendering surface. Callers use this to drop a
+     * thumbnail overlay drawn over the player — the moments inline tile keeps
+     * the thumbnail visible until this fires so the user never sees the
+     * empty/garbage texture state during decoder warm-up.
+     *
+     * Best-effort on platforms without an exact first-frame callback (iOS,
+     * web): may fire on "ready to play" instead, which is a few frames early.
+     */
+    onFirstFrame: () -> Unit = {},
+    /**
+     * Override the video's resize behaviour when the caller is using native
+     * controls. `false` (default) → fit-with-letterbox (Android
+     * `RESIZE_MODE_FIT` / iOS `.resizeAspect`): whole frame visible, black
+     * bars fill the aspect-ratio mismatch. `true` → crop-to-fill (Android
+     * `RESIZE_MODE_ZOOM` / iOS `.resizeAspectFill`): the video fills the
+     * surface edge-to-edge; portions that don't match the surface aspect are
+     * cropped off the edges.
+     *
+     * Ignored when [useNativeControls] is false — that branch is the feed
+     * carousel, which always crops to its own locked aspect.
+     */
+    useZoomFill: Boolean = false,
 )

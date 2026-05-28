@@ -28,6 +28,17 @@ class MomentsVideoSession {
     private val _isMuted = MutableStateFlow(true)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
+    /**
+     * Detail-screen-only: whether the user has opted into crop-to-fill
+     * (Reels-style, no letterbox) for video playback in this session.
+     * Default is `false` → `RESIZE_MODE_FIT` / `.resizeAspect` (the whole
+     * frame visible, black bars where the aspect doesn't match). The feed
+     * carousel ignores this — it always crops to its locked aspect ratio so
+     * the row layout stays uniform.
+     */
+    private val _isZoomedToFill = MutableStateFlow(false)
+    val isZoomedToFill: StateFlow<Boolean> = _isZoomedToFill.asStateFlow()
+
     private val _playbackHandoff = MutableStateFlow<PlaybackHandoff?>(null)
     /**
      * Latest captured playback position for an inline video. Observed by
@@ -42,6 +53,10 @@ class MomentsVideoSession {
 
     fun toggleMuted() {
         _isMuted.value = !_isMuted.value
+    }
+
+    fun toggleZoomedToFill() {
+        _isZoomedToFill.value = !_isZoomedToFill.value
     }
 
     /**
