@@ -37,6 +37,7 @@ fun ZoomableSubSamplingImage(
         persistentListOf(HomebaseSubsamplingImageGenerator(homebaseImageLoader))
     }
     val zoomState = rememberCoilZoomState(subsamplingImageGenerators = generators)
+    zoomState.zoomable.setKeepTransformWhenSameAspectRatioContentSizeChanged(true)
 
     val platformContext = LocalPlatformContext.current
     val model: Any? = when (source) {
@@ -76,6 +77,7 @@ fun ZoomableSubSamplingImage(
         modifier = imageModifier,
         contentScale = ContentScale.Fit,
         zoomState = zoomState,
+        scrollBar = null,
         onTap = onTap?.let { callback -> { _: Offset -> callback() } },
     )
 }
