@@ -15,6 +15,7 @@ import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.moments.services.MomentsPostSenderService
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,7 @@ class MomentsFeedViewModel(
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
+    postSender: MomentsPostSenderService,
     private val optimisticWriter: OptimisticWriter,
     private val actionService: MomentActionService,
     private val momentsPreferences: MomentsPreferences,
@@ -195,6 +197,34 @@ class MomentsFeedViewModel(
                         }
 
                         else -> Unit
+                    }
+                }
+        }
+
+        // Mirror the post sender's transient source-image cache into UiState
+        // so the tile renderer can show the user's selected photo immediately
+        // during the "Preparing…" window (placeholder row has no payloads /
+        // embedded thumbnail yet). The cache empties as soon as the real
+        // optimistic update lands the embedded thumbnail on the row.
+        viewModelScope.launch {
+            postSender.pendingLocalPreviews.collect { previews ->
+                _uiState.update { it.copy(pendingLocalPreviews = previews) }
+            }
+        }
+
+        // Initial Preparing state for a freshly posted moment. The placeholder
+        // write fires BatchReceived (tile appears) and then we get this event,
+        // which puts the overlay in UploadStatus.Preparing until ItemEnqueued
+        // promotes it to Sending. Without this collector the placeholder tile
+        // would have no overlay until the outbox got round to enqueueing.
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Preparing }
+                .collect { event ->
+                    event as BackendEvent.PayloadBundlingEvent.Preparing
+                    _uiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Preparing)).toPersistentMap()
+                        )
                     }
                 }
         }

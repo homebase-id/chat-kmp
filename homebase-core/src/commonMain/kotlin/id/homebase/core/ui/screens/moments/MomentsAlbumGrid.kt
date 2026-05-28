@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,8 +34,12 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsAlbumZoom
+import coil3.compose.AsyncImage
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.util.formatMomentDate
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
+import kotlin.uuid.Uuid
 import id.homebase.resources.MR
 import id.homebase.resources.moments_album_extra_count
 import id.homebase.resources.moments_album_text_only_label
@@ -68,6 +73,7 @@ fun MomentsAlbumGrid(
     zoom: MomentsAlbumZoom,
     onZoomChange: (MomentsAlbumZoom) -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
 ) {
     // Group + sort once per (moments, zoom) pair. Sorting newest-first inside
@@ -108,6 +114,7 @@ fun MomentsAlbumGrid(
                 ) { moment ->
                     AlbumMomentCell(
                         moment = moment,
+                        pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                         onClick = { onOpenMoment(moment.id.toString(), null) },
                     )
                 }
@@ -122,7 +129,6 @@ private fun AlbumZoomChips(
     onChange: (MomentsAlbumZoom) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val zoomLabel = stringResource(MR.string.moments_album_zoom_label)
     val labels = mapOf(
         MomentsAlbumZoom.Day to stringResource(MR.string.moments_album_zoom_day),
         MomentsAlbumZoom.Month to stringResource(MR.string.moments_album_zoom_month),
@@ -133,11 +139,6 @@ private fun AlbumZoomChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = zoomLabel,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         MomentsAlbumZoom.entries.forEach { z ->
             FilterChip(
                 selected = z == current,
@@ -172,6 +173,7 @@ private fun AlbumDateHeader(
 @Composable
 private fun AlbumMomentCell(
     moment: MomentFeedItem,
+    pendingLocalPreviewUri: String?,
     onClick: () -> Unit,
 ) {
     val cellShape: Shape = RectangleShape
@@ -186,7 +188,17 @@ private fun AlbumMomentCell(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick),
     ) {
-        if (firstImagePayload != null) {
+        if (firstImagePayload == null && pendingLocalPreviewUri != null) {
+            // Placeholder window: row exists locally but thumbnails haven't
+            // been generated yet. Render the user's source file straight from
+            // disk so the album cell shows the picked photo immediately.
+            AsyncImage(
+                model = pendingLocalPreviewUri,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else if (firstImagePayload != null) {
             // Coil + HomebaseImage handle the encrypted-thumbnail fetch. We
             // pass `previewThumbnail` so the embedded tiny thumb shows
             // immediately while the higher-res server thumb loads.

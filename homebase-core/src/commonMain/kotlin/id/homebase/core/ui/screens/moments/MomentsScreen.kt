@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +82,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
@@ -98,6 +100,7 @@ import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentSource
+import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
@@ -125,6 +128,7 @@ import id.homebase.resources.upload_failed_action_dismiss
 import id.homebase.resources.upload_failed_sheet_body
 import id.homebase.resources.upload_failed_sheet_title
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -192,6 +196,7 @@ fun MomentsScreen(
         WideMomentsLayout(
             moments = uiState.moments,
             uploadProgress = uiState.uploadProgress,
+            pendingLocalPreviews = uiState.pendingLocalPreviews,
             ownerSession = uiState.ownerSession,
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
@@ -210,6 +215,7 @@ fun MomentsScreen(
         CompactMomentsLayout(
             moments = uiState.moments,
             uploadProgress = uiState.uploadProgress,
+            pendingLocalPreviews = uiState.pendingLocalPreviews,
             ownerSession = uiState.ownerSession,
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
@@ -233,6 +239,7 @@ fun MomentsScreen(
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    pendingLocalPreviews: ImmutableMap<Uuid, String>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -280,6 +287,7 @@ private fun CompactMomentsLayout(
             MomentsViewMode.Timeline -> MomentsFeedList(
                 moments = moments,
                 uploadProgress = uploadProgress,
+                pendingLocalPreviews = pendingLocalPreviews,
                 selfOdinId = ownerSession?.odinId,
                 onOpenMoment = onOpenMoment,
                 onAddReaction = onAddReaction,
@@ -294,6 +302,7 @@ private fun CompactMomentsLayout(
                 zoom = albumZoom,
                 onZoomChange = onAlbumZoomChange,
                 onOpenMoment = onOpenMoment,
+                pendingLocalPreviews = pendingLocalPreviews,
                 modifier = contentModifier,
             )
         }
@@ -318,6 +327,7 @@ private fun CompactMomentsLayout(
 private fun WideMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
+    pendingLocalPreviews: ImmutableMap<Uuid, String>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -393,6 +403,7 @@ private fun WideMomentsLayout(
                 MomentsViewMode.Timeline -> MomentsFeedList(
                     moments = moments,
                     uploadProgress = uploadProgress,
+                    pendingLocalPreviews = pendingLocalPreviews,
                     selfOdinId = ownerSession?.odinId,
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
@@ -411,6 +422,7 @@ private fun WideMomentsLayout(
                     onOpenMoment = { id, _ ->
                         selectedMomentId = Uuid.parse(id)
                     },
+                    pendingLocalPreviews = pendingLocalPreviews,
                     modifier = contentModifier,
                 )
             }
@@ -453,6 +465,7 @@ private val FeedPaneMaxWidth = 480.dp
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
     selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     onAddReaction: (Uuid, String) -> Unit,
@@ -464,22 +477,51 @@ private fun MomentsFeedList(
 ) {
     val listState = rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
-    // Default muted: matches the user-chosen "muted with unmute toggle"
-    // behaviour. Lifted here (not per-card) so toggling once persists across
-    // plays — same pattern as Instagram / X autoplay.
-    var isMuted by remember { mutableStateOf(true) }
+    // Session-scoped mute state: a Koin singleton so it survives navigating
+    // away from the moments tab and back. Default muted on every fresh app
+    // launch (Instagram-style); once the user unmutes, every subsequent
+    // autoplay in this session follows.
+    val videoSession = koinInject<MomentsVideoSession>()
+    val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
 
-    // Clear playingMomentId when the playing card scrolls out of the viewport.
-    // Tracking item keys (Strings) — not firstVisibleItemIndex — because the
-    // key set is what tells us whether the playing card is still rendered.
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key } }
-            .collect { visibleKeys ->
-                val playing = playingMomentId ?: return@collect
-                if (playing.toString() !in visibleKeys) {
-                    playingMomentId = null
+    // Precompute the set of moments that have *any* video payload — we only
+    // ever autoplay cards backed by a video. Recomputes when the feed list
+    // changes (new posts, deletions); a single membership-test per scroll
+    // frame is fine.
+    val videoMomentIds = remember(moments) {
+        moments.asSequence()
+            .filter { m ->
+                m.payloads.any { p ->
+                    val ct = p.contentType ?: ""
+                    ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
                 }
             }
+            .map { it.id.toString() }
+            .toSet()
+    }
+
+    // Autoplay driver: the most-centred *video* moment in the viewport
+    // becomes the playing one. snapshotFlow already dedups via structural
+    // equality, so no extra distinctUntilChanged — emissions only happen
+    // when the active key actually changes (see CLAUDE.md note on the
+    // double-equality-check trap).
+    LaunchedEffect(listState, videoMomentIds) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            if (info.visibleItemsInfo.isEmpty() || videoMomentIds.isEmpty()) return@snapshotFlow null
+            val viewportCenter =
+                (info.viewportStartOffset + info.viewportEndOffset) / 2
+            info.visibleItemsInfo
+                .filter { (it.key as? String) in videoMomentIds }
+                .minByOrNull {
+                    kotlin.math.abs((it.offset + it.size / 2) - viewportCenter)
+                }
+                ?.key as? String
+        }.collect { activeKey ->
+            playingMomentId = activeKey?.let {
+                runCatching { Uuid.parse(it) }.getOrNull()
+            }
+        }
     }
 
     LazyColumn(
@@ -494,9 +536,11 @@ private fun MomentsFeedList(
         reverseLayout = true,
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
+            val isActive = playingMomentId == moment.id
             MomentPostCard(
                 moment = moment,
                 uploadStatus = uploadProgress[moment.id],
+                pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { onOpenMoment(moment.id.toString(), null) },
@@ -504,12 +548,24 @@ private fun MomentsFeedList(
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
-                isVideoPlaying = playingMomentId == moment.id,
+                // playingMomentId is now visibility-driven (see snapshotFlow
+                // above), so a single-video card autoplays as soon as it
+                // becomes the most-centred video moment in the viewport.
+                // The onToggleVideoPlay tap path stays as a manual override
+                // for the rare "user explicitly wanted to stop or restart"
+                // case — taps still toggle, autoplay re-engages on the next
+                // visibility update.
+                isVideoPlaying = isActive,
                 onToggleVideoPlay = {
-                    playingMomentId = if (playingMomentId == moment.id) null else moment.id
+                    playingMomentId = if (isActive) null else moment.id
                 },
+                // autoplayActive feeds the carousel branch: when the card is
+                // the active one, the carousel auto-plays whichever video
+                // page is currently visible (and pauses when the user swipes
+                // to a non-video page or away from this card).
+                autoplayActive = isActive,
                 isMuted = isMuted,
-                onToggleMute = { isMuted = !isMuted },
+                onToggleMute = videoSession::toggleMuted,
             )
         }
     }
@@ -520,6 +576,7 @@ private fun MomentsFeedList(
 private fun MomentPostCard(
     moment: MomentFeedItem,
     uploadStatus: UploadStatus?,
+    pendingLocalPreviewUri: String?,
     selfOdinId: OdinId?,
     isSelected: Boolean,
     onCardClick: () -> Unit,
@@ -529,6 +586,7 @@ private fun MomentPostCard(
     onDismissUpload: () -> Unit,
     isVideoPlaying: Boolean = false,
     onToggleVideoPlay: () -> Unit = {},
+    autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
 ) {
@@ -539,19 +597,25 @@ private fun MomentPostCard(
     var failedSheetOpen by remember { mutableStateOf(false) }
     val failedSheetState = rememberModalBottomSheetState()
 
-    // Floating-emoji feedback for double/triple-tap reactions. Set on tap,
-    // cleared by [floatingEmojiHideJob] after the animation finishes. Job
-    // is cancelled on a follow-up tap so the next emoji re-triggers cleanly.
-    var floatingEmoji by remember { mutableStateOf<String?>(null) }
+    // Floating-emoji feedback for double/triple-tap reactions. Carries
+    // whether the toggle ADDED or REMOVED the reaction so the overlay can
+    // play a different animation — pop-in upward for an add, drift-down +
+    // fade for a remove. Cleared after [FloatingEmojiHideDelayMs]; a quick
+    // follow-up tap cancels the pending clear and re-triggers cleanly.
+    var floatingAction by remember { mutableStateOf<FloatingReactionAction?>(null) }
     var floatingEmojiHideJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun showFloatingEmoji(emoji: String) {
-        floatingEmoji = emoji
+    fun showFloatingEmoji(emoji: String, isRemoving: Boolean) {
+        floatingAction = if (isRemoving) {
+            FloatingReactionAction.Remove(emoji)
+        } else {
+            FloatingReactionAction.Add(emoji)
+        }
         floatingEmojiHideJob?.cancel()
         floatingEmojiHideJob = scope.launch {
             delay(FloatingEmojiHideDelayMs)
-            floatingEmoji = null
+            floatingAction = null
         }
     }
 
@@ -584,11 +648,13 @@ private fun MomentPostCard(
                             when (resolved) {
                                 1 -> onCardClick()
                                 2 -> {
-                                    showFloatingEmoji(HeartEmoji)
+                                    val isRemoving = HeartEmoji in moment.ownReactions
+                                    showFloatingEmoji(HeartEmoji, isRemoving)
                                     onAddReaction(HeartEmoji)
                                 }
                                 else -> if (resolved >= 3) {
-                                    showFloatingEmoji(FlameEmoji)
+                                    val isRemoving = FlameEmoji in moment.ownReactions
+                                    showFloatingEmoji(FlameEmoji, isRemoving)
                                     onAddReaction(FlameEmoji)
                                 }
                             }
@@ -615,18 +681,44 @@ private fun MomentPostCard(
             },
     ) {
         if (moment.payloads.isEmpty()) {
-            // Description-only / corrupt-payload moment — still render a tile so
-            // the user sees something tappable.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(24.dp),
-            ) {
-                Text(
-                    text = moment.description.ifBlank { "—" },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            if (pendingLocalPreviewUri != null) {
+                // Placeholder window after postMomentAsync: the optimistic row
+                // exists but thumbnail generation / encryption are still
+                // running on the post sender's background scope. Render the
+                // user's selected source file straight from disk so the tile
+                // shows the picked photo immediately, with the upload overlay
+                // (Preparing → Sending → …) on top. Once writeUpdate lands
+                // real payload descriptors, this branch stops firing and the
+                // normal MomentMediaGallery path takes over.
+                Box {
+                    AsyncImage(
+                        model = pendingLocalPreviewUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    if (uploadStatus != null) {
+                        MomentUploadProgressOverlay(
+                            status = uploadStatus,
+                            modifier = Modifier.matchParentSize(),
+                            onPermanentFailureTap = { failedSheetOpen = true },
+                        )
+                    }
+                }
+            } else {
+                // Description-only / corrupt-payload moment — still render a tile so
+                // the user sees something tappable.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .padding(24.dp),
+                ) {
+                    Text(
+                        text = moment.description.ifBlank { "—" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         } else {
             // Wrap the gallery so the upload-progress overlay can size to the
@@ -677,9 +769,16 @@ private fun MomentPostCard(
                         // Inner per-cell click handlers stay disabled in the feed
                         // so the card-level multi-tap detector receives all taps
                         // — that's what makes double/triple-tap-to-react work on
-                        // the media area itself (Instagram-style).
+                        // the media area itself (Instagram-style). For the
+                        // carousel path the embedded video tile handles its
+                        // own play tap; double-tap-heart bubbles up via the
+                        // onDoubleTap callback below.
                         onMediaClick = null,
                         isUploading = uploadStatus != null,
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        onDoubleTap = { onAddReaction(HeartEmoji) },
+                        autoplayActive = autoplayActive,
                     )
                 }
 
@@ -748,7 +847,7 @@ private fun MomentPostCard(
         // their multi-tap registered. Drawn after all other overlays so it
         // lands on top of media + badges.
         FloatingReactionOverlay(
-            emoji = floatingEmoji,
+            action = floatingAction,
             modifier = Modifier.align(Alignment.Center),
         )
 
@@ -1119,8 +1218,8 @@ private fun decodeReactionEmoji(reactionContent: String): String? = runCatching 
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
 
-private const val HeartEmoji = "❤️"
-private const val FlameEmoji = "🔥"
+internal const val HeartEmoji = "❤️"
+internal const val FlameEmoji = "🔥"
 
 // Multi-tap disambiguation window. Slightly longer than Android's stock
 // double-tap timeout (~300ms) so the third tap of a triple-tap has comfortable
@@ -1132,48 +1231,107 @@ private const val FloatingEmojiFontSize = 96
 private const val FloatingEmojiInitialScale = 0.4f
 
 /**
- * Animated reaction confirmation. Pops in with a spring scale + fade when
- * [emoji] becomes non-null, then fades out when the parent clears it. We
- * remember the last non-null emoji so the glyph stays visible through the
- * exit transition (otherwise AnimatedVisibility unmounts the slot too early
- * and the fade-out is empty).
+ * Distinguishes "user just added a reaction" from "user just removed one"
+ * so the [FloatingReactionOverlay] can play a different animation for each.
+ * Same glyph in both cases — only the motion changes.
+ */
+internal sealed interface FloatingReactionAction {
+    val emoji: String
+    data class Add(override val emoji: String) : FloatingReactionAction
+    data class Remove(override val emoji: String) : FloatingReactionAction
+}
+
+/**
+ * Animated reaction confirmation. Two flavors:
+ *   - [FloatingReactionAction.Add]: pops in with a bouncy spring scale and
+ *     fades out — feels celebratory.
+ *   - [FloatingReactionAction.Remove]: enters at full size, shrinks and
+ *     slides downward as it fades — reads as "the reaction is going away."
+ *
+ * The last non-null action is remembered so the glyph stays visible through
+ * the exit transition (otherwise AnimatedVisibility unmounts the slot too
+ * early and the fade-out is empty).
  */
 @Composable
 private fun FloatingReactionOverlay(
-    emoji: String?,
+    action: FloatingReactionAction?,
     modifier: Modifier = Modifier,
 ) {
-    var displayedEmoji by remember { mutableStateOf<String?>(null) }
-    if (emoji != null && emoji != displayedEmoji) {
-        displayedEmoji = emoji
+    var displayed by remember { mutableStateOf<FloatingReactionAction?>(null) }
+    if (action != null && action != displayed) {
+        displayed = action
     }
-    val visible = emoji != null
+    val visible = action != null
+    val isRemoving = displayed is FloatingReactionAction.Remove
+
+    // Add: bouncy spring from small → 1.0.
+    // Remove: damped spring from 1.0 → 0.6 (final scale of the shrink).
     val scale by animateFloatAsState(
-        targetValue = if (visible) 1f else FloatingEmojiInitialScale,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        targetValue = when {
+            !visible -> if (isRemoving) FloatingEmojiRemoveEndScale else FloatingEmojiInitialScale
+            isRemoving -> FloatingEmojiRemoveEndScale
+            else -> 1f
+        },
+        animationSpec = if (isRemoving) {
+            spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium,
+            )
+        } else {
+            spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            )
+        },
         label = "floating-emoji-scale",
+    )
+    // Remove path drifts downward as it fades. Add path stays centred.
+    val translateY by animateFloatAsState(
+        targetValue = if (!visible && isRemoving) FloatingEmojiRemoveDriftPx else 0f,
+        animationSpec = tween(durationMillis = FloatingEmojiRemoveDriftMs),
+        label = "floating-emoji-translate-y",
     )
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(120)) +
-            scaleIn(initialScale = FloatingEmojiInitialScale),
-        exit = fadeOut(animationSpec = tween(180)) +
-            scaleOut(targetScale = FloatingEmojiInitialScale),
+        enter = if (isRemoving) {
+            // No pop-in — the glyph enters at the same scale it just sat at
+            // (1.0) before the user removed its reaction. The shrink + fade
+            // is what conveys "going away."
+            fadeIn(animationSpec = tween(80))
+        } else {
+            fadeIn(animationSpec = tween(120)) +
+                scaleIn(initialScale = FloatingEmojiInitialScale)
+        },
+        exit = if (isRemoving) {
+            fadeOut(animationSpec = tween(280))
+        } else {
+            fadeOut(animationSpec = tween(180)) +
+                scaleOut(targetScale = FloatingEmojiInitialScale)
+        },
         modifier = modifier,
     ) {
-        val glyph = displayedEmoji
+        val glyph = displayed?.emoji
         if (glyph != null) {
             Text(
                 text = glyph,
                 fontSize = FloatingEmojiFontSize.sp,
+                color = if (isRemoving) {
+                    Color.White.copy(alpha = 0.75f)
+                } else {
+                    Color.Unspecified
+                },
                 modifier = Modifier.graphicsLayer {
                     scaleX = scale
                     scaleY = scale
+                    translationY = translateY
                 },
             )
         }
     }
 }
+
+// Remove animation tuning. End-scale is the size the glyph shrinks to as
+// it fades out; drift is the downward distance it travels during the exit.
+private const val FloatingEmojiRemoveEndScale = 0.55f
+private const val FloatingEmojiRemoveDriftPx = 60f
+private const val FloatingEmojiRemoveDriftMs = 320
