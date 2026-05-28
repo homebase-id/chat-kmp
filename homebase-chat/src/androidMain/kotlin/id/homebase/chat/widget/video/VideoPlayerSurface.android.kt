@@ -1,7 +1,6 @@
 package id.homebase.chat.widget.video
 
 import android.net.Uri
-import android.util.Log
 import android.view.LayoutInflater
 import co.touchlab.kermit.Logger
 import id.homebase.chat.R
@@ -26,7 +25,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -107,12 +108,73 @@ actual fun VideoPlayerSurface(
     // to the pool — otherwise the recycled player would keep pushing frames to
     // a stale TextureView surface.
     var playerView by remember(data) { mutableStateOf<PlayerView?>(null) }
+    // The per-content-type first-frame listener (added in the HLS/MP4 branches
+    // below) self-removes once `onRenderedFirstFrame` fires — but a surface
+    // torn down BEFORE first frame (e.g. a fast swipe, or the autoplay gate
+    // flapping) never reaches that callback, so without a dispose-time removal
+    // the listener leaks onto the recycled pooled player. Leaked listeners then
+    // accumulate and all fire `onFirstFrame`/`onProgress` against stale,
+    // already-disposed surfaces. We keep the live listener here so `onDispose`
+    // can detach it alongside the diagnostics listener.
+    var firstFrameListener by remember(data) { mutableStateOf<Player.Listener?>(null) }
+
+    // Persistent diagnostics listener — fires for the entire lifetime of the
+    // player in this composition. The per-content-type listeners below remove
+    // themselves after first frame (they exist to time first-paint), so without
+    // this listener any error or state change *after* first frame would be
+    // silent. Critical for diagnosing "video plays for a second then stops",
+    // "spinner forever", and codec/HLS-decryption failures.
+    val diagnosticsListener = remember(data) {
+        object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Logger.e(tag = "VideoIO", throwable = error) {
+                    "player error: fileId=${data.fileId} key=${data.payloadKey} code=${error.errorCodeName} message=${error.message}"
+                }
+            }
+            override fun onPlayerErrorChanged(error: PlaybackException?) {
+                if (error == null) {
+                    Logger.d(tag = "VideoIO") {
+                        "player error cleared: fileId=${data.fileId} key=${data.payloadKey}"
+                    }
+                }
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                Logger.d(tag = "VideoIO") {
+                    "player state: fileId=${data.fileId} key=${data.payloadKey} → ${playbackStateName(playbackState)}"
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Logger.d(tag = "VideoIO") {
+                    "player isPlaying=$isPlaying fileId=${data.fileId} key=${data.payloadKey}"
+                }
+            }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                Logger.d(tag = "VideoIO") {
+                    "player video size: ${videoSize.width}x${videoSize.height} fileId=${data.fileId} key=${data.payloadKey}"
+                }
+            }
+        }
+    }
 
     DisposableEffect(data) {
         onDispose {
             val p = exoPlayer
+            Logger.d(tag = "VideoIO") {
+                "surface dispose: fileId=${data.fileId} key=${data.payloadKey} hadPlayer=${p != null}"
+            }
             playerView?.player = null
-            if (p != null) playerPool.release(p)
+            if (p != null) {
+                // Detach BOTH listeners BEFORE returning the player to the
+                // pool. ExoPlayerPool.resetForNextUse only clears media items +
+                // playWhenReady; it does not clear listeners. Without these
+                // removals the recycled player would keep firing diagnostics
+                // callbacks holding a stale `data` closure, and any first-frame
+                // listener leaked from a tear-down-before-first-frame would fire
+                // `onFirstFrame` against this already-disposed surface.
+                firstFrameListener?.let { p.removeListener(it) }
+                p.removeListener(diagnosticsListener)
+                playerPool.release(p)
+            }
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
@@ -160,9 +222,12 @@ actual fun VideoPlayerSurface(
             playerPool.acquire().apply {
                 playWhenReady = true
                 volume = if (muted) 0f else 1f
+                addListener(diagnosticsListener)
             }
         }
-        Logger.d(tag = "VideoIO") { "ExoPlayer acquire: $playerInitElapsed" }
+        Logger.d(tag = "VideoIO") {
+            "ExoPlayer acquire: $playerInitElapsed fileId=${data.fileId} key=${data.payloadKey} muted=$muted startPosMs=$startPositionMs nativeControls=$useNativeControls"
+        }
         exoPlayer = player
 
         withContext(Dispatchers.IO) {
@@ -203,7 +268,7 @@ actual fun VideoPlayerSurface(
                         withContext(Dispatchers.Main) {
                             player.setMediaSource(mediaSource)
                             val prepareStart = TimeSource.Monotonic.markNow()
-                            player.addListener(object : Player.Listener {
+                            val hlsFirstFrameListener = object : Player.Listener {
                                 private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY && !stateReadyLogged) {
@@ -225,8 +290,11 @@ actual fun VideoPlayerSurface(
                                     firstFramePainted = true
                                     onFirstFrame()
                                     player.removeListener(this)
+                                    firstFrameListener = null
                                 }
-                            })
+                            }
+                            firstFrameListener = hlsFirstFrameListener
+                            player.addListener(hlsFirstFrameListener)
                             // Seek BEFORE prepare so ExoPlayer buffers from
                             // the target position instead of re-buffering
                             // after a post-prepare seek. Used by the moments
@@ -257,7 +325,7 @@ actual fun VideoPlayerSurface(
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
-                            player.addListener(object : Player.Listener {
+                            val mp4FirstFrameListener = object : Player.Listener {
                                 private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY && !stateReadyLogged) {
@@ -271,8 +339,11 @@ actual fun VideoPlayerSurface(
                                     firstFramePainted = true
                                     onFirstFrame()
                                     player.removeListener(this)
+                                    firstFrameListener = null
                                 }
-                            })
+                            }
+                            firstFrameListener = mp4FirstFrameListener
+                            player.addListener(mp4FirstFrameListener)
                             if (startPositionMs > 0) player.seekTo(startPositionMs)
                             player.prepare()
                             state = VpsState.Active
@@ -280,7 +351,9 @@ actual fun VideoPlayerSurface(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("VideoPlayer", "Playback error for fileId=${data.fileId}", e)
+                Logger.e(tag = "VideoIO", throwable = e) {
+                    "playback setup error: fileId=${data.fileId} key=${data.payloadKey} message=${e.message}"
+                }
                 state = VpsState.Error(e.message ?: "Playback error")
             }
         }
@@ -383,6 +456,14 @@ actual fun VideoPlayerSurface(
             }
         }
     }
+}
+
+private fun playbackStateName(state: Int): String = when (state) {
+    Player.STATE_IDLE -> "IDLE"
+    Player.STATE_BUFFERING -> "BUFFERING"
+    Player.STATE_READY -> "READY"
+    Player.STATE_ENDED -> "ENDED"
+    else -> "UNKNOWN($state)"
 }
 
 @UnstableApi

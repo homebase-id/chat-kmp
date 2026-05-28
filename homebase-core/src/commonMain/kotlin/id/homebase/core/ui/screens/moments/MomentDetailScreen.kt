@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -106,7 +107,6 @@ import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.flow.drop
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -274,6 +274,31 @@ private fun MomentDetailLoadedPager(
         pageCount = { feed.size },
     )
 
+    // TEMP instrumentation (moments video-autoplay churn). The autoplay gate
+    // below is `isActivePage = settledPage == page`; if `settledPage` flaps
+    // between two adjacent pages while the pager is supposedly settled, every
+    // mounted pane toggles isActivePage → tears down + rebuilds its video
+    // player in a loop (see homebase_1779999024009.log). This logs the outer
+    // pager's own state transitions so we can see whether settledPage is
+    // oscillating and whether scroll is genuinely in progress. snapshotFlow
+    // dedups by structural equality on the Triple, so it only emits on a real
+    // change. Remove once the churn root cause is confirmed.
+    LaunchedEffect(pagerState) {
+        snapshotFlow {
+            Triple(
+                pagerState.currentPage,
+                pagerState.settledPage,
+                pagerState.isScrollInProgress,
+            )
+        }.collect { (current, settled, scrolling) ->
+            Logger.d(tag = "MomentReels") {
+                "outer pager: currentPage=$current settledPage=$settled " +
+                    "scrolling=$scrolling targetPage=${pagerState.targetPage} " +
+                    "offset=${pagerState.currentPageOffsetFraction} pages=${feed.size}"
+            }
+        }
+    }
+
     VerticalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
@@ -307,9 +332,18 @@ private fun MomentDetailLoadedPager(
                 if (isInitialPage) initialPayloadKey else null,
             )
         }
+        // Only the settled page drives autoplay. `currentPage` flips
+        // halfway through a swipe and would tear down the previous video +
+        // spin up the next one mid-gesture; `settledPage` only updates when
+        // the swipe finishes, so videos handoff cleanly between moments
+        // without a mid-swipe load flash. Pre-mounted neighbours (the
+        // beyondViewportPageCount=1 window above) get isActivePage=false
+        // and stay paused.
+        val isActivePage = pagerState.settledPage == page
         MomentDetailPane(
             viewModel = pageVm,
             onNavigateBack = onNavigateBack,
+            isActivePage = isActivePage,
         )
     }
 }
@@ -319,6 +353,14 @@ private fun MomentDetailLoadedPager(
 fun MomentDetailPane(
     viewModel: MomentDetailViewModel,
     onNavigateBack: (() -> Unit)?,
+    /**
+     * Reels-style autoplay gate. `true` when this pane is the settled page
+     * of the parent vertical pager — drives [DetailContent] to autoplay the
+     * current carousel video. Defaults to `true` so embedded callers that
+     * don't have a pager context (e.g. the wide-desktop side pane in
+     * [MomentsScreen]) behave the same as they did before.
+     */
+    isActivePage: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fileSystemHandler = getUriHandler()
@@ -365,6 +407,7 @@ fun MomentDetailPane(
                     onNavigateBack = onNavigateBack,
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@AnimatedContent,
+                    isActivePage = isActivePage,
                 )
 
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
@@ -411,6 +454,7 @@ private fun DetailContent(
     onNavigateBack: (() -> Unit)?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    isActivePage: Boolean,
 ) {
     // Local sheet toggle — pure UI state. The reactor-roster sheet
     // (uiState.showReactionsSheet) is still VM-driven below because it loads
@@ -496,6 +540,7 @@ private fun DetailContent(
                 onOpenComments = { showCommentsSheet = true },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                isActivePage = isActivePage,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(contentPadding),
@@ -850,6 +895,7 @@ private fun MomentDetailContent(
     onOpenComments: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    isActivePage: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
@@ -898,28 +944,58 @@ private fun MomentDetailContent(
 
     val commentCount = uiState.comments.size
 
-    // Per-detail-screen video play state. Unlike the feed's autoplay flow
-    // there is no scroll-away to pause; the user picks play / pause via the
-    // tile's centred IconButton ([MomentInlineVideoTile.showPauseAffordance]).
-    // Cleared on page-change so swiping doesn't leave a video running on a
-    // page that's no longer visible.
+    // Reels-style autoplay. Two states drive `playingPayloadKey`:
+    //   - This moment is the SETTLED page of the outer vertical pager
+    //     (isActivePage = true) AND the current carousel page is a video →
+    //     autoplay that video. The feed→detail handoff falls out for free:
+    //     on first composition the inner pager is already on the handoff
+    //     page, snapshotFlow's initial emission picks up its payload key,
+    //     `MomentInlineVideoTile` reads MomentsVideoSession's saved
+    //     position via `startPositionMs`, and playback resumes exactly
+    //     where the feed left it.
+    //   - Not the settled page (preloaded neighbour, mid-swipe, etc.) →
+    //     null, which tears down the player so a swipe-away pauses cleanly
+    //     and we don't have two videos playing at once.
     //
-    // Seeded with the feed-handoff payload key ONLY when the initial page is
-    // the handoff page — otherwise opening to a photo while a different page
-    // had been autoplaying in the feed would silently start that off-screen
-    // video. With that gate in place, a tap-into-detail on a video resumes
-    // from the saved timestamp; a tap on a still page just opens the still.
-    val initialPlayingKey = remember(moment.id, initialPage, handoffPayloadKey) {
-        moment.payloads.getOrNull(initialPage)?.key?.takeIf { it == handoffPayloadKey }
-    }
-    var playingPayloadKey by remember(moment.id) { mutableStateOf(initialPlayingKey) }
-    LaunchedEffect(pagerState, moment.id) {
-        // drop(1) skips snapshotFlow's initial emission of the seeded
-        // currentPage — without it the collector fires on first composition
-        // and immediately clears the seeded playingPayloadKey, defeating
-        // the feed→detail playback handoff.
-        snapshotFlow { pagerState.currentPage }.drop(1).collect { _ ->
+    // Stored as state (not derived) so the user's explicit pause via the
+    // native player controls can override the autoplay — onPlayTap below
+    // sets it to null and we don't fight the user by immediately
+    // re-engaging on the next recomposition.
+    var playingPayloadKey by remember(moment.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(isActivePage, pagerState, moment.id, moment.payloads) {
+        // TEMP instrumentation (moments video-autoplay churn). Logs every
+        // restart of this effect and every autoplay-key transition so we can
+        // correlate `isActivePage` flips and inner-carousel page changes with
+        // the player mount/teardown churn in VideoIO logs. Remove with the
+        // outer-pager logging above once the root cause is confirmed.
+        Logger.d(tag = "MomentReels") {
+            "autoplay effect (re)start: moment=${moment.id} isActivePage=$isActivePage " +
+                "innerPage=${pagerState.currentPage} payloads=${moment.payloads.size}"
+        }
+        if (!isActivePage) {
+            if (playingPayloadKey != null) {
+                Logger.d(tag = "MomentReels") {
+                    "autoplay → null (inactive page): moment=${moment.id} was=$playingPayloadKey"
+                }
+            }
             playingPayloadKey = null
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val payload = moment.payloads.getOrNull(pagerState.currentPage)
+                ?: return@snapshotFlow null
+            val ct = payload.contentType ?: ""
+            val isVideo = ct.startsWith("video/") ||
+                ct == "application/vnd.apple.mpegurl"
+            if (isVideo) payload.key else null
+        }.collect { autoplayKey ->
+            if (autoplayKey != playingPayloadKey) {
+                Logger.d(tag = "MomentReels") {
+                    "autoplay key change: moment=${moment.id} innerPage=${pagerState.currentPage} " +
+                        "from=$playingPayloadKey to=$autoplayKey"
+                }
+            }
+            playingPayloadKey = autoplayKey
         }
     }
 
