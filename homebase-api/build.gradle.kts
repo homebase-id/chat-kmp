@@ -150,11 +150,6 @@ kotlin {
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
         .linkerOpts(testBinaryLinkerOpts)
 
-    // DIAGNOSTIC RUN: exclude filter for OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure
-    // has been removed on this branch (`diagnose-outbox-ios-segfault`) so the iOS sim segfault
-    // reproduces and CI captures a stack trace. Filter will be restored on the parent branch
-    // until the underlying sqliter+coroutines interaction is fixed.
-
     // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every
     // commonTest that calls `createInMemoryDatabase` blows up on wasmJs (see
     // src/wasmJsTest/.../TestDatabaseHelper.web.kt). Exclude those classes so the wasmJs

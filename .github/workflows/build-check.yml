@@ -133,44 +133,13 @@ jobs:
           JDK_21: ${{ env.JAVA_HOME }}
 
       # iOS simulator tests for homebase-api — covers FfmpegDecoderCommonTest (real FFmpegKit
-      # via cinterop) and FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by
-      # mock bridges). Runs verbose (--info) on this diagnostic branch so a segfault in
-      # OutboxSyncTest.testDependencyChainUnblocksAfterPermanentFailure produces enough
-      # output to identify the failing dispatch frame.
+      # via cinterop), FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by mock
+      # bridges), and the full commonTest suite (sync/database/outbox/etc.).
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
-        run: ./gradlew :homebase-api:iosSimulatorArm64Test --info
+        run: ./gradlew :homebase-api:iosSimulatorArm64Test
         env:
           JDK_21: ${{ env.JAVA_HOME }}
-
-      - name: Upload iOS test reports
-        if: ${{ matrix.name == 'iOS' && always() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: ios-test-reports
-          path: |
-            homebase-api/build/reports/tests/iosSimulatorArm64Test/
-            homebase-api/build/test-results/iosSimulatorArm64Test/
-          retention-days: 30
-
-      - name: Capture macOS crash reports
-        if: ${{ matrix.name == 'iOS' && failure() }}
-        run: |
-          mkdir -p crash-reports
-          # System-level crash logs that the OS writes when a native binary
-          # segfaults. .ips on macOS 12+; .crash on older. Copy both forms.
-          cp -v ~/Library/Logs/DiagnosticReports/*.ips crash-reports/ 2>/dev/null || true
-          cp -v ~/Library/Logs/DiagnosticReports/*.crash crash-reports/ 2>/dev/null || true
-          ls -la crash-reports/ || true
-
-      - name: Upload macOS crash reports
-        if: ${{ matrix.name == 'iOS' && failure() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: ios-crash-reports
-          path: crash-reports/
-          retention-days: 30
-          if-no-files-found: ignore
 
       - name: Verify Android build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
