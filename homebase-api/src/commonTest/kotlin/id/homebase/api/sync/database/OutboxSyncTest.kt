@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,7 +31,15 @@ import id.homebase.api.client.ProblemDetails
 class TestUploader : OutboxUploader {
     var shouldFail = false
     var failureException: Throwable? = null
-    val uploaded = mutableListOf<Outbox>()
+
+    // `uploaded` is appended to from up to MAX_SENDING_THREADS=3 concurrent send
+    // coroutines inside OutboxSync. On Kotlin/Native a plain `mutableListOf` racing
+    // `add()` from multiple coroutines can surface as ConcurrentModificationException
+    // with `at null:-1` (JVM's ArrayList silently corrupts but doesn't fail-fast on
+    // add). Keep the list as immutable snapshots inside an atomicfu reference; readers
+    // get a stable List<Outbox> view per access.
+    private val _uploaded = atomic<List<Outbox>>(emptyList())
+    val uploaded: List<Outbox> get() = _uploaded.value
 
     // For concurrency testing
     private val currentActive = atomic(0)
@@ -61,7 +70,7 @@ class TestUploader : OutboxUploader {
         // Virtual delay to simulate upload time (critical for concurrency observation)
         kotlinx.coroutines.delay(1000)
 
-        uploaded.add(outboxRecord)
+        _uploaded.update { it + outboxRecord }
         currentActive.decrementAndGet()
     }
 }
@@ -79,6 +88,17 @@ private fun clientException(
 )
 
 
+/**
+ * Each test drains the OutboxSync coroutines via `sync.clearCheckout(...)` just
+ * before its `runTest` block returns. `runTest` cancels `backgroundScope` on
+ * return, and on iOS sim a backgroundScope cancellation racing an in-flight
+ * SQLDelight transaction surfaces as `ConcurrentModificationException at null:-1`
+ * (or, less frequently, a segfault) from inside sqliter's listener notification
+ * path. Draining first lets the production code reach its own quiescent state
+ * before cancellation, closing the race window. JVM is unaffected because
+ * JdbcSqliteDriver is single-connection and serializes implicitly; iOS uses
+ * NativeSqliteDriver's connection pool, which is what catches the races.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSyncTest {
 
@@ -138,6 +158,7 @@ class OutboxSyncTest {
             assertEquals(uniqueId, uploader.uploaded[0].uniqueId)
             // Check that item was deleted
             assertEquals(0L, db.outbox.count())
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -191,6 +212,7 @@ class OutboxSyncTest {
             assertEquals(1L, db.outbox.count())
             // Check that uploader was called but failed (not added to uploaded)
             assertEquals(0, uploader.uploaded.size)
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -248,6 +270,7 @@ class OutboxSyncTest {
             assertEquals(records.size, uploader.uploaded.size)
             // 0 items should remain
             assertEquals(0L, db.outbox.count())
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -300,6 +323,7 @@ class OutboxSyncTest {
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(driveId, dropped.driveId)
             assertEquals(20, dropped.attempts)
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -385,6 +409,7 @@ class OutboxSyncTest {
             // Clean up — release the blocked collector so backgroundScope can finish.
             blocker.complete(Unit)
             collectorJob.cancel()
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -444,6 +469,7 @@ class OutboxSyncTest {
             val row = db.outbox.checkout()
             assertNotNull(row)
             assertEquals("original", row.json.decodeToString(), "original row's payload must be preserved")
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -491,6 +517,7 @@ class OutboxSyncTest {
             val row = db.outbox.checkout()
             assertNotNull(row)
             assertEquals("fresh", row.json.decodeToString(), "new payload must win over the stale one")
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -541,6 +568,7 @@ class OutboxSyncTest {
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(driveId, dropped.driveId)
             assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -592,6 +620,7 @@ class OutboxSyncTest {
             assertEquals(0L, db.outbox.count())
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(1, dropped.attempts)
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -645,6 +674,7 @@ class OutboxSyncTest {
             assertEquals(0L, db.outbox.count())
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(1, dropped.attempts)
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -702,6 +732,7 @@ class OutboxSyncTest {
             assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -771,6 +802,7 @@ class OutboxSyncTest {
                 "both stuck head and its dependent must be drained — dependent " +
                         "stays in outbox only as long as the head exists"
             )
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
@@ -803,6 +835,7 @@ class OutboxSyncTest {
 
             assertEquals(0, completedCount)
             assertEquals(0, uploader.uploaded.size)
+            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
         db.close()
     }
