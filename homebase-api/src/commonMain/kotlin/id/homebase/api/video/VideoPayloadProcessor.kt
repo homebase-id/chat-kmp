@@ -16,6 +16,8 @@ import kotlin.uuid.Uuid
 
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
+    private val compressor: VideoCompressor = VideoCompressionService,
+    private val probe: VideoProber = VideoCompressionService,
 ) {
     private val FIVE_MB = 5L * 1024 * 1024
 
@@ -100,7 +102,7 @@ class VideoPayloadProcessor(
         )
 
         val compressedPath =
-            FFmpegUtils.compressVideo(
+            compressor.compress(
                 inputPath = payload.filePath,
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
@@ -125,8 +127,8 @@ class VideoPayloadProcessor(
 
         val (playlistPath, videoPath, isSegmented) =
             if (useHls) {
-                val (playlist, segments) =
-                    FFmpegUtils.segmentAndEncryptVideo(
+                val segmented =
+                    compressor.segmentAndEncrypt(
                         inputPath = compressedPath,
                         keyHeader = keyHeader,
                         onProgress = { pct ->
@@ -140,7 +142,7 @@ class VideoPayloadProcessor(
                         }
                     ) ?: error("segmentAndEncryptVideo failed")
 
-                Triple(playlist, segments, true)
+                Triple(segmented.playlistPath, segmented.segmentsPath, true)
             } else {
                 Triple(null, compressedPath, false)
             }
@@ -169,7 +171,7 @@ class VideoPayloadProcessor(
 
         /* ---------- PHASE 5: METADATA ---------- */
 
-        val durationMs = FFmpegUtils.getDurationMs(compressedPath)
+        val durationMs = probe.getDurationMs(compressedPath)
         val codec = detectVideoCodec(finalVideoPath)
 
         // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already

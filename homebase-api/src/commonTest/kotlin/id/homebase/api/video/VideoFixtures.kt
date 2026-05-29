@@ -10,5 +10,13 @@ package id.homebase.api.video
  */
 internal expect suspend fun stageSampleVideoForFfmpegTest(): String?
 
+/**
+ * Same as [stageSampleVideoForFfmpegTest] but stages the QuickTime `.mov` fixture
+ * ([SampleMovFixture]) instead of the `.mp4`, so the suite also covers the `.mov` ingest
+ * container (iOS camera captures are `.mov`). Returns `null` on targets with no fixture wired
+ * up — the caller should skip and exit green.
+ */
+internal expect suspend fun stageSampleMovForFfmpegTest(): String?
+
 /** Best-effort cleanup of the staged fixture. */
 internal expect suspend fun cleanupStagedSampleVideo(path: String)

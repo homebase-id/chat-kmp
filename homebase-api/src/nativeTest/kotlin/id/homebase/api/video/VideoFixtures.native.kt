@@ -25,13 +25,18 @@ import platform.Foundation.writeToFile
  * iOS targets are skipped entirely (cross-compilation not supported), so this code only runs
  * where it can actually link.
  */
-internal actual suspend fun stageSampleVideoForFfmpegTest(): String? {
+internal actual suspend fun stageSampleVideoForFfmpegTest(): String? =
+    stageFixture(SampleVideoFixture.bytes, "mp4")
+
+internal actual suspend fun stageSampleMovForFfmpegTest(): String? =
+    stageFixture(SampleMovFixture.bytes, "mov")
+
+private fun stageFixture(bytes: ByteArray, ext: String): String? {
     installTestBridgeIfNeeded()
 
     val cacheDir = cacheDir()
-    val path = "$cacheDir/vidfixture_${NSUUID.UUID().UUIDString}.mp4"
+    val path = "$cacheDir/vidfixture_${NSUUID.UUID().UUIDString}.$ext"
 
-    val bytes = SampleVideoFixture.bytes
     val written = memScoped {
         val buffer = allocArrayOf(bytes)
         val data = NSData.create(bytes = buffer, length = bytes.size.toULong())
