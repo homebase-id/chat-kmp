@@ -337,6 +337,7 @@
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
+    <string name="moments_view_reels">Reels</string>
     <string name="moments_album_zoom_day">Day</string>
     <string name="moments_album_zoom_month">Month</string>
     <string name="moments_album_zoom_year">Year</string>
@@ -345,6 +346,9 @@
     <string name="moments_album_extra_count">+%1$d</string>
     <string name="moments_reaction_like">Like</string>
     <string name="moments_detail_no_description">No description added</string>
+    <string name="moments_detail_edit_description">Edit description</string>
+    <string name="moments_detail_description_hint">Add a description</string>
+    <string name="moments_detail_description_save">Save</string>
     <string name="moments_detail_metadata_captured">Captured</string>
     <string name="moments_detail_metadata_device">Device</string>
     <string name="moments_detail_comments_section">Comments</string>

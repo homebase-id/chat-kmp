@@ -89,6 +89,9 @@ class MomentDetailViewModel(
         val editingCommentId: Uuid? = null,
         val editingCommentDraft: String = "",
         val isSavingCommentEdit: Boolean = false,
+        val isEditingDescription: Boolean = false,
+        val descriptionDraft: String = "",
+        val isSavingDescription: Boolean = false,
         val showDeleteDialog: Boolean = false,
         val isDeletingMoment: Boolean = false,
         val deletingCommentIds: Set<Uuid> = emptySet(),
@@ -172,6 +175,9 @@ class MomentDetailViewModel(
             editingCommentId = local.editingCommentId,
             editingCommentDraft = local.editingCommentDraft,
             isSavingCommentEdit = local.isSavingCommentEdit,
+            isEditingDescription = local.isEditingDescription,
+            descriptionDraft = local.descriptionDraft,
+            isSavingDescription = local.isSavingDescription,
             userDefaultReactions = userDefaultReactions,
             isMine = isMine,
             showDeleteDialog = local.showDeleteDialog,
@@ -410,6 +416,23 @@ class MomentDetailViewModel(
 
             MomentDetailUiAction.CancelCommentEdit ->
                 _screenLocal.update { it.copy(editingCommentId = null, editingCommentDraft = "") }
+
+            MomentDetailUiAction.StartEditDescription -> {
+                // Owner-only; seed the draft with the current description.
+                if (!uiState.value.isMine) return
+                val current = uiState.value.moment?.description.orEmpty()
+                _screenLocal.update {
+                    it.copy(isEditingDescription = true, descriptionDraft = current)
+                }
+            }
+
+            is MomentDetailUiAction.DescriptionDraftChanged ->
+                _screenLocal.update { it.copy(descriptionDraft = action.text) }
+
+            MomentDetailUiAction.SaveDescriptionEdit -> saveDescriptionEdit()
+
+            MomentDetailUiAction.CancelDescriptionEdit ->
+                _screenLocal.update { it.copy(isEditingDescription = false, descriptionDraft = "") }
 
             is MomentDetailUiAction.ToggleReactionOnMoment -> toggleMomentReaction(action.emoji)
 
@@ -678,6 +701,53 @@ class MomentDetailViewModel(
                 Logger.e(throwable = t, tag = TAG) { "updateComment failed: ${t.message}" }
                 _screenLocal.update { it.copy(isSavingCommentEdit = false) }
                 _events.tryEmit(MomentDetailUiEvent.CommentEditFailed(t.message))
+            }
+        }
+    }
+
+    private fun saveDescriptionEdit() {
+        val local = _screenLocal.value
+        if (local.isSavingDescription) return
+        val moment = uiState.value.moment ?: return
+        // Owner-only — the action dispatcher already gates StartEditDescription
+        // on isMine, but re-check here so a stale UI can't slip a save through.
+        if (!uiState.value.isMine) return
+
+        // updateMoment guards against a stale write via the version tag; if we
+        // don't have one yet (still-optimistic local post), bail rather than
+        // racing the in-flight initial send.
+        val versionTag = moment.versionTag
+        if (versionTag == null) {
+            _events.tryEmit(
+                MomentDetailUiEvent.DescriptionEditFailed(
+                    "Moment is still being posted — try again in a moment."
+                )
+            )
+            return
+        }
+
+        val description = local.descriptionDraft.trim()
+
+        _screenLocal.update { it.copy(isSavingDescription = true) }
+        viewModelScope.launch {
+            try {
+                postSender.updateMoment(
+                    momentUniqueId = momentId,
+                    versionTag = versionTag,
+                    description = description,
+                    recipients = moment.recipients,
+                )
+                _screenLocal.update {
+                    it.copy(
+                        isEditingDescription = false,
+                        descriptionDraft = "",
+                        isSavingDescription = false,
+                    )
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "updateMoment failed: ${t.message}" }
+                _screenLocal.update { it.copy(isSavingDescription = false) }
+                _events.tryEmit(MomentDetailUiEvent.DescriptionEditFailed(t.message))
             }
         }
     }

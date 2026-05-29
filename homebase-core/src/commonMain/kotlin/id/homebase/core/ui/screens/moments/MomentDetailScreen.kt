@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -133,6 +135,9 @@ import id.homebase.resources.moments_detail_delete_comment_dialog_title
 import id.homebase.resources.moments_detail_delete_dialog_title
 import id.homebase.resources.moments_detail_menu_delete
 import id.homebase.resources.moments_detail_menu_more
+import id.homebase.resources.moments_detail_description_hint
+import id.homebase.resources.moments_detail_description_save
+import id.homebase.resources.moments_detail_edit_description
 import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
 import id.homebase.resources.moments_detail_no_description
@@ -222,7 +227,9 @@ fun MomentDetailPager(
     // which reads as "doubles" / "wrong next moment" on vertical swipe.)
     val orderedFeed = remember(feed, viewMode) {
         when (viewMode) {
-            MomentsViewMode.Timeline -> feed.sortedByDescending { it.createdMs }
+            // Reels mirrors Timeline ordering — newest posted first.
+            MomentsViewMode.Timeline,
+            MomentsViewMode.Reels -> feed.sortedByDescending { it.createdMs }
             MomentsViewMode.Album -> feed.sortedByDescending { it.userDateMs }
         }
     }
@@ -261,7 +268,10 @@ private fun MomentDetailLoadedPager(
     feed: List<MomentFeedItem>,
     initialMomentId: Uuid,
     initialPayloadKey: String?,
-    onNavigateBack: () -> Unit,
+    // Nullable so the embedded Reels view mode ([MomentsReelsView]) can run the
+    // same pager with no back target — the per-page pane suppresses its back
+    // arrow when this is null.
+    onNavigateBack: (() -> Unit)?,
 ) {
     // Resolve once. Subsequent feed updates (new posts arriving, optimistic
     // deletes) shift indices around but the pager's current page anchors to
@@ -344,6 +354,32 @@ private fun MomentDetailLoadedPager(
             viewModel = pageVm,
             onNavigateBack = onNavigateBack,
             isActivePage = isActivePage,
+        )
+    }
+}
+
+/**
+ * Reels view mode — the same immersive vertical-pager browse as the
+ * tap-into-detail experience ([MomentDetailLoadedPager]), surfaced as a
+ * standing view mode in `MomentsScreen` rather than a navigation push. Starts
+ * on the newest moment and has no back target: the user leaves Reels via the
+ * view-mode switcher in the Moments top bar.
+ *
+ * @param moments the feed already ordered by the caller — `MomentsFeedViewModel`
+ *   sorts Reels like Timeline (newest posted first), so index 0 is the newest.
+ */
+@Composable
+fun MomentsReelsView(
+    moments: List<MomentFeedItem>,
+    modifier: Modifier = Modifier,
+) {
+    val newest = moments.firstOrNull() ?: return
+    Box(modifier = modifier.fillMaxSize()) {
+        MomentDetailLoadedPager(
+            feed = moments,
+            initialMomentId = newest.id,
+            initialPayloadKey = null,
+            onNavigateBack = null,
         )
     }
 }
@@ -904,7 +940,6 @@ private fun MomentDetailContent(
     // single tap persists across nav-in / nav-out of the detail screen.
     val videoSession = koinInject<MomentsVideoSession>()
     val isMuted by videoSession.isMuted.collectAsStateWithLifecycle()
-    val isZoomedToFill by videoSession.isZoomedToFill.collectAsStateWithLifecycle()
 
     // Feed → detail playback handoff. If the user tapped a video that was
     // autoplaying in the feed, MomentsVideoSession will hold the captured
@@ -1012,9 +1047,16 @@ private fun MomentDetailContent(
         // opened by the right-edge IconButtons below).
         if (moment.payloads.isEmpty()) {
             // Description-only moment — there's no media to render, so fill
-            // with the description text centred over the black backdrop.
+            // with the description text centred over the black backdrop. A tap
+            // anywhere opens the detail panel (comments + description + edit).
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenComments,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 if (moment.description.isNotBlank()) {
@@ -1036,68 +1078,81 @@ private fun MomentDetailContent(
                 val isVideo = contentType.startsWith("video/") ||
                     contentType == "application/vnd.apple.mpegurl"
 
-                if (isVideo) {
-                    // Inline-playable video tile. ButtonOnly tapMode handles
-                    // the idle Play button; once playing, [useNativeControls]
-                    // hands play/pause + a scrub bar over to the platform
-                    // PlayerView / AVPlayerViewController, which auto-hide
-                    // after a few seconds of no interaction. The Compose
-                    // showPauseAffordance overlay stays off so we don't
-                    // double up on pause buttons.
-                    MomentInlineVideoTile(
-                        payload = payload,
-                        fileId = moment.fileId,
-                        driveId = moment.driveId,
-                        keyHeader = moment.keyHeader,
-                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: moment.previewThumbnail,
-                        isUploading = false,
-                        isPlaying = playingPayloadKey == payload.key,
-                        onPlayTap = {
-                            playingPayloadKey = if (playingPayloadKey == payload.key) {
-                                null
-                            } else {
-                                payload.key
-                            }
-                        },
-                        // Double-tap heart and triple-tap flame are owned by
-                        // the feed card detector, not the detail screen —
-                        // here a tap on the media plays/pauses.
-                        onDoubleTap = {},
-                        isMuted = isMuted,
-                        onToggleMute = videoSession::toggleMuted,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        modifier = Modifier.fillMaxSize(),
-                        tapMode = MomentVideoTapMode.ButtonOnly,
-                        showPauseAffordance = false,
-                        useNativeControls = true,
-                        useZoomFill = isZoomedToFill,
-                        onToggleZoomFill = videoSession::toggleZoomedToFill,
-                    )
-                } else {
-                    MomentMediaItem(
-                        payload = payload,
-                        fileId = moment.fileId,
-                        driveId = moment.driveId,
-                        previewThumbnail = moment.previewThumbnail,
-                        keyHeader = moment.keyHeader,
-                        modifier = Modifier.fillMaxSize(),
-                        imageSize = ImageSize.THUMB_XLARGE,
-                        // Fit (not crop) — the whole post is visible,
-                        // including landscape media in a portrait viewport
-                        // (and vice versa). Letterbox bars take the Box's
-                        // black background.
-                        preserveAspectRatio = true,
-                        messageId = moment.id,
-                        shape = RectangleShape,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        // Tap is owned by the bottom-sheet trigger icons,
-                        // not the media surface — keep gesture-free so
-                        // horizontal swipes drive the pager cleanly.
-                        onClick = null,
-                    )
+                // Single tap anywhere on the media opens the detail panel
+                // (comments + description + edit). The reaction column, mute
+                // button and the video's centred play/pause affordance are
+                // children drawn over this surface, so they intercept their
+                // own taps first; everything else falls through to here.
+                // `clickable` doesn't consume horizontal drags, so the parent
+                // HorizontalPager still swipes between carousel items cleanly.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onOpenComments,
+                        ),
+                ) {
+                    if (isVideo) {
+                        // Inline-playable video tile. ButtonOnly tapMode skips
+                        // the full-surface tap detector so the tap above opens
+                        // the panel; a centred play/pause affordance
+                        // ([showPauseAffordance]) keeps manual playback control
+                        // without a native-controls layer that would swallow
+                        // the panel tap. Autoplay + the mute button remain.
+                        MomentInlineVideoTile(
+                            payload = payload,
+                            fileId = moment.fileId,
+                            driveId = moment.driveId,
+                            keyHeader = moment.keyHeader,
+                            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                                ?: moment.previewThumbnail,
+                            isUploading = false,
+                            isPlaying = playingPayloadKey == payload.key,
+                            onPlayTap = {
+                                playingPayloadKey = if (playingPayloadKey == payload.key) {
+                                    null
+                                } else {
+                                    payload.key
+                                }
+                            },
+                            // Double-tap heart and triple-tap flame are owned by
+                            // the feed card detector, not the detail screen.
+                            onDoubleTap = {},
+                            isMuted = isMuted,
+                            onToggleMute = videoSession::toggleMuted,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            modifier = Modifier.fillMaxSize(),
+                            tapMode = MomentVideoTapMode.ButtonOnly,
+                            showPauseAffordance = true,
+                            useNativeControls = false,
+                        )
+                    } else {
+                        MomentMediaItem(
+                            payload = payload,
+                            fileId = moment.fileId,
+                            driveId = moment.driveId,
+                            previewThumbnail = moment.previewThumbnail,
+                            keyHeader = moment.keyHeader,
+                            modifier = Modifier.fillMaxSize(),
+                            imageSize = ImageSize.THUMB_XLARGE,
+                            // Fit (not crop) — the whole post is visible,
+                            // including landscape media in a portrait viewport
+                            // (and vice versa). Letterbox bars take the Box's
+                            // black background.
+                            preserveAspectRatio = true,
+                            messageId = moment.id,
+                            shape = RectangleShape,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            // Tap handled by the wrapping Box above (opens the
+                            // panel); keep the image itself gesture-free so the
+                            // horizontal swipe drives the pager cleanly.
+                            onClick = null,
+                        )
+                    }
                 }
             }
         }
@@ -1379,6 +1434,21 @@ private fun CommentsSheet(
         sheetState = sheetState,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            MomentDescriptionSection(
+                description = uiState.moment?.description.orEmpty(),
+                isMine = uiState.isMine,
+                isEditing = uiState.isEditingDescription,
+                draft = uiState.descriptionDraft,
+                isSaving = uiState.isSavingDescription,
+                onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
+                onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
+                onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
+                onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            HorizontalDivider()
             CommentsHeader(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2029,6 +2099,99 @@ private fun MetadataRow(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
         )
+    }
+}
+
+/**
+ * Description block at the top of the detail panel. Read-only for receivers;
+ * the author ([isMine]) gets a pencil affordance that swaps the text for an
+ * inline editor wired to the moment-description update path
+ * ([MomentsPostSenderService.updateMoment] via the VM). Save/Cancel commit or
+ * discard the [draft].
+ */
+@Composable
+private fun MomentDescriptionSection(
+    description: String,
+    isMine: Boolean,
+    isEditing: Boolean,
+    draft: String,
+    isSaving: Boolean,
+    onStartEdit: () -> Unit,
+    onDraftChanged: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (isEditing) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChanged,
+                placeholder = { Text(stringResource(MR.string.moments_detail_description_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaving,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onCancel, enabled = !isSaving) {
+                    Text(stringResource(MR.string.cancel))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                TextButton(onClick = onSave, enabled = !isSaving) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(stringResource(MR.string.moments_detail_description_save))
+                    }
+                }
+            }
+        } else {
+            val hasDescription = description.isNotBlank()
+            // Built outside Text() so the Konsist string-literal check sees a
+            // variable, not a literal. See CLAUDE.md.
+            val descriptionText = if (hasDescription) {
+                description
+            } else {
+                stringResource(MR.string.moments_detail_no_description)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = descriptionText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (hasDescription) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(top = 8.dp),
+                )
+                if (isMine) {
+                    IconButton(onClick = onStartEdit) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = stringResource(
+                                MR.string.moments_detail_edit_description,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

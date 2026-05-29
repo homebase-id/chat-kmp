@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -305,6 +306,10 @@ private fun CompactMomentsLayout(
                 pendingLocalPreviews = pendingLocalPreviews,
                 modifier = contentModifier,
             )
+            MomentsViewMode.Reels -> MomentsReelsView(
+                moments = moments,
+                modifier = contentModifier,
+            )
         }
     }
 }
@@ -343,6 +348,46 @@ private fun WideMomentsLayout(
     onDismissUpload: (Uuid) -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
+
+    // Reels is an immersive single-column browse — the feed/detail split makes
+    // no sense for it, so render it full-area on wide screens too (keeping the
+    // top bar so the user can switch back to Timeline/Album). The pager itself
+    // Fit-scales media with black letterbox bars, so a very wide viewport just
+    // centres the media rather than stretching it.
+    if (viewMode == MomentsViewMode.Reels) {
+        Scaffold(
+            topBar = {
+                MomentsTopAppBar(
+                    ownerSession = ownerSession,
+                    connectionStatus = connectionStatus,
+                    driveIsSyncing = driveIsSyncing,
+                    hasDriveError = hasDriveError,
+                    viewMode = viewMode,
+                    onViewModeChange = onViewModeChange,
+                    onProfileClick = onProfileClick,
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = onCreateMoment) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.moments_create_action),
+                    )
+                }
+            },
+        ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
+            if (moments.isEmpty()) {
+                EmptyMomentsState(modifier = contentModifier)
+            } else {
+                MomentsReelsView(moments = moments, modifier = contentModifier)
+            }
+        }
+        return
+    }
 
     var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
 
@@ -423,6 +468,13 @@ private fun WideMomentsLayout(
                         selectedMomentId = Uuid.parse(id)
                     },
                     pendingLocalPreviews = pendingLocalPreviews,
+                    modifier = contentModifier,
+                )
+                // Unreachable — Reels short-circuits to a full-area layout
+                // above before the split pane is built. Kept so the `when`
+                // stays exhaustive over MomentsViewMode.
+                MomentsViewMode.Reels -> MomentsReelsView(
+                    moments = moments,
                     modifier = contentModifier,
                 )
             }
@@ -1035,6 +1087,7 @@ private fun MomentsViewModeMenu(
                 imageVector = when (selected) {
                     MomentsViewMode.Timeline -> Icons.Outlined.ViewAgenda
                     MomentsViewMode.Album -> Icons.Outlined.PhotoAlbum
+                    MomentsViewMode.Reels -> Icons.Outlined.Slideshow
                 },
                 contentDescription = menuLabel,
             )
@@ -1059,6 +1112,15 @@ private fun MomentsViewModeMenu(
                 onClick = {
                     expanded = false
                     onSelect(MomentsViewMode.Album)
+                },
+            )
+            MomentsViewModeMenuItem(
+                label = stringResource(MR.string.moments_view_reels),
+                icon = Icons.Outlined.Slideshow,
+                isSelected = selected == MomentsViewMode.Reels,
+                onClick = {
+                    expanded = false
+                    onSelect(MomentsViewMode.Reels)
                 },
             )
         }
