@@ -84,6 +84,14 @@ object FfmpegCompressPlanner {
      *   aspect.
      * @param encoder ffmpeg encoder name. Defaults to `"libx264"`; iOS passes
      *   `"h264_videotoolbox"` first and falls back to libx264 on failure
+     * @param probedBitDepth source luma bit depth (8/10/12). Pass 8 when the
+     *   probe couldn't determine it. >8 forces a re-encode (disables the
+     *   already-optimal short-circuit) so the output can be pinned to 8-bit.
+     * @param probedIsHdr true when the source is HDR (BT2020 primaries with a
+     *   PQ/HLG transfer, or HDR static/dynamic metadata). Forces a re-encode for
+     *   the same reason. Note: Tier 1 only pins output to 8-bit SDR-decodable
+     *   `yuv420p` (no tone-map yet), which is enough to make every receiver's
+     *   hardware AVC decoder accept the stream.
      */
     fun plan(
         inputPath: String,
@@ -98,6 +106,8 @@ object FfmpegCompressPlanner {
         inputBytes: Long,
         rotationDegrees: Int = 0,
         encoder: String = "libx264",
+        probedBitDepth: Int = 8,
+        probedIsHdr: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
@@ -112,6 +122,7 @@ object FfmpegCompressPlanner {
         if (!hasTrim && isAlreadyOptimal(
                 probedCodecMime, displayWidthPx, displayHeightPx,
                 inputBytes, inputDurationMs, targets,
+                probedBitDepth, probedIsHdr,
             )
         ) {
             return FfmpegCompressPlan(
@@ -150,6 +161,14 @@ object FfmpegCompressPlanner {
             }
             add("-b:v"); add("${targets.videoBitrateBps / 1000}k")
             addAll(scaleArgs)
+            // Pin output to 8-bit 4:2:0. A 10-bit/HDR source (H.264 High 10,
+            // avc1.6E001F) otherwise round-trips through libx264 as 10-bit
+            // High 10, which most Android hardware AVC decoders reject with
+            // ERROR_CODE_DECODING_FAILED / NO_EXCEEDS_CAPABILITIES. yuv420p
+            // produces a Main/High-profile stream every receiver can decode.
+            // No-op for already-8-bit 4:2:0 sources. (Tier 1: no tone-map yet —
+            // HDR colours may look flat until the zscale/tonemap follow-up.)
+            add("-pix_fmt"); add("yuv420p")
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
             add("-movflags"); add("+faststart")
@@ -167,11 +186,15 @@ object FfmpegCompressPlanner {
 
     /**
      * Already-optimal predicate. True iff the source is H.264 single-video-track
-     * within both the short-edge and the average-bitrate budget (×1.2 slack).
+     * within both the short-edge and the average-bitrate budget (×1.2 slack),
+     * and is 8-bit SDR.
      *
      * Mirrors the Android v2 SPEC §7 logic. Returns false on any probe
      * gap (null codec, zero dim, zero duration) — caller falls through to a
-     * real transcode in that case.
+     * real transcode in that case. Also returns false for 10-bit/HDR sources:
+     * even an otherwise-in-budget clip must re-encode so the output can be
+     * pinned to 8-bit `yuv420p` (else the original 10-bit High 10 bytes would
+     * pass through untouched and fail on hardware AVC decoders).
      */
     internal fun isAlreadyOptimal(
         codecMime: String?,
@@ -180,8 +203,11 @@ object FfmpegCompressPlanner {
         inputBytes: Long,
         durationMs: Long,
         targets: QualityTargets,
+        bitDepth: Int = 8,
+        isHdr: Boolean = false,
     ): Boolean {
         if (codecMime == null || widthPx <= 0 || heightPx <= 0 || durationMs <= 0) return false
+        if (bitDepth > 8 || isHdr) return false
         if (!isH264(codecMime)) return false
         val shortEdgePx = minOf(widthPx, heightPx)
         if (shortEdgePx > targets.shortEdgePx) return false

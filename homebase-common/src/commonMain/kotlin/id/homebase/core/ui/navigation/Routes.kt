@@ -137,6 +137,14 @@ sealed class Route {
          * page 0.
          */
         val initialPayloadKey: String? = null,
+        /**
+         * When true, the detail screen opens with its comments sheet already
+         * expanded — used by the timeline card's comment button so a tap
+         * lands the user straight in the comment thread. Only honoured on the
+         * initial page; vertically-swiped neighbours start with comments
+         * collapsed.
+         */
+        val openComments: Boolean = false,
     ) : Route()
 
     @Serializable

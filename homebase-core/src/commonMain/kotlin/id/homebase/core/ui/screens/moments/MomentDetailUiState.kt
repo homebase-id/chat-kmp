@@ -5,6 +5,8 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentsRecipientId
+import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource
 
@@ -148,6 +150,32 @@ data class MomentDetailUiState(
      * section visually and semantically.
      */
     val reactions: List<MomentReactionUiModel> = emptyList(),
+
+    /**
+     * Whether the "Add people" recipient picker sheet is open. Author-only
+     * (gated on [isMine]); lets the author widen an already-posted moment's
+     * audience without re-composing.
+     */
+    val showAddRecipientsSheet: Boolean = false,
+
+    /**
+     * Recipient candidates for the "Add people" sheet — the same MRU /
+     * groups / contacts snapshot the compose-time audience picker uses,
+     * mirrored from `MomentsRecipientLookupService`.
+     */
+    val addRecipientsSnapshot: MomentsRecipientsSnapshot = MomentsRecipientsSnapshot.empty(),
+
+    /** Search query inside the "Add people" sheet. */
+    val addRecipientsQuery: String = "",
+
+    /**
+     * Newly-picked recipients in the "Add people" sheet (the additions only —
+     * recipients already on the moment render as locked and aren't selectable).
+     */
+    val addRecipientsSelected: Set<MomentsRecipientId> = emptySet(),
+
+    /** True while the add-recipients update is being enqueued. */
+    val isAddingRecipients: Boolean = false,
 )
 
 /**
@@ -298,6 +326,27 @@ sealed interface MomentDetailUiAction {
 
     /** Dismiss the "who reacted" bottom sheet. */
     data object DismissReactionsSheet : MomentDetailUiAction
+
+    /**
+     * Overflow-menu "Add people" tapped — open the recipient picker sheet to
+     * widen the moment's audience. Author-only; the VM re-checks [isMine].
+     */
+    data object RequestAddRecipients : MomentDetailUiAction
+
+    /** Dismiss the "Add people" sheet without sending. */
+    data object DismissAddRecipientsSheet : MomentDetailUiAction
+
+    /** Search query changed inside the "Add people" sheet. */
+    data class AddRecipientsQueryChanged(val text: String) : MomentDetailUiAction
+
+    /** Toggle a candidate recipient's selection in the "Add people" sheet. */
+    data class ToggleAddRecipient(val id: MomentsRecipientId) : MomentDetailUiAction
+
+    /**
+     * Confirm the additions — re-distributes the existing media to the newly
+     * picked recipients via `MomentsPostSenderService.addRecipientsToMoment`.
+     */
+    data object ConfirmAddRecipients : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
@@ -318,4 +367,8 @@ sealed interface MomentDetailUiEvent {
      */
     data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
+
+    /** Audience successfully widened by [count] new recipients. */
+    data class RecipientsAdded(val count: Int) : MomentDetailUiEvent
+    data class AddRecipientsFailed(val message: String?) : MomentDetailUiEvent
 }

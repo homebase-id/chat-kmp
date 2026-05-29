@@ -504,6 +504,7 @@ val appModule = module {
             contactService = get(),
             driveFileProvider = get(),
             fileOperationsProvider = get(),
+            recipientLookup = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

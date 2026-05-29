@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,9 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,6 +138,15 @@ fun MomentFullScreenEditor(
 
     val activeAttachment = attachments.getOrNull(pagerState.currentPage)
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
+
+    // When the description field is focused the IME slides up and the usable
+    // height collapses. The attachment-strip and edit-tools rows are fixed
+    // height and, beneath the media pager's weight(1f), would otherwise push
+    // the description editor off-screen (behind the keyboard / Continue bar).
+    // Collapse that secondary chrome while typing so the field — and a slice
+    // of the media preview — stay visible above the keyboard. The chrome
+    // returns when the field loses focus.
+    var descriptionFocused by remember { mutableStateOf(false) }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across
     // swipes by stashing in framesByAtt; cancellation happens automatically when
@@ -349,6 +362,9 @@ fun MomentFullScreenEditor(
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the
         // collection of attachments — actions on the current one live below.
+        // Collapsed while the description field is focused (see
+        // [descriptionFocused]) to free vertical space for the keyboard.
+        AnimatedVisibility(visible = !descriptionFocused) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -476,10 +492,14 @@ fun MomentFullScreenEditor(
                 )
             }
         }
+        }
 
         // Edit-tools row (Signal convention): actions on the current
         // attachment — crop (image only), draw (image only), download.
+        // Collapsed alongside the attachment strip while the description
+        // field is focused.
         val currentAttachment = attachments.getOrNull(pagerState.currentPage)
+        AnimatedVisibility(visible = !descriptionFocused) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -527,12 +547,14 @@ fun MomentFullScreenEditor(
                 }
             }
         }
+        }
 
         MomentDescriptionField(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             state = textFieldState,
+            onFocusChanged = { descriptionFocused = it },
         )
     }
 }
