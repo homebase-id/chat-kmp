@@ -93,7 +93,7 @@ actual object FFmpegUtils {
             // URIs, and avoids the FFmpegKit JNI surface entirely (the v7
             // upgrade aborted on HLS-remuxed MP4 inputs here, see homebase.log
             // tombstone from 2026-05-17).
-            val bytes = VideoThumbnailExtractor.extractPosterFrame(inputPath)
+            val bytes = VideoThumbnailService.extractPosterFrame(inputPath)
                 ?: return@withContext null
             outputFile.writeBytes(bytes)
             outputFile.absolutePath

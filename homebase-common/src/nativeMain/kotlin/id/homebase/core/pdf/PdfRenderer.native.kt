@@ -42,6 +42,7 @@ actual class PdfRenderer actual constructor() {
 
         val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
         try {
+            @Suppress("UNCHECKED_CAST")
             document = CGPDFDocumentCreateWithURL(cfUrl as platform.CoreFoundation.CFURLRef)
                 ?: throw IllegalArgumentException("Cannot open PDF: $filePath")
             if (accessed) accessedUrl = nsUrl
