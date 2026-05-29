@@ -46,8 +46,24 @@ internal class TestFFmpegKitBridge : FFmpegKitBridge {
         onComplete(result)
     }
 
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ): Long {
+        val session = FFmpegKit.executeWithArguments(args)
+        val isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+        val failStackTrace = session?.getFailStackTrace()
+        onComplete(FFmpegResult(isSuccess = isSuccess, failStackTrace = failStackTrace))
+        return session?.getSessionId() ?: -1L
+    }
+
     override fun cancelAllFFmpegSessions() {
         FFmpegKit.cancel()
+    }
+
+    override fun cancelFFmpegSession(sessionId: Long) {
+        // No-op in sync test bridge — session already complete.
     }
 
     override fun getMediaInformation(filePath: String): MediaInfo? = null

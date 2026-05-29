@@ -27,13 +27,35 @@ interface FFmpegKitBridge {
     )
 
     /**
-     * Cancel all in-flight ffmpeg sessions. Invoked from coroutine
-     * cancellation to kill the work when the caller navigates away mid-job.
-     * Bridge-wide cancel — fine for the current single-job flow, but if
-     * concurrent attachments land, swap to per-session cancellation by
-     * returning a session id from [executeFFmpegAsync].
+     * Same shape as [executeFFmpegAsync] but takes an arg list instead of a single shell-style
+     * command string. Use this for any command containing user-supplied paths (or anything
+     * else that might contain quotes / spaces / shell metacharacters) — FFmpegKit's
+     * `executeWithArgumentsAsync` skips its argv parser entirely, so the arg list is the
+     * `ProcessBuilder(List<String>)` equivalent.
+     *
+     * Returns the FFmpegKit session ID so the caller can cancel this specific session
+     * via [cancelFFmpegSession] without killing unrelated concurrent sessions.
+     */
+    fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ): Long
+
+    /**
+     * Cancel all in-flight ffmpeg sessions. Appropriate for single-job flows
+     * (e.g. the upload pipeline's [executeFFmpegAsync] path) where no other
+     * concurrent session exists. For code that may run alongside other
+     * FFmpegKit work, prefer [cancelFFmpegSession].
      */
     fun cancelAllFFmpegSessions()
+
+    /**
+     * Cancel a single ffmpeg session by ID. Use this when the caller's session
+     * may run concurrently with other FFmpegKit work (e.g. thumbnail strip
+     * extraction alongside video upload compression).
+     */
+    fun cancelFFmpegSession(sessionId: Long)
 
     /**
      * Get media information for a file.

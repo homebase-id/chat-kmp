@@ -67,14 +67,59 @@ class FFmpegKitVideoDecoderNativeTest {
             // The poll is on 40 ms; 200 ms is plenty for at least one iteration on any runner.
             delay(200)
             assertTrue(bridge.executeAsyncCalled, "decoder must have started ffmpeg by now")
-            assertEquals(0, bridge.cancelAllCalls, "no cancel yet — flow is still active")
+            assertEquals(0, bridge.cancelSessionCalls.size, "no cancel yet — flow is still active")
 
             job.cancel()
             job.join()
 
             assertEquals(
-                1, bridge.cancelAllCalls,
-                "cancelling the flow must cancel the bridge session exactly once",
+                1, bridge.cancelSessionCalls.size,
+                "cancelling the flow must cancel the session exactly once",
+            )
+            assertEquals(
+                bridge.lastSessionId, bridge.cancelSessionCalls.first(),
+                "must cancel only the session that was started, not all sessions",
+            )
+            assertEquals(
+                0, bridge.cancelAllCalls,
+                "per-session cancel must be used — cancelAllFFmpegSessions must NOT be called",
+            )
+        } finally {
+            cleanup(fixturePath)
+        }
+    }
+
+    @Test
+    fun extractThumbnailStrip_cancellationDoesNotAffectConcurrentSession() = runBlocking {
+        val bridge = RecordingDeferredBridge()
+        FFmpegKitBridgeHolder.setBridge(bridge)
+
+        val fixturePath = stageFixtureOnDisk()
+        try {
+            val uploadSessionId = bridge.simulateConcurrentSession()
+
+            val job = launch(Dispatchers.Default) {
+                FFmpegKitVideoDecoder().extractThumbnailStrip(
+                    videoPath = fixturePath,
+                    durationMs = 6_000L,
+                    frameCount = 10,
+                    targetHeightPx = 96,
+                ).toList()
+            }
+
+            delay(200)
+            assertTrue(bridge.executeAsyncCalled, "decoder must have started ffmpeg by now")
+
+            job.cancel()
+            job.join()
+
+            assertEquals(
+                1, bridge.cancelSessionCalls.size,
+                "only the decoder's session should be cancelled",
+            )
+            assertTrue(
+                uploadSessionId !in bridge.cancelSessionCalls,
+                "the concurrent upload session must NOT be cancelled by the decoder's cleanup",
             )
         } finally {
             cleanup(fixturePath)
@@ -174,6 +219,12 @@ class FFmpegKitVideoDecoderNativeTest {
 private class RecordingDeferredBridge : FFmpegKitBridge {
     @Volatile var executeAsyncCalled: Boolean = false
     @Volatile var cancelAllCalls: Int = 0
+    @Volatile var lastSessionId: Long = -1L
+
+    private var nextSessionId = 100L
+    val cancelSessionCalls = mutableListOf<Long>()
+
+    fun simulateConcurrentSession(): Long = nextSessionId++
 
     override fun executeFFmpeg(command: String): FFmpegResult =
         FFmpegResult(isSuccess = false, failStackTrace = "unused in test")
@@ -184,11 +235,24 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         onComplete: (FFmpegResult) -> Unit,
     ) {
         executeAsyncCalled = true
-        // Intentionally never invoke onComplete — simulate a long-running session.
+    }
+
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ): Long {
+        executeAsyncCalled = true
+        lastSessionId = nextSessionId++
+        return lastSessionId
     }
 
     override fun cancelAllFFmpegSessions() {
         cancelAllCalls++
+    }
+
+    override fun cancelFFmpegSession(sessionId: Long) {
+        cancelSessionCalls.add(sessionId)
     }
 
     override fun getMediaInformation(filePath: String): MediaInfo? = null
@@ -219,15 +283,30 @@ private class DriverBridge : FFmpegKitBridge {
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
     ) {
-        // The decoder builds the command with `"$outDir/f_%04d.jpg"` as the last quoted token —
-        // parse the output dir back out so the test can drop fake JPEGs into it.
         val outPattern = command.split('"').firstOrNull { it.endsWith("f_%04d.jpg") }
             ?: error("could not find output pattern in: $command")
         outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
         pendingCompletion = onComplete
     }
 
+    override fun executeFFmpegAsyncArgs(
+        args: List<String>,
+        onProgress: (timeMs: Long) -> Unit,
+        onComplete: (FFmpegResult) -> Unit,
+    ): Long {
+        val outPattern = args.firstOrNull { it.endsWith("f_%04d.jpg") }
+            ?: error("could not find output pattern in args: $args")
+        outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
+        pendingCompletion = onComplete
+        return 42L
+    }
+
     override fun cancelAllFFmpegSessions() {
+        pendingCompletion?.invoke(FFmpegResult(isSuccess = false, failStackTrace = "cancelled"))
+        pendingCompletion = null
+    }
+
+    override fun cancelFFmpegSession(sessionId: Long) {
         pendingCompletion?.invoke(FFmpegResult(isSuccess = false, failStackTrace = "cancelled"))
         pendingCompletion = null
     }

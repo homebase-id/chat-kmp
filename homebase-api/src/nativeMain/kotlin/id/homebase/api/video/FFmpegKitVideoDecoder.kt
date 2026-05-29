@@ -27,9 +27,9 @@ import kotlin.math.roundToInt
  * container — typically some MKV variants or legacy codecs that AVFoundation doesn't support.
  *
  * Strip emission is progressive: the ffmpeg invocation is driven via
- * [FFmpegKitBridge.executeFFmpegAsync] while a polling loop drains newly-written JPEGs from
+ * [FFmpegKitBridge.executeFFmpegAsyncArgs] while a polling loop drains newly-written JPEGs from
  * the per-extraction cache directory, mirroring the JVM decoder's approach. Flow cancellation
- * cancels the bridge session and clears the cache dir.
+ * cancels the specific session via [FFmpegKitBridge.cancelFFmpegSession] and clears the cache dir.
  */
 @OptIn(ExperimentalForeignApi::class)
 class FFmpegKitVideoDecoder : VideoDecoder {
@@ -69,22 +69,24 @@ class FFmpegKitVideoDecoder : VideoDecoder {
         val completion = CompletableDeferred<FFmpegResult>()
         val emitted = HashSet<Int>()
         val step = durationMs.toDouble() / frameCount
+        var sessionId = -1L
 
         try {
             val durationS = durationMs / 1000.0
             val fps = frameCount.toDouble() / durationS.coerceAtLeast(0.001)
             val pattern = "$outDir/f_%04d.jpg"
-            // Shell-quoted command — known code smell vs JVM's ProcessBuilder(List<String>),
-            // but a list-arg bridge variant introduced a runtime crash in production
-            // compression. Reverted to keep behaviour identical to main's bridge surface.
-            // Safe because NSCachesDirectory paths can't contain shell metacharacters.
-            // Same shape as FFmpegUtils.grabThumbnail.
-            val command = "-y -loglevel error -i \"$videoPath\" " +
-                "-vf \"fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}\" " +
-                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.STRIP_FFMPEG_QSCALE} \"$pattern\""
+            val args = listOf(
+                "-y",
+                "-loglevel", "error",
+                "-i", videoPath,
+                "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
+                "-frames:v", frameCount.toString(),
+                "-q:v", VideoThumbnailQuality.STRIP_FFMPEG_QSCALE.toString(),
+                pattern,
+            )
 
-            bridge.executeFFmpegAsync(
-                command = command,
+            sessionId = bridge.executeFFmpegAsyncArgs(
+                args = args,
                 onProgress = { /* unused — we drive emission via dir polling */ },
                 onComplete = { result -> completion.complete(result) },
             )
@@ -98,11 +100,10 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             // Final sweep — ffmpeg may have written files just before exiting.
             drainNewFrames(outDir, emitted, frameCount, step) { trySend(it) }
         } finally {
-            // If the consumer cancelled mid-run, tear the ffmpeg session down too. Bridge-wide
-            // cancel is acceptable for the current single-job upload flow (see FFmpegKitBridge
-            // KDoc). If concurrent ffmpeg jobs are ever introduced, swap to per-session cancel.
-            if (!completion.isCompleted) {
-                runCatching { bridge.cancelAllFFmpegSessions() }
+            // If the consumer cancelled mid-run, tear only THIS session down — not the
+            // bridge-wide cancel that would kill a concurrent upload compression session.
+            if (!completion.isCompleted && sessionId >= 0) {
+                runCatching { bridge.cancelFFmpegSession(sessionId) }
             }
             // Wait for ffmpeg's worker to actually settle before we wipe the dir — otherwise a
             // last-millisecond flush from ffmpeg writes a JPEG into a folder we're already
