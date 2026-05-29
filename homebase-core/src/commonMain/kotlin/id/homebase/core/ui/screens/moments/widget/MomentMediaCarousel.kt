@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -90,6 +91,10 @@ fun MomentMediaCarousel(
     // active (scroll off → autoplay disengages → LazyColumn eventually
     // disposes the tile and tears the player down).
     autoplayActive: Boolean = false,
+    // Fires with the payload key of whichever page is currently centred so
+    // the host can pass it to the tap-into-detail navigation — opening the
+    // detail at the page the user was looking at, not always page 0.
+    onVisiblePayloadChanged: (String) -> Unit = {},
 ) {
     if (payloads.isEmpty()) return
 
@@ -114,7 +119,16 @@ fun MomentMediaCarousel(
     //     video on page N pauses when page N+1 scrolls in.
     // snapshotFlow dedups via structural equality, so emissions only land
     // when the active key actually changes — no per-frame churn on scroll.
+    LaunchedEffect(pagerState, payloads, messageId) {
+        snapshotFlow { pagerState.currentPage }.collect { idx ->
+            payloads.getOrNull(idx)?.key?.let(onVisiblePayloadChanged)
+        }
+    }
+
     LaunchedEffect(pagerState, payloads, autoplayActive, messageId) {
+        Logger.d(tag = "MomentVideo") {
+            "carousel autoplay watcher: messageId=$messageId autoplayActive=$autoplayActive payloadCount=${payloads.size}"
+        }
         if (!autoplayActive) {
             snapshotFlow { pagerState.currentPage }.collect { _ ->
                 playingPayloadKey = null
@@ -128,6 +142,9 @@ fun MomentMediaCarousel(
             val isVideo = ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
             if (isVideo) payload.key else null
         }.collect { autoplayKey ->
+            Logger.d(tag = "MomentVideo") {
+                "carousel autoplay engage: messageId=$messageId page=${pagerState.currentPage} key=${autoplayKey ?: "<no-video>"}"
+            }
             playingPayloadKey = autoplayKey
         }
     }

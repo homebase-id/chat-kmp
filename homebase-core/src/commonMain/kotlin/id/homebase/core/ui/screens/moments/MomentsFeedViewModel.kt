@@ -144,7 +144,9 @@ class MomentsFeedViewModel(
                 list to mode
             }.collect { (list, mode) ->
                 val sorted = when (mode) {
-                    MomentsViewMode.Timeline -> list.sortedByDescending { it.createdMs }
+                    // Reels mirrors Timeline ordering — newest posted first.
+                    MomentsViewMode.Timeline,
+                    MomentsViewMode.Reels -> list.sortedByDescending { it.createdMs }
                     MomentsViewMode.Album -> list.sortedByDescending { it.userDateMs }
                 }
                 _uiState.update { it.copy(moments = sorted, viewMode = mode) }

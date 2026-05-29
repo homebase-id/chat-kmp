@@ -62,6 +62,10 @@ fun MomentMediaGallery(
     // visible (if that page is a video). Ignored by SingleImageLayout —
     // single videos autoplay via the parent setting playingMomentId.
     autoplayActive: Boolean = false,
+    // Fires with the payload key of the currently-visible carousel page so
+    // the host can route tap-to-detail to the right page. No-op on the
+    // single-payload path (the host already knows the only payload's key).
+    onVisiblePayloadChanged: (String) -> Unit = {},
 ) {
     if (payloads.isEmpty()) return
 
@@ -100,6 +104,7 @@ fun MomentMediaGallery(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 autoplayActive = autoplayActive,
+                onVisiblePayloadChanged = onVisiblePayloadChanged,
             )
         }
     }

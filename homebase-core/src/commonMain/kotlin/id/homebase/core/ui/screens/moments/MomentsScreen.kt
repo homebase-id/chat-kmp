@@ -1,14 +1,13 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -108,6 +108,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -121,6 +122,7 @@ import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
 import id.homebase.resources.moments_view_album
 import id.homebase.resources.moments_view_menu
+import id.homebase.resources.moments_view_reels
 import id.homebase.resources.moments_view_timeline
 import id.homebase.resources.moments_welcome
 import id.homebase.resources.upload_failed_action_delete
@@ -305,6 +307,10 @@ private fun CompactMomentsLayout(
                 pendingLocalPreviews = pendingLocalPreviews,
                 modifier = contentModifier,
             )
+            MomentsViewMode.Reels -> MomentsReelsView(
+                moments = moments,
+                modifier = contentModifier,
+            )
         }
     }
 }
@@ -343,6 +349,46 @@ private fun WideMomentsLayout(
     onDismissUpload: (Uuid) -> Unit,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
+
+    // Reels is an immersive single-column browse — the feed/detail split makes
+    // no sense for it, so render it full-area on wide screens too (keeping the
+    // top bar so the user can switch back to Timeline/Album). The pager itself
+    // Fit-scales media with black letterbox bars, so a very wide viewport just
+    // centres the media rather than stretching it.
+    if (viewMode == MomentsViewMode.Reels) {
+        Scaffold(
+            topBar = {
+                MomentsTopAppBar(
+                    ownerSession = ownerSession,
+                    connectionStatus = connectionStatus,
+                    driveIsSyncing = driveIsSyncing,
+                    hasDriveError = hasDriveError,
+                    viewMode = viewMode,
+                    onViewModeChange = onViewModeChange,
+                    onProfileClick = onProfileClick,
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = onCreateMoment) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.moments_create_action),
+                    )
+                }
+            },
+        ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
+            if (moments.isEmpty()) {
+                EmptyMomentsState(modifier = contentModifier)
+            } else {
+                MomentsReelsView(moments = moments, modifier = contentModifier)
+            }
+        }
+        return
+    }
 
     var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
 
@@ -423,6 +469,13 @@ private fun WideMomentsLayout(
                         selectedMomentId = Uuid.parse(id)
                     },
                     pendingLocalPreviews = pendingLocalPreviews,
+                    modifier = contentModifier,
+                )
+                // Unreachable — Reels short-circuits to a full-area layout
+                // above before the split pane is built. Kept so the `when`
+                // stays exhaustive over MomentsViewMode.
+                MomentsViewMode.Reels -> MomentsReelsView(
+                    moments = moments,
                     modifier = contentModifier,
                 )
             }
@@ -543,7 +596,7 @@ private fun MomentsFeedList(
                 pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
                 isSelected = selectedMomentId != null && moment.id == selectedMomentId,
-                onCardClick = { onOpenMoment(moment.id.toString(), null) },
+                onCardClick = { payloadKey -> onOpenMoment(moment.id.toString(), payloadKey) },
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
@@ -579,7 +632,11 @@ private fun MomentPostCard(
     pendingLocalPreviewUri: String?,
     selfOdinId: OdinId?,
     isSelected: Boolean,
-    onCardClick: () -> Unit,
+    // Carries the payload key of whichever carousel page was visible at tap
+    // time so the detail screen can open at the same page (and resume the
+    // playing video where the feed left off). `null` for description-only
+    // moments and falls through to "open at page 0" downstream.
+    onCardClick: (payloadKey: String?) -> Unit,
     onAddReaction: (emoji: String) -> Unit,
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
@@ -597,33 +654,27 @@ private fun MomentPostCard(
     var failedSheetOpen by remember { mutableStateOf(false) }
     val failedSheetState = rememberModalBottomSheetState()
 
-    // Floating-emoji feedback for double/triple-tap reactions. Carries
-    // whether the toggle ADDED or REMOVED the reaction so the overlay can
-    // play a different animation — pop-in upward for an add, drift-down +
-    // fade for a remove. Cleared after [FloatingEmojiHideDelayMs]; a quick
-    // follow-up tap cancels the pending clear and re-triggers cleanly.
-    var floatingAction by remember { mutableStateOf<FloatingReactionAction?>(null) }
-    var floatingEmojiHideJob by remember { mutableStateOf<Job?>(null) }
+    // Floating-emoji feedback for double/triple-tap reactions. The same
+    // controller backs the detail screen's reaction buttons, so adding a
+    // heart in the feed and removing it on the detail screen produce
+    // visually identical animations.
+    val floatingController = rememberFloatingReactionController()
     val scope = rememberCoroutineScope()
-
-    fun showFloatingEmoji(emoji: String, isRemoving: Boolean) {
-        floatingAction = if (isRemoving) {
-            FloatingReactionAction.Remove(emoji)
-        } else {
-            FloatingReactionAction.Add(emoji)
-        }
-        floatingEmojiHideJob?.cancel()
-        floatingEmojiHideJob = scope.launch {
-            delay(FloatingEmojiHideDelayMs)
-            floatingAction = null
-        }
-    }
 
     // Multi-tap state lives at the composable level (not inside
     // pointerInput's coroutine) so the dispatch coroutine is hosted by the
     // composable's lifecycle and is not coupled to detector restarts.
     var tapCount by remember { mutableStateOf(0) }
     var dispatchJob by remember { mutableStateOf<Job?>(null) }
+
+    // Tracks which carousel page the user is currently looking at so a
+    // tap-to-detail opens on the same page. Defaults to the first payload
+    // (correct for single-payload moments where the carousel isn't shown);
+    // updated by MomentMediaGallery's onVisiblePayloadChanged callback when
+    // the moment has multiple payloads.
+    var visiblePayloadKey by remember(moment.id) {
+        mutableStateOf(moment.payloads.firstOrNull()?.key)
+    }
 
     Box(
         modifier = Modifier
@@ -646,15 +697,15 @@ private fun MomentPostCard(
                             val resolved = tapCount
                             tapCount = 0
                             when (resolved) {
-                                1 -> onCardClick()
+                                1 -> onCardClick(visiblePayloadKey)
                                 2 -> {
                                     val isRemoving = HeartEmoji in moment.ownReactions
-                                    showFloatingEmoji(HeartEmoji, isRemoving)
+                                    floatingController.show(HeartEmoji, isRemoving)
                                     onAddReaction(HeartEmoji)
                                 }
                                 else -> if (resolved >= 3) {
                                     val isRemoving = FlameEmoji in moment.ownReactions
-                                    showFloatingEmoji(FlameEmoji, isRemoving)
+                                    floatingController.show(FlameEmoji, isRemoving)
                                     onAddReaction(FlameEmoji)
                                 }
                             }
@@ -675,7 +726,7 @@ private fun MomentPostCard(
             // the raw pointerInput above isn't visible to them.
             .semantics {
                 onClick(label = onClickLabel) {
-                    onCardClick()
+                    onCardClick(visiblePayloadKey)
                     true
                 }
             },
@@ -779,6 +830,7 @@ private fun MomentPostCard(
                         onToggleMute = onToggleMute,
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
+                        onVisiblePayloadChanged = { visiblePayloadKey = it },
                     )
                 }
 
@@ -847,7 +899,7 @@ private fun MomentPostCard(
         // their multi-tap registered. Drawn after all other overlays so it
         // lands on top of media + badges.
         FloatingReactionOverlay(
-            action = floatingAction,
+            display = floatingController.display,
             modifier = Modifier.align(Alignment.Center),
         )
 
@@ -1036,6 +1088,7 @@ private fun MomentsViewModeMenu(
                 imageVector = when (selected) {
                     MomentsViewMode.Timeline -> Icons.Outlined.ViewAgenda
                     MomentsViewMode.Album -> Icons.Outlined.PhotoAlbum
+                    MomentsViewMode.Reels -> Icons.Outlined.Slideshow
                 },
                 contentDescription = menuLabel,
             )
@@ -1060,6 +1113,15 @@ private fun MomentsViewModeMenu(
                 onClick = {
                     expanded = false
                     onSelect(MomentsViewMode.Album)
+                },
+            )
+            MomentsViewModeMenuItem(
+                label = stringResource(MR.string.moments_view_reels),
+                icon = Icons.Outlined.Slideshow,
+                isSelected = selected == MomentsViewMode.Reels,
+                onClick = {
+                    expanded = false
+                    onSelect(MomentsViewMode.Reels)
                 },
             )
         }
@@ -1227,8 +1289,10 @@ internal const val FlameEmoji = "🔥"
 // feel laggy.
 private const val MultiTapTimeoutMs = 320L
 private const val FloatingEmojiHideDelayMs = 700L
-private const val FloatingEmojiFontSize = 96
-private const val FloatingEmojiInitialScale = 0.4f
+// Sized to read like Instagram's double-tap heart even though our glyph is
+// an emoji (which has internal padding inside the glyph box) — at 140sp the
+// visible heart pixels are roughly the dominant element on the post.
+private const val FloatingEmojiFontSize = 140
 
 /**
  * Distinguishes "user just added a reaction" from "user just removed one"
@@ -1242,96 +1306,189 @@ internal sealed interface FloatingReactionAction {
 }
 
 /**
- * Animated reaction confirmation. Two flavors:
- *   - [FloatingReactionAction.Add]: pops in with a bouncy spring scale and
- *     fades out — feels celebratory.
- *   - [FloatingReactionAction.Remove]: enters at full size, shrinks and
- *     slides downward as it fades — reads as "the reaction is going away."
+ * One trigger of the reaction overlay. The [nonce] increments per call so
+ * that even repeated identical actions (Add → Add of the same emoji) push a
+ * fresh value into the state flow and retrigger the overlay's per-call
+ * animation. Without it, `data class` equality would collapse repeats into
+ * a single emission and the overlay would skip the second animation.
+ */
+internal data class FloatingReactionDisplay(
+    val action: FloatingReactionAction,
+    val nonce: Long,
+)
+
+/**
+ * State holder + dispatcher for the reaction overlay. The feed card and the
+ * detail screen both [show] reactions through one of these so the
+ * confirmation animation is identical on both surfaces.
  *
- * The last non-null action is remembered so the glyph stays visible through
+ * Each call to [show] cancels any pending auto-hide, increments [nonce], and
+ * publishes a fresh [FloatingReactionDisplay] — that way an Add immediately
+ * followed by a Remove (or vice-versa) restarts the animation cleanly
+ * instead of letting the in-flight Add animation continue and masking the
+ * Remove.
+ */
+internal class FloatingReactionController(private val scope: CoroutineScope) {
+    var display: FloatingReactionDisplay? by mutableStateOf(null)
+        private set
+    private var hideJob: Job? = null
+    private var nonceCounter: Long = 0L
+
+    fun show(emoji: String, isRemoving: Boolean) {
+        hideJob?.cancel()
+        val nonce = ++nonceCounter
+        val action = if (isRemoving) {
+            FloatingReactionAction.Remove(emoji)
+        } else {
+            FloatingReactionAction.Add(emoji)
+        }
+        display = FloatingReactionDisplay(action, nonce)
+        hideJob = scope.launch {
+            delay(FloatingEmojiHideDelayMs)
+            // Guard against a newer call superseding us mid-delay — only
+            // clear if we're still the latest trigger.
+            if (display?.nonce == nonce) display = null
+        }
+    }
+}
+
+@Composable
+internal fun rememberFloatingReactionController(): FloatingReactionController {
+    val scope = rememberCoroutineScope()
+    return remember(scope) { FloatingReactionController(scope) }
+}
+
+/**
+ * Animated reaction confirmation. Two visually distinct flavors:
+ *   - [FloatingReactionAction.Add]: snaps in at scale 0 and springs up with
+ *     a low-damping overshoot, settling at 1.0 — reads as "celebratory pop."
+ *   - [FloatingReactionAction.Remove]: snaps in at full size 1.0, then
+ *     simultaneously shrinks toward [FloatingEmojiRemoveEndScale], drifts
+ *     down by [FloatingEmojiRemoveDriftPx], and tilts by
+ *     [FloatingEmojiRemoveRotationDeg] before fading out — reads as "the
+ *     reaction is falling away."
+ *
+ * The motion is driven by explicit [Animatable]s rather than the shared
+ * `animateFloatAsState` so the Remove path can `snapTo(1f)` at the start of
+ * each trigger. That snap is what makes a rapid Add → Remove visibly switch
+ * to the shrink-and-drift animation; without it, the scale state lingers
+ * from the prior Add and the Remove silently animates from ~1 to ~0.4 with
+ * almost no perceived change.
+ *
+ * The last non-null display is remembered so the glyph stays visible through
  * the exit transition (otherwise AnimatedVisibility unmounts the slot too
  * early and the fade-out is empty).
  */
 @Composable
-private fun FloatingReactionOverlay(
-    action: FloatingReactionAction?,
+internal fun FloatingReactionOverlay(
+    display: FloatingReactionDisplay?,
     modifier: Modifier = Modifier,
 ) {
-    var displayed by remember { mutableStateOf<FloatingReactionAction?>(null) }
-    if (action != null && action != displayed) {
-        displayed = action
+    var lastDisplay by remember { mutableStateOf<FloatingReactionDisplay?>(null) }
+    if (display != null && display != lastDisplay) {
+        lastDisplay = display
     }
-    val visible = action != null
-    val isRemoving = displayed is FloatingReactionAction.Remove
+    val visible = display != null
+    val current = lastDisplay
+    val isRemoving = current?.action is FloatingReactionAction.Remove
 
-    // Add: bouncy spring from small → 1.0.
-    // Remove: damped spring from 1.0 → 0.6 (final scale of the shrink).
-    val scale by animateFloatAsState(
-        targetValue = when {
-            !visible -> if (isRemoving) FloatingEmojiRemoveEndScale else FloatingEmojiInitialScale
-            isRemoving -> FloatingEmojiRemoveEndScale
-            else -> 1f
-        },
-        animationSpec = if (isRemoving) {
-            spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMedium,
-            )
-        } else {
-            spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            )
-        },
-        label = "floating-emoji-scale",
-    )
-    // Remove path drifts downward as it fades. Add path stays centred.
-    val translateY by animateFloatAsState(
-        targetValue = if (!visible && isRemoving) FloatingEmojiRemoveDriftPx else 0f,
-        animationSpec = tween(durationMillis = FloatingEmojiRemoveDriftMs),
-        label = "floating-emoji-translate-y",
-    )
+    val scale = remember { Animatable(0f) }
+    val translateY = remember { Animatable(0f) }
+    val rotation = remember { Animatable(0f) }
+
+    // Key on `lastDisplay` — which carries the nonce — so every show() call
+    // retriggers the animation even when the action type and emoji are
+    // identical. Each branch SNAPS its starting values before animating so
+    // the new trigger doesn't inherit whatever state the previous one ended
+    // on (critical for Add → Remove, where the previous Add had scale=1).
+    LaunchedEffect(lastDisplay) {
+        val target = lastDisplay ?: return@LaunchedEffect
+        when (target.action) {
+            is FloatingReactionAction.Remove -> {
+                launch {
+                    scale.snapTo(1f)
+                    scale.animateTo(
+                        targetValue = FloatingEmojiRemoveEndScale,
+                        animationSpec = tween(
+                            durationMillis = FloatingEmojiRemoveAnimMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                }
+                launch {
+                    translateY.snapTo(0f)
+                    translateY.animateTo(
+                        targetValue = FloatingEmojiRemoveDriftPx,
+                        animationSpec = tween(
+                            durationMillis = FloatingEmojiRemoveAnimMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                }
+                launch {
+                    rotation.snapTo(0f)
+                    rotation.animateTo(
+                        targetValue = FloatingEmojiRemoveRotationDeg,
+                        animationSpec = tween(
+                            durationMillis = FloatingEmojiRemoveAnimMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                }
+            }
+            is FloatingReactionAction.Add -> {
+                launch {
+                    translateY.snapTo(0f)
+                    rotation.snapTo(0f)
+                    scale.snapTo(0f)
+                    scale.animateTo(
+                        targetValue = 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
-        enter = if (isRemoving) {
-            // No pop-in — the glyph enters at the same scale it just sat at
-            // (1.0) before the user removed its reaction. The shrink + fade
-            // is what conveys "going away."
-            fadeIn(animationSpec = tween(80))
-        } else {
-            fadeIn(animationSpec = tween(120)) +
-                scaleIn(initialScale = FloatingEmojiInitialScale)
-        },
-        exit = if (isRemoving) {
-            fadeOut(animationSpec = tween(280))
-        } else {
-            fadeOut(animationSpec = tween(180)) +
-                scaleOut(targetScale = FloatingEmojiInitialScale)
-        },
+        // The dramatic motion happens via the Animatables; AnimatedVisibility
+        // just handles mount/unmount fades so the slot doesn't pop in/out
+        // abruptly when nothing's been shown yet.
+        enter = fadeIn(animationSpec = tween(60)),
+        exit = fadeOut(animationSpec = tween(if (isRemoving) 220 else 180)),
         modifier = modifier,
     ) {
-        val glyph = displayed?.emoji
+        val glyph = current?.action?.emoji
         if (glyph != null) {
             Text(
                 text = glyph,
                 fontSize = FloatingEmojiFontSize.sp,
                 color = if (isRemoving) {
-                    Color.White.copy(alpha = 0.75f)
+                    Color.White.copy(alpha = 0.8f)
                 } else {
                     Color.Unspecified
                 },
                 modifier = Modifier.graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = translateY
+                    scaleX = scale.value
+                    scaleY = scale.value
+                    translationY = translateY.value
+                    rotationZ = rotation.value
                 },
             )
         }
     }
 }
 
-// Remove animation tuning. End-scale is the size the glyph shrinks to as
-// it fades out; drift is the downward distance it travels during the exit.
-private const val FloatingEmojiRemoveEndScale = 0.55f
-private const val FloatingEmojiRemoveDriftPx = 60f
-private const val FloatingEmojiRemoveDriftMs = 320
+// Remove animation tuning. End-scale is the size the glyph shrinks to as it
+// "falls"; drift is the downward distance it travels; rotation gives a
+// slight tilt so the motion doesn't look like a pure linear shrink. Drift
+// scales with [FloatingEmojiFontSize] — a larger glyph needs to travel
+// proportionally further before it reads as "leaving."
+private const val FloatingEmojiRemoveEndScale = 0.4f
+private const val FloatingEmojiRemoveDriftPx = 140f
+private const val FloatingEmojiRemoveRotationDeg = 12f
+private const val FloatingEmojiRemoveAnimMs = 460
