@@ -127,8 +127,11 @@ private fun SingleImageLayout(
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
-    // back to 1:1 when no thumbnail data is present.
-    val aspect = aspectRatioFor(payload) ?: 1f
+    // back to 1:1 when no thumbnail data is present. Capped at
+    // [MaxFeedMediaAspect] so a wide landscape doesn't render as a thin strip
+    // — the cell stays a comfortable height and ContentScale.Crop
+    // (preserveAspectRatio = false, below) fills it, trimming the far edges.
+    val aspect = (aspectRatioFor(payload) ?: 1f).coerceAtMost(MaxFeedMediaAspect)
 
     MomentMediaItem(
         payload = payload,
@@ -163,6 +166,15 @@ private fun SingleImageLayout(
  * metadata. Returns `null` when no thumbnail with sane dimensions is
  * available — caller decides the fallback.
  */
+/**
+ * Upper bound on a feed cell's width/height ratio (≈1.91:1, the widest
+ * landscape Instagram allows). Wider source photos are sized to this ratio
+ * and center-cropped so they read as a proper landscape card rather than a
+ * short horizontal strip. Detail/full-screen views are unaffected — they size
+ * media independently.
+ */
+internal const val MaxFeedMediaAspect = 1.91f
+
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()
     val w = thumb?.pixelWidth
