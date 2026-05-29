@@ -154,7 +154,14 @@ fun AttachmentGallery(
                             ) {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = galleryImage.file,
+                                    // Prefer the platform thumbnail URI (content://… on Android,
+                                    // ph://… on iOS) over the PlatformFile itself so videos in
+                                    // the gallery grid render their poster via the system
+                                    // thumbnail path (ContentResolver / PHImageManager) instead
+                                    // of routing through PlatformFileFetcher, which would
+                                    // readBytes() the whole video and paint a black frame.
+                                    // Mirrors FullScreenAttachmentEditor.kt:266,439.
+                                    model = galleryImage.thumbnailUri ?: galleryImage.file,
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
                                         .size(160.dp)
