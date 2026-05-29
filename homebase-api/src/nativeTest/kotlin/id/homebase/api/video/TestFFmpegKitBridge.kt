@@ -46,22 +46,6 @@ internal class TestFFmpegKitBridge : FFmpegKitBridge {
         onComplete(result)
     }
 
-    override fun executeFFmpegAsyncArgs(
-        args: List<String>,
-        onProgress: (timeMs: Long) -> Unit,
-        onComplete: (FFmpegResult) -> Unit,
-    ) {
-        // Real FFmpegKit invocation via the cinterop binding. `executeWithArguments` skips
-        // the shell-style argv parser — the array is the argv. Sync execution is fine for
-        // the test surface (same reasoning as executeFFmpegAsync above).
-        // K/N exposes ObjC `NSArray*` parameters as Kotlin `List<*>?`, so the conversion
-        // is implicit — pass the Kotlin list directly.
-        val session = FFmpegKit.executeWithArguments(args)
-        val isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
-        val failStackTrace = session?.getFailStackTrace()
-        onComplete(FFmpegResult(isSuccess = isSuccess, failStackTrace = failStackTrace))
-    }
-
     override fun cancelAllFFmpegSessions() {
         FFmpegKit.cancel()
     }

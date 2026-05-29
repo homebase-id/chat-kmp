@@ -187,15 +187,6 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         // Intentionally never invoke onComplete — simulate a long-running session.
     }
 
-    override fun executeFFmpegAsyncArgs(
-        args: List<String>,
-        onProgress: (timeMs: Long) -> Unit,
-        onComplete: (FFmpegResult) -> Unit,
-    ) {
-        executeAsyncCalled = true
-        // Same shape — never complete; simulate a hung ffmpeg session.
-    }
-
     override fun cancelAllFFmpegSessions() {
         cancelAllCalls++
     }
@@ -228,23 +219,10 @@ private class DriverBridge : FFmpegKitBridge {
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
     ) {
-        // Legacy shell-style command path. Not used by the strip decoder anymore (it migrated
-        // to executeFFmpegAsyncArgs to dodge shell quoting), so this branch is now defensive.
-        // Parse the output pattern by finding the quoted segment ending in `f_%04d.jpg`.
+        // The decoder builds the command with `"$outDir/f_%04d.jpg"` as the last quoted token —
+        // parse the output dir back out so the test can drop fake JPEGs into it.
         val outPattern = command.split('"').firstOrNull { it.endsWith("f_%04d.jpg") }
             ?: error("could not find output pattern in: $command")
-        outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
-        pendingCompletion = onComplete
-    }
-
-    override fun executeFFmpegAsyncArgs(
-        args: List<String>,
-        onProgress: (timeMs: Long) -> Unit,
-        onComplete: (FFmpegResult) -> Unit,
-    ) {
-        // The output pattern is whichever arg ends in `f_%04d.jpg` — no shell parsing.
-        val outPattern = args.firstOrNull { it.endsWith("f_%04d.jpg") }
-            ?: error("could not find output pattern in args: $args")
         outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
         pendingCompletion = onComplete
     }

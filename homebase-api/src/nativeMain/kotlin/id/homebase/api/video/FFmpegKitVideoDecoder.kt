@@ -74,22 +74,17 @@ class FFmpegKitVideoDecoder : VideoDecoder {
             val durationS = durationMs / 1000.0
             val fps = frameCount.toDouble() / durationS.coerceAtLeast(0.001)
             val pattern = "$outDir/f_%04d.jpg"
-            // Use the arg-list variant — `executeWithArguments` skips FFmpegKit's shell-style
-            // argv parser, so `videoPath` and `pattern` pass through verbatim without any
-            // quote-escaping risk. Mirrors what FFmpegSubprocessVideoDecoder on JVM gets for
-            // free from ProcessBuilder(List<String>).
-            val args = listOf(
-                "-y",
-                "-loglevel", "error",
-                "-i", videoPath,
-                "-vf", "fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}",
-                "-frames:v", frameCount.toString(),
-                "-q:v", VideoThumbnailQuality.STRIP_FFMPEG_QSCALE.toString(),
-                pattern,
-            )
+            // Shell-quoted command — known code smell vs JVM's ProcessBuilder(List<String>),
+            // but a list-arg bridge variant introduced a runtime crash in production
+            // compression. Reverted to keep behaviour identical to main's bridge surface.
+            // Safe because NSCachesDirectory paths can't contain shell metacharacters.
+            // Same shape as FFmpegUtils.grabThumbnail.
+            val command = "-y -loglevel error -i \"$videoPath\" " +
+                "-vf \"fps=${formatLocaleSafe(fps)},scale=-2:${targetHeightPx}\" " +
+                "-frames:v $frameCount -q:v ${VideoThumbnailQuality.STRIP_FFMPEG_QSCALE} \"$pattern\""
 
-            bridge.executeFFmpegAsyncArgs(
-                args = args,
+            bridge.executeFFmpegAsync(
+                command = command,
                 onProgress = { /* unused — we drive emission via dir polling */ },
                 onComplete = { result -> completion.complete(result) },
             )
