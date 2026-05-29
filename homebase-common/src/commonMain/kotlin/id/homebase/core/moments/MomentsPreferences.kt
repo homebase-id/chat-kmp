@@ -76,10 +76,15 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
  * - [Album] sorts by `userDate` (EXIF "captured at" when available, falling
  *   back to the post timestamp) — useful for browsing a photo-album-style view
  *   ordered by when the moments actually happened.
+ * - [Reels] is an immersive full-screen vertical-pager browse of the same
+ *   posts (Instagram-Reels style), ordered like [Timeline] (newest posted
+ *   first). It's the same per-page detail experience reached by tapping a
+ *   moment, surfaced as a standing view mode rather than a navigation push.
  */
 enum class MomentsViewMode {
     Timeline,
     Album,
+    Reels,
 }
 
 /**

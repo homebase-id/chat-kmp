@@ -1,7 +1,6 @@
 package id.homebase.chat.widget.video
 
 import android.net.Uri
-import android.util.Log
 import android.view.LayoutInflater
 import co.touchlab.kermit.Logger
 import id.homebase.chat.R
@@ -26,7 +25,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -85,6 +86,8 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
     startPositionMs: Long,
     onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
+    useZoomFill: Boolean,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -105,12 +108,73 @@ actual fun VideoPlayerSurface(
     // to the pool — otherwise the recycled player would keep pushing frames to
     // a stale TextureView surface.
     var playerView by remember(data) { mutableStateOf<PlayerView?>(null) }
+    // The per-content-type first-frame listener (added in the HLS/MP4 branches
+    // below) self-removes once `onRenderedFirstFrame` fires — but a surface
+    // torn down BEFORE first frame (e.g. a fast swipe, or the autoplay gate
+    // flapping) never reaches that callback, so without a dispose-time removal
+    // the listener leaks onto the recycled pooled player. Leaked listeners then
+    // accumulate and all fire `onFirstFrame`/`onProgress` against stale,
+    // already-disposed surfaces. We keep the live listener here so `onDispose`
+    // can detach it alongside the diagnostics listener.
+    var firstFrameListener by remember(data) { mutableStateOf<Player.Listener?>(null) }
+
+    // Persistent diagnostics listener — fires for the entire lifetime of the
+    // player in this composition. The per-content-type listeners below remove
+    // themselves after first frame (they exist to time first-paint), so without
+    // this listener any error or state change *after* first frame would be
+    // silent. Critical for diagnosing "video plays for a second then stops",
+    // "spinner forever", and codec/HLS-decryption failures.
+    val diagnosticsListener = remember(data) {
+        object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Logger.e(tag = "VideoIO", throwable = error) {
+                    "player error: fileId=${data.fileId} key=${data.payloadKey} code=${error.errorCodeName} message=${error.message}"
+                }
+            }
+            override fun onPlayerErrorChanged(error: PlaybackException?) {
+                if (error == null) {
+                    Logger.d(tag = "VideoIO") {
+                        "player error cleared: fileId=${data.fileId} key=${data.payloadKey}"
+                    }
+                }
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                Logger.d(tag = "VideoIO") {
+                    "player state: fileId=${data.fileId} key=${data.payloadKey} → ${playbackStateName(playbackState)}"
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Logger.d(tag = "VideoIO") {
+                    "player isPlaying=$isPlaying fileId=${data.fileId} key=${data.payloadKey}"
+                }
+            }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                Logger.d(tag = "VideoIO") {
+                    "player video size: ${videoSize.width}x${videoSize.height} fileId=${data.fileId} key=${data.payloadKey}"
+                }
+            }
+        }
+    }
 
     DisposableEffect(data) {
         onDispose {
             val p = exoPlayer
+            Logger.d(tag = "VideoIO") {
+                "surface dispose: fileId=${data.fileId} key=${data.payloadKey} hadPlayer=${p != null}"
+            }
             playerView?.player = null
-            if (p != null) playerPool.release(p)
+            if (p != null) {
+                // Detach BOTH listeners BEFORE returning the player to the
+                // pool. ExoPlayerPool.resetForNextUse only clears media items +
+                // playWhenReady; it does not clear listeners. Without these
+                // removals the recycled player would keep firing diagnostics
+                // callbacks holding a stale `data` closure, and any first-frame
+                // listener leaked from a tear-down-before-first-frame would fire
+                // `onFirstFrame` against this already-disposed surface.
+                firstFrameListener?.let { p.removeListener(it) }
+                p.removeListener(diagnosticsListener)
+                playerPool.release(p)
+            }
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
@@ -158,9 +222,12 @@ actual fun VideoPlayerSurface(
             playerPool.acquire().apply {
                 playWhenReady = true
                 volume = if (muted) 0f else 1f
+                addListener(diagnosticsListener)
             }
         }
-        Logger.d(tag = "VideoIO") { "ExoPlayer acquire: $playerInitElapsed" }
+        Logger.d(tag = "VideoIO") {
+            "ExoPlayer acquire: $playerInitElapsed fileId=${data.fileId} key=${data.payloadKey} muted=$muted startPosMs=$startPositionMs nativeControls=$useNativeControls"
+        }
         exoPlayer = player
 
         withContext(Dispatchers.IO) {
@@ -201,7 +268,7 @@ actual fun VideoPlayerSurface(
                         withContext(Dispatchers.Main) {
                             player.setMediaSource(mediaSource)
                             val prepareStart = TimeSource.Monotonic.markNow()
-                            player.addListener(object : Player.Listener {
+                            val hlsFirstFrameListener = object : Player.Listener {
                                 private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY && !stateReadyLogged) {
@@ -221,9 +288,13 @@ actual fun VideoPlayerSurface(
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "HLS first-frame: ${clickMark.elapsedNow()}" }
                                     firstFramePainted = true
+                                    onFirstFrame()
                                     player.removeListener(this)
+                                    firstFrameListener = null
                                 }
-                            })
+                            }
+                            firstFrameListener = hlsFirstFrameListener
+                            player.addListener(hlsFirstFrameListener)
                             // Seek BEFORE prepare so ExoPlayer buffers from
                             // the target position instead of re-buffering
                             // after a post-prepare seek. Used by the moments
@@ -254,7 +325,7 @@ actual fun VideoPlayerSurface(
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
-                            player.addListener(object : Player.Listener {
+                            val mp4FirstFrameListener = object : Player.Listener {
                                 private var stateReadyLogged = false
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY && !stateReadyLogged) {
@@ -266,9 +337,13 @@ actual fun VideoPlayerSurface(
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "mp4 first-frame: ${clickMark.elapsedNow()}" }
                                     firstFramePainted = true
+                                    onFirstFrame()
                                     player.removeListener(this)
+                                    firstFrameListener = null
                                 }
-                            })
+                            }
+                            firstFrameListener = mp4FirstFrameListener
+                            player.addListener(mp4FirstFrameListener)
                             if (startPositionMs > 0) player.seekTo(startPositionMs)
                             player.prepare()
                             state = VpsState.Active
@@ -276,7 +351,9 @@ actual fun VideoPlayerSurface(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("VideoPlayer", "Playback error for fileId=${data.fileId}", e)
+                Logger.e(tag = "VideoIO", throwable = e) {
+                    "playback setup error: fileId=${data.fileId} key=${data.payloadKey} message=${e.message}"
+                }
                 state = VpsState.Error(e.message ?: "Playback error")
             }
         }
@@ -325,34 +402,35 @@ actual fun VideoPlayerSurface(
                                 // already cropped to fill — visually inconsistent.
                                 // ZOOM mirrors the thumbnail's crop-to-fill so
                                 // the transition is seamless.
-                                resizeMode = if (useNativeControls) {
-                                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                } else {
-                                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                //
+                                // Detail screen (useNativeControls=true) defaults
+                                // to FIT (whole frame visible, letterbox bars on
+                                // mismatched aspects). The caller can opt into
+                                // ZOOM (crop-to-fill, Reels-style) via
+                                // [useZoomFill] — the moments detail screen
+                                // exposes this as a session-scoped toggle.
+                                resizeMode = when {
+                                    !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 }
-                                // Force the underlying TextureView to be
-                                // non-opaque. By default TextureView reports
-                                // itself as opaque (`isOpaque = true`), which
-                                // tells the view-hierarchy compositor it can
-                                // skip drawing siblings beneath it. But its
-                                // own pixel buffer is *transparent* until the
-                                // first decoded frame arrives — so for the
-                                // ~50–150 ms window between PlayerView mount
-                                // and onRenderedFirstFrame, Android composites
-                                // transparent pixels against the window
-                                // background instead of the thumbnail we
-                                // carefully drew behind. That's the
-                                // light-coloured "background coming through"
-                                // blip visible when autoplay engages mid-swipe
-                                // in the carousel. Setting isOpaque=false
-                                // makes the compositor blend the texture with
-                                // the thumbnail (which is what we want), so
-                                // the pre-first-frame window is invisible.
-                                // PlayerView creates this view at inflate via
-                                // surface_type=texture_view; getVideoSurfaceView()
-                                // is the canonical accessor.
-                                (videoSurfaceView as? android.view.TextureView)
-                                    ?.isOpaque = false
+                                // Leave the underlying TextureView at its
+                                // default `isOpaque = true`. The earlier code
+                                // here flipped it to false so the thumbnail
+                                // drawn *underneath* the player could show
+                                // through during decoder warm-up — but the
+                                // pre-first-frame texture state isn't cleanly
+                                // alpha=0; some Adreno/Mali drivers hand back
+                                // uninitialized GL memory and the compositor
+                                // reads that garbage as per-pixel alpha,
+                                // bleeding thin slices of the thumbnail
+                                // *through* the decoded video frame for the
+                                // first ~1–2 frames. With an opaque texture
+                                // the slices can't happen; the empty/garbage
+                                // window is hidden instead by the thumbnail
+                                // overlay drawn *over* this surface in
+                                // [id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile]
+                                // (controlled by the onFirstFrame callback).
                                 playerView = this
                             }
                     },
@@ -360,10 +438,10 @@ actual fun VideoPlayerSurface(
                         view.useController = useNativeControls
                         view.isClickable = useNativeControls
                         view.isFocusable = useNativeControls
-                        view.resizeMode = if (useNativeControls) {
-                            AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        } else {
-                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        view.resizeMode = when {
+                            !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -378,6 +456,14 @@ actual fun VideoPlayerSurface(
             }
         }
     }
+}
+
+private fun playbackStateName(state: Int): String = when (state) {
+    Player.STATE_IDLE -> "IDLE"
+    Player.STATE_BUFFERING -> "BUFFERING"
+    Player.STATE_READY -> "READY"
+    Player.STATE_ENDED -> "ENDED"
+    else -> "UNKNOWN($state)"
 }
 
 @UnstableApi
