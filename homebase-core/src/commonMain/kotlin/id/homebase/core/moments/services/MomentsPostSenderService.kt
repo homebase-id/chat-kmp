@@ -29,6 +29,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -281,7 +282,7 @@ class MomentsPostSenderService(
                     sendContents = SendContents.All,
                     useAppNotification = !isLocalOnly,
                     appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                        appId = MomentsProtocol.MomentsAppId.toString(),
+                        appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
                         typeId = momentUniqueId.toString(),
                         tagId = momentUniqueId.toString(),
                         silent = false,
@@ -824,7 +825,7 @@ class MomentsPostSenderService(
                 sendContents = SendContents.All,
                 useAppNotification = !isLocalOnly,
                 appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                    appId = MomentsProtocol.MomentsAppId.toString(),
+                    appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
                     typeId = commentUniqueId.toString(),
                     // tagId = momentId so the OS coalesces a noisy comment
                     // thread under one notification group per moment.

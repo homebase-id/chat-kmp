@@ -110,6 +110,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
+import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -838,7 +839,10 @@ private fun MomentPostCard(
                     // is preserved by forwarding to onAddReaction; the
                     // triple-tap flame is lost only on the video tile itself
                     // (still works on header / badges / engagement strip).
-                    val aspect = aspectRatioFor(singleVideoPayload) ?: 1f
+                    // Same landscape cap as the photo path so a wide video
+                    // doesn't render as a thin strip (see [MaxFeedMediaAspect]).
+                    val aspect = (aspectRatioFor(singleVideoPayload) ?: 1f)
+                        .coerceAtMost(MaxFeedMediaAspect)
                     MomentInlineVideoTile(
                         payload = singleVideoPayload,
                         fileId = moment.fileId,
@@ -950,18 +954,20 @@ private fun MomentPostCard(
         }
 
         // Inline overlay (compact timeline): a single tap reveals the
-        // description (bottom) and the right-edge action column (heart /
+        // description (bottom) and the left-edge action column (heart /
         // flame counts + comment button), vertically centred. AnimatedVisibility
         // fades each in/out so the reveal reads as one gesture response. The
         // reaction buttons reuse the same floatingController as the
         // double/triple-tap path so adding or removing a reaction here plays
-        // the identical pop / fall-away animation.
+        // the identical pop / fall-away animation. The column lives on the
+        // left so it clears the right-side date pill and engagement / lock
+        // badges.
         if (inlineOverlay) {
             AnimatedVisibility(
                 visible = overlayVisible,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.CenterEnd),
+                modifier = Modifier.align(Alignment.CenterStart),
             ) {
                 FeedActionColumn(
                     heartCount = countReactionsByEmoji(moment.reactionPreview, HeartEmoji),
@@ -986,7 +992,7 @@ private fun MomentPostCard(
                     // Reuses the navigate-to-detail path (onCardClick) but
                     // lands on whichever carousel page is currently visible.
                     onOpenDetail = { onCardClick(visiblePayloadKey) },
-                    modifier = Modifier.padding(end = 12.dp),
+                    modifier = Modifier.padding(start = 12.dp),
                 )
             }
             AnimatedVisibility(
