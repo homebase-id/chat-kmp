@@ -67,7 +67,10 @@ jobs:
             **/build/test-results/jvmTest/TEST-*.xml
             **/build/test-results/testDebugUnitTest/TEST-*.xml
             **/build/test-results/wasmJsTest/TEST-*.xml
-          check_name: Unit Test Results
+          # Branch protection on `main` requires the literal context "JVM Test Results".
+          # The check now covers JVM + Android unit + wasmJs results in one publish; the
+          # name stays as-is until the required-status-check list is updated.
+          check_name: JVM Test Results
 
       - name: Upload Test Reports
         if: always()
