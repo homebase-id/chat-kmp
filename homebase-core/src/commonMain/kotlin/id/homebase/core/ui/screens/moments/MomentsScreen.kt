@@ -122,6 +122,7 @@ import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
 import id.homebase.resources.moments_view_album
 import id.homebase.resources.moments_view_menu
+import id.homebase.resources.moments_view_reels
 import id.homebase.resources.moments_view_timeline
 import id.homebase.resources.moments_welcome
 import id.homebase.resources.upload_failed_action_delete
