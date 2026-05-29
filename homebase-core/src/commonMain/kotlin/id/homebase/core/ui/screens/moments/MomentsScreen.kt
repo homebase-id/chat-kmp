@@ -1324,7 +1324,8 @@ private fun IndicatorBadge(
 /**
  * Inline reaction + comment indicator overlaid on each feed tile. Deliberately
  * subtle:
- *  - Up to three top emoji, no count digits, so the pill stays narrow.
+ *  - Up to three top emoji, each with its count rendered directly beneath it,
+ *    and the comment count beneath the comment icon.
  *  - Same dark-scrim chip as [IndicatorBadge] so the indicator family on a
  *    tile reads as one design.
  *  - Renders nothing when both reactions and comments are absent — empty
@@ -1343,7 +1344,7 @@ private fun EngagementStrip(
             ?.sortedByDescending { it.count }
             ?.mapNotNull { entry ->
                 if (entry.count <= 0) return@mapNotNull null
-                decodeReactionEmoji(entry.reactionContent)
+                decodeReactionEmoji(entry.reactionContent)?.let { emoji -> emoji to entry.count }
             }
             ?.take(MaxTopEmoji)
             .orEmpty()
@@ -1356,29 +1357,48 @@ private fun EngagementStrip(
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.45f))
             .padding(horizontal = 10.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        topEmoji.forEach { emoji ->
-            Text(
-                text = emoji,
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-            )
+        topEmoji.forEach { (emoji, count) ->
+            EngagementCount(count = count) {
+                Text(
+                    text = emoji,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                )
+            }
         }
         if (commentCount > 0) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.Comment,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(14.dp),
-            )
-            Text(
-                text = commentCount.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-            )
+            EngagementCount(count = commentCount) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.Comment,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
+    }
+}
+
+/**
+ * One engagement entry for [EngagementStrip]: the reaction glyph or comment
+ * icon with its count rendered directly beneath, so the feed tile surfaces
+ * per-emoji and comment counts under each icon.
+ */
+@Composable
+private fun EngagementCount(
+    count: Int,
+    icon: @Composable () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        icon()
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+        )
     }
 }
 
