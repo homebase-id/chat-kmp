@@ -167,13 +167,14 @@ private fun SingleImageLayout(
  * available — caller decides the fallback.
  */
 /**
- * Upper bound on a feed cell's width/height ratio (≈1.91:1, the widest
- * landscape Instagram allows). Wider source photos are sized to this ratio
- * and center-cropped so they read as a proper landscape card rather than a
- * short horizontal strip. Detail/full-screen views are unaffected — they size
- * media independently.
+ * Upper bound on a feed cell's width/height ratio. 0.8 == a 4:5 portrait
+ * frame: any photo at least as wide as 4:5 (landscape, square, and mildly
+ * portrait shots) is sized to this tall frame and center-cropped
+ * (ContentScale.Crop) so it reads as a substantial card instead of a short
+ * horizontal strip. Taller portraits (ratio < 0.8) keep their natural height.
+ * Detail/full-screen views are unaffected — they size media independently.
  */
-internal const val MaxFeedMediaAspect = 1.91f
+internal const val MaxFeedMediaAspect = 0.8f
 
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()
