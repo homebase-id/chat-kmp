@@ -172,8 +172,10 @@ class AesCbcTest {
                 decrypted.decodeToString(),
                 "Decryption with wrong key should not produce original plaintext"
             )
-        } catch (e: Exception) {
-            // Expected: padding validation failed
+        } catch (e: Throwable) {
+            // Expected: padding validation failed. Throwable (not Exception) because
+            // browsers' Web Crypto surfaces its OperationError as kotlin.Throwable,
+            // not kotlin.Exception, in wasmJs.
         }
     }
 

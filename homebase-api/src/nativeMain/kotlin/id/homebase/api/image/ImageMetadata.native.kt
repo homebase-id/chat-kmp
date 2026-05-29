@@ -44,6 +44,7 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         val nsData = srcBytes.usePinned { pinned ->
             NSData.dataWithBytes(pinned.addressOf(0), srcBytes.size.toULong())
         }
+        @Suppress("UNCHECKED_CAST")
         val cfData = CFBridgingRetain(nsData) as CFDataRef? ?: return null
         try {
             val source = CGImageSourceCreateWithData(cfData, null) ?: return null
