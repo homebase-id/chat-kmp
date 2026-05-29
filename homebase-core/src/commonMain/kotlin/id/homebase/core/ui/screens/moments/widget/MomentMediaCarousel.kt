@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -125,6 +126,9 @@ fun MomentMediaCarousel(
     }
 
     LaunchedEffect(pagerState, payloads, autoplayActive, messageId) {
+        Logger.d(tag = "MomentVideo") {
+            "carousel autoplay watcher: messageId=$messageId autoplayActive=$autoplayActive payloadCount=${payloads.size}"
+        }
         if (!autoplayActive) {
             snapshotFlow { pagerState.currentPage }.collect { _ ->
                 playingPayloadKey = null
@@ -138,6 +142,9 @@ fun MomentMediaCarousel(
             val isVideo = ct.startsWith("video/") || ct == "application/vnd.apple.mpegurl"
             if (isVideo) payload.key else null
         }.collect { autoplayKey ->
+            Logger.d(tag = "MomentVideo") {
+                "carousel autoplay engage: messageId=$messageId page=${pagerState.currentPage} key=${autoplayKey ?: "<no-video>"}"
+            }
             playingPayloadKey = autoplayKey
         }
     }

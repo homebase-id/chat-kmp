@@ -25,11 +25,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import co.touchlab.kermit.Logger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -154,6 +156,9 @@ fun MomentInlineVideoTile(
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
+        Logger.w(tag = "MomentVideo") {
+            "tile IV missing — falling back to thumbnail-only render: fileId=$fileId key=${payload.key}"
+        }
         MomentVideoIvMissingFallback(
             payload = payload,
             localContext = localContext,
@@ -255,6 +260,21 @@ fun MomentInlineVideoTile(
     // fresh "no frame yet → thumbnail covers player" state.
     var firstFramePainted by remember(payload.key, isPlaying) { mutableStateOf(false) }
 
+    // UI-side intent log. Brackets the lifetime of a single tap/autoplay
+    // session, so VideoIO surface logs that follow can be attributed to a
+    // tile-level intent (tap vs autoplay). Fires on every isPlaying flip.
+    LaunchedEffect(isPlaying, fileId, payload.key) {
+        if (isPlaying) {
+            Logger.d(tag = "MomentVideo") {
+                "tile play intent: fileId=$fileId key=${payload.key} isHls=$isHls tapMode=$tapMode nativeControls=$useNativeControls startPosMs=$startPositionMs"
+            }
+        } else {
+            Logger.d(tag = "MomentVideo") {
+                "tile pause: fileId=$fileId key=${payload.key}"
+            }
+        }
+    }
+
     Box(modifier = modifier) {
         // Layer 1: video surface (only while playing). Rendered FIRST so it
         // sits at the bottom of the stack; the thumbnail above covers it
@@ -332,7 +352,12 @@ fun MomentInlineVideoTile(
                 onPositionUpdate = { ms ->
                     videoSession.savePlaybackPosition(fileId, payload.key, ms)
                 },
-                onFirstFrame = { firstFramePainted = true },
+                onFirstFrame = {
+                    firstFramePainted = true
+                    Logger.d(tag = "MomentVideo") {
+                        "tile first frame painted: fileId=$fileId key=${payload.key}"
+                    }
+                },
                 useZoomFill = useZoomFill,
             )
         }

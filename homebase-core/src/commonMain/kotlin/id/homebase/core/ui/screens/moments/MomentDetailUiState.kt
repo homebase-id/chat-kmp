@@ -39,6 +39,16 @@ data class MomentDetailUiState(
     val isSavingCommentEdit: Boolean = false,
 
     /**
+     * True while the moment's description is being edited inline in the detail
+     * panel. Only the author (see [isMine]) can enter this state. [descriptionDraft]
+     * holds the in-progress text; [isSavingDescription] is set while the
+     * `updateMoment` write is in flight.
+     */
+    val isEditingDescription: Boolean = false,
+    val descriptionDraft: String = "",
+    val isSavingDescription: Boolean = false,
+
+    /**
      * Quick-react emoji set surfaced in the moment's reactions row and the
      * per-comment react affordance. Sourced from `UserPreferences.preferredUserReactions`
      * (same store the chat composer reads). Empty when the user hasn't
@@ -227,6 +237,16 @@ sealed interface MomentDetailUiAction {
     data object SaveCommentEdit : MomentDetailUiAction
     data object CancelCommentEdit : MomentDetailUiAction
 
+    /**
+     * Edit the moment's own description (owner-only). Start seeds the draft
+     * with the current description; Save commits via `updateMoment`; Cancel
+     * discards.
+     */
+    data object StartEditDescription : MomentDetailUiAction
+    data class DescriptionDraftChanged(val text: String) : MomentDetailUiAction
+    data object SaveDescriptionEdit : MomentDetailUiAction
+    data object CancelDescriptionEdit : MomentDetailUiAction
+
     /** Toggle a reaction on the moment itself. */
     data class ToggleReactionOnMoment(val emoji: String) : MomentDetailUiAction
 
@@ -283,6 +303,7 @@ sealed interface MomentDetailUiAction {
 sealed interface MomentDetailUiEvent {
     data class CommentPostFailed(val message: String?) : MomentDetailUiEvent
     data class CommentEditFailed(val message: String?) : MomentDetailUiEvent
+    data class DescriptionEditFailed(val message: String?) : MomentDetailUiEvent
     data class ReactionFailed(val message: String?) : MomentDetailUiEvent
 
     /** Delete completed — screen should pop back to the feed. */

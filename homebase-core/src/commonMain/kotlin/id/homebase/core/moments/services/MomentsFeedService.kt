@@ -304,6 +304,13 @@ data class MomentFeedItem(
      */
     val commentsEnabled: Boolean,
     /**
+     * Current header version tag, needed to submit an in-place edit (e.g. a
+     * description edit via [MomentsPostSenderService.updateMoment], which
+     * guards against a stale write by rejecting a mismatched tag). Null on a
+     * still-optimistic local write that hasn't been assigned a tag yet.
+     */
+    val versionTag: Uuid?,
+    /**
      * Emojis the current user has already reacted with on this moment. Read
      * from `fileMetadata.localAppData.localReactions` (the per-user mirror
      * the [id.homebase.chat.services.outbox.OptimisticWriter] maintains) and
@@ -351,6 +358,7 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         // didn't include the field — matches the @Serializable default and
         // keeps legacy moments commentable.
         commentsEnabled = content?.commentsEnabled ?: true,
+        versionTag = fileMetadata.versionTag,
         ownReactions = ownReactions,
     )
 }
