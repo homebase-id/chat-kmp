@@ -23,6 +23,9 @@ import id.homebase.core.moments.services.MomentGroupService
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsPostSenderService
+import id.homebase.core.moments.services.MomentsRecipientId
+import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.data.ConversationUiModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -73,6 +76,7 @@ class MomentDetailViewModel(
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val recipientLookup: MomentsRecipientLookupService,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -103,6 +107,11 @@ class MomentDetailViewModel(
         val showReactionsSheet: Boolean = false,
         val isReactionsLoading: Boolean = false,
         val reactions: List<MomentReactionUiModel> = emptyList(),
+        val showAddRecipientsSheet: Boolean = false,
+        val addRecipientsSnapshot: MomentsRecipientsSnapshot = MomentsRecipientsSnapshot.empty(),
+        val addRecipientsQuery: String = "",
+        val addRecipientsSelected: Set<MomentsRecipientId> = emptySet(),
+        val isAddingRecipients: Boolean = false,
     )
 
     private val _screenLocal = MutableStateFlow(ScreenLocalState())
@@ -125,6 +134,15 @@ class MomentDetailViewModel(
         // accepts either null or a match on this id.
         viewModelScope.launch {
             _selfOdinId.value = credentialsManager.getActiveCredentials()?.domain
+        }
+        // Mirror the recipient candidates for the "Add people" sheet. Folded
+        // into _screenLocal (rather than a 6th combine flow) so the uiState
+        // combine stays within the 5-typed-overload limit. Writes only — never
+        // reads uiState — so it's safe in this pre-uiState init block.
+        viewModelScope.launch {
+            recipientLookup.recipients.collect { snapshot ->
+                _screenLocal.update { it.copy(addRecipientsSnapshot = snapshot) }
+            }
         }
     }
 
@@ -192,6 +210,11 @@ class MomentDetailViewModel(
             showReactionsSheet = local.showReactionsSheet,
             isReactionsLoading = local.isReactionsLoading,
             reactions = local.reactions,
+            showAddRecipientsSheet = local.showAddRecipientsSheet,
+            addRecipientsSnapshot = local.addRecipientsSnapshot,
+            addRecipientsQuery = local.addRecipientsQuery,
+            addRecipientsSelected = local.addRecipientsSelected,
+            isAddingRecipients = local.isAddingRecipients,
         )
     }.stateIn(
         viewModelScope,
@@ -466,6 +489,108 @@ class MomentDetailViewModel(
 
             MomentDetailUiAction.DismissReactionsSheet ->
                 _screenLocal.update { it.copy(showReactionsSheet = false) }
+
+            MomentDetailUiAction.RequestAddRecipients -> {
+                // Author-only: widening the audience of a moment you received
+                // isn't a thing — only the original author can re-distribute.
+                if (!uiState.value.isMine) return
+                _screenLocal.update { it.copy(showAddRecipientsSheet = true) }
+            }
+
+            MomentDetailUiAction.DismissAddRecipientsSheet ->
+                _screenLocal.update {
+                    it.copy(
+                        showAddRecipientsSheet = false,
+                        addRecipientsSelected = emptySet(),
+                        addRecipientsQuery = "",
+                    )
+                }
+
+            is MomentDetailUiAction.AddRecipientsQueryChanged ->
+                _screenLocal.update { it.copy(addRecipientsQuery = action.text) }
+
+            is MomentDetailUiAction.ToggleAddRecipient ->
+                _screenLocal.update {
+                    val next = if (action.id in it.addRecipientsSelected) {
+                        it.addRecipientsSelected - action.id
+                    } else {
+                        it.addRecipientsSelected + action.id
+                    }
+                    it.copy(addRecipientsSelected = next)
+                }
+
+            MomentDetailUiAction.ConfirmAddRecipients -> confirmAddRecipients()
+        }
+    }
+
+    /**
+     * Widen the moment's audience to the newly-picked recipients. Re-checks
+     * `isMine` and the version tag (a still-optimistic post has none yet), then
+     * delegates to `MomentsPostSenderService.addRecipientsToMoment`, which
+     * re-attaches the existing media so the brand-new recipients receive it.
+     * The optimistic write inside that service updates the local moment's
+     * recipient list, so the detail screen reflects the wider audience without
+     * an explicit refresh here.
+     */
+    private fun confirmAddRecipients() {
+        val local = _screenLocal.value
+        if (local.isAddingRecipients) return
+        if (!uiState.value.isMine) return
+        val moment = uiState.value.moment ?: return
+
+        val versionTag = moment.versionTag
+        if (versionTag == null) {
+            _events.tryEmit(MomentDetailUiEvent.AddRecipientsFailed(null))
+            return
+        }
+
+        val selectedRecipients = local.addRecipientsSnapshot.all
+            .filter { it.id in local.addRecipientsSelected }
+        // Flatten to OdinIds and drop anyone already on the moment — the sheet
+        // locks existing recipients, but a group whose members partially
+        // overlap could still surface a few already-present ids.
+        val odinIds = selectedRecipients
+            .flatMap { it.odinIds }
+            .distinct()
+            .filterNot { moment.recipients.contains(it) }
+
+        if (odinIds.isEmpty()) {
+            _screenLocal.update {
+                it.copy(
+                    showAddRecipientsSheet = false,
+                    addRecipientsSelected = emptySet(),
+                    addRecipientsQuery = "",
+                )
+            }
+            return
+        }
+
+        _screenLocal.update { it.copy(isAddingRecipients = true) }
+        viewModelScope.launch {
+            try {
+                postSender.addRecipientsToMoment(
+                    momentUniqueId = momentId,
+                    versionTag = versionTag,
+                    newRecipients = odinIds,
+                )
+                // MRU bump so freshly-added recipients float to the top next
+                // time. Fire-and-forget on the lookup service's own scope (see
+                // its KDoc) — don't run it on viewModelScope.
+                recipientLookup.recordUsed(selectedRecipients)
+                _screenLocal.update {
+                    it.copy(
+                        isAddingRecipients = false,
+                        showAddRecipientsSheet = false,
+                        addRecipientsSelected = emptySet(),
+                        addRecipientsQuery = "",
+                    )
+                }
+                _events.tryEmit(MomentDetailUiEvent.RecipientsAdded(odinIds.size))
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "addRecipientsToMoment failed: ${t.message}" }
+                _screenLocal.update { it.copy(isAddingRecipients = false) }
+                _events.tryEmit(MomentDetailUiEvent.AddRecipientsFailed(t.message))
+            }
         }
     }
 

@@ -64,4 +64,10 @@ data class StreamInfo(
     val bitrate: Long? = null,
     val width: Int? = null,
     val height: Int? = null,
+    /** ffprobe `pix_fmt` token, e.g. `yuv420p` / `yuv420p10le`. Null if unknown. */
+    val pixelFormat: String? = null,
+    /** ffprobe `color_transfer`, e.g. `bt709` / `smpte2084` / `arib-std-b67`. */
+    val colorTransfer: String? = null,
+    /** ffprobe `color_primaries`, e.g. `bt709` / `bt2020`. */
+    val colorPrimaries: String? = null,
 )

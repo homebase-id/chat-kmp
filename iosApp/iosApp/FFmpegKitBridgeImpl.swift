@@ -131,6 +131,13 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
                 return nil
             }()
 
+            // Colour / pixel-format properties drive the planner's 8-bit-output
+            // pin + HDR detection. Read the raw ffprobe JSON keys directly
+            // (getFormat() maps to "format", but ffprobe emits "pix_fmt").
+            let pixelFormat = stream.getProperty("pix_fmt") as? String
+            let colorTransfer = stream.getProperty("color_transfer") as? String
+            let colorPrimaries = stream.getProperty("color_primaries") as? String
+
             let streamInfo = StreamInfo(
                 type: streamType,
                 tags: tagsDict,
@@ -138,7 +145,10 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
                 codec: codecName,
                 bitrate: bitrateValue,
                 width: width,
-                height: height
+                height: height,
+                pixelFormat: pixelFormat,
+                colorTransfer: colorTransfer,
+                colorPrimaries: colorPrimaries
             )
             streamInfoList.append(streamInfo)
         }

@@ -911,6 +911,11 @@ fun AppNavHost(
                                             Route.MomentDetail(id, payloadKey)
                                         )
                                     },
+                                    onOpenMomentComments = { id ->
+                                        navController.navigate(
+                                            Route.MomentDetail(id, openComments = true)
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -930,6 +935,7 @@ fun AppNavHost(
                                 MomentDetailPager(
                                     initialMomentId = momentId,
                                     initialPayloadKey = route.initialPayloadKey,
+                                    openCommentsInitially = route.openComments,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }
