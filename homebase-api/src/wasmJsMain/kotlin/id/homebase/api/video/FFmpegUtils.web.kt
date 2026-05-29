@@ -40,7 +40,7 @@ actual object FFmpegUtils {
         ) {
             return thumbPath
         }
-        val jpeg = VideoThumbnailExtractor.extractPosterFrame(inputPath) ?: return null
+        val jpeg = VideoThumbnailService.extractPosterFrame(inputPath) ?: return null
         return writeCacheBytes("thumb-$safe.jpg", jpeg)
     }
 

@@ -5,7 +5,10 @@ import ComposeApp
 /// Swift implementation of FFmpegKitBridge that wraps the FFmpegKit framework.
 /// This is injected into the Kotlin framework at app startup.
 class FFmpegKitBridgeImpl: FFmpegKitBridge {
-    
+
+    private var activeSessions: [Int64: FFmpegSession] = [:]
+    private let sessionsLock = NSLock()
+
     func executeFFmpeg(command: String) -> FFmpegResult {
         let session = FFmpegKit.execute(command)
         let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
@@ -33,8 +36,41 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         )
     }
 
+    func executeFFmpegAsyncArgs(
+        args: [String],
+        onProgress: @escaping (KotlinLong) -> Void,
+        onComplete: @escaping (FFmpegResult) -> Void
+    ) -> Int64 {
+        let session = FFmpegKit.execute(
+            withArgumentsAsync: args,
+            withCompleteCallback: { [weak self] session in
+                let sid = Int64(session?.getId() ?? -1)
+                self?.sessionsLock.withLock { self?.activeSessions.removeValue(forKey: sid) }
+                let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+                let failStackTrace = session?.getFailStackTrace()
+                onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                let timeMs = Int64(stats?.getTime() ?? 0)
+                onProgress(KotlinLong(value: timeMs))
+            }
+        )
+        let sessionId = Int64(session?.getId() ?? -1)
+        if sessionId >= 0, let session = session {
+            sessionsLock.withLock { activeSessions[sessionId] = session }
+        }
+        return sessionId
+    }
+
     func cancelAllFFmpegSessions() {
         FFmpegKit.cancel()
+        sessionsLock.withLock { activeSessions.removeAll() }
+    }
+
+    func cancelFFmpegSession(sessionId: Int64) {
+        let session = sessionsLock.withLock { activeSessions.removeValue(forKey: sessionId) }
+        session?.cancel()
     }
 
     func getFfmpegVersionBanner() -> String? {
