@@ -148,6 +148,21 @@ actual object FFmpegUtils {
         // displaymatrix. Planner needs both so portrait phone captures don't
         // get a landscape scale filter and end up squished.
         val rotation = videoStream?.rotation ?: 0
+        // Bit depth / HDR drive the planner's 8-bit-output pin (and disable the
+        // already-optimal short-circuit). The videotoolbox H.264 encoder can't
+        // emit 10-bit anyway, but pinning yuv420p keeps the libx264 fallback
+        // (and any 10-bit source) decodable on every receiver.
+        val pixFmt = videoStream?.pixelFormat?.lowercase().orEmpty()
+        val bitDepth = when {
+            pixFmt.isBlank() -> 8
+            "12" in pixFmt -> 12
+            "10" in pixFmt || pixFmt.startsWith("p010") -> 10
+            else -> 8
+        }
+        val transfer = videoStream?.colorTransfer?.lowercase().orEmpty()
+        val primaries = videoStream?.colorPrimaries?.lowercase().orEmpty()
+        val isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
+            primaries.startsWith("bt2020")
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
@@ -170,6 +185,8 @@ actual object FFmpegUtils {
                 inputBytes = inputBytes,
                 rotationDegrees = rotation,
                 encoder = encoder,
+                probedBitDepth = bitDepth,
+                probedIsHdr = isHdr,
             )
 
             if (plan.skipReason != null) {

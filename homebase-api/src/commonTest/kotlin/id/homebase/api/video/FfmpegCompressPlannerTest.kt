@@ -121,6 +121,31 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
+    fun alreadyOptimal_tenBit_false() {
+        // Otherwise-in-budget H.264, but 10-bit (High 10) → must re-encode so
+        // the output can be pinned to 8-bit yuv420p.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+            bitDepth = 10, isHdr = false,
+        )
+        assertFalse(ok)
+    }
+
+    @Test
+    fun alreadyOptimal_hdr_false() {
+        // 8-bit-tagged but HDR (BT2020 + PQ/HLG) → re-encode to SDR-decodable.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+            bitDepth = 8, isHdr = true,
+        )
+        assertFalse(ok)
+    }
+
+    @Test
     fun alreadyOptimal_missingProbe_false() {
         // Null codec, zero dim, zero duration → can't decide, fall through.
         assertFalse(FfmpegCompressPlanner.isAlreadyOptimal(
@@ -377,6 +402,56 @@ class FfmpegCompressPlannerTest {
         )
         val vfIdx = plan.args.indexOf("-vf")
         assertEquals("scale=1280:720", plan.args[vfIdx + 1])
+    }
+
+    @Test
+    fun plan_alwaysPinsEightBitPixFmt() {
+        // Every transcode must force 8-bit 4:2:0 output so a 10-bit/HDR source
+        // can't round-trip as High 10 (which hardware AVC decoders reject).
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = 0L, trimEndMs = 5_000L,
+            probedWidthPx = 1280, probedHeightPx = 720,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 5_000L, inputBytes = 5_000_000L,
+        )
+        val pixIdx = plan.args.indexOf("-pix_fmt")
+        assertTrue(pixIdx > 0, "transcode must pin -pix_fmt; args=${plan.args}")
+        assertEquals("yuv420p", plan.args[pixIdx + 1])
+    }
+
+    @Test
+    fun plan_tenBitInBudget_reencodesInsteadOfSkipping() {
+        // A small, in-budget 10-bit clip would pass isAlreadyOptimal on dims +
+        // bitrate alone; bit depth must force a real (8-bit-pinned) encode.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = null, trimEndMs = null,
+            probedWidthPx = 320, probedHeightPx = 180,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 6_000L, inputBytes = 26_000L,
+            probedBitDepth = 10,
+        )
+        assertNull(plan.skipReason, "10-bit input must not short-circuit")
+        assertTrue(plan.args.contains("-pix_fmt"), "must pin 8-bit output; args=${plan.args}")
+        assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
+    }
+
+    @Test
+    fun plan_hdrInBudget_reencodesInsteadOfSkipping() {
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = null, trimEndMs = null,
+            probedWidthPx = 320, probedHeightPx = 180,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 6_000L, inputBytes = 26_000L,
+            probedIsHdr = true,
+        )
+        assertNull(plan.skipReason, "HDR input must not short-circuit")
+        assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
     }
 
     @Test

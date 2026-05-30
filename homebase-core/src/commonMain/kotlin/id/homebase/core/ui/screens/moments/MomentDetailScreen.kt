@@ -138,6 +138,7 @@ import id.homebase.resources.moments_detail_menu_more
 import id.homebase.resources.moments_detail_description_hint
 import id.homebase.resources.moments_detail_description_save
 import id.homebase.resources.moments_detail_edit_description
+import id.homebase.resources.moments_detail_menu_add_people
 import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
 import id.homebase.resources.moments_detail_no_description
@@ -210,6 +211,7 @@ import org.jetbrains.compose.resources.stringResource
 fun MomentDetailPager(
     initialMomentId: Uuid,
     initialPayloadKey: String?,
+    openCommentsInitially: Boolean = false,
     onNavigateBack: () -> Unit,
 ) {
     val feedService = koinInject<MomentsFeedService>()
@@ -252,6 +254,7 @@ fun MomentDetailPager(
         feed = orderedFeed,
         initialMomentId = initialMomentId,
         initialPayloadKey = initialPayloadKey,
+        openCommentsInitially = openCommentsInitially,
         onNavigateBack = onNavigateBack,
     )
 }
@@ -268,6 +271,9 @@ private fun MomentDetailLoadedPager(
     feed: List<MomentFeedItem>,
     initialMomentId: Uuid,
     initialPayloadKey: String?,
+    // Only the initial page honours this — see [openCommentsInitially] on
+    // [MomentDetailPane]. Defaults false so Reels never auto-opens comments.
+    openCommentsInitially: Boolean = false,
     // Nullable so the embedded Reels view mode ([MomentsReelsView]) can run the
     // same pager with no back target — the per-page pane suppresses its back
     // arrow when this is null.
@@ -354,6 +360,9 @@ private fun MomentDetailLoadedPager(
             viewModel = pageVm,
             onNavigateBack = onNavigateBack,
             isActivePage = isActivePage,
+            // Only the deep-linked initial page opens straight into comments;
+            // swiped-into neighbours start collapsed.
+            openCommentsInitially = isInitialPage && openCommentsInitially,
         )
     }
 }
@@ -397,6 +406,12 @@ fun MomentDetailPane(
      * [MomentsScreen]) behave the same as they did before.
      */
     isActivePage: Boolean = true,
+    /**
+     * When true the comments sheet is expanded on first composition — used by
+     * the timeline card's comment button (which navigates here with
+     * `openComments = true`) so the user lands directly in the thread.
+     */
+    openCommentsInitially: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fileSystemHandler = getUriHandler()
@@ -444,6 +459,7 @@ fun MomentDetailPane(
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@AnimatedContent,
                     isActivePage = isActivePage,
+                    openCommentsInitially = openCommentsInitially,
                 )
 
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
@@ -491,13 +507,17 @@ private fun DetailContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
+    openCommentsInitially: Boolean = false,
 ) {
     // Local sheet toggle — pure UI state. The reactor-roster sheet
     // (uiState.showReactionsSheet) is still VM-driven below because it loads
     // avatars from the server; heart / flame counts on the action column
     // are read directly off `moment.reactionPreview` so the user doesn't
     // need to open a sheet to see them.
-    var showCommentsSheet by remember { mutableStateOf(false) }
+    //
+    // Seeded from [openCommentsInitially] so a deep-link from the timeline's
+    // comment button lands with the thread already open.
+    var showCommentsSheet by remember { mutableStateOf(openCommentsInitially) }
 
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
@@ -531,6 +551,12 @@ private fun DetailContent(
                     if (uiState.moment != null) {
                         MomentOverflowMenu(
                             isDeleting = uiState.isDeleting,
+                            // Author-only: only the original author can widen
+                            // the audience of a moment.
+                            showAddPeople = uiState.isMine,
+                            onAddPeopleClick = {
+                                onAction(MomentDetailUiAction.RequestAddRecipients)
+                            },
                             onDeleteClick = {
                                 onAction(MomentDetailUiAction.RequestDeleteMoment)
                             },
@@ -637,11 +663,29 @@ private fun DetailContent(
             onDismiss = { onAction(MomentDetailUiAction.DismissReactionsSheet) },
         )
     }
+
+    if (uiState.showAddRecipientsSheet && moment != null) {
+        MomentAddRecipientsSheet(
+            snapshot = uiState.addRecipientsSnapshot,
+            query = uiState.addRecipientsQuery,
+            selected = uiState.addRecipientsSelected,
+            // Recipients already on the moment render locked (already-shared)
+            // so the author can only widen, never remove.
+            existingRecipients = moment.recipients.toSet(),
+            isAdding = uiState.isAddingRecipients,
+            onQueryChange = { onAction(MomentDetailUiAction.AddRecipientsQueryChanged(it)) },
+            onToggle = { onAction(MomentDetailUiAction.ToggleAddRecipient(it)) },
+            onConfirm = { onAction(MomentDetailUiAction.ConfirmAddRecipients) },
+            onDismiss = { onAction(MomentDetailUiAction.DismissAddRecipientsSheet) },
+        )
+    }
 }
 
 @Composable
 private fun MomentOverflowMenu(
     isDeleting: Boolean,
+    showAddPeople: Boolean,
+    onAddPeopleClick: () -> Unit,
     onDeleteClick: () -> Unit,
     iconTint: Color = Color.Unspecified,
 ) {
@@ -673,6 +717,15 @@ private fun MomentOverflowMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            if (showAddPeople) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.moments_detail_menu_add_people)) },
+                    onClick = {
+                        expanded = false
+                        onAddPeopleClick()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(MR.string.moments_detail_menu_delete)) },
                 onClick = {
@@ -1198,8 +1251,8 @@ private fun MomentDetailContent(
                 },
                 onOpenComments = onOpenComments,
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
+                    .align(Alignment.CenterStart)
+                    .padding(start = 12.dp),
             )
         }
 
@@ -1447,6 +1500,25 @@ private fun CommentsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            // Capture time + "Shared with" recipients. Lives here (the info/
+            // comments sheet) because the immersive media view has no room for
+            // an expandable, network-backed recipient list. Expanding the
+            // "Shared with" row lazily fetches transfer history via the VM.
+            MetadataSection(
+                capturedAtMs = uiState.moment?.userDateMs ?: 0L,
+                sharedWith = uiState.sharedWith,
+                sharedWithExpanded = uiState.sharedWithExpanded,
+                onToggleSharedWith = {
+                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
+                },
+                isMine = uiState.isMine,
+                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
+                recipientDeliveries = uiState.recipientDeliveries,
+                recipientAvatars = uiState.recipientAvatars,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             HorizontalDivider()
             CommentsHeader(

@@ -4,9 +4,12 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.SendContents
@@ -26,6 +29,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -278,7 +282,7 @@ class MomentsPostSenderService(
                     sendContents = SendContents.All,
                     useAppNotification = !isLocalOnly,
                     appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                        appId = MomentsProtocol.MomentsAppId.toString(),
+                        appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
                         typeId = momentUniqueId.toString(),
                         tagId = momentUniqueId.toString(),
                         silent = false,
@@ -491,6 +495,266 @@ class MomentsPostSenderService(
     }
 
     /**
+     * Widen an already-posted moment's audience — "I forgot to include Bob and
+     * Suzy." The media and description are untouched; we only add recipients.
+     *
+     * An empty-manifest update ships the file HEADER only, so a brand-new
+     * recipient who never received this moment would land a header that
+     * references payloads they can't fetch. We therefore re-attach the moment's
+     * existing encrypted payloads (downloaded from our own drive, keyed by their
+     * original IV so they decrypt with the unchanged file key) into the
+     * manifest — the same heal-redistribute trick
+     * `ConversationService.reuseExistingPayloadsForResend` uses for chat group
+     * images.
+     *
+     * Distribution targets ONLY the genuinely-new recipients: existing
+     * recipients already hold the media, so they are intentionally neither
+     * re-shipped to nor re-notified. The persisted [MomentPostContent.recipients]
+     * is widened to the full merged audience so the author's own copy reflects
+     * everyone; existing recipients keep their prior copy (their stored audience
+     * goes stale, which is acceptable while the "Shared with" recipient UI is
+     * not rendered).
+     *
+     * No app notification is sent: the update-side notification plumbing
+     * ([AppNotificationOptions] on [FileUpdateInstructionSet]) is unexercised
+     * everywhere else in the app, so we don't send into that untested path. The
+     * moment still lands in the new recipients' feeds via the normal sync
+     * (`BatchReceived`) path — just without an OS push banner.
+     *
+     * Mirrors [updateMoment]: AES key reused (fresh IV), `replaceEnqueue`.
+     */
+    suspend fun addRecipientsToMoment(
+        momentUniqueId: Uuid,
+        versionTag: Uuid,
+        newRecipients: List<OdinId>,
+    ): UpdateMomentResult {
+        Logger.d(tag = TAG) {
+            "addRecipientsToMoment: starting moment=$momentUniqueId newRecipients=${newRecipients.size}"
+        }
+
+        val existing = driveFileProvider.getFileHeaderByUid(drive, momentUniqueId)
+            ?: throw IllegalArgumentException("moment not found: $momentUniqueId")
+
+        if (existing.fileMetadata.versionTag != versionTag) {
+            error("VersionTag mismatch")
+        }
+
+        val self = credentialsManager.requireActiveCredentials().domain
+
+        val existingContent = existing.fileMetadata.appData.content?.let { raw ->
+            runCatching {
+                OdinSystemSerializer.deserialize<MomentPostContent>(raw)
+            }.getOrNull()
+        } ?: throw IllegalStateException("moment $momentUniqueId content unreadable")
+
+        val existingRecipients = existingContent.recipients
+        // Only identities not already on the moment (and never ourselves) need
+        // a copy. Anyone already in the audience is left untouched.
+        val genuinelyNew = newRecipients
+            .filterNot { it == self || existingRecipients.contains(it) }
+            .distinct()
+
+        if (genuinelyNew.isEmpty()) {
+            Logger.d(tag = TAG) {
+                "addRecipientsToMoment: no new recipients moment=$momentUniqueId — nothing to do"
+            }
+            return UpdateMomentResult(uniqueId = momentUniqueId)
+        }
+
+        val mergedRecipients = (existingRecipients + genuinelyNew).distinct()
+
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = existing.keyHeader.aesKey,
+        )
+
+        // Re-attach the moment's existing media so the brand-new recipients
+        // actually receive it (an empty manifest would ship header only).
+        val (reusedPayloads, reusedThumbs) = reuseExistingPayloadsForResend(existing)
+
+        val manifest = UpdateManifest.build(
+            payloads = reusedPayloads.takeIf { it.isNotEmpty() },
+            toDeletePayloads = null,
+            thumbnails = reusedThumbs.takeIf { it.isNotEmpty() },
+            generatePayloadIv = false,
+        )
+
+        val content = OdinSystemSerializer.serialize(
+            MomentPostContent(
+                version = MomentsProtocol.MomentPostVersionNumberOne,
+                description = existingContent.description,
+                recipients = mergedRecipients,
+                source = existingContent.source,
+                mediaInfo = existingContent.mediaInfo,
+                commentsEnabled = existingContent.commentsEnabled,
+            )
+        )
+
+        val unencryptedMetadata = UploadFileMetadata(
+            allowDistribution = true,
+            isEncrypted = true,
+            versionTag = versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = momentUniqueId,
+                tags = existing.fileMetadata.appData.tags,
+                fileType = MomentsProtocol.MomentPostFileType,
+                userDate = existing.fileMetadata.appData.userDate,
+                content = content,
+                previewThumbnail = existing.fileMetadata.appData.previewThumbnail,
+            ),
+        )
+
+        val request = UpdateFileByUniqueIdRequest(
+            driveId = drive,
+            uniqueId = momentUniqueId,
+            keyHeader = keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArrayUtil.getRndByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = genuinelyNew,
+                manifest = manifest,
+                useAppNotification = false,
+                appNotificationOptions = null,
+            ),
+            metadata = unencryptedMetadata.encryptContent(keyHeader),
+            payloads = reusedPayloads,
+            thumbnails = reusedThumbs,
+        )
+
+        val enqueued = outboxSync.replaceEnqueue(
+            request,
+            priority = 1,
+            dependencyUniqueId = null,
+        )
+
+        if (!enqueued) {
+            error("Failed to enqueue moment recipient update")
+        }
+
+        Logger.d(tag = TAG) {
+            "addRecipientsToMoment: outbox enqueued moment=$momentUniqueId added=${genuinelyNew.size}"
+        }
+
+        // Best-effort optimistic write so the author's detail screen reflects
+        // the widened audience immediately. Media payloads are preserved.
+        try {
+            optimisticWriter.writeUpdate(
+                driveId = drive,
+                keyHeader = keyHeader,
+                unecryptedMetadata = unencryptedMetadata,
+            )
+            Logger.d(tag = TAG) {
+                "addRecipientsToMoment: optimistic write complete moment=$momentUniqueId"
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "addRecipientsToMoment: optimistic write failed (non-fatal) moment=$momentUniqueId"
+            }
+        }
+
+        return UpdateMomentResult(uniqueId = momentUniqueId)
+    }
+
+    /**
+     * Download the moment's existing encrypted payload (and thumbnail) bytes
+     * from our own drive and re-package them as pre-encrypted [PayloadFile] /
+     * [ThumbnailFile] entries keyed by their original IV, so an update can ship
+     * them to brand-new recipients who decrypt with the unchanged file key.
+     *
+     * Mirrors `ConversationService.reuseExistingPayloadsForResend`. Returns
+     * empty lists when the moment has no payloads or a fetch fails — the caller
+     * falls back to a header-only update for those keys.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun reuseExistingPayloadsForResend(
+        file: HomebaseFile,
+    ): Pair<List<PayloadFile>, List<ThumbnailFile>> {
+        val existing = file.fileMetadata.payloads.orEmpty()
+        if (existing.isEmpty()) {
+            Logger.d(tag = TAG) {
+                "reuseExistingPayloadsForResend: fileId=${file.fileId} has no payloads — nothing to re-attach"
+            }
+            return emptyList<PayloadFile>() to emptyList()
+        }
+
+        val payloads = mutableListOf<PayloadFile>()
+        val thumbnails = mutableListOf<ThumbnailFile>()
+        for (descriptor in existing) {
+            try {
+                val bytes = driveFileProvider.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
+                if (bytes == null || bytes.isEmpty()) {
+                    Logger.w(tag = TAG) {
+                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — bytes ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                    }
+                    continue
+                }
+                val ivBytes = descriptor.iv?.let { Base64.decode(it) }
+                if (ivBytes == null) {
+                    Logger.w(tag = TAG) {
+                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — descriptor has no iv (fileId=${file.fileId})"
+                    }
+                    continue
+                }
+                val tempPath = fileOps.writeBytesToTempFile(
+                    bytes = bytes,
+                    prefix = "mmt_resend_${descriptor.key}_",
+                    suffix = ".enc",
+                )
+                payloads += PayloadFile(
+                    key = descriptor.key,
+                    filePath = tempPath,
+                    previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
+                    contentType = descriptor.contentType ?: "",
+                    isPreEncrypted = true,
+                    iv = ivBytes,
+                    descriptorContent = descriptor.descriptorContent,
+                )
+
+                // Re-attach the payload's thumbnails: the AppendOrOverwrite
+                // REPLACES the payload AND its thumbnail set on each peer, so
+                // omitting them would wipe the server-side thumbnails. They're
+                // encrypted with the same payload key + iv, so ship as-is.
+                for (thumb in descriptor.thumbnails.orEmpty()) {
+                    val w = thumb.pixelWidth
+                    val h = thumb.pixelHeight
+                    if (w == null || h == null) {
+                        Logger.w(tag = TAG) {
+                            "reuseExistingPayloadsForResend: skipping thumb for key=${descriptor.key} — missing dims (fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    val thumbBytes = driveFileProvider.getThumbBytesEncrypted(
+                        driveId = drive,
+                        fileId = file.fileId,
+                        payloadKey = descriptor.key,
+                        width = w,
+                        height = h,
+                        lastModified = descriptor.lastModified,
+                    )
+                    if (thumbBytes == null || thumbBytes.isEmpty()) {
+                        Logger.w(tag = TAG) {
+                            "reuseExistingPayloadsForResend: skipping thumb key=${descriptor.key} ${w}x$h — bytes ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                        }
+                        continue
+                    }
+                    thumbnails += ThumbnailFile(
+                        pixelWidth = w,
+                        pixelHeight = h,
+                        thumbnailBytes = thumbBytes,
+                        key = descriptor.key,
+                        contentType = thumb.contentType ?: "image/webp",
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = TAG) {
+                    "reuseExistingPayloadsForResend: failed to re-attach payload key=${descriptor.key} fileId=${file.fileId}"
+                }
+            }
+        }
+        return payloads to thumbnails
+    }
+
+    /**
      * Post a comment against an existing moment. Recipients are derived
      * from the moment itself — caller only needs `momentId` and the comment
      * payload.
@@ -561,7 +825,7 @@ class MomentsPostSenderService(
                 sendContents = SendContents.All,
                 useAppNotification = !isLocalOnly,
                 appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                    appId = MomentsProtocol.MomentsAppId.toString(),
+                    appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
                     typeId = commentUniqueId.toString(),
                     // tagId = momentId so the OS coalesces a noisy comment
                     // thread under one notification group per moment.
