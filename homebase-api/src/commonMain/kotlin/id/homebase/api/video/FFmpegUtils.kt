@@ -2,6 +2,7 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 
+@LowLevelFfmpegApi
 expect object FFmpegUtils {
     fun getUniqueId(filePath: String): String
 

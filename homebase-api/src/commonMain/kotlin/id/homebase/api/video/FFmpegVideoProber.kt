@@ -1,3 +1,5 @@
+@file:OptIn(LowLevelFfmpegApi::class) // thin adapter over the FFmpegUtils backend by design
+
 package id.homebase.api.video
 
 /**

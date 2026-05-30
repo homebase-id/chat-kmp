@@ -6,7 +6,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.FFmpegUtils
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
@@ -501,12 +501,12 @@ internal class MediaDownloadHandler(
 
         // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
         // same directory as tsPath — the playlist's relative segment reference resolves correctly.
-        val playlistPath = FFmpegUtils.cacheInputVideo(
+        val playlistPath = VideoCompressionService.cacheInputVideo(
             fileName = "hlsdl_${uid}.m3u8",
             data = rewrittenPlaylist.encodeToByteArray(),
         )
 
-        val ok = FFmpegUtils.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
+        val ok = VideoCompressionService.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
 
         // Clean up intermediates regardless of success
         runCatching { fileOperationsProvider.deleteTempFile(tsPath) }

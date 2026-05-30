@@ -48,6 +48,8 @@ class VideoPayloadProcessor(
             )
         }
 
+    // grabThumbnail has no seam equivalent (thumbnail concern; see VideoThumbnailService).
+    @OptIn(LowLevelFfmpegApi::class)
     private suspend fun processResolved(
         payload: PayloadFile,
         keyHeader: KeyHeader,
