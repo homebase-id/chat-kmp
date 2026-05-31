@@ -18,9 +18,11 @@ import kotlin.test.assertTrue
  * interfaces. No real ffmpeg runs for compress/segment/duration, so the HLS-vs-
  * direct branching is exercised deterministically.
  *
- * Lives in jvmTest (not commonTest) only because phase-1 poster-frame grab still
- * calls `FFmpegUtils.grabThumbnail` directly; on a path with no real file the JVM
- * actual returns null (try/catch + timeout), so the thumbnail phase is skipped.
+ * Phase 1 (poster frame) goes through `VideoThumbnailService.extractPosterFrame`, which
+ * returns null in this classpath — the JVM decoder is `FFmpegSubprocessVideoDecoder`, whose
+ * ffmpeg backend (`FFmpegBinaryManager`) has no bundled binaries here (they live in
+ * homebase-chat). So the thumbnail phase is skipped and these tests focus on the
+ * compress / HLS-vs-direct branching driven by the fakes below.
  */
 class VideoPayloadProcessorCompressionSeamTest {
 

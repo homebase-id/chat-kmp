@@ -48,8 +48,6 @@ class VideoPayloadProcessor(
             )
         }
 
-    // grabThumbnail has no seam equivalent (thumbnail concern; see VideoThumbnailService).
-    @OptIn(LowLevelFfmpegApi::class)
     private suspend fun processResolved(
         payload: PayloadFile,
         keyHeader: KeyHeader,
@@ -74,22 +72,18 @@ class VideoPayloadProcessor(
         var tinyThumb: EmbeddedThumb? = null
         var thumbnails: List<ThumbnailFile> = emptyList()
 
-        val thumbnailPath = FFmpegUtils.grabThumbnail(payload.filePath)
-        if (thumbnailPath != null) {
-            try {
-                val bytes = fileOperationsProvider.readFileBytes(thumbnailPath)
-                val (_, generatedTinyThumb, generatedThumbnails) =
-                    createThumbnails(bytes, payload.key)
+        // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
+        // native-first decode per platform), so no temp-file round-trip to read+delete.
+        val posterBytes = VideoThumbnailService.extractPosterFrame(payload.filePath)
+        if (posterBytes != null) {
+            val (_, generatedTinyThumb, generatedThumbnails) =
+                createThumbnails(posterBytes, payload.key)
 
-                tinyThumb = generatedTinyThumb
-                thumbnails = generatedThumbnails.map { thumb ->
-                    thumb.copy(
-                        thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
-                    )
-                }
-
-            } finally {
-                fileOperationsProvider.deleteTempFile(thumbnailPath)
+            tinyThumb = generatedTinyThumb
+            thumbnails = generatedThumbnails.map { thumb ->
+                thumb.copy(
+                    thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
+                )
             }
         }
 
