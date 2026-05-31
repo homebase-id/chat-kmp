@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
@@ -11,6 +12,7 @@ import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 
@@ -97,46 +99,65 @@ class VideoPayloadProcessor(
             )
         )
 
-        val compressedPath =
-            compressor.compress(
-                inputPath = payload.filePath,
-                trimStartMs = trimStartMs,
-                trimEndMs = trimEndMs,
-                quality = videoQuality,
-                onProgress = {
-                    onProgress?.invoke(
-                        VideoPayloadProgressPhase(
-                            payload.key,
-                            VideoProcessingPhase.COMPRESSING,
-                            it
+        val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
+        val (compressedPath, compressElapsed) =
+            measureTimedValue {
+                compressor.compress(
+                    inputPath = payload.filePath,
+                    trimStartMs = trimStartMs,
+                    trimEndMs = trimEndMs,
+                    quality = videoQuality,
+                    onProgress = {
+                        onProgress?.invoke(
+                            VideoPayloadProgressPhase(
+                                payload.key,
+                                VideoProcessingPhase.COMPRESSING,
+                                it
+                            )
                         )
-                    )
-                },
-            ) ?: payload.filePath
+                    },
+                ) ?: payload.filePath
+            }
 
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 
         val compressedSize = fileOperationsProvider.getFileSize(compressedPath)
         val useHls = compressedSize >= FIVE_MB
 
+        Logger.i(tag = "VideoProcessing") {
+            "compression finished in $compressElapsed: input=${inputSize}B → compressed=${compressedSize}B " +
+                "quality=$videoQuality trim=$trimStartMs..$trimEndMs skipped=${compressedPath == payload.filePath}"
+        }
+        Logger.i(tag = "VideoProcessing") {
+            "HLS decision: compressed=${compressedSize}B threshold=${FIVE_MB}B → " +
+                if (useHls) "SEGMENT (hls)" else "direct mp4"
+        }
+
         /* ---------- PHASE 4: SEGMENT (HLS ONLY) ---------- */
 
         val (playlistPath, videoPath, isSegmented) =
             if (useHls) {
-                val segmented =
-                    compressor.segmentAndEncrypt(
-                        inputPath = compressedPath,
-                        keyHeader = keyHeader,
-                        onProgress = { pct ->
-                            onProgress?.invoke(
-                                VideoPayloadProgressPhase(
-                                    payload.key,
-                                    VideoProcessingPhase.SEGMENTING,
-                                    pct
+                val (segmented, segmentElapsed) =
+                    measureTimedValue {
+                        compressor.segmentAndEncrypt(
+                            inputPath = compressedPath,
+                            keyHeader = keyHeader,
+                            onProgress = { pct ->
+                                onProgress?.invoke(
+                                    VideoPayloadProgressPhase(
+                                        payload.key,
+                                        VideoProcessingPhase.SEGMENTING,
+                                        pct
+                                    )
                                 )
-                            )
-                        }
-                    ) ?: error("segmentAndEncryptVideo failed")
+                            }
+                        ) ?: error("segmentAndEncryptVideo failed")
+                    }
+
+                Logger.i(tag = "VideoProcessing") {
+                    "segmentation finished in $segmentElapsed: playlist=${segmented.playlistPath} " +
+                        "segments=${fileOperationsProvider.getFileSize(segmented.segmentsPath)}B"
+                }
 
                 Triple(segmented.playlistPath, segmented.segmentsPath, true)
             } else {
@@ -245,6 +266,10 @@ class VideoPayloadProcessor(
             }
 
         /* ---------- RESULT ---------- */
+
+        Logger.i(tag = "VideoProcessing") {
+            "video payload ready: segmented=$isSegmented duration=${durationMs}ms"
+        }
 
         onProgress?.invoke(
             VideoPayloadProgressPhase(
