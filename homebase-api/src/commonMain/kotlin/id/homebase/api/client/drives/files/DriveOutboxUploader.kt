@@ -101,9 +101,20 @@ class DriveOutboxUploader(
         request.validateForUpload()
         Logger.d("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} fileType=${request.metadata.appData.fileType} driveId=${request.driveId}")
         try {
+            // Throttle to whole-percent steps: the HTTP client fires onProgress per chunk,
+            // so a multi-MB upload produced hundreds of suspending ItemProgress emits at the
+            // same integer percent, flooding the EventBus buffer (extraBufferCapacity=10) and
+            // suspending the producer against ~32 subscribers. Emit at most one event per
+            // integer percent (≤101 per upload). `lastPct` is local to this call, so
+            // concurrent uploads can't race on it.
+            var lastPct = -1
             val result = driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
                 val percent = percentOf(sent, total)
-                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+                val whole = percent.toInt()
+                if (whole != lastPct) {
+                    lastPct = whole
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+                }
             })
             val rStatus = result?.recipientStatus
             if (rStatus.isNullOrEmpty()) {
@@ -207,9 +218,15 @@ class DriveOutboxUploader(
         )
 
         Logger.d("$TAG retryAsUpdate: sending update for uniqueId=$uniqueId versionTag=$versionTag")
+        // Whole-percent throttle — see uploadNewFile above.
+        var lastPct = -1
         val updateResult = driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
-            eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+            val whole = percent.toInt()
+            if (whole != lastPct) {
+                lastPct = whole
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+            }
         })
         val rStatus = updateResult?.recipientStatus
         if (rStatus.isNullOrEmpty()) {
@@ -231,9 +248,15 @@ class DriveOutboxUploader(
         val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(outboxRecord.json.decodeToString())
         // Pre-flight: same gate as uploadNewFile — see UploadValidation.kt.
         request.validateForUpload()
+        // Whole-percent throttle — see uploadNewFile above.
+        var lastPct = -1
         val result = driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
-            eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+            val whole = percent.toInt()
+            if (whole != lastPct) {
+                lastPct = whole
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+            }
         })
         val rStatus = result?.recipientStatus
         if (rStatus.isNullOrEmpty()) {
