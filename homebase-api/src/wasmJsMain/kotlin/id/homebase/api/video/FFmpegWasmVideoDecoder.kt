@@ -12,7 +12,7 @@ import okio.Path.Companion.toPath
  * (some HEVC variants on Firefox, etc.). Triggers a ~22 MB core download on first use — but
  * only on the fallback path, so happy-path uploads pay nothing.
  */
-class FFmpegWasmVideoDecoder : VideoDecoder {
+internal class FFmpegWasmVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
         val bytes = readBytes(videoPath) ?: return null
