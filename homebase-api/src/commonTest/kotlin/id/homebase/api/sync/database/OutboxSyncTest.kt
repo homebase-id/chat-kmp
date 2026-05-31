@@ -12,6 +12,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -89,82 +91,116 @@ private fun clientException(
 
 
 /**
- * Each test drains the OutboxSync coroutines via `sync.clearCheckout(...)` just
- * before its `runTest` block returns. `runTest` cancels `backgroundScope` on
- * return, and on iOS sim a backgroundScope cancellation racing an in-flight
- * SQLDelight transaction surfaces as `ConcurrentModificationException at null:-1`
- * (or, less frequently, a segfault) from inside sqliter's listener notification
- * path. Draining first lets the production code reach its own quiescent state
- * before cancellation, closing the race window. JVM is unaffected because
- * JdbcSqliteDriver is single-connection and serializes implicitly; iOS uses
- * NativeSqliteDriver's connection pool, which is what catches the races.
+ * iOS-sim teardown race (root cause). OutboxSync's worker coroutines run on
+ * `backgroundScope` (virtual time), but every DB call hops to a *real* dispatcher
+ * via `OutboxWrapper` → `DatabaseManager.withWriteValue`/`readValue`
+ * (`Dispatchers.Default.limitedParallelism(1)` for writes, `Dispatchers.IO` for
+ * reads). `advanceUntilIdle()` only drains the *virtual* scheduler, so a coroutine
+ * parked inside `withContext(realDispatcher)` looks idle and the test body proceeds
+ * while real-thread DB work is still in flight. When the `runTest` block then
+ * returned and `db.close()` ran, that late work raced `NativeSqliteDriver`'s
+ * connection-pool teardown and surfaced as `ConcurrentModificationException at
+ * null:-1` (occasionally a segfault). JVM never reproduced it — `JdbcSqliteDriver`
+ * is single-connection and serializes implicitly.
+ *
+ * Fix (option 1): [runOutboxTest] binds the DatabaseManager's read+write
+ * dispatchers to runTest's virtual-time `testScheduler`. Now `advanceUntilIdle()`
+ * genuinely drains all DB work, so the outbox is quiescent before `db.close()` —
+ * no real-thread work outlives the test on any target. The helper also owns the
+ * `db.close()` in a `finally`.
+ *
+ * Two tests can't use the helper because their semantics depend on the real/virtual
+ * time split (each constructs its own real-dispatcher DatabaseManager and says why):
+ * `testFailureAndRetry` and `testTryEnqueueDoesNotBlockOnSaturatedEventBus`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSyncTest {
 
+    /**
+     * Runs an outbox test with the DatabaseManager's read+write dispatchers bound to
+     * runTest's virtual-time [TestScope.testScheduler] instead of the production
+     * real-thread dispatchers. See the class KDoc for why this closes the iOS-sim
+     * `ConcurrentModificationException at null:-1` teardown race. The DatabaseManager
+     * is created inside `runTest` (so it can see `testScheduler`) and closed in a
+     * `finally`.
+     */
+    private fun runOutboxTest(body: suspend TestScope.(db: DatabaseManager) -> Unit) = runTest {
+        val dbDispatcher = StandardTestDispatcher(testScheduler)
+        val db = DatabaseManager(
+            { createInMemoryDatabase() },
+            dispatcher = dbDispatcher,
+            readDispatcher = dbDispatcher,
+        )
+        try {
+            body(db)
+        } finally {
+            db.close()
+        }
+    }
+
 
     @Test
-    fun testSuccessfulSend() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testSuccessfulSend() = runOutboxTest { db ->
+        val eventBus = EventBus()  // Fresh instance per test
 
-        runTest {
-            val eventBus = EventBus()  // Fresh instance per test
+        // We cannot use "use" in these tests since it'll mess up waiting for threads
+        val uploader = TestUploader()
 
-            // We cannot use "use" in these tests since it'll mess up waiting for threads
-            val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            // This will count total number of items sent via the events.
-            // It's necessary to ensure all threads are finished.
-            // This must be setup in the beginning of the test before we send()
-            val completedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
-                    .first().totalCount
-            }
-            // Kick off the async collector before we send
-            testScheduler.runCurrent()
-
-            // Insert a record
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null
-            )
-
-            // Trigger send
-            val started = sync.send()
-            assertTrue(started, "Should start sending")
-
-            // Advance time to let coroutines complete
-            advanceUntilIdle()
-
-            // Wait for the final events too
-            val completedCount = completedDeferred.await()
-
-            // Assertions
-            assertEquals(1, completedCount)
-            assertEquals(1, uploader.uploaded.size)
-            assertEquals(driveId, uploader.uploaded[0].driveId)
-            assertEquals(uniqueId, uploader.uploaded[0].uniqueId)
-            // Check that item was deleted
-            assertEquals(0L, db.outbox.count())
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        // This will count total number of items sent via the events.
+        // It's necessary to ensure all threads are finished.
+        // This must be setup in the beginning of the test before we send()
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
+                .first().totalCount
         }
-        db.close()
+        // Kick off the async collector before we send
+        testScheduler.runCurrent()
+
+        // Insert a record
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null
+        )
+
+        // Trigger send
+        val started = sync.send()
+        assertTrue(started, "Should start sending")
+
+        // Advance time to let coroutines complete
+        advanceUntilIdle()
+
+        // Wait for the final events too
+        val completedCount = completedDeferred.await()
+
+        // Assertions
+        assertEquals(1, completedCount)
+        assertEquals(1, uploader.uploaded.size)
+        assertEquals(driveId, uploader.uploaded[0].driveId)
+        assertEquals(uniqueId, uploader.uploaded[0].uniqueId)
+        // Check that item was deleted
+        assertEquals(0L, db.outbox.count())
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     @Test
     fun testFailureAndRetry() {
+        // NOT runOutboxTest (see class KDoc): this test must freeze after exactly one
+        // failed attempt. With the DB on virtual time, advanceUntilIdle() would drain
+        // the entire 20-step backoff schedule and the row would be dropped (count==0)
+        // instead of re-queued (count==1). Keep the production real-thread dispatchers
+        // so the retry's scheduled delay parks instead of being advanced through.
         val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
@@ -218,114 +254,104 @@ class OutboxSyncTest {
     }
 
     @Test
-    fun testConcurrencyLimit() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testConcurrencyLimit() = runOutboxTest { db ->
+        val eventBus = EventBus()  // Fresh instance per test
 
-        runTest {
-            val eventBus = EventBus()  // Fresh instance per test
+        val uploader = TestUploader()
 
-            val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val completedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
-                    .first().totalCount
-            }
-            testScheduler.runCurrent() // Kick off the async collector
-
-            // Insert 5 records
-            val records = (1..5).map {
-                val driveId = Uuid.random()
-                val fileId = Uuid.random()
-                db.outbox.insert(
-                    driveId = driveId,
-                    uniqueId = fileId,
-                    dependencyUniqueId = null,
-                    priority = 0,
-                    uploadType = 0,
-                    json = byteArrayOf(),
-                    filePaths = null
-                )
-                Pair(driveId, fileId)
-            }
-
-            // Start sending - should spawn up to 3 threads
-            val started1 = sync.send()
-            assertTrue(started1)
-
-            advanceUntilIdle()
-
-            // Wait for the final events too
-            val completedCount = completedDeferred.await()
-
-            // Assertions
-            assertEquals(5, completedCount)
-            assertTrue(uploader.maxActive <= 3)
-
-            // Should have processed 3 items initially (since semaphore allows 3)
-            assertEquals(records.size, uploader.uploaded.size)
-            // 0 items should remain
-            assertEquals(0L, db.outbox.count())
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
+                .first().totalCount
         }
-        db.close()
-    }
+        testScheduler.runCurrent() // Kick off the async collector
 
-    @Test
-    fun testMaxRetriesDrop() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
-
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.shouldFail = true
-
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
-            }
-            testScheduler.runCurrent()
-
-            // Insert a record and pre-set checkOutCount to 19 (one attempt away from the limit of 20)
+        // Insert 5 records
+        val records = (1..5).map {
             val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
+            val fileId = Uuid.random()
             db.outbox.insert(
                 driveId = driveId,
-                uniqueId = uniqueId,
+                uniqueId = fileId,
                 dependencyUniqueId = null,
                 priority = 0,
                 uploadType = 0,
                 json = byteArrayOf(),
                 filePaths = null
             )
-            db.driver.execute(null, "UPDATE Outbox SET checkOutCount = 19", 0)
-
-            assertEquals(1L, db.outbox.count())
-
-            try {
-                sync.send()
-            } catch (_: Exception) {
-            }
-            advanceUntilIdle()
-
-            val dropped = droppedDeferred.await()
-
-            // Item should be dropped — removed from outbox
-            assertEquals(0L, db.outbox.count())
-            assertEquals(uniqueId, dropped.uniqueId)
-            assertEquals(driveId, dropped.driveId)
-            assertEquals(20, dropped.attempts)
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+            Pair(driveId, fileId)
         }
-        db.close()
+
+        // Start sending - should spawn up to 3 threads
+        val started1 = sync.send()
+        assertTrue(started1)
+
+        advanceUntilIdle()
+
+        // Wait for the final events too
+        val completedCount = completedDeferred.await()
+
+        // Assertions
+        assertEquals(5, completedCount)
+        assertTrue(uploader.maxActive <= 3)
+
+        // Should have processed 3 items initially (since semaphore allows 3)
+        assertEquals(records.size, uploader.uploaded.size)
+        // 0 items should remain
+        assertEquals(0L, db.outbox.count())
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    @Test
+    fun testMaxRetriesDrop() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.shouldFail = true
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+        }
+        testScheduler.runCurrent()
+
+        // Insert a record and pre-set checkOutCount to 19 (one attempt away from the limit of 20)
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null
+        )
+        db.driver.execute(null, "UPDATE Outbox SET checkOutCount = 19", 0)
+
+        assertEquals(1L, db.outbox.count())
+
+        try {
+            sync.send()
+        } catch (_: Exception) {
+        }
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        // Item should be dropped — removed from outbox
+        assertEquals(0L, db.outbox.count())
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(driveId, dropped.driveId)
+        assertEquals(20, dropped.attempts)
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -346,6 +372,10 @@ class OutboxSyncTest {
      */
     @Test
     fun testTryEnqueueDoesNotBlockOnSaturatedEventBus() {
+        // NOT runOutboxTest (see class KDoc): this test deliberately blocks the test
+        // thread on `withContext(Dispatchers.Default)` with a REAL withTimeout, and
+        // needs the inner DB insert to make progress on a real dispatcher while the
+        // virtual scheduler is parked. Binding the DB to virtual time would deadlock it.
         val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
@@ -431,47 +461,42 @@ class OutboxSyncTest {
      * to supersede the old one must use `replaceEnqueue`.
      */
     @Test
-    fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
 
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
+        val firstOk = sync.tryEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = 2, // UpdateFile
+            json = "original"
+        )
+        assertTrue(firstOk, "first enqueue should succeed")
+        assertEquals(1L, db.outbox.count())
 
-            val firstOk = sync.tryEnqueue(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 1,
-                uploadType = 2, // UpdateFile
-                json = "original"
-            )
-            assertTrue(firstOk, "first enqueue should succeed")
-            assertEquals(1L, db.outbox.count())
+        val secondOk = sync.tryEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = 2,
+            json = "superseding"
+        )
+        assertFalse(secondOk, "duplicate tryEnqueue should report failure, not throw")
+        assertEquals(1L, db.outbox.count(), "original row must remain")
 
-            val secondOk = sync.tryEnqueue(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 1,
-                uploadType = 2,
-                json = "superseding"
-            )
-            assertFalse(secondOk, "duplicate tryEnqueue should report failure, not throw")
-            assertEquals(1L, db.outbox.count(), "original row must remain")
-
-            val row = db.outbox.checkout()
-            assertNotNull(row)
-            assertEquals("original", row.json.decodeToString(), "original row's payload must be preserved")
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
-        }
-        db.close()
+        val row = db.outbox.checkout()
+        assertNotNull(row)
+        assertEquals("original", row.json.decodeToString(), "original row's payload must be preserved")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -480,46 +505,41 @@ class OutboxSyncTest {
      * `replaceEnqueue` must not throw, must leave exactly one row, and must replace the payload.
      */
     @Test
-    fun testReplaceEnqueueSupersedesExistingRow() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testReplaceEnqueueSupersedesExistingRow() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
 
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
+        val firstOk = sync.tryEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = 2,
+            json = "stale"
+        )
+        assertTrue(firstOk)
 
-            val firstOk = sync.tryEnqueue(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 1,
-                uploadType = 2,
-                json = "stale"
-            )
-            assertTrue(firstOk)
+        val replacedOk = sync.replaceEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = 2,
+            json = "fresh"
+        )
+        assertTrue(replacedOk, "replaceEnqueue must succeed even when a row already exists")
+        assertEquals(1L, db.outbox.count(), "exactly one row should remain after replace")
 
-            val replacedOk = sync.replaceEnqueue(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 1,
-                uploadType = 2,
-                json = "fresh"
-            )
-            assertTrue(replacedOk, "replaceEnqueue must succeed even when a row already exists")
-            assertEquals(1L, db.outbox.count(), "exactly one row should remain after replace")
-
-            val row = db.outbox.checkout()
-            assertNotNull(row)
-            assertEquals("fresh", row.json.decodeToString(), "new payload must win over the stale one")
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
-        }
-        db.close()
+        val row = db.outbox.checkout()
+        assertNotNull(row)
+        assertEquals("fresh", row.json.decodeToString(), "new payload must win over the stale one")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -529,48 +549,43 @@ class OutboxSyncTest {
      * 20 retries (~48h).
      */
     @Test
-    fun testPermanentFailure_NotFoundExceptionDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testPermanentFailure_NotFoundExceptionDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = NotFoundException()
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.failureException = NotFoundException()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
-            }
-            testScheduler.runCurrent()
-
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-
-            try { sync.send() } catch (_: Exception) {}
-            advanceUntilIdle()
-
-            val dropped = droppedDeferred.await()
-
-            assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
-            assertEquals(uniqueId, dropped.uniqueId)
-            assertEquals(driveId, dropped.driveId)
-            assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
         }
-        db.close()
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(driveId, dropped.driveId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -579,50 +594,45 @@ class OutboxSyncTest {
      * This locks in the existing enum-based branch in `isPermanentFailure`.
      */
     @Test
-    fun testPermanentFailure_VersionTagMismatchByCodeDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testPermanentFailure_VersionTagMismatchByCodeDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.VersionTagMismatch,
+            message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.failureException = clientException(
-                errorCode = OdinClientErrorCode.VersionTagMismatch,
-                message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
-            )
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
-            }
-            testScheduler.runCurrent()
-
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-
-            try { sync.send() } catch (_: Exception) {}
-            advanceUntilIdle()
-
-            val dropped = droppedDeferred.await()
-
-            assertEquals(0L, db.outbox.count())
-            assertEquals(uniqueId, dropped.uniqueId)
-            assertEquals(1, dropped.attempts)
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
         }
-        db.close()
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count())
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(1, dropped.attempts)
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -633,50 +643,45 @@ class OutboxSyncTest {
      * symmetrical fallback in `DriveOutboxUploader.upload`) must drop on attempt 1.
      */
     @Test
-    fun testPermanentFailure_MismatchingVersionTagByTitleDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testPermanentFailure_MismatchingVersionTagByTitleDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.UnhandledScenario,
+            message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.failureException = clientException(
-                errorCode = OdinClientErrorCode.UnhandledScenario,
-                message = "Mismatching version tag 7373d519-d042-d100-4aad-a8e5d48dd851",
-            )
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
-            }
-            testScheduler.runCurrent()
-
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-
-            try { sync.send() } catch (_: Exception) {}
-            advanceUntilIdle()
-
-            val dropped = droppedDeferred.await()
-
-            assertEquals(0L, db.outbox.count())
-            assertEquals(uniqueId, dropped.uniqueId)
-            assertEquals(1, dropped.attempts)
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
         }
-        db.close()
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count())
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(1, dropped.attempts)
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -691,50 +696,45 @@ class OutboxSyncTest {
      * pattern in `isPermanentFailure` drops the row on attempt 1.
      */
     @Test
-    fun testPermanentFailure_ThumbnailSizeExceedsDroppedOnFirstAttempt() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testPermanentFailure_ThumbnailSizeExceedsDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.UnhandledScenario,
+            message = "Thumbnail size of 1634 exceeds 1024",
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.failureException = clientException(
-                errorCode = OdinClientErrorCode.UnhandledScenario,
-                message = "Thumbnail size of 1634 exceeds 1024",
-            )
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
-            }
-            testScheduler.runCurrent()
-
-            val driveId = Uuid.random()
-            val uniqueId = Uuid.random()
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = uniqueId,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-
-            try { sync.send() } catch (_: Exception) {}
-            advanceUntilIdle()
-
-            val dropped = droppedDeferred.await()
-
-            assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
-            assertEquals(uniqueId, dropped.uniqueId)
-            assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
         }
-        db.close()
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     /**
@@ -744,99 +744,89 @@ class OutboxSyncTest {
      * (`WHERE … dependencyUniqueId IS NULL OR EXISTS(dep row)`).
      */
     @Test
-    fun testDependencyChainUnblocksAfterPermanentFailure() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testDependencyChainUnblocksAfterPermanentFailure() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.UnhandledScenario,
+            message = "Thumbnail size of 1634 exceeds 1024",
+        )
 
-        runTest {
-            val eventBus = EventBus()
-            val uploader = TestUploader()
-            uploader.failureException = clientException(
-                errorCode = OdinClientErrorCode.UnhandledScenario,
-                message = "Thumbnail size of 1634 exceeds 1024",
-            )
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val completedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
-                    .first().totalCount
-            }
-            testScheduler.runCurrent()
-
-            val driveId = Uuid.random()
-            val stuckHead = Uuid.random()
-            val dependent = Uuid.random()
-
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = stuckHead,
-                dependencyUniqueId = null,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-            db.outbox.insert(
-                driveId = driveId,
-                uniqueId = dependent,
-                dependencyUniqueId = stuckHead,
-                priority = 0,
-                uploadType = 0,
-                json = byteArrayOf(),
-                filePaths = null,
-            )
-            assertEquals(2L, db.outbox.count())
-
-            // After head drops on attempt 1, the dependent becomes
-            // eligible. Future uploader.upload() calls still throw the
-            // size-exceeds exception → dependent also drops.
-            try { sync.send() } catch (_: Exception) {}
-            advanceUntilIdle()
-            completedDeferred.await()
-
-            assertEquals(
-                0L, db.outbox.count(),
-                "both stuck head and its dependent must be drained — dependent " +
-                        "stays in outbox only as long as the head exists"
-            )
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
+                .first().totalCount
         }
-        db.close()
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val stuckHead = Uuid.random()
+        val dependent = Uuid.random()
+
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = stuckHead,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = dependent,
+            dependencyUniqueId = stuckHead,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+        assertEquals(2L, db.outbox.count())
+
+        // After head drops on attempt 1, the dependent becomes
+        // eligible. Future uploader.upload() calls still throw the
+        // size-exceeds exception → dependent also drops.
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+        completedDeferred.await()
+
+        assertEquals(
+            0L, db.outbox.count(),
+            "both stuck head and its dependent must be drained — dependent " +
+                    "stays in outbox only as long as the head exists"
+        )
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
     @Test
-    fun testEmptyOutbox() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
+    fun testEmptyOutbox() = runOutboxTest { db ->
+        val eventBus = EventBus()  // Fresh instance per test
 
-        runTest {
-            val eventBus = EventBus()  // Fresh instance per test
+        val uploader = TestUploader()
 
-            val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
 
-            val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-            )
-            sync.setOnline(true)
-
-            val completedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
-                    .first().totalCount
-            }
-            testScheduler.runCurrent() // Kick off the async collector
-
-            val started = sync.send()
-            assertTrue(started)  // Starts thread but finds no work
-
-            advanceUntilIdle()
-            val completedCount = completedDeferred.await()
-
-            assertEquals(0, completedCount)
-            assertEquals(0, uploader.uploaded.size)
-            sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
+                .first().totalCount
         }
-        db.close()
+        testScheduler.runCurrent() // Kick off the async collector
+
+        val started = sync.send()
+        assertTrue(started)  // Starts thread but finds no work
+
+        advanceUntilIdle()
+        val completedCount = completedDeferred.await()
+
+        assertEquals(0, completedCount)
+        assertEquals(0, uploader.uploaded.size)
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 }
