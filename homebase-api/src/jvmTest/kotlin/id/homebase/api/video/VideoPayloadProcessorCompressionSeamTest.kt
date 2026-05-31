@@ -85,6 +85,8 @@ class VideoPayloadProcessorCompressionSeamTest {
             compressInput = inputPath
             compressQuality = quality
             compressTrim = trimStartMs to trimEndMs
+            // Simulate a chunky ffmpeg stream: ~1000 sub-percent ticks across 0f..1f.
+            for (i in 0..1000) onProgress?.invoke(i / 1000f)
             return compressedPath
         }
 
@@ -97,6 +99,8 @@ class VideoPayloadProcessorCompressionSeamTest {
             onProgress: VideoProgressListener?,
         ): SegmentedVideo {
             segmentAndEncryptCalled = true
+            // Simulate a chunky ffmpeg stream: ~1000 sub-percent ticks across 0f..1f.
+            for (i in 0..1000) onProgress?.invoke(i / 1000f)
             return segmented
         }
 
@@ -183,5 +187,51 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertEquals("application/vnd.apple.mpegurl", result.videoMetadata.mimeType)
         assertEquals(playlistText, result.videoMetadata.hlsPlaylist)
         assertEquals(9_000f, result.videoMetadata.duration)
+    }
+
+    @Test
+    fun videoProgressIsDeduplicatedToWholePercentPerPhase() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val playlistPath = "$cacheDir/playlist.m3u8"
+        val segmentsPath = "$cacheDir/segments.ts"
+        val playlistText = "#EXTM3U\n#EXT-X-VERSION:3\n"
+        // >= 5 MB → HLS, so both compress and segmentAndEncrypt run (and fire progress ticks).
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(5 * 1024 * 1024),
+            playlistPath to playlistText.encodeToByteArray(),
+            segmentsPath to ByteArray(2048),
+        )
+        val fileOps = FakeFileOperationsProvider(store)
+        val compressor = FakeVideoCompressor(
+            compressedPath = compressedPath,
+            segmented = SegmentedVideo(playlistPath, segmentsPath),
+        )
+        val processor = VideoPayloadProcessor(fileOps, compressor, FakeVideoProbe(9_000L))
+
+        val events = mutableListOf<VideoPayloadProgressPhase>()
+        processor.process(
+            payload = PayloadFile(key = "vid", filePath = inputPath),
+            keyHeader = KeyHeader.newRandom16(),
+            onProgress = { events.add(it) },
+            descriptorContentPayloadKey = "descriptor",
+        )
+
+        // The fake fired ~1000 sub-percent ticks per phase; the processor must collapse each
+        // phase to at most one event per whole integer percent — no per-tick duplicates.
+        val compressing = events
+            .filter { it.phase == VideoProcessingPhase.COMPRESSING }
+            .map { (it.progress * 100).toInt() }
+        assertTrue(compressing.isNotEmpty(), "expected COMPRESSING progress")
+        assertEquals(compressing, compressing.distinct(), "COMPRESSING emitted duplicate whole percents")
+        assertTrue(compressing.size <= 101, "COMPRESSING emitted ${compressing.size} events (expected <= 101)")
+
+        val segmenting = events
+            .filter { it.phase == VideoProcessingPhase.SEGMENTING }
+            .map { (it.progress * 100).toInt() }
+        assertTrue(segmenting.isNotEmpty(), "expected SEGMENTING progress on the HLS path")
+        assertEquals(segmenting, segmenting.distinct(), "SEGMENTING emitted duplicate whole percents")
+        assertTrue(segmenting.size <= 101, "SEGMENTING emitted ${segmenting.size} events (expected <= 101)")
     }
 }

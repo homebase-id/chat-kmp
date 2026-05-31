@@ -5,6 +5,7 @@ import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
@@ -100,6 +101,12 @@ class VideoPayloadProcessor(
         )
 
         val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
+        // Collapse the per-tick ffmpeg progress to one event per whole percent (fractions are
+        // 0f..1f, so key on it*100). Primed at 0 so the first tick doesn't duplicate the
+        // phase-start 0f emitted above. Without this every raw tick became a suspending
+        // PhaseProgress emit — the same EventBus flood the upload path had. See
+        // WholePercentProgressGate.
+        val compressGate = WholePercentProgressGate().also { it.admit(0f) }
         val (compressedPath, compressElapsed) =
             measureTimedValue {
                 compressor.compress(
@@ -108,13 +115,15 @@ class VideoPayloadProcessor(
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
                     onProgress = {
-                        onProgress?.invoke(
-                            VideoPayloadProgressPhase(
-                                payload.key,
-                                VideoProcessingPhase.COMPRESSING,
-                                it
+                        if (compressGate.admit(it * 100f) != null) {
+                            onProgress?.invoke(
+                                VideoPayloadProgressPhase(
+                                    payload.key,
+                                    VideoProcessingPhase.COMPRESSING,
+                                    it
+                                )
                             )
-                        )
+                        }
                     },
                 ) ?: payload.filePath
             }
@@ -137,19 +146,24 @@ class VideoPayloadProcessor(
 
         val (playlistPath, videoPath, isSegmented) =
             if (useHls) {
+                // Same whole-percent throttle as compression (see compressGate). No priming —
+                // there is no separate SEGMENTING phase-start emit, so the first tick should land.
+                val segmentGate = WholePercentProgressGate()
                 val (segmented, segmentElapsed) =
                     measureTimedValue {
                         compressor.segmentAndEncrypt(
                             inputPath = compressedPath,
                             keyHeader = keyHeader,
                             onProgress = { pct ->
-                                onProgress?.invoke(
-                                    VideoPayloadProgressPhase(
-                                        payload.key,
-                                        VideoProcessingPhase.SEGMENTING,
-                                        pct
+                                if (segmentGate.admit(pct * 100f) != null) {
+                                    onProgress?.invoke(
+                                        VideoPayloadProgressPhase(
+                                            payload.key,
+                                            VideoProcessingPhase.SEGMENTING,
+                                            pct
+                                        )
                                     )
-                                )
+                                }
                             }
                         ) ?: error("segmentAndEncryptVideo failed")
                     }
