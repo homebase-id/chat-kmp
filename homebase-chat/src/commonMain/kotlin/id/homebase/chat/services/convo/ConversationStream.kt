@@ -252,17 +252,42 @@ class ConversationStream(
                         // First three steps unconditional (DriveSync may have
                         // changed conversation files, last-messages, or admin
                         // membership without dirtying lastRead). The unread-count
-                        // recount is the ~500ms full-DB pass and is gated on
-                        // [hasDirtyUnread] — it only materially changes the result
-                        // when a conversation file's lastRead actually advanced
-                        // during the round (peer-device mark-as-read echo).
+                        // recount goes through [shouldRunUnreadRecountOnStopped]:
+                        // pre-fix the gate was `hasDirtyUnread()` alone, which
+                        // missed the common case of "BG sync wrote message rows
+                        // via QueryBatch" because the dirty bit is only set by
+                        // the WS-push code path (BatchReceived ->
+                        // processConversationBatchIncrementally). The widened
+                        // gate adds `chatDrive && totalCount > 0`, so any
+                        // DriveSync round that landed chat rows triggers a
+                        // recount — the original asymmetric-badge bug
+                        // (homebase.log 2026-06-01 Session 5: warm-swipe +
+                        // FCM Frodo + WS-push Sam; Sam bumped via WS, Frodo's
+                        // QB-delivered rows never tripped the gate).
+                        // Cost: one selectAllUnreadCount (~121-163ms covering-
+                        // index pass measured live) per chat-drive Stopped
+                        // that carried rows. Cheap; trades a small recurrent
+                        // cost for badge correctness.
                         if (event.totalCount > 0) {
+                            val isDirty = hasDirtyUnread()
+                            val shouldRecount = shouldRunUnreadRecountOnStopped(
+                                isChatDrive = true, // filtered above at line 233
+                                totalCount = event.totalCount,
+                                hasDirtyUnread = isDirty,
+                            )
+                            Logger.i(tag = "UnreadDiag") {
+                                "Stopped recount-gate driveId=${event.driveId} " +
+                                    "totalCount=${event.totalCount} " +
+                                    "result=${event.result::class.simpleName} " +
+                                    "hasDirtyUnread=$isDirty " +
+                                    "decision=${if (shouldRecount) "RECOUNT" else "SKIP"}"
+                            }
                             scope.launch {
                                 try {
                                     loadBasicConversations()
                                     enrichWithLastMessages()
                                     enrichWithAdmins()
-                                    if (hasDirtyUnread()) {
+                                    if (shouldRecount) {
                                         requestUnreadEnrichment("DriveSyncStopped")
                                     }
                                 } catch (e: Exception) {
@@ -570,6 +595,24 @@ class ConversationStream(
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
+
+        // Diagnostic for the asymmetric-badge investigation (plan
+        // snazzy-frolicking-crown). End-of-batch snapshot of every
+        // conversation touched by this batch, so a later enrichUnreadLocked
+        // overwrite that drops the badge can be correlated against the
+        // value the in-memory bump actually landed on. The existing
+        // `unread++` log at line 620 only fires when the count rose; this
+        // covers the no-bump-but-touched case (e.g. suppressed by
+        // `sqlUserDate <= existing.latestMessageTimestamp`).
+        val touchedIds = incoming.map { it.second.conversationId }.distinct()
+        for (id in touchedIds) {
+            val c = sortedList.firstOrNull { it.id == id } ?: continue
+            Logger.d(tag = "UnreadDiag") {
+                "batchDone convo=$id unreadCount=${c.unreadCount} " +
+                    "latestMessageMs=${c.latestMessageTimestamp.toEpochMilliseconds()} " +
+                    "lastReadMs=${c.lastRead.toEpochMilliseconds()}"
+            }
+        }
     }
 
     /**
@@ -1165,6 +1208,25 @@ class ConversationStream(
         val current = _conversations.value
         val updated = current.items.map { convo ->
             val newCount = unreadMap[convo.id] ?: 0
+            // Diagnostic for the asymmetric-badge investigation (plan
+            // snazzy-frolicking-crown). Fires only when an in-memory unread
+            // count is about to be erased to zero — the exact "badge
+            // disappeared" symptom the user reported. We distinguish the
+            // two hypotheses by whether the convo appears in unreadMap:
+            //   - absent  ⇒ H2: the SQL filter excluded the row entirely
+            //                   (originalAuthor IS NULL / fileState / dataType).
+            //   - present ⇒ H1: the row is counted but lastReadTime is
+            //                   saturated past the message.
+            if (convo.unreadCount > 0 && newCount == 0) {
+                val rowAbsent = !unreadMap.containsKey(convo.id)
+                Logger.w(tag = "UnreadDiag") {
+                    "badge-disappeared convo=${convo.id} oldCount=${convo.unreadCount} " +
+                        "newCount=0 rowAbsentFromSqlMap=$rowAbsent " +
+                        "lastReadMs=${convo.lastRead.toEpochMilliseconds()} " +
+                        "latestMessageMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
+                        "dirty=${convo.dirty} trigger=$trigger"
+                }
+            }
             if (newCount != convo.unreadCount) {
                 changed++
                 Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")

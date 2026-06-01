@@ -1,5 +1,6 @@
 package id.homebase.chat.services.convo
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
@@ -76,7 +77,7 @@ internal fun applyIncomingMessageBump(
         // userDate as the original message) don't bump unread.
         if (sqlUserDate <= existing.latestMessageTimestamp) return@map existing
         didChange = true
-        existing.copy(
+        val next = existing.copy(
             unreadCount = existing.unreadCount + increment,
             latestMessageTimestamp = sqlUserDate,
             lastMessage = m.content.truncateToCodePoints(40),
@@ -86,6 +87,65 @@ internal fun applyIncomingMessageBump(
             lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
             lastMessageIsFromActiveUser = m.isAuthoredBy(activeDomain),
         )
+        // Diagnostic for the asymmetric-badge investigation (plan
+        // snazzy-frolicking-crown). Fires only when the strict-> check
+        // passes, so reaction re-emits stay silent. Pairs with the
+        // UnreadDiag lines in ConversationStream.enrichUnreadLocked
+        // and is what lets us distinguish hypotheses H1 (lastRead
+        // saturated) vs H2 (SQL excluded the row) on a real capture.
+        Logger.d(tag = "UnreadDiag") {
+            "bump convo=$targetConversationId sqlUserDateMs=${sqlUserDate.toEpochMilliseconds()} " +
+                "originalAuthor=${m.originalAuthor?.domainName ?: "null"} " +
+                "isAuthoredBy(self)=${m.isAuthoredBy(activeDomain)} " +
+                "isEdited=${m.isEdited} isStatusMessage=${m.isStatusMessage} " +
+                "increment=$increment unreadCount=${next.unreadCount}"
+        }
+        next
     }
     return if (didChange) updated else null
 }
+
+/**
+ * Decide whether the `BackendEvent.DriveEvent.Stopped` handler should
+ * run a fresh unread recount.
+ *
+ * Today's gate is `hasDirtyUnread()` alone — that fires only when
+ * `processConversationBatchIncrementally` set the dirty bit, which itself
+ * only runs on WS-push `BatchReceived`. The DriveSync QueryBatch path
+ * intentionally never emits per-row events (see `DriveSync.kt:199-201`
+ * "DriveSync is a silent batched DB write"), so message rows written by
+ * BG sync — FCM cold-wake, post-reconnect catch-up, retries — never trip
+ * the dirty bit and the badge stays stale (the original asymmetric-badge
+ * bug, captured in homebase.log 2026-06-01 Session 5).
+ *
+ * The widened gate adds `isChatDrive && totalCount > 0` so the recount
+ * runs whenever the chat drive's just-finished sync wrote anything to
+ * `DriveMainIndex`. We deliberately do NOT gate on `result == Completed`:
+ * the `BackendEvent.DriveResult` kdoc warns that earlier batches commit
+ * before a later batch can Abort, so a chat-drive Aborted with
+ * `totalCount > 0` still represents real rows in DB that affect the
+ * count. Same for PermissionDenied (kdoc: "earlier batches' DB writes
+ * commit before any later batch can fail").
+ *
+ * Cost when this widens the gate: one `selectAllUnreadCount` pass
+ * (covering-index — measured 121-163 ms in homebase.log). Cheap enough
+ * to pay per chat-drive Stopped that carried rows.
+ *
+ * Pure function so the gate is unit-testable without the ConversationStream
+ * graph.
+ *
+ * @param isChatDrive    true if the Stopped event was for the chat drive
+ *                       (other drives — contacts, vault, moments — never
+ *                       affect chat unread counts).
+ * @param totalCount     rows written to DriveMainIndex during this sync
+ *                       round (across all file types — conversations,
+ *                       messages, etc.). 0 ⇒ nothing landed ⇒ skip.
+ * @param hasDirtyUnread the existing dirty bit, set by
+ *                       `processConversationBatchIncrementally` on
+ *                       WS-push conv-file arrivals.
+ */
+internal fun shouldRunUnreadRecountOnStopped(
+    isChatDrive: Boolean,
+    totalCount: Int,
+    hasDirtyUnread: Boolean,
+): Boolean = hasDirtyUnread || (isChatDrive && totalCount > 0)
