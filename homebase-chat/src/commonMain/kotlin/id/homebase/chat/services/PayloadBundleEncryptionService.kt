@@ -10,6 +10,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
+import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -17,7 +18,8 @@ import kotlin.uuid.Uuid
 class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
     private val videoProcessor: VideoPayloadProcessor,
-    private val eventBus: EventBus
+    private val eventBus: EventBus,
+    private val userPreferences: UserPreferences,
 ) : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(
@@ -69,6 +71,7 @@ class PayloadBundleEncryptionService(
                     descriptorContentPayloadKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
                     trimStartMs = payload.trimStartMs,
                     trimEndMs = payload.trimEndMs,
+                    allowTenBit = userPreferences.allowTenBitVideo,
                 )
 
                 newPayloads += result.payloads

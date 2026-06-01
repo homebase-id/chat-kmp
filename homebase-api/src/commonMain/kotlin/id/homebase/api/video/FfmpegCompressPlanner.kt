@@ -92,6 +92,16 @@ object FfmpegCompressPlanner {
      *   the same reason. Note: Tier 1 only pins output to 8-bit SDR-decodable
      *   `yuv420p` (no tone-map yet), which is enough to make every receiver's
      *   hardware AVC decoder accept the stream.
+     * @param allowTenBit developer/test escape hatch (default false). When true,
+     *   a >8-bit source is no longer force-downconverted: the bit-depth gate on
+     *   the already-optimal short-circuit is dropped (an in-budget 10-bit H.264
+     *   clip passes through untouched) and any re-encode pins `yuv420p10le`
+     *   (High 10) instead of `yuv420p`. The resulting stream is High 10 and will
+     *   fail on most receivers' hardware AVC decoders — this exists purely to
+     *   inspect 10-bit output locally. HDR is unaffected (still forces a
+     *   re-encode; no tone-map yet). Callers driving 10-bit output must also use
+     *   a 10-bit-capable encoder (libx264) — `h264_videotoolbox` cannot emit
+     *   10-bit H.264.
      */
     fun plan(
         inputPath: String,
@@ -108,6 +118,7 @@ object FfmpegCompressPlanner {
         encoder: String = "libx264",
         probedBitDepth: Int = 8,
         probedIsHdr: Boolean = false,
+        allowTenBit: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
@@ -122,7 +133,7 @@ object FfmpegCompressPlanner {
         if (!hasTrim && isAlreadyOptimal(
                 probedCodecMime, displayWidthPx, displayHeightPx,
                 inputBytes, inputDurationMs, targets,
-                probedBitDepth, probedIsHdr,
+                probedBitDepth, probedIsHdr, allowTenBit,
             )
         ) {
             return FfmpegCompressPlan(
@@ -168,7 +179,12 @@ object FfmpegCompressPlanner {
             // produces a Main/High-profile stream every receiver can decode.
             // No-op for already-8-bit 4:2:0 sources. (Tier 1: no tone-map yet —
             // HDR colours may look flat until the zscale/tonemap follow-up.)
-            add("-pix_fmt"); add("yuv420p")
+            //
+            // allowTenBit (dev/test only): keep a >8-bit source at 10-bit
+            // (yuv420p10le → High 10) so the 10-bit pipeline can be inspected.
+            // 8-bit sources stay 8-bit regardless — the flag permits, not forces.
+            val outputPixFmt = if (allowTenBit && probedBitDepth > 8) "yuv420p10le" else "yuv420p"
+            add("-pix_fmt"); add(outputPixFmt)
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
             add("-movflags"); add("+faststart")
@@ -194,7 +210,10 @@ object FfmpegCompressPlanner {
      * real transcode in that case. Also returns false for 10-bit/HDR sources:
      * even an otherwise-in-budget clip must re-encode so the output can be
      * pinned to 8-bit `yuv420p` (else the original 10-bit High 10 bytes would
-     * pass through untouched and fail on hardware AVC decoders).
+     * pass through untouched and fail on hardware AVC decoders). When
+     * [allowTenBit] is set, the bit-depth disqualifier is lifted (a 10-bit
+     * source may short-circuit and pass through untouched); HDR still
+     * disqualifies regardless.
      */
     internal fun isAlreadyOptimal(
         codecMime: String?,
@@ -205,9 +224,11 @@ object FfmpegCompressPlanner {
         targets: QualityTargets,
         bitDepth: Int = 8,
         isHdr: Boolean = false,
+        allowTenBit: Boolean = false,
     ): Boolean {
         if (codecMime == null || widthPx <= 0 || heightPx <= 0 || durationMs <= 0) return false
-        if (bitDepth > 8 || isHdr) return false
+        if (bitDepth > 8 && !allowTenBit) return false
+        if (isHdr) return false
         if (!isH264(codecMime)) return false
         val shortEdgePx = minOf(widthPx, heightPx)
         if (shortEdgePx > targets.shortEdgePx) return false
