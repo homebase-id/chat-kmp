@@ -22,6 +22,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
@@ -46,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
+    private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -55,6 +57,12 @@ class MainActivity : AppCompatActivity() {
         // opens it). The gap from here to "App() first composition" is the real
         // user-perceived cold start. See StartupLogger.
         StartupLogger.checkpoint("activity onCreate start")
+
+        // Promote AuthCC out of headless mode — this is the first reliable signal
+        // that the user is looking at the UI (FCM-cold-wake doesn't reach here).
+        // Idempotent; safe across Activity recreation. See AuthCC.promoteToForeground.
+        authConnectionCoordinator.promoteToForeground()
+
         handleIntent(intent)
 
         ActivityProvider.initialize(this)

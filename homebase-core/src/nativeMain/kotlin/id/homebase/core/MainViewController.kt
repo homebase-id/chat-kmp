@@ -84,6 +84,15 @@ fun initializeApp() {
 @OptIn(ExperimentalForeignApi::class)
 fun MainViewController(): UIViewController {
     initializeApp()
+    // Promote AuthCC out of headless mode — this is the iOS analogue of
+    // Android's MainActivity.onCreate: it fires only when SwiftUI actually
+    // presents the UI (ContentView.body builds ComposeView, which calls
+    // makeUIViewController). FCM background-fetch wake-ups don't reach
+    // here, so headless work stays headless. Idempotent. See
+    // AuthConnectionCoordinator.promoteToForeground.
+    val authCC: id.homebase.core.auth.AuthConnectionCoordinator =
+        org.koin.mp.KoinPlatformTools.defaultContext().get().get()
+    authCC.promoteToForeground()
     val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller
     return controller
