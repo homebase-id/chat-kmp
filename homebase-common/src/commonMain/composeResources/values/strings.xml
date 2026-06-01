@@ -1028,6 +1028,7 @@
     <!-- File save snackbar -->
     <string name="file_saved_to">Saved to %1$s</string>
     <string name="file_save_failed">Failed to save: %1$s</string>
+    <string name="file_share_failed">Failed to share: %1$s</string>
     <string name="error_unknown">Unknown error</string>
 
 </resources>
