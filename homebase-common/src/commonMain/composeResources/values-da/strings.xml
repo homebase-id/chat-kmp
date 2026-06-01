@@ -612,6 +612,7 @@
     <string name="chat_location_unavailable">Kunne ikke hente din placering. Prøv igen udendørs eller tjek, at Placering er aktiveret.</string>
     <string name="chat_location_permission_denied">Placeringstilladelse afvist. Aktivér den i Indstillinger for at dele din placering.</string>
     <string name="chat_location_map_preview_unavailable">Forhåndsvisning af kort ikke tilgængelig — sender kun koordinater.</string>
+    <string name="chat_image_unavailable">Billedet kunne ikke indlæses</string>
 
     <!-- Reactions -->
     <string name="chat_reactions_title">Reaktioner</string>

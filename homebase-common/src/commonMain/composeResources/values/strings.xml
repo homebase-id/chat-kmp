@@ -657,6 +657,7 @@
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
     <string name="chat_location_unavailable">Couldn't get your location. Try again outdoors or check that Location is enabled.</string>
     <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
+    <string name="chat_image_unavailable">Image could not be loaded</string>
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
