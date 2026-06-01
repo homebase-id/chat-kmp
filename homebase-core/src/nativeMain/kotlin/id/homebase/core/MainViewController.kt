@@ -1,3 +1,17 @@
+/*
+ * iOS-only — despite the platform-neutral filename.
+ *
+ * Lives in `homebase-core/src/nativeMain/` because iOS's app shell is Swift
+ * (`iosApp/`) rather than its own Kotlin module — there's no `iosApp` Kotlin
+ * counterpart to Android's `androidApp/` Gradle module, so the Kotlin entry
+ * point Swift calls into has to live in this multiplatform module's iOS
+ * source set. The `nativeMain` source set in this project is wired to
+ * iOS targets only (per CLAUDE.md "KMP Source Set Convention").
+ *
+ * Swift entry: `iosApp/iosApp/ContentView.swift` ->
+ * `MainViewControllerKt.MainViewController()` (the wrapper class name comes
+ * from this file's name, so renaming the file requires updating Swift).
+ */
 package id.homebase.core
 
 import androidx.compose.ui.window.ComposeUIViewController
