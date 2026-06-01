@@ -174,7 +174,14 @@ class VideoPayloadProcessor(
         /* ---------- PHASE 5: METADATA ---------- */
 
         val durationMs = FFmpegUtils.getDurationMs(compressedPath)
-        val codec = detectVideoCodec(finalVideoPath)
+        // Probe the compressed (pre-encryption) output for real codec info so the
+        // descriptor carries truthful metadata for the inline debug overlay. The
+        // encrypted/segmented final file can't be probed, so this runs on the
+        // plaintext compressedPath before it's reaped below.
+        val outProbe = FFmpegUtils.probeVideo(compressedPath)
+        val videoBitrateBps =
+            if (durationMs > 0L) compressedSize * 8L * 1000L / durationMs else 0L
+        val codec = outProbe?.codec ?: detectVideoCodec(finalVideoPath)
 
         // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already
         // been re-encoded into either the HLS segment (segmented path) or the
@@ -201,7 +208,12 @@ class VideoPayloadProcessor(
                 duration = durationMs.toFloat(),
                 codec = codec,
                 hlsPlaylist = playlistContent,
-                key = payload.key // point directly to the payload
+                key = payload.key, // point directly to the payload
+                widthPx = outProbe?.widthPx ?: 0,
+                heightPx = outProbe?.heightPx ?: 0,
+                bitDepth = outProbe?.bitDepth ?: 0,
+                isHdr = outProbe?.isHdr ?: false,
+                videoBitrateBps = videoBitrateBps,
             )
 
         val metadataJson = OdinSystemSerializer.serialize(metadata)

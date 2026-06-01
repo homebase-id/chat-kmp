@@ -54,6 +54,13 @@ actual object FFmpegUtils {
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
 
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? {
+        val bytes = readOkioBytes(inputPath) ?: return null
+        val p = FFmpegBridge.probe(bytes) ?: return null
+        // mp4box probe doesn't expose bit depth / colour info; default to 8-bit SDR.
+        return VideoTrackInfo(p.codec, p.widthPx, p.heightPx, 8, false)
+    }
+
     /**
      * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the
      * input, hand it to [FfmpegCompressPlanner], and either short-circuit (already-optimal /
