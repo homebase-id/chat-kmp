@@ -71,6 +71,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? {
         val inputBytes = readOkioBytes(inputPath) ?: return null
 
@@ -95,6 +96,9 @@ actual object FFmpegUtils {
             inputBytes = inputBytes.size.toLong(),
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
+            // No-op here: the web probe doesn't report bit depth, so output
+            // stays 8-bit yuv420p regardless of the flag.
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {

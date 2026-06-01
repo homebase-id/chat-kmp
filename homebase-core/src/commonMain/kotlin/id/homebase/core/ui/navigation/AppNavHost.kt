@@ -911,11 +911,6 @@ fun AppNavHost(
                                             Route.MomentDetail(id, payloadKey)
                                         )
                                     },
-                                    onOpenMomentComments = { id ->
-                                        navController.navigate(
-                                            Route.MomentDetail(id, openComments = true)
-                                        )
-                                    },
                                 )
                             }
                         }

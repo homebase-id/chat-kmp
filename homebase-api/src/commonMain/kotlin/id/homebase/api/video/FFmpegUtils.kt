@@ -15,6 +15,7 @@ expect object FFmpegUtils {
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
+        allowTenBit: Boolean = false,
     ): String?
 
     suspend fun getDurationMs(inputPath: String): Long

@@ -72,6 +72,19 @@ internal fun addVideoOverlayProgressListener(el: JsAny, cb: (Double, Double) -> 
     }"""
 )
 
+/** Notify [cb] once the <video> reaches the end of the clip (drives "Watch again"). */
+internal fun addVideoOverlayEndedListener(el: JsAny, cb: () -> Unit): Unit = js(
+    "{ el.addEventListener('ended', function () { cb(); }); }"
+)
+
+/** Seek back to the start and resume playback (the "Watch again" action). */
+internal fun replayVideoOverlay(el: JsAny): Unit = js(
+    """{
+        try { el.currentTime = 0; } catch (e) {}
+        var p = el.play(); if (p && typeof p.catch === 'function') p.catch(function () {});
+    }"""
+)
+
 /** Pause, detach the source (so the blob can be revoked) and remove the element from the DOM. */
 internal fun removeVideoOverlay(el: JsAny): Unit = js(
     """{

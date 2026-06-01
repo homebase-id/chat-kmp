@@ -70,12 +70,27 @@ actual fun getUriHandler(): FileSystemHandler {
         @OptIn(ExperimentalForeignApi::class)
         override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
             try {
-                val fileUrl = NSURL.fileURLWithPath(file.toString())
+                val filePath = file.toString()
+                if (!NSFileManager.defaultManager.fileExistsAtPath(filePath)) {
+                    onError(Exception("Share file not found at $filePath"))
+                    return
+                }
+                val fileUrl = NSURL.fileURLWithPath(filePath)
                 val activityVC = UIActivityViewController(
                     activityItems = listOf(fileUrl), applicationActivities = null
                 )
+                activityVC.completionWithItemsHandler =
+                    { _, _, _, error ->
+                        if (error != null) {
+                            onError(Exception(error.localizedDescription))
+                        }
+                    }
                 val rootVC = UIApplication.sharedApplication.keyWindow?.rootViewController
-                rootVC?.presentViewController(activityVC, animated = true, completion = null)
+                if (rootVC != null) {
+                    rootVC.presentViewController(activityVC, animated = true, completion = null)
+                } else {
+                    onError(Exception("Unable to present share sheet"))
+                }
             } catch (e: Exception) {
                 onError(e)
             }

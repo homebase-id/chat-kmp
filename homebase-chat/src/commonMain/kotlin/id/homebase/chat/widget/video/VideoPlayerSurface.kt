@@ -70,4 +70,31 @@ expect fun VideoPlayerSurface(
      * carousel, which always crops to its own locked aspect.
      */
     useZoomFill: Boolean = false,
+    /**
+     * Fires once when the underlying player reaches the end of the clip
+     * (Android `STATE_ENDED`, iOS `AVPlayerItemDidPlayToEndTime`, Desktop VLC
+     * `finished()`, web `<video> ended`). The moments inline tile uses this to
+     * pause-at-last-frame and raise a "Watch again" affordance instead of
+     * looping. Best-effort on platforms without an exact callback. No-op by
+     * default so existing full-screen callers keep their current behaviour.
+     */
+    onEnded: () -> Unit = {},
+    /**
+     * Replay trigger. Each time the caller increments this past its previous
+     * value the actual seeks the live player back to 0 and resumes — *in
+     * place*, without remounting the surface (so no thumbnail flash, no
+     * re-download, and the feed↔detail position handoff isn't disturbed). `0`
+     * (the default) means "never replayed yet" and is ignored. Used by the
+     * "Watch again" button after [onEnded] has fired.
+     */
+    replayToken: Int = 0,
+    /**
+     * Pause the player *in place* without tearing the surface down — the
+     * current frame stays on screen and playback resumes from the same
+     * position when this flips back to `false`. Used by the moments inline
+     * tile's press-and-hold-to-pause gesture (Instagram-style). Defaults to
+     * `false` so existing callers, which pause by unmounting the surface, are
+     * unaffected.
+     */
+    paused: Boolean = false,
 )

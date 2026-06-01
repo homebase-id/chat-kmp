@@ -57,6 +57,12 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
     @Suppress("UNUSED_PARAMETER") useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    // Press-and-hold pause is driven from the compact-timeline inline tile;
+    // web playback is partial, so the flag is accepted to satisfy the expect
+    // signature but not wired here.
+    @Suppress("UNUSED_PARAMETER") paused: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density
@@ -88,6 +94,7 @@ actual fun VideoPlayerSurface(
                     objectUrl = url
                     val el = createVideoOverlay(muted)
                     addVideoOverlayProgressListener(el) { _, _ -> onProgress(1f) }
+                    addVideoOverlayEndedListener(el) { onEnded() }
                     setVideoOverlaySrc(el, url)
                     // NOTE: do NOT play here — the element has no on-screen bounds yet, so it
                     // would play through invisibly and end before it's ever shown. Play is kicked
@@ -139,6 +146,13 @@ actual fun VideoPlayerSurface(
             // few frames before the actual first decoded frame paints.
             onFirstFrame()
         }
+    }
+
+    // Replay-in-place when the host's "Watch again" bumps replayToken. Guard on
+    // > 0 so the initial composition doesn't restart before first play.
+    LaunchedEffect(element, replayToken) {
+        val el = element ?: return@LaunchedEffect
+        if (replayToken > 0) replayVideoOverlay(el)
     }
 
     DisposableEffect(data) {
