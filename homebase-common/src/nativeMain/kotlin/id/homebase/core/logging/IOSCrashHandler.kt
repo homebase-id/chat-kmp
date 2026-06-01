@@ -1,6 +1,7 @@
 package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
+import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.staticCFunction
 import kotlin.native.setUnhandledExceptionHook
@@ -34,7 +35,7 @@ private const val TAG = "IOSCrashHandler"
  *
  * Call once, on the main thread, at startup (see `MainViewController`).
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
 fun setupIOSCrashHandler() {
     // (1) Objective-C exceptions.
     NSSetUncaughtExceptionHandler(staticCFunction { exception ->
