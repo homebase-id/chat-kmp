@@ -20,10 +20,12 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         command: String,
         onProgress: @escaping (KotlinLong) -> Void,
         onComplete: @escaping (FFmpegResult) -> Void
-    ) {
-        FFmpegKit.executeAsync(
+    ) -> Int64 {
+        let session = FFmpegKit.executeAsync(
             command,
-            withCompleteCallback: { session in
+            withCompleteCallback: { [weak self] session in
+                let sid = Int64(session?.getId() ?? -1)
+                self?.sessionsLock.withLock { self?.activeSessions.removeValue(forKey: sid) }
                 let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
                 let failStackTrace = session?.getFailStackTrace()
                 onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
@@ -34,6 +36,11 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
                 onProgress(KotlinLong(value: timeMs))
             }
         )
+        let sessionId = Int64(session?.getId() ?? -1)
+        if sessionId >= 0, let session = session {
+            sessionsLock.withLock { activeSessions[sessionId] = session }
+        }
+        return sessionId
     }
 
     func executeFFmpegAsyncArgs(

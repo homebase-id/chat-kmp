@@ -275,16 +275,19 @@ actual object FFmpegUtils {
     /**
      * Bridges the Swift async ffmpeg API to a suspending coroutine and converts
      * ffmpeg-kit's elapsed media time (ms) into a 0..1 progress fraction via
-     * [progressFraction]. Cancellation calls the bridge-wide cancel — fine for
-     * the current single-job flow (see [FFmpegKitBridge.cancelAllFFmpegSessions]
-     * docs for the per-session follow-up).
+     * [progressFraction]. Cancellation tears down ONLY this job's session via
+     * [FFmpegKitBridge.cancelFFmpegSession] — not the engine-wide
+     * [FFmpegKitBridge.cancelAllFFmpegSessions], which would also kill any
+     * concurrent FFmpegKit work (e.g. a thumbnail-strip extraction, or another
+     * compress/segment job). Mirrors the per-session fix the thumbnail decoder
+     * already uses in [FFmpegKitVideoDecoder.extractThumbnailStrip].
      */
     private suspend fun executeFfmpegWithProgress(
         command: String,
         durationMs: Long,
         onProgress: ((Float) -> Unit)?,
     ): FFmpegResult = suspendCancellableCoroutine { cont ->
-        bridge.executeFFmpegAsync(
+        val sessionId = bridge.executeFFmpegAsync(
             command = command,
             onProgress = { timeMs ->
                 onProgress?.invoke(progressFraction(timeMs, durationMs))
@@ -294,7 +297,9 @@ actual object FFmpegUtils {
             },
         )
         cont.invokeOnCancellation {
-            try { bridge.cancelAllFFmpegSessions() } catch (_: Exception) {}
+            if (sessionId >= 0) {
+                try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
+            }
         }
     }
 

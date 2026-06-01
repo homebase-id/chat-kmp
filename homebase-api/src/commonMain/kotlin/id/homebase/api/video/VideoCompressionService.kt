@@ -1,6 +1,8 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Singleton entry point for video compression, segmentation, and metadata probes
@@ -15,24 +17,36 @@ import id.homebase.api.client.KeyHeader
  * `FFmpegUtils` remains the low-level backend and still owns the thumbnail-grab
  * helper (`grabThumbnail`) and the actuals' internal probes.
  *
- * **Concurrency: run one compress/segment at a time.** Despite being a freely-callable
- * singleton, the backend is NOT safe for concurrent heavy operations:
+ * **Concurrency: one heavy op at a time — enforced here.** The backend is NOT safe for
+ * concurrent heavy operations:
  * - **Web (ffmpeg.wasm):** a single shared ffmpeg instance with fixed MEMFS scratch
  *   names (`input.mp4`, `index.m3u8`, …) — two simultaneous `compress`/`segment*` calls
  *   clobber each other's files.
- * - **iOS (FFmpegKit):** cancellation is engine-wide (`cancelAllFFmpegSessions`), so a
- *   cancel of one job tears down any other in flight.
+ * - **iOS (FFmpegKit):** a job's coroutine-cancellation tears down its own session; if two
+ *   heavy jobs overlap, the bookkeeping and scratch dirs (`compressed_<id>.mp4`,
+ *   `hls_<id>/`) can collide.
  * - **Android / JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
  *
- * Callers that process several videos (e.g. the full-screen attachment editor, multi-video
- * send) must therefore **serialize** these calls — queue them through one coordinator rather
- * than launching them concurrently. (`getDurationMs` / `getFfmpegVersion` probes are cheap and
- * fine to call freely; this restriction is about the encode/segment work.)
+ * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
+ * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
+ * [segment], [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
+ * waits until the first completes (and `withLock` is cancellation-aware, so a waiter that's
+ * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
+ * [getFfmpegVersion]) and [cacheInputVideo] are unguarded — they're fine to call freely.
+ *
+ * Note: this mutex serializes heavy compress/segment ops against *each other*. It does NOT
+ * cover [VideoThumbnailService]'s FFmpegKit sessions, which may still run concurrently —
+ * those are isolated via per-session cancel on iOS, so a compress/segment cancel never tears
+ * a thumbnail session down (and vice versa).
  */
 object VideoCompressionService : VideoCompressor, VideoProber {
 
-    private val compressor: VideoCompressor = FFmpegVideoCompressor
-    private val probe: VideoProber = FFmpegVideoProber
+    // Delegates are `var` only so tests can substitute fakes; production never reassigns them.
+    internal var compressor: VideoCompressor = FFmpegVideoCompressor
+    internal var probe: VideoProber = FFmpegVideoProber
+
+    /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
+    private val heavyOpLock = Mutex()
 
     override suspend fun compress(
         inputPath: String,
@@ -41,23 +55,31 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimEndMs: Long?,
         quality: VideoQuality,
     ): String? =
-        compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
+        heavyOpLock.withLock {
+            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
+        }
 
     override suspend fun segment(
         inputPath: String,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
-        compressor.segment(inputPath, onProgress)
+        heavyOpLock.withLock {
+            compressor.segment(inputPath, onProgress)
+        }
 
     override suspend fun segmentAndEncrypt(
         inputPath: String,
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
-        compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
+        heavyOpLock.withLock {
+            compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
+        }
 
     override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        compressor.remuxHlsToMp4(playlistPath, outputPath)
+        heavyOpLock.withLock {
+            compressor.remuxHlsToMp4(playlistPath, outputPath)
+        }
 
     override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         compressor.cacheInputVideo(fileName, data)

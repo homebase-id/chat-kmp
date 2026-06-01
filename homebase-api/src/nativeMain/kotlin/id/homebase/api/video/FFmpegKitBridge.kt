@@ -19,12 +19,17 @@ interface FFmpegKitBridge {
      * once when ffmpeg exits. Both callbacks may be invoked on ffmpeg-kit's
      * internal worker thread — implementations downstream must be
      * thread-safe (EventBus.tryEmit on MutableSharedFlow is).
+     *
+     * Returns the FFmpegKit session ID so the caller can cancel this specific
+     * session via [cancelFFmpegSession] without killing unrelated concurrent
+     * sessions (e.g. a thumbnail-strip extraction running alongside this
+     * compression/segmentation job).
      */
     fun executeFFmpegAsync(
         command: String,
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
-    )
+    ): Long
 
     /**
      * Same shape as [executeFFmpegAsync] but takes an arg list instead of a single shell-style
@@ -43,10 +48,12 @@ interface FFmpegKitBridge {
     ): Long
 
     /**
-     * Cancel all in-flight ffmpeg sessions. Appropriate for single-job flows
-     * (e.g. the upload pipeline's [executeFFmpegAsync] path) where no other
-     * concurrent session exists. For code that may run alongside other
-     * FFmpegKit work, prefer [cancelFFmpegSession].
+     * Cancel all in-flight ffmpeg sessions. Engine-wide — it tears down EVERY
+     * session, not just the caller's, so any code that may run alongside other
+     * FFmpegKit work must use [cancelFFmpegSession] instead. Both the upload
+     * pipeline ([executeFFmpegAsync]) and thumbnail extraction
+     * ([executeFFmpegAsyncArgs]) now cancel per-session; this remains only as a
+     * blunt "stop everything" escape hatch with no current production caller.
      */
     fun cancelAllFFmpegSessions()
 
