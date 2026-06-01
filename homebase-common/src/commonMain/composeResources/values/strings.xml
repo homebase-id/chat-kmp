@@ -754,6 +754,7 @@
     <string name="moment_video_mute">Mute video</string>
     <string name="moment_video_unmute">Unmute video</string>
     <string name="moment_video_pause">Pause video</string>
+    <string name="moment_video_watch_again">Watch again</string>
     <string name="moment_video_fill_screen">Fill screen</string>
     <string name="moment_video_fit_screen">Fit to screen</string>
     <string name="chat_message_download_file">Download file</string>

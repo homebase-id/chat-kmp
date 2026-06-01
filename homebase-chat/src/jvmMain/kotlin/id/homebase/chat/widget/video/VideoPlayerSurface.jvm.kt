@@ -94,6 +94,12 @@ actual fun VideoPlayerSurface(
     @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
     @Suppress("UNUSED_PARAMETER") useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    // Press-and-hold pause is driven from the compact-timeline inline tile,
+    // which the desktop never shows (it uses the wide split layout), so the
+    // flag is accepted to satisfy the expect signature but not wired here.
+    @Suppress("UNUSED_PARAMETER") paused: Boolean,
 ) {
     // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
     // built-in transport UI of its own (host renders controls). Param is
@@ -236,6 +242,8 @@ actual fun VideoPlayerSurface(
                     onFirstFrame()
                 },
                 muted = muted,
+                onEnded = onEnded,
+                replayToken = replayToken,
             )
         }
     }
@@ -253,6 +261,8 @@ internal fun VlcjPlayer(
     seekRequestMs: Long? = null,
     onPositionMs: ((Long) -> Unit)? = null,
     muted: Boolean = false,
+    onEnded: () -> Unit = {},
+    replayToken: Int = 0,
 ) {
     val vlcFound = remember { NativeDiscovery().discover() }
 
@@ -318,6 +328,9 @@ internal fun VlcjPlayer(
                     mediaPlayer.controls().setTime(0)
                     position = 0f
                     isPlaying = false
+                    // End-of-clip: let the host raise its "Watch again"
+                    // affordance instead of looping.
+                    onEnded()
                 }
             } else {
                 isPlaying = mediaPlayer.status().isPlaying
@@ -337,6 +350,16 @@ internal fun VlcjPlayer(
 
     LaunchedEffect(muted) {
         mediaPlayer.audio().isMute = muted
+    }
+
+    // Replay-in-place when the host's "Watch again" bumps replayToken. Guard on
+    // > 0 so the initial composition doesn't restart before first play.
+    LaunchedEffect(replayToken) {
+        if (replayToken > 0) {
+            mediaPlayer.controls().setTime(0)
+            mediaPlayer.controls().play()
+            isPlaying = true
+        }
     }
 
     // External seek requests

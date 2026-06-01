@@ -4,11 +4,14 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,14 +23,17 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,6 +41,7 @@ import co.touchlab.kermit.Logger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,7 +71,9 @@ import id.homebase.resources.moment_video_fit_screen
 import id.homebase.resources.moment_video_mute
 import id.homebase.resources.moment_video_pause
 import id.homebase.resources.moment_video_unmute
+import id.homebase.resources.moment_video_watch_again
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.delay
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -260,6 +269,36 @@ fun MomentInlineVideoTile(
     // fresh "no frame yet → thumbnail covers player" state.
     var firstFramePainted by remember(payload.key, isPlaying) { mutableStateOf(false) }
 
+    // End-of-clip "Watch again" state. We don't loop; when the player reports
+    // [VideoPlayerSurface]'s onEnded we pause-at-last-frame and raise a centred
+    // replay affordance. `replayToken` is bumped on tap to seek the live player
+    // back to 0 in place (no remount, no thumbnail flash). Both reset on every
+    // isPlaying flip so a fresh play (autoplay re-engaging, swipe-back) starts
+    // clean.
+    var ended by remember(payload.key, isPlaying) { mutableStateOf(false) }
+    var replayToken by remember(payload.key, isPlaying) { mutableIntStateOf(0) }
+
+    // Press-and-hold-to-pause: true while the user holds a finger down on the
+    // playing tile. Pauses [VideoPlayerSurface] in place (the current frame
+    // stays on screen) and resumes from the same position on release. Reset on
+    // every isPlaying flip so a fresh play / swipe-back never starts paused.
+    var heldPaused by remember(payload.key, isPlaying) { mutableStateOf(false) }
+
+    // Auto-hide the centred pause affordance ~2.5 s into playback so it doesn't
+    // sit over the video the whole time — long-press still pauses (see the
+    // surface's pointerInput below). Re-shown briefly on each fresh play and on
+    // replay (replayToken in the key restarts the timer). Only consulted in
+    // ButtonOnly + showPauseAffordance mode (the reels detail screen); the feed
+    // never renders a pause button at all.
+    var controlsVisible by remember(payload.key, isPlaying) { mutableStateOf(true) }
+    LaunchedEffect(payload.key, isPlaying, replayToken) {
+        if (isPlaying) {
+            controlsVisible = true
+            delay(2500)
+            controlsVisible = false
+        }
+    }
+
     // UI-side intent log. Brackets the lifetime of a single tap/autoplay
     // session, so VideoIO surface logs that follow can be attributed to a
     // tile-level intent (tap vs autoplay). Fires on every isPlaying flip.
@@ -294,17 +333,20 @@ fun MomentInlineVideoTile(
                 data = fullScreenData,
                 modifier = Modifier
                     .fillMaxSize()
-                    // Long-press on a playing tile pauses it. Native controls
-                    // are universally disabled below, so this is the only
-                    // manual pause path (autoplay otherwise pauses on
-                    // scroll-off).
+                    // Press-and-hold pauses the playing tile *in place* and
+                    // resumes on release (Instagram-style). We pause via the
+                    // [heldPaused] flag passed to the surface below — NOT by
+                    // flipping `isPlaying`, which would unmount the surface,
+                    // drop back to the thumbnail (looking like a reset to the
+                    // start), and cancel the consume loop below mid-gesture so
+                    // the parent registered the lift as a tap.
                     //
                     // We deliberately do NOT use `detectTapGestures` here:
                     // `detectTapGestures` consumes the up event for every
                     // gesture it observes (even with only `onLongPress`
                     // registered), which would block the card-level
                     // multi-tap detector in MomentsScreen from seeing the
-                    // single/double/triple taps that drive open-detail and
+                    // single/double/triple taps that drive open-comments and
                     // heart/flame reactions on the playing tile.
                     //
                     // Using the lower-level `awaitLongPressOrCancellation`
@@ -313,21 +355,27 @@ fun MomentInlineVideoTile(
                     // the parent. We only consume *after* a real long-press
                     // has fired (the long-press change + every subsequent
                     // event until release), so the parent doesn't also
-                    // register a tap when the user lifts their finger.
-                    .pointerInput(onPlayTap, haptic) {
+                    // register a tap when the user lifts their finger. The
+                    // `finally` guarantees we un-pause even if the gesture is
+                    // cancelled (e.g. the tile scrolls away mid-hold).
+                    .pointerInput(haptic) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val longPressed = awaitLongPressOrCancellation(down.id)
                                 ?: return@awaitEachGesture
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onPlayTap()
-                            longPressed.consume()
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id }
-                                    ?: break
-                                change.consume()
-                                if (!change.pressed) break
+                            try {
+                                heldPaused = true
+                                longPressed.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: break
+                                    change.consume()
+                                    if (!change.pressed) break
+                                }
+                            } finally {
+                                heldPaused = false
                             }
                         }
                     },
@@ -359,6 +407,14 @@ fun MomentInlineVideoTile(
                     }
                 },
                 useZoomFill = useZoomFill,
+                onEnded = {
+                    ended = true
+                    Logger.d(tag = "MomentVideo") {
+                        "tile ended: fileId=$fileId key=${payload.key}"
+                    }
+                },
+                replayToken = replayToken,
+                paused = heldPaused,
             )
         }
 
@@ -405,12 +461,42 @@ fun MomentInlineVideoTile(
 
         // Layer 3: state-specific overlays.
         if (isPlaying) {
-            // No centred play/pause overlay while playing in the feed —
-            // autoplay's raison d'être is "the video just plays" and
-            // scroll-away handles pause. The detail screen has no
-            // scroll-away, so it sets [showPauseAffordance] = true to get a
-            // centred Pause button back.
-            if (showPauseAffordance && isButtonOnly) {
+            if (ended) {
+                // End-of-clip: the player is paused on its last frame. Offer a
+                // centred "Watch again" pill (both feed and reels) that seeks
+                // back to 0 and resumes in place via [replayToken]. We do not
+                // loop automatically — replay is an explicit tap.
+                val watchAgainLabel = stringResource(MR.string.moment_video_watch_again)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable {
+                            ended = false
+                            replayToken++
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Replay,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.White,
+                    )
+                    Text(
+                        text = watchAgainLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            } else if (showPauseAffordance && isButtonOnly && controlsVisible) {
+                // Centred pause affordance for the reels detail screen (the feed
+                // never sets [showPauseAffordance]). Auto-hides ~2.5 s into
+                // playback via [controlsVisible]; long-press on the surface
+                // still pauses after it's gone.
                 IconButton(
                     onClick = onPlayTap,
                     modifier = Modifier.align(Alignment.Center).size(56.dp),
