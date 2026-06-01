@@ -1,3 +1,17 @@
+/*
+ * iOS-only — despite the platform-neutral filename.
+ *
+ * Lives in `homebase-core/src/nativeMain/` because iOS's app shell is Swift
+ * (`iosApp/`) rather than its own Kotlin module — there's no `iosApp` Kotlin
+ * counterpart to Android's `androidApp/` Gradle module, so the Kotlin entry
+ * point Swift calls into has to live in this multiplatform module's iOS
+ * source set. The `nativeMain` source set in this project is wired to
+ * iOS targets only (per CLAUDE.md "KMP Source Set Convention").
+ *
+ * Swift entry: `iosApp/iosApp/ContentView.swift` ->
+ * `MainViewControllerKt.MainViewController()` (the wrapper class name comes
+ * from this file's name, so renaming the file requires updating Swift).
+ */
 package id.homebase.core
 
 import androidx.compose.ui.window.ComposeUIViewController
@@ -84,6 +98,15 @@ fun initializeApp() {
 @OptIn(ExperimentalForeignApi::class)
 fun MainViewController(): UIViewController {
     initializeApp()
+    // Promote AuthCC out of headless mode — this is the iOS analogue of
+    // Android's MainActivity.onCreate: it fires only when SwiftUI actually
+    // presents the UI (ContentView.body builds ComposeView, which calls
+    // makeUIViewController). FCM background-fetch wake-ups don't reach
+    // here, so headless work stays headless. Idempotent. See
+    // AuthConnectionCoordinator.promoteToForeground.
+    val authCC: id.homebase.core.auth.AuthConnectionCoordinator =
+        org.koin.mp.KoinPlatformTools.defaultContext().get().get()
+    authCC.promoteToForeground()
     val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller
     return controller
