@@ -811,7 +811,7 @@ private fun DeleteCommentDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReactionsBottomSheet(
+internal fun ReactionsBottomSheet(
     isLoading: Boolean,
     reactions: List<MomentReactionUiModel>,
     onDismiss: () -> Unit,
@@ -1337,7 +1337,7 @@ private fun DetailActionColumn(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EmojiReactionButton(
+internal fun EmojiReactionButton(
     emoji: String,
     count: Int,
     isActive: Boolean,
@@ -1416,7 +1416,7 @@ private fun OverlayActionButton(
     }
 }
 
-private fun countReactionsByEmoji(
+internal fun countReactionsByEmoji(
     summary: id.homebase.api.client.drives.files.ReactionSummary?,
     emoji: String,
 ): Int {

@@ -31,7 +31,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
@@ -97,9 +96,6 @@ import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
@@ -548,6 +544,9 @@ private fun MomentsFeedList(
     // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
     // sheet anchors to this id and blocks the feed until dismissed.
     var commentsMomentId by remember { mutableStateOf<Uuid?>(null) }
+    // Which moment (if any) has its "who reacted" roster open. Null = closed.
+    // Opened by long-pressing a reaction toggle on a feed card.
+    var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }
     // Session-scoped mute state: a Koin singleton so it survives navigating
     // away from the moments tab and back. Default muted on every fresh app
     // launch (Instagram-style); once the user unmutes, every subsequent
@@ -619,6 +618,7 @@ private fun MomentsFeedList(
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 commentsSheetOnTap = commentsSheetOnTap,
                 onOpenComments = { commentsMomentId = moment.id },
+                onShowReactors = { reactionsMomentId = moment.id },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
@@ -655,6 +655,17 @@ private fun MomentsFeedList(
             onDismiss = { commentsMomentId = null },
         )
     }
+
+    // "Who reacted" roster, raised by long-pressing a reaction toggle. Spins up
+    // a throwaway per-moment detail VM (same pattern as the comments host) so
+    // the server-loaded reactor list is fetched and torn down with the sheet.
+    val reactorsMomentId = reactionsMomentId
+    if (reactorsMomentId != null) {
+        MomentReactionsSheetHost(
+            momentId = reactorsMomentId,
+            onDismiss = { reactionsMomentId = null },
+        )
+    }
 }
 
 /**
@@ -682,6 +693,40 @@ private fun MomentCommentsSheetHost(
             onAction = detailVm::onAction,
             onDismiss = onDismiss,
         )
+    }
+}
+
+/**
+ * Hosts the timeline's "who reacted" roster for a moment, opened by long-pressing
+ * a reaction toggle. Mirrors [MomentCommentsSheetHost]: a per-moment
+ * [MomentDetailViewModel] in a disposable [ViewModelStore], dispatched to
+ * [MomentDetailUiAction.OpenReactionsSheet] on open so the reactor list is
+ * fetched once and torn down with the sheet. Reuses the detail screen's
+ * [ReactionsBottomSheet] so the two surfaces show an identical roster.
+ */
+@Composable
+private fun MomentReactionsSheetHost(
+    momentId: Uuid,
+    onDismiss: () -> Unit,
+) {
+    DisposableViewModelStoreOwner {
+        val detailVm: MomentDetailViewModel = koinViewModel(
+            key = "moment-reactions-sheet-$momentId",
+        ) { parametersOf(momentId, null) }
+        val uiState by detailVm.uiState.collectAsStateWithLifecycle()
+        LaunchedEffect(momentId) {
+            detailVm.onAction(MomentDetailUiAction.OpenReactionsSheet)
+        }
+        if (uiState.showReactionsSheet) {
+            ReactionsBottomSheet(
+                isLoading = uiState.isReactionsLoading,
+                reactions = uiState.reactions,
+                onDismiss = {
+                    detailVm.onAction(MomentDetailUiAction.DismissReactionsSheet)
+                    onDismiss()
+                },
+            )
+        }
     }
 }
 
@@ -728,6 +773,9 @@ private fun MomentPostCard(
     // sheet (via [onOpenComments]) instead of calling [onCardClick].
     commentsSheetOnTap: Boolean,
     onOpenComments: () -> Unit,
+    // Long-press on a reaction toggle opens the server-loaded "who reacted"
+    // roster for this moment — same sheet the detail screen uses.
+    onShowReactors: () -> Unit,
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
     onDismissUpload: () -> Unit,
@@ -974,23 +1022,62 @@ private fun MomentPostCard(
             )
         }
 
-        // Bottom-right: engagement strip + lock indicator. Engagement strip
-        // surfaces top reaction emoji + comment count from
-        // `moment.reactionPreview` (kept fresh by MomentsFeedService
-        // incremental updates) and renders nothing when empty. The lock badge
-        // signals a private moment (no recipients) — absence implies shared,
-        // which is the common case. Both live on the right so the bottom-left
-        // stays clear of the video duration label rendered by
-        // MomentMediaItem.
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            EngagementStrip(summary = moment.reactionPreview)
-            if (moment.isPrivate(selfOdinId)) {
+        // Center-left: reaction toggles — heart + flame, the same interactive
+        // column the detail screen renders (reusing [EmojiReactionButton] so the
+        // two can't drift), minus the comment icon. Tapping toggles the
+        // reaction with the same floating-emoji confirmation as a
+        // double/triple-tap; long-press opens the "who reacted" roster. Skipped
+        // on description-only moments (nothing to overlay against), mirroring the
+        // detail screen.
+        if (moment.payloads.isNotEmpty()) {
+            val heartCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
+            }
+            val flameCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, FlameEmoji)
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                EmojiReactionButton(
+                    emoji = HeartEmoji,
+                    count = heartCount,
+                    isActive = HeartEmoji in moment.ownReactions,
+                    onClick = {
+                        val isRemoving = HeartEmoji in moment.ownReactions
+                        floatingController.show(HeartEmoji, isRemoving)
+                        onAddReaction(HeartEmoji)
+                    },
+                    onLongPress = onShowReactors,
+                )
+                EmojiReactionButton(
+                    emoji = FlameEmoji,
+                    count = flameCount,
+                    isActive = FlameEmoji in moment.ownReactions,
+                    onClick = {
+                        val isRemoving = FlameEmoji in moment.ownReactions
+                        floatingController.show(FlameEmoji, isRemoving)
+                        onAddReaction(FlameEmoji)
+                    },
+                    onLongPress = onShowReactors,
+                )
+            }
+        }
+
+        // Bottom-right: lock indicator for a private moment (no recipients) —
+        // absence implies shared, which is the common case. Kept on the right
+        // so the bottom-left stays clear of the video duration label rendered
+        // by MomentMediaItem.
+        if (moment.isPrivate(selfOdinId)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp),
+            ) {
                 IndicatorBadge(
                     imageVector = Icons.Outlined.Lock,
                     contentDescription = stringResource(MR.string.moments_feed_indicator_private),
@@ -1311,99 +1398,6 @@ private fun IndicatorBadge(
         )
     }
 }
-
-/**
- * Inline reaction + comment indicator overlaid on each feed tile. Deliberately
- * subtle:
- *  - Up to three top emoji, each with its count rendered directly beneath it,
- *    and the comment count beneath the comment icon.
- *  - Same dark-scrim chip as [IndicatorBadge] so the indicator family on a
- *    tile reads as one design.
- *  - Renders nothing when both reactions and comments are absent — empty
- *    moments stay visually quiet.
- *
- * Lives on the bottom-right alongside the lock badge, leaving the bottom-left
- * clear for the video duration label rendered by MomentMediaItem.
- */
-@Composable
-private fun EngagementStrip(
-    summary: ReactionSummary?,
-    modifier: Modifier = Modifier,
-) {
-    val topEmoji = remember(summary) {
-        summary?.reactions?.values
-            ?.sortedByDescending { it.count }
-            ?.mapNotNull { entry ->
-                if (entry.count <= 0) return@mapNotNull null
-                decodeReactionEmoji(entry.reactionContent)?.let { emoji -> emoji to entry.count }
-            }
-            ?.take(MaxTopEmoji)
-            .orEmpty()
-    }
-    val commentCount = summary?.totalCommentCount ?: 0
-    if (topEmoji.isEmpty() && commentCount <= 0) return
-
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        topEmoji.forEach { (emoji, count) ->
-            EngagementCount(count = count) {
-                Text(
-                    text = emoji,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White,
-                )
-            }
-        }
-        if (commentCount > 0) {
-            EngagementCount(count = commentCount) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.Comment,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
- * One engagement entry for [EngagementStrip]: the reaction glyph or comment
- * icon with its count rendered directly beneath, so the feed tile surfaces
- * per-emoji and comment counts under each icon.
- */
-@Composable
-private fun EngagementCount(
-    count: Int,
-    icon: @Composable () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        icon()
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White,
-        )
-    }
-}
-
-private const val MaxTopEmoji = 3
-
-/**
- * Decode the JSON-wrapped reaction content into its emoji glyph. Same shape
- * the detail screen uses (see `MomentDetailScreen.decodeReactionEmoji`) —
- * duplicated rather than lifted because there's no third caller yet.
- */
-@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
-private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
-    OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
-}.getOrNull()
 
 internal const val HeartEmoji = "❤️"
 internal const val FlameEmoji = "🔥"
