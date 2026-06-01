@@ -296,7 +296,17 @@ val appModule = module {
             }
         )
     }
-    singleOf(::BackgroundSyncOrchestrator)
+    single {
+        BackgroundSyncOrchestrator(
+            credentialsManager = get(),
+            driveSyncManager = get(),
+            driveFileHttpProvider = get(),
+            authConnectionCoordinator = get(),
+            // Narrow seam — pass the StateFlow, not the whole YouAuthFlowManager.
+            // See BackgroundSyncOrchestrator's class kdoc.
+            authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+        )
+    }
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)

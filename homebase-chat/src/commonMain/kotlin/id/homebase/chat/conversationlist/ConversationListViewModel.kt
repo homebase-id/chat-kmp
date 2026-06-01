@@ -77,6 +77,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -165,6 +166,13 @@ class ConversationListViewModel(
     // message-emission collect block below). Per-conversation so rapid
     // conversation switches can't cross-fire a scroll.
     private val pendingScrollToLatest = mutableSetOf<Uuid>()
+
+    // Unread boundary (lastRead snapshot) frozen at the moment a conversation is
+    // opened with unread messages. Keeps the "New messages" separator pinned in
+    // place while viewing, even after mark-as-read advances the live lastRead and
+    // zeroes unreadCount. Cleared on leave so re-entry recomputes. Keyed per
+    // conversation like pendingScrollToLatest.
+    private val frozenUnreadBoundary = mutableMapOf<Uuid, Instant>()
 
     private val mediaDownloadHandler = MediaDownloadHandler(
         scope = viewModelScope,
@@ -754,6 +762,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.ClearSelection -> {
                 ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
+                // Drop the frozen unread boundary so re-entering recomputes it from
+                // the (now advanced) lastRead — a fully-read conversation then shows
+                // no separator on the next open.
+                _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
                     it.copy(
@@ -1109,6 +1121,25 @@ class ConversationListViewModel(
             "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages trigger=$trigger"
         }
 
+        // Freeze the unread boundary on a genuine open (selection transition), so
+        // the "New messages" separator stays pinned in place while viewing — even
+        // after mark-as-read advances lastRead and zeroes unreadCount. Reloads of
+        // the already-open conversation must NOT re-capture, or the boundary would
+        // reset to the (now advanced) lastRead and the separator would vanish.
+        // Runs before selectedConversationId is flipped below, so the comparison
+        // still sees the previous selection.
+        val isNewSelection = _uiState.value.selectedConversationId != conversationId
+        if (isNewSelection) {
+            // Only one conversation is viewed at a time; drop any stale boundaries.
+            frozenUnreadBoundary.clear()
+            val convo = _uiState.value.activeConversations
+                .find { it.conversation.id == conversationId }
+                ?.conversation
+            if (convo != null && convo.unreadCount > 0) {
+                frozenUnreadBoundary[conversationId] = convo.lastRead
+            }
+        }
+
         // Always mark loading here, even when hasCachedMessages == true.
         //
         // Previously this short-circuited to `isLoadingMessages = !hasCachedMessages`
@@ -1274,17 +1305,18 @@ class ConversationListViewModel(
                                 models
                             }
 
-                            // Insert "New Messages" separator before the first unread message
-                            val convoModel = _uiState.value.activeConversations
-                                .find { it.conversation.id == conversationId }
-                                ?.conversation
-                            val lastRead = convoModel?.lastRead
+                            // Insert "New Messages" separator before the first unread message.
+                            // Position it from the boundary frozen at open time (see
+                            // loadMessagesForConversation top), NOT the live lastRead/unreadCount —
+                            // so it stays pinned while viewing instead of vanishing once
+                            // mark-as-read advances lastRead and zeroes unreadCount.
+                            val frozenBoundary = frozenUnreadBoundary[conversationId]
                             val currentOdinId = _uiState.value.ownerSession?.odinId
-                            if (lastRead != null && convoModel.unreadCount > 0) {
+                            if (frozenBoundary != null) {
                                 val firstUnreadIdx = messagesModels.indexOfFirst {
                                     it is MessageListContentModel.Message &&
                                         it.message.sender != currentOdinId &&
-                                        it.message.userDate > lastRead
+                                        it.message.userDate > frozenBoundary
                                 }
                                 if (firstUnreadIdx > 0) {
                                     messagesModels.add(firstUnreadIdx, MessageListContentModel.UnreadSeparator)
@@ -1335,6 +1367,25 @@ class ConversationListViewModel(
                                         firstVisibleItemIndex = indexOfMessageForScroll,
                                         triggerScroll = true
                                     )
+                                }
+
+                                // New-messages landing: on the initial open of a
+                                // conversation that has unread messages, land with the
+                                // "New messages" separator at the top of the viewport so
+                                // the new messages are visible instead of hidden below the
+                                // fold. Pre-init (triggerScroll = false), same as the
+                                // saved-anchor path below — no scroll flash, and a real
+                                // bounded index (not the Int.MAX_VALUE sentinel). Takes
+                                // priority over the saved anchor: surfacing new messages is
+                                // the point. An explicit jump to a specific message
+                                // (indexOfMessageForScroll, above) still wins.
+                                setInitialScroll && !scrollToBottom &&
+                                    messagesModels.any { it is MessageListContentModel.UnreadSeparator } -> {
+                                    val separatorIndex = messagesModels.indexOfFirst {
+                                        it is MessageListContentModel.UnreadSeparator
+                                    }
+                                    Logger.i("Landing on new-messages separator at index $separatorIndex")
+                                    ScrollPosition(firstVisibleItemIndex = separatorIndex)
                                 }
 
                                 setInitialScroll && !scrollToBottom -> {
