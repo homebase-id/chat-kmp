@@ -101,6 +101,7 @@ import id.homebase.resources.discard
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
+import id.homebase.resources.file_share_failed
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
@@ -194,7 +195,20 @@ fun ConversationListScreen(
 
             is ConversationListUiEvent.ShareFile -> {
                 viewModel.eventConsumed()
-                fileSystemHandler.shareFile(Path(event.filePath))
+                fileSystemHandler.shareFile(
+                    file = Path(event.filePath),
+                    onError = { error ->
+                        scope.launch {
+                            val fallback = error.message
+                                ?: TranslationUtil.getString(MR.string.error_unknown)
+                            val msg = TranslationUtil.getString(
+                                MR.string.file_share_failed,
+                                fallback,
+                            )
+                            snackbarHostState.showSnackbar(msg)
+                        }
+                    },
+                )
             }
 
             is ConversationListUiEvent.OpenFile -> {
