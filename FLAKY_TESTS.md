@@ -18,7 +18,11 @@ even after you fix it. The point is twofold:
 
 ## OutboxSyncTest — `ConcurrentModificationException at null:-1` (iOS sim)
 
-- **Status:** Stabilised — fix on branch `generic-video-compressor` (PR #623), green on the iOS leg.
+- **Status:** Stabilised on `generic-video-compressor` (PR #623). **PR #623 is
+  still open**, so the fix is not on `origin/main` yet — every PR branched off
+  main (i.e. anything that doesn't include #623's commits) will keep hitting
+  this flake intermittently on its iOS leg until #623 merges. Once #623 lands,
+  flip this status to plain "Stabilised."
 - **Where:** `homebase-api/src/commonTest/.../sync/database/OutboxSyncTest.kt`
 - **Target:** `iosSimulatorArm64Test` only. JVM / Android / wasm never reproduced it.
 - **Symptom:** Intermittent failures such as
@@ -74,3 +78,14 @@ even after you fix it. The point is twofold:
     test harness (e.g. a genuine concurrency issue in `NativeSqliteDriver` teardown
     that also affects the production `db.close()`-on-shutdown path). Capture the
     full iOS test report and treat it as a product investigation, not a test patch.
+
+- **Recurrences observed (on PRs that don't yet include #623's fix):**
+  - **2026-06-01, PR #628 — `fix-unread-badge-drivesync-recount` (off main).**
+    [`Build iOS on macos-latest`](https://github.com/homebase-id/chat-kmp/actions/runs/26748291316/job/78829384958)
+    failed with
+    `testPermanentFailure_ThumbnailSizeExceedsDroppedOnFirstAttempt[iosSimulatorArm64]
+    kotlin.ConcurrentModificationException at null:-1`. Different test case
+    than the original `NotFoundException` capture — exactly the
+    case-varies-run-to-run behaviour the symptom section calls out. Diff was
+    `homebase-chat`-only (Stopped-gate widening); zero overlap with the
+    failing test. Passed on retry. Expected until #623 merges to main.
