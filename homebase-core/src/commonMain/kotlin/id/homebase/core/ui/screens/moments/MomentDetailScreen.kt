@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -500,6 +502,14 @@ fun MomentDetailPane(
     }
 }
 
+/**
+ * Fraction of the screen height the tapped media shrinks to (pinned at the top)
+ * while the comments sheet is open. The sheet takes the remaining bottom
+ * [1f - MOMENT_MEDIA_FRACTION_WITH_COMMENTS], so the two tile the screen and
+ * both stay visible in one view.
+ */
+private const val MOMENT_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailContent(
@@ -602,6 +612,7 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
+                commentsOpen = showCommentsSheet,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 isActivePage = isActivePage,
@@ -619,7 +630,12 @@ private fun DetailContent(
             commentsEnabled = moment.commentsEnabled,
             onAction = onAction,
             onDismiss = { showCommentsSheet = false },
-            heightFraction = .70F
+            // Take the bottom 2/3 so the tapped media (shrunk to the top 1/3
+            // by MomentDetailContent) sits fully above it.
+            heightFraction = 1f - MOMENT_MEDIA_FRACTION_WITH_COMMENTS,
+            // Transparent scrim so the shrunk media above the sheet stays
+            // bright instead of being dimmed by the default modal scrim.
+            scrimColor = Color.Transparent,
         )
     }
 
@@ -985,12 +1001,21 @@ private fun MomentDetailContent(
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
     onOpenComments: () -> Unit,
+    commentsOpen: Boolean,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
+
+    // While the comments sheet is open, the media animates down to the top
+    // third of the screen (top-aligned) so the tapped photo/video stays fully
+    // visible above the sheet. 1f = full-screen immersive viewer (sheet closed).
+    val mediaHeightFraction by animateFloatAsState(
+        targetValue = if (commentsOpen) MOMENT_MEDIA_FRACTION_WITH_COMMENTS else 1f,
+        label = "momentMediaShrink",
+    )
 
     // Share the mute toggle with the feed via the app-session singleton so a
     // single tap persists across nav-in / nav-out of the detail screen.
@@ -1107,7 +1132,9 @@ private fun MomentDetailContent(
             // anywhere opens the detail panel (comments + description + edit).
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .fillMaxHeight(mediaHeightFraction)
+                    .align(Alignment.TopCenter)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -1127,7 +1154,10 @@ private fun MomentDetailContent(
         } else {
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(mediaHeightFraction)
+                    .align(Alignment.TopCenter),
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
@@ -1220,7 +1250,10 @@ private fun MomentDetailContent(
         // the user can still see *who* reacted with what. Skip the column
         // entirely on description-only moments — nothing to overlay
         // against.
-        if (moment.payloads.isNotEmpty()) {
+        // Hidden while the comments sheet is open — the column sits at
+        // CenterStart of the full screen, which would otherwise float over the
+        // sheet once the media has shrunk to the top third.
+        if (moment.payloads.isNotEmpty() && !commentsOpen) {
             val heartCount = remember(moment.reactionPreview) {
                 countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
             }
@@ -1263,7 +1296,10 @@ private fun MomentDetailContent(
         // metadata. Translucent gradient backdrop so text reads cleanly
         // over any photo. Only shown when there's media (the description-
         // only branch above already renders the description centred).
-        if (moment.payloads.isNotEmpty()) {
+        // Hidden while the comments sheet is open — the description and capture
+        // date are shown inside the sheet, and this bottom overlay would land
+        // behind / over the sheet anyway.
+        if (moment.payloads.isNotEmpty() && !commentsOpen) {
             DetailBottomOverlay(
                 description = moment.description,
                 userDateMs = moment.userDateMs,
@@ -1277,11 +1313,15 @@ private fun MomentDetailContent(
 
         // Layer 4: floating reaction confirmation — same animation the feed
         // card uses for double/triple-tap reactions. Drawn last so it lands
-        // on top of media + action column + bottom overlay.
-        FloatingReactionOverlay(
-            display = floatingController.display,
-            modifier = Modifier.align(Alignment.Center),
-        )
+        // on top of media + action column + bottom overlay. Suppressed while
+        // the comments sheet is open (reactions aren't reachable then, and a
+        // screen-centred animation would land over the sheet).
+        if (!commentsOpen) {
+            FloatingReactionOverlay(
+                display = floatingController.display,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
     }
 }
 
@@ -1488,11 +1528,16 @@ private fun CommentsSheet(
     // tapped moment peeks above the sheet). Null sizes to content and grows up
     // to full height (detail use, over the black immersive viewer).
     heightFraction: Float? = null,
+    // Overrides the modal scrim. The detail screen passes Color.Transparent so
+    // the media it shrinks to the top third above the sheet stays bright;
+    // other callers keep the default dimming scrim.
+    scrimColor: Color? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        scrimColor = scrimColor ?: BottomSheetDefaults.ScrimColor,
     ) {
         Column(
             modifier = Modifier
