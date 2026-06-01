@@ -367,17 +367,24 @@ fun ConversationContent(
         var previousTotal = 0
         var wasAtBottom = false
         snapshotFlow {
-            listState.layoutInfo.totalItemsCount to listState.canScrollForward
-        }.collect { (total, canScrollForward) ->
+            val info = listState.layoutInfo
+            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, lastVisibleIndex) ->
             if (total > previousTotal && previousTotal > 0 && wasAtBottom &&
                 !hasNewerForAutoFollow.value
             ) {
                 listState.animateScrollToItem(total - 1)
             }
-            // canScrollForward == false means the user is at the absolute end
-            // of the list. Record this BEFORE the next snapshot so a subsequent
-            // growth sees the pre-growth scroll state.
-            wasAtBottom = total > 0 && !canScrollForward
+            // "At the bottom" = the last item is currently visible. This mirrors
+            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
+            // unlike canScrollForward, does NOT require scrolling the final pixels
+            // into the 24.dp bottom content padding — so a fully-visible last
+            // message already counts as "at the bottom" and a newly-arrived
+            // message auto-follows. Recorded BEFORE the next snapshot so a
+            // subsequent growth sees the pre-growth scroll state (at the moment
+            // the new item lands, lastVisibleIndex still points at the old last
+            // item, which is why we read it from the prior emission here).
+            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
             previousTotal = total
         }
     }
