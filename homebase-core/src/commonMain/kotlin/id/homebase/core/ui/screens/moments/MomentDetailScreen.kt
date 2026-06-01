@@ -510,6 +510,15 @@ fun MomentDetailPane(
  */
 private const val MOMENT_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
 
+/**
+ * Height fraction of the comments sheet while it's open. Deliberately a touch
+ * under the remaining 2/3 so the gap between the shrunk media and the sheet
+ * absorbs the sheet's drag handle / rounded top — otherwise the bottom of a
+ * portrait clip (which fills the [MOMENT_MEDIA_FRACTION_WITH_COMMENTS] band)
+ * slips behind the sheet.
+ */
+private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailContent(
@@ -630,9 +639,11 @@ private fun DetailContent(
             commentsEnabled = moment.commentsEnabled,
             onAction = onAction,
             onDismiss = { showCommentsSheet = false },
-            // Take the bottom 2/3 so the tapped media (shrunk to the top 1/3
-            // by MomentDetailContent) sits fully above it.
-            heightFraction = 1f - MOMENT_MEDIA_FRACTION_WITH_COMMENTS,
+            // Media shrinks to the top 1/3 (MOMENT_MEDIA_FRACTION_WITH_COMMENTS);
+            // keep the sheet a little under the remaining 2/3 so the gap absorbs
+            // the sheet's drag handle / rounded top and the whole media — even a
+            // portrait clip that fills the band — stays visible above it.
+            heightFraction = MOMENT_COMMENTS_SHEET_FRACTION,
             // Transparent scrim so the shrunk media above the sheet stays
             // bright instead of being dimmed by the default modal scrim.
             scrimColor = Color.Transparent,
@@ -1214,6 +1225,10 @@ private fun MomentDetailContent(
                             tapMode = MomentVideoTapMode.ButtonOnly,
                             showPauseAffordance = true,
                             useNativeControls = false,
+                            // While the comments sheet is open the media is
+                            // shrunk to the top band — show the whole frame
+                            // (fit) instead of the immersive crop-to-fill.
+                            fitToContent = commentsOpen,
                         )
                     } else {
                         MomentMediaItem(

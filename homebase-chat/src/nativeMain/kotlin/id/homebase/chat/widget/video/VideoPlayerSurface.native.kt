@@ -378,13 +378,12 @@ actual fun VideoPlayerSurface(
                         // its own play/pause affordance (moments-feed
                         // carousel).
                         showsPlaybackControls = useNativeControls
-                        // Fit-with-letterbox vs crop-to-fill, controlled by
-                        // the caller. The feed carousel (useNativeControls
-                        // false) always wants resizeAspectFill so the video
-                        // matches its crop-to-fill thumbnail. The detail
-                        // screen passes through the user's session-scoped
-                        // toggle via [useZoomFill].
-                        videoGravity = if (!useNativeControls || useZoomFill) {
+                        // Fit-with-letterbox vs crop-to-fill, driven solely by
+                        // [useZoomFill]. Inline tiles request crop-to-fill
+                        // explicitly to match their crop-to-fill thumbnail; the
+                        // comments-open shrink passes useZoomFill = false so the
+                        // whole frame shows above the sheet.
+                        videoGravity = if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {
                             AVLayerVideoGravityResizeAspect
@@ -401,7 +400,7 @@ actual fun VideoPlayerSurface(
                 },
                 update = { controller ->
                     (controller as? AVPlayerViewController)?.videoGravity =
-                        if (!useNativeControls || useZoomFill) {
+                        if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {
                             AVLayerVideoGravityResizeAspect

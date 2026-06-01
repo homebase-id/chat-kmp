@@ -640,6 +640,7 @@ private fun MomentsFeedList(
                 autoplayActive = isActive,
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
+                commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
             )
         }
     }
@@ -784,6 +785,10 @@ private fun MomentPostCard(
     autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
+    // True while this card's comments sheet is open. Switches the media to
+    // fit-with-letterbox so the whole photo/video is visible (paired with the
+    // shrink/scroll that brings the card above the sheet).
+    commentsOpen: Boolean = false,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -958,6 +963,7 @@ private fun MomentPostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(aspect),
+                        fitToContent = commentsOpen,
                     )
                 } else {
                     MomentMediaGallery(
@@ -984,6 +990,7 @@ private fun MomentPostCard(
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
+                        fitToContent = commentsOpen,
                     )
                 }
 

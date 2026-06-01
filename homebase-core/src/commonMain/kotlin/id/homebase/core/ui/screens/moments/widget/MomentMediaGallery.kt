@@ -66,6 +66,9 @@ fun MomentMediaGallery(
     // the host can route tap-to-detail to the right page. No-op on the
     // single-payload path (the host already knows the only payload's key).
     onVisiblePayloadChanged: (String) -> Unit = {},
+    // Force carousel videos to show the whole frame (fit) — set while the host
+    // card is shrunk for the comments sheet.
+    fitToContent: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -105,6 +108,7 @@ fun MomentMediaGallery(
                 animatedVisibilityScope = animatedVisibilityScope,
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
+                fitToContent = fitToContent,
             )
         }
     }
