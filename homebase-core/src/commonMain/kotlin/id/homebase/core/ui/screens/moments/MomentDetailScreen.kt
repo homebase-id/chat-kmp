@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -101,6 +102,7 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
+import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
@@ -617,6 +619,7 @@ private fun DetailContent(
             commentsEnabled = moment.commentsEnabled,
             onAction = onAction,
             onDismiss = { showCommentsSheet = false },
+            heightFraction = .70F
         )
     }
 
@@ -1480,13 +1483,25 @@ private fun CommentsSheet(
     commentsEnabled: Boolean,
     onAction: (MomentDetailUiAction) -> Unit,
     onDismiss: () -> Unit,
+    // When set, the sheet content is pinned to this fraction of the available
+    // height so the surface behind it stays partly visible (timeline use — the
+    // tapped moment peeks above the sheet). Null sizes to content and grows up
+    // to full height (detail use, over the black immersive viewer).
+    heightFraction: Float? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
+                    else Modifier,
+                ),
+        ) {
             MomentDescriptionSection(
                 description = uiState.moment?.description.orEmpty(),
                 isMine = uiState.isMine,
@@ -1532,34 +1547,26 @@ private fun CommentsSheet(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 24.dp),
                 )
+                // Fixed-height sheet: take up the slack so the composer pins to
+                // the bottom instead of floating under the empty-state text.
+                if (heightFraction != null) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             } else {
                 LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false),
+                    // Fill the middle on a fixed-height sheet (composer pinned
+                    // at the bottom); on the content-sized detail sheet, wrap
+                    // so the sheet only grows as tall as the thread needs.
+                    modifier = Modifier.weight(1f, fill = heightFraction != null),
                 ) {
                     // Service emits newest-first; reverse for chat-style
                     // chronological ordering (oldest at top, newest just
                     // above the composer).
                     items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                        val isMine = comment.senderOdinId == null ||
-                            (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
-                        CommentRow(
+                        CommentRowFromState(
+                            uiState = uiState,
                             comment = comment,
-                            isMine = isMine,
-                            isEditing = uiState.editingCommentId == comment.id,
-                            editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
-                            isSaving = uiState.isSavingCommentEdit,
-                            isDeleting = uiState.deletingCommentIds.contains(comment.id),
-                            quickReactions = uiState.userDefaultReactions,
-                            onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
-                            onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
-                            onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
-                            onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
-                            onDeleteClick = {
-                                onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
-                            },
-                            onToggleReaction = { emoji ->
-                                onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
-                            },
+                            onAction = onAction,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1582,6 +1589,94 @@ private fun CommentsSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * A single [CommentRow] wired from [MomentDetailUiState] — derives the
+ * "is mine" / editing / deleting flags and forwards the per-comment actions.
+ * Extracted so the detail [CommentsSheet] (also reused by the timeline's
+ * [MomentCommentsSheet]) renders identical rows from one place.
+ */
+@Composable
+private fun CommentRowFromState(
+    uiState: MomentDetailUiState,
+    comment: MomentCommentItem,
+    onAction: (MomentDetailUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isMine = comment.senderOdinId == null ||
+        (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+    CommentRow(
+        comment = comment,
+        isMine = isMine,
+        isEditing = uiState.editingCommentId == comment.id,
+        editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+        isSaving = uiState.isSavingCommentEdit,
+        isDeleting = uiState.deletingCommentIds.contains(comment.id),
+        quickReactions = uiState.userDefaultReactions,
+        onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+        onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+        onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+        onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+        onDeleteClick = { onAction(MomentDetailUiAction.RequestDeleteComment(comment.id)) },
+        onToggleReaction = { emoji ->
+            onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+        },
+        modifier = modifier,
+    )
+}
+
+/**
+ * Modal comments + description sheet for a moment on the compact timeline (see
+ * [MomentsScreen]). Wraps the same [CommentsSheet] the full-screen detail view
+ * uses — so both surfaces show an identical thread — and adds the
+ * comment-delete confirmation dialog (the detail screen wires that itself in
+ * `DetailContent`, which this entry point doesn't go through).
+ *
+ * As a `ModalBottomSheet`, [CommentsSheet] brings its own scrim and blocks the
+ * feed behind it until the user swipes it down or taps the scrim, so the thread
+ * stays locked to the moment it was opened from.
+ */
+@Composable
+internal fun MomentCommentsSheet(
+    uiState: MomentDetailUiState,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    CommentsSheet(
+        uiState = uiState,
+        // Until the moment resolves from the feed, assume comments are allowed
+        // so the composer doesn't flash hidden then in on first frame.
+        commentsEnabled = uiState.moment?.commentsEnabled ?: true,
+        onAction = onAction,
+        onDismiss = onDismiss,
+        // Leave the top quarter showing the timeline so the tapped moment
+        // peeks behind the sheet (Instagram-style).
+        heightFraction = 0.65f,
+    )
+
+    val deleteCommentTarget = uiState.deleteCommentDialogTarget
+    if (deleteCommentTarget != null) {
+        DeleteCommentDialog(
+            onDeleteForMe = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = false,
+                    ),
+                )
+            },
+            onDeleteForEveryone = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = true,
+                    ),
+                )
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteCommentDialog) },
+        )
     }
 }
 
