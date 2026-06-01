@@ -122,6 +122,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
@@ -171,7 +172,15 @@ actual object FFmpegUtils {
         // Try hardware encoder first; fall back to libx264 if it fails. The
         // planner takes the encoder name and emits libx264-only flags
         // (-preset veryfast) only when appropriate.
-        for ((index, encoder) in listOf("h264_videotoolbox", "libx264").withIndex()) {
+        //
+        // When emitting 10-bit (allowTenBit + >8-bit source), skip
+        // h264_videotoolbox entirely: Apple's H.264 hardware encoder cannot
+        // produce 10-bit (High 10) output, so only libx264 can honour the
+        // yuv420p10le pin.
+        val encoders =
+            if (allowTenBit && bitDepth > 8) listOf("libx264")
+            else listOf("h264_videotoolbox", "libx264")
+        for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
                 inputPath = inputPath,
                 outputPath = outputPath,
@@ -187,6 +196,7 @@ actual object FFmpegUtils {
                 encoder = encoder,
                 probedBitDepth = bitDepth,
                 probedIsHdr = isHdr,
+                allowTenBit = allowTenBit,
             )
 
             if (plan.skipReason != null) {
@@ -215,10 +225,10 @@ actual object FFmpegUtils {
             if (result.isSuccess) {
                 return@withContext outputPath
             }
-            if (index == 0) {
-                println("Docs: Hardware encoder $encoder failed, trying next: ${result.failStackTrace}")
+            if (index < encoders.lastIndex) {
+                println("Docs: Encoder $encoder failed, trying next: ${result.failStackTrace}")
             } else {
-                println("Docs: Software encoder $encoder also failed: ${result.failStackTrace}")
+                println("Docs: Encoder $encoder (last) also failed: ${result.failStackTrace}")
             }
         }
 

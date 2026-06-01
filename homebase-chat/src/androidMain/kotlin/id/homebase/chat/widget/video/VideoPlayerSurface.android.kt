@@ -88,6 +88,9 @@ actual fun VideoPlayerSurface(
     onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
     useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    paused: Boolean,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -142,6 +145,7 @@ actual fun VideoPlayerSurface(
                 Logger.d(tag = "VideoIO") {
                     "player state: fileId=${data.fileId} key=${data.payloadKey} → ${playbackStateName(playbackState)}"
                 }
+                if (playbackState == Player.STATE_ENDED) onEnded()
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 Logger.d(tag = "VideoIO") {
@@ -208,6 +212,28 @@ actual fun VideoPlayerSurface(
             .buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, muted)
             .build()
+    }
+
+    // Press-and-hold pause-in-place. Toggling playWhenReady keeps the decoded
+    // frame on the TextureView (ExoPlayer holds the last frame while paused)
+    // and resumes from the same position when released — no surface teardown,
+    // no thumbnail flash, no reset to the start.
+    LaunchedEffect(exoPlayer, paused) {
+        exoPlayer?.playWhenReady = !paused
+    }
+
+    // Replay-in-place. The "Watch again" button increments replayToken; we
+    // seek the (already-loaded, ended) player back to 0 and resume without
+    // tearing the surface down. Guard on > 0 so the initial composition (token
+    // 0) doesn't trigger a spurious seek before playback has even begun.
+    LaunchedEffect(replayToken) {
+        if (replayToken > 0) {
+            exoPlayer?.let { p ->
+                p.seekTo(0)
+                p.playWhenReady = true
+                p.play()
+            }
+        }
     }
 
     LaunchedEffect(data) {

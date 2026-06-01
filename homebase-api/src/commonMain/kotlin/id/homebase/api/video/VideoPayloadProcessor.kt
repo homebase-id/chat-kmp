@@ -27,6 +27,7 @@ class VideoPayloadProcessor(
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
+        allowTenBit: Boolean = false,
     ): VideoProcessResult =
         // Resolve content URIs (Android copies the gallery pick into cacheDir as
         // resolved_*; other platforms no-op) and reap that copy when we're done,
@@ -43,6 +44,7 @@ class VideoPayloadProcessor(
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
                 videoQuality = videoQuality,
+                allowTenBit = allowTenBit,
             )
         }
 
@@ -54,6 +56,7 @@ class VideoPayloadProcessor(
         trimStartMs: Long?,
         trimEndMs: Long?,
         videoQuality: VideoQuality,
+        allowTenBit: Boolean,
     ): VideoProcessResult {
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
@@ -105,6 +108,7 @@ class VideoPayloadProcessor(
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
                 quality = videoQuality,
+                allowTenBit = allowTenBit,
                 onProgress = {
                     onProgress?.invoke(
                         VideoPayloadProgressPhase(
