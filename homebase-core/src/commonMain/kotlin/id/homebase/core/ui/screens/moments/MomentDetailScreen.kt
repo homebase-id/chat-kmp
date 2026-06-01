@@ -1711,9 +1711,12 @@ internal fun MomentCommentsSheet(
         commentsEnabled = uiState.moment?.commentsEnabled ?: true,
         onAction = onAction,
         onDismiss = onDismiss,
-        // Leave the top quarter showing the timeline so the tapped moment
-        // peeks behind the sheet (Instagram-style).
+        // Leave the top third showing the tapped moment (MomentsScreen shrinks
+        // it to a band above the sheet).
         heightFraction = 0.65f,
+        // Transparent scrim so the shrunk media band above the sheet stays
+        // bright instead of being dimmed by the default modal scrim.
+        scrimColor = Color.Transparent,
     )
 
     val deleteCommentTarget = uiState.deleteCommentDialogTarget
