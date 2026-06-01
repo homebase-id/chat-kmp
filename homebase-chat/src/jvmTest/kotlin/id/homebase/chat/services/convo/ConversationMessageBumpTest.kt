@@ -308,6 +308,129 @@ class ConversationMessageBumpTest {
         assertNull(updated)
     }
 
+    /**
+     * Mirrors the in-memory write loop inside
+     * [id.homebase.chat.services.convo.ConversationStream.enrichUnreadLocked]
+     * (commonMain). Kept inline so the recount seam can be exercised
+     * without ConversationStream's DB + DI graph. If that loop changes,
+     * change this too — the two are deliberately coupled.
+     */
+    private fun simulateEnrichUnreadOverwrite(
+        items: List<ConversationUiModel>,
+        unreadMap: Map<Uuid, Int>,
+    ): List<ConversationUiModel> = items.map { convo ->
+        val newCount = unreadMap[convo.id] ?: 0
+        if (newCount != convo.unreadCount) convo.copy(unreadCount = newCount) else convo
+    }
+
+    /**
+     * Characterization test for the **H2** asymmetric-badge path (the Sam vs.
+     * Frodo bug captured in plan `snazzy-frolicking-crown`). When a fresh
+     * incoming message bumps the in-memory unread count BUT the
+     * `selectAllUnreadCount` SQL filter excludes that conversation's row
+     * entirely (e.g. `originalAuthor IS NULL`, or `fileState=0`), the
+     * conversation is absent from `unreadMap` and the enrich loop overrides
+     * the in-memory bump back to 0 — silently losing the badge.
+     *
+     * This documents the seam as it stands today: present row keeps its
+     * bump, absent row gets reset. The fix (once H2 is confirmed by Phase B
+     * logs) will likely make `applyIncomingMessageBump` skip increments
+     * whose SQL counterpart would be excluded, at which point this test
+     * should be updated to assert the corrected behavior.
+     */
+    @Test
+    fun recount_resets_unreadCount_to_zero_when_convo_absent_from_unreadMap() {
+        // Two conversations: "sam" (the asymmetric victim) + "frodo" (the
+        // working one). Both start at 0 unread; both receive a fresh peer
+        // message via applyIncomingMessageBump.
+        val samId = convoId
+        val frodoId = otherConvoId
+        var items: List<ConversationUiModel> = listOf(
+            convo(id = samId, unread = 0),
+            convo(id = frodoId, unread = 0),
+        )
+
+        for ((cid, dateMs) in listOf(samId to 1_000L, frodoId to 1_000L)) {
+            // applyIncomingMessageBump matches by `targetConversationId`, not by
+            // `m.conversationId`, so we don't need to vary the message field.
+            val msg = message(author = alice, userDateMs = dateMs)
+            val next = applyIncomingMessageBump(
+                items = items,
+                targetConversationId = cid,
+                m = msg,
+                sqlUserDate = Instant.fromEpochMilliseconds(dateMs),
+                activeDomain = me,
+            )
+            assertNotNull(next, "bump for convo=$cid must produce a list change")
+            items = next
+        }
+        // After the two bumps, both convos show unread=1 in memory.
+        assertEquals(1, items.first { it.id == samId }.unreadCount)
+        assertEquals(1, items.first { it.id == frodoId }.unreadCount)
+
+        // Simulate the SQL recount: Sam's row is excluded entirely (e.g.
+        // originalAuthor IS NULL), so the map only contains Frodo.
+        val unreadMap = mapOf(frodoId to 1)
+        val afterRecount = simulateEnrichUnreadOverwrite(items, unreadMap)
+
+        // Sam silently loses the badge; Frodo keeps it.
+        assertEquals(
+            0,
+            afterRecount.first { it.id == samId }.unreadCount,
+            "absent-from-map convo gets reset to 0 — this is the asymmetric-badge mechanism",
+        )
+        assertEquals(1, afterRecount.first { it.id == frodoId }.unreadCount)
+    }
+
+    /**
+     * Characterization test for the **H1** asymmetric-badge path. Same
+     * symptom as the H2 test above, but here the SQL row for Sam IS in
+     * the recount result — it just comes back with `unreadCount = 0`
+     * because the stored `lastReadTime` is already ≥ the new message's
+     * `userDate` (saturated lastRead, e.g. from a peer-device echo or a
+     * markAllAsRead against a future-stamped status-message row).
+     *
+     * Note the in-memory `latestMessageTimestamp` still advances — this is
+     * what makes the bug user-visible: the conversation row shows the
+     * correct latest-message preview, but no badge.
+     */
+    @Test
+    fun recount_resets_unreadCount_to_zero_when_lastRead_saturates_past_new_message() {
+        val samId = convoId
+        val frodoId = otherConvoId
+        var items: List<ConversationUiModel> = listOf(
+            convo(id = samId, unread = 0),
+            convo(id = frodoId, unread = 0),
+        )
+
+        for ((cid, dateMs) in listOf(samId to 1_000L, frodoId to 1_000L)) {
+            // applyIncomingMessageBump matches by `targetConversationId`, not by
+            // `m.conversationId`, so we don't need to vary the message field.
+            val msg = message(author = alice, userDateMs = dateMs)
+            items = applyIncomingMessageBump(
+                items = items,
+                targetConversationId = cid,
+                m = msg,
+                sqlUserDate = Instant.fromEpochMilliseconds(dateMs),
+                activeDomain = me,
+            ) ?: items
+        }
+        assertEquals(1, items.first { it.id == samId }.unreadCount)
+        assertEquals(1_000L, items.first { it.id == samId }.latestMessageTimestamp.toEpochMilliseconds())
+
+        // SQL recount: Sam's row IS in the map but with count 0 (lastReadTime
+        // saturated past the message). Frodo's row reports 1 unread.
+        val unreadMap = mapOf(samId to 0, frodoId to 1)
+        val afterRecount = simulateEnrichUnreadOverwrite(items, unreadMap)
+
+        val samAfter = afterRecount.first { it.id == samId }
+        assertEquals(0, samAfter.unreadCount, "saturated lastRead drops Sam's badge")
+        // Preview-side latestMessageTimestamp survived the recount — this is
+        // why the user reports "no badge but latest-message preview is correct".
+        assertEquals(1_000L, samAfter.latestMessageTimestamp.toEpochMilliseconds())
+        assertEquals(1, afterRecount.first { it.id == frodoId }.unreadCount)
+    }
+
     @Test
     fun bump_doesNotTouchOtherConversations() {
         val target = convo(id = convoId, unread = 0)
@@ -330,4 +453,91 @@ class ConversationMessageBumpTest {
         assertEquals(7, updated.first { it.id == otherConvoId }.unreadCount)
         assertEquals(1, updated.first { it.id == convoId }.unreadCount)
     }
+
+    // region shouldRunUnreadRecountOnStopped — gate-predicate tests
+    //
+    // Locks down the decision that the BackendEvent.DriveEvent.Stopped
+    // handler makes about whether to run a fresh unread recount. The
+    // gate originally was `hasDirtyUnread()` alone; that misses message
+    // rows written by DriveSync's QueryBatch path (silent, no
+    // BatchReceived emitted), which is what produced the asymmetric-
+    // badge bug captured in homebase.log 2026-06-01 Session 5.
+
+    @Test
+    fun recountGate_dirtyBitSet_returnsTrue_evenWhenNotChatDrive() {
+        // Dirty wins on its own — OR semantics. A non-chat drive that
+        // somehow set the dirty bit (peer-device lastRead echo coming
+        // through a future code path, e.g.) still triggers a recount.
+        assertEquals(
+            true,
+            shouldRunUnreadRecountOnStopped(
+                isChatDrive = false,
+                totalCount = 0,
+                hasDirtyUnread = true,
+            ),
+        )
+    }
+
+    @Test
+    fun recountGate_chatDriveWithRecords_returnsTrue() {
+        // THE FIX. The asymmetric-badge bug: BG sync's QueryBatch writes
+        // message rows, emits Stopped(totalCount > 0), but never sets
+        // the dirty bit. Pre-fix this returned false and the badge
+        // stayed stale. The widened gate catches it.
+        assertEquals(
+            true,
+            shouldRunUnreadRecountOnStopped(
+                isChatDrive = true,
+                totalCount = 8,
+                hasDirtyUnread = false,
+            ),
+        )
+    }
+
+    @Test
+    fun recountGate_chatDriveAbortedWithPartialRows_returnsTrue() {
+        // BackendEvent.DriveResult kdoc warns: "earlier batches' DB
+        // writes commit before any later batch can fail." Aborted
+        // syncs with totalCount > 0 still represent real rows in DB
+        // that affect the count, so we deliberately don't gate on
+        // result == Completed. This test pins that decision.
+        assertEquals(
+            true,
+            shouldRunUnreadRecountOnStopped(
+                isChatDrive = true,
+                totalCount = 3,
+                hasDirtyUnread = false,
+            ),
+        )
+    }
+
+    @Test
+    fun recountGate_chatDriveWithZeroRecords_returnsFalse() {
+        // Nothing landed in the DB this round, nothing to recount.
+        // Skips the ~150 ms covering-index scan in the no-op case.
+        assertEquals(
+            false,
+            shouldRunUnreadRecountOnStopped(
+                isChatDrive = true,
+                totalCount = 0,
+                hasDirtyUnread = false,
+            ),
+        )
+    }
+
+    @Test
+    fun recountGate_nonChatDriveWithRecords_returnsFalse() {
+        // Contacts / Vault / Moments drives never carry chat messages;
+        // their Stopped events shouldn't trigger a chat-unread recount.
+        assertEquals(
+            false,
+            shouldRunUnreadRecountOnStopped(
+                isChatDrive = false,
+                totalCount = 25,
+                hasDirtyUnread = false,
+            ),
+        )
+    }
+
+    // endregion
 }
