@@ -4,30 +4,20 @@ package id.homebase.core.ui.screens.vault.gallery
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.MediaPendingOverlay
+import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -75,11 +65,11 @@ fun VaultZoomableImage(
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
             )
             if (isPending) {
-                PendingOverlay(onTap = onToggleUI)
+                MediaPendingOverlay(onTap = onToggleUI)
             }
         }
     } else if (isPending) {
-        PendingOverlay(onTap = onToggleUI)
+        MediaPendingOverlay(onTap = onToggleUI)
     } else {
         val remoteSource =
             remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
@@ -113,58 +103,12 @@ fun VaultZoomableImage(
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
             )
         } else {
-            UnavailablePlaceholder(
-                contentType = descriptor.contentType ?: "",
+            MediaUnavailablePlaceholder(
+                message = stringResource(MR.string.vault_error_image_unavailable),
+                icon = fileTypeIcon(descriptor.contentType ?: ""),
                 onTap = onToggleUI,
             )
         }
     }
 }
 
-@Composable
-private fun PendingOverlay(onTap: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTapGestures(onTap = { onTap() })
-        },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.38f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(48.dp),
-                color = MaterialTheme.colorScheme.inversePrimary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun UnavailablePlaceholder(contentType: String, onTap: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
-            detectTapGestures(onTap = { onTap() })
-        },
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = fileTypeIcon(contentType),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.size(64.dp),
-            )
-            Text(
-                text = stringResource(MR.string.vault_error_image_unavailable),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
-        }
-    }
-}

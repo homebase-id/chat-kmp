@@ -27,8 +27,19 @@ class HomebaseSubsamplingImageGenerator(
         if (model !is HomebaseImageData) {
             return null
         }
+        // Returning null (not Error) on a transient load failure lets the base
+        // image stand on its own and keeps the generator chain non-fatal; a
+        // later load can re-run subsampling instead of being marked failed.
         val payload = this.imageLoader.loadFullPayload(model)
-            ?: return SubsamplingImageGenerateResult.Error("Failed to load payload bytes")
+            ?: return null
+        // GIFs (and any thumbless type) are the animated original and can't be
+        // tiled. The embedded preview's contentType is always webp, so detect
+        // the real type from the loaded payload (not model.contentTypeHint).
+        // Returning null defers to the library's animation-aware generators
+        // rather than building a tile source the size/type gates would reject.
+        if (payload.contentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES) {
+            return null
+        }
         val imageSource = ImageSource.fromByteArray(payload.bytes)
         return SubsamplingImageGenerateResult.Success(SubsamplingImage(imageSource.toFactory(), null))
     }
