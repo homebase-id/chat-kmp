@@ -818,6 +818,11 @@ internal class MessageActionsHandler(
                     fullScreenOverlay = null,
                     isSendingMessage = false,
                     replyToMessage = if (replyTo != null) null else state.replyToMessage,
+                    // Closing fullScreenOverlay remounts ConversationContent with the
+                    // placeholder already present, so its layout-growth auto-follow can't
+                    // see growth. This token tells the freshly-mounted list to follow our
+                    // own send down to the bottom. See MessageListUiState.scrollToLatestRequest.
+                    scrollToLatestRequest = newMessageId,
                 )
             }
             messageInputTextState.clear()

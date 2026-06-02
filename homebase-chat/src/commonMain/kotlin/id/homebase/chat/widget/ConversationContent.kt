@@ -210,6 +210,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -430,6 +431,24 @@ fun ConversationContent(
             wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
             previousTotal = total
         }
+    }
+
+    // One-time own-send follow for sends that route through the full-screen
+    // attachment editor (image/video/file). Closing that overlay remounts this
+    // composable with the pending placeholder already in the list, so the
+    // layout-growth auto-follow above starts at previousTotal = 0 and never sees
+    // growth. The ViewModel sets scrollToLatestRequest in the same update that
+    // adds the placeholder and clears the overlay; we wait for the freshly
+    // mounted list to lay out, follow it to the bottom, then consume the token.
+    // Skipped (but still consumed) when paged into history — jumpToLatestAfterOwnSend
+    // handles that case with a ScrollToLatest reload once the send completes.
+    LaunchedEffect(uiState.scrollToLatestRequest) {
+        if (uiState.scrollToLatestRequest == null) return@LaunchedEffect
+        if (!uiState.hasNewerMessages) {
+            val total = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+            listState.animateScrollToItem(total - 1)
+        }
+        onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
     }
 
     // Add this state to track keyboard height

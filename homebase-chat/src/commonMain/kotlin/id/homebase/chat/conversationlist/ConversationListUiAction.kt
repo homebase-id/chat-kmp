@@ -215,6 +215,13 @@ sealed interface ConversationListUiAction {
      * land at the bottom of the loaded window, not the latest message.
      */
     data class ScrollToLatest(val conversationId: Uuid) : ConversationListUiAction
+
+    /**
+     * Clears [MessageListUiState.scrollToLatestRequest] after ConversationContent
+     * has consumed it (animated to the latest item). Makes the scroll-follow a
+     * one-time event so a later unrelated remount doesn't re-scroll.
+     */
+    data object ConsumeScrollToLatestRequest : ConversationListUiAction
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
     data object StopRecording : ConversationListUiAction

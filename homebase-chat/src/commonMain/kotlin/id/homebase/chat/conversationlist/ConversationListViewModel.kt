@@ -867,6 +867,10 @@ class ConversationListViewModel(
                 viewModelScope.launch { chatMessageStream.loadConversation(action.conversationId) }
             }
 
+            is ConversationListUiAction.ConsumeScrollToLatestRequest -> {
+                _messagesUiState.update { it.copy(scrollToLatestRequest = null) }
+            }
+
             is ConversationListUiAction.ClearHighlightedMessage -> messageActionsHandler.handleClearHighlightedMessage()
 
             is ConversationListUiAction.SaveFile -> mediaDownloadHandler.handleSaveFile(action)

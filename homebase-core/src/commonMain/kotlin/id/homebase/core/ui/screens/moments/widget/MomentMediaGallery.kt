@@ -155,8 +155,13 @@ private fun SingleImageLayout(
         else Modifier.fillMaxWidth().aspectRatio(aspect),
         imageSize = ImageSize.THUMB_LARGE,
         // Aspect set on the modifier — let the image fill it (Crop is a no-op
-        // when source aspect matches the box).
+        // when source aspect matches the box). When shrunk for the comments
+        // band, fill the host box (Fit, whole image) instead of re-imposing the
+        // image's own aspect ratio — without this the intrinsic `.aspectRatio()`
+        // keeps the image at its natural ratio and it never collapses into the
+        // 1/3 band (same fix the carousel and reels detail pager use).
         preserveAspectRatio = fitToContent,
+        fitBounds = fitToContent,
         shape = RectangleShape,
         // Preserve nullability so MomentMediaItem only installs its inner
         // pointerInput when there's an actual click/long-press handler.

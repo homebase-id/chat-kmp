@@ -152,7 +152,14 @@ fun MomentMediaCarousel(
         }
     }
 
-    Box(modifier = modifier.fillMaxWidth().aspectRatio(aspect)) {
+    // When shrunk for the comments sheet the host gives us an explicit (1/3)
+    // height — fill it instead of re-imposing the standardised carousel aspect,
+    // which would otherwise keep the carousel at its full width/aspect height
+    // and ignore the band (the single-image and video paths already honor this).
+    Box(
+        modifier = if (fitToContent) modifier.fillMaxSize()
+        else modifier.fillMaxWidth().aspectRatio(aspect),
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -208,9 +215,13 @@ fun MomentMediaCarousel(
                         ?: previewThumbnail,
                     modifier = Modifier.fillMaxSize(),
                     imageSize = ImageSize.THUMB_LARGE,
-                    // The carousel box is the aspect-locked region; let images
-                    // crop to it the same way the existing 4-up grid does.
-                    preserveAspectRatio = false,
+                    // Normally the carousel box is the aspect-locked region and
+                    // images crop to fill it (like the 4-up grid). While shrunk
+                    // for the comments sheet ([fitToContent]) the box is the 1/3
+                    // band, so fit the whole image into it instead — matching the
+                    // single-image and video paths.
+                    preserveAspectRatio = fitToContent,
+                    fitBounds = fitToContent,
                     shape = RectangleShape,
                     onClick = onMediaClick?.let { handler -> { handler(payload) } },
                     onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },

@@ -67,6 +67,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +77,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -337,6 +340,22 @@ private fun MomentDetailLoadedPager(
         // higher-index page coming from above — same as scrolling up the
         // timeline to see older posts.
         reverseLayout = true,
+        // Anchor pages to the moment IDENTITY, not the raw list index.
+        // `MomentsFeedService.emitSorted` re-emits a brand-new sorted list on
+        // every change (a reaction updates the moment header → BatchReceived →
+        // re-emit; new posts, deletes and sync catch-up all do too — see
+        // MomentsFeedService.kt:231). Without a key the pager tracks an integer
+        // index, so any insert/remove/re-sort shifts the index→moment mapping
+        // out from under a settled user: the moment under `currentPage` silently
+        // becomes a different one, `settledPage` remaps across the mounted
+        // panes, every pane's `isActivePage` flips, and the autoplay gate below
+        // tears down + rebuilds its ExoPlayer in a loop (the churn the TEMP
+        // instrumentation above was added to chase) — janking the Main thread so
+        // a quick vertical swipe registers nothing. With a key the pager keeps
+        // the same moment visible across re-emissions, so settledPage stays put
+        // and the players don't churn. Keys must be saveable, so stringify the
+        // Uuid (mirrors the comments LazyColumn's `key = { it.id.toString() }`).
+        key = { page -> feed[page].id.toString() },
     ) { page ->
         val moment = feed[page]
         val pageMomentId = moment.id
@@ -540,6 +559,21 @@ private fun DetailContent(
     // comment button lands with the thread already open.
     var showCommentsSheet by remember { mutableStateOf(openCommentsInitially) }
 
+    // Lifted out of [CommentsSheet] so the media-shrink animation can track the
+    // sheet's *target* state instead of the post-dismissal callback.
+    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Drives the media shrink. `onDismissRequest` only fires once the sheet has
+    // finished sliding off-screen, so keying the shrink off `showCommentsSheet`
+    // alone makes the media wait for the slide to complete before re-expanding
+    // (a visible lag). Instead re-expand the moment the swipe-down starts
+    // settling toward Hidden — the media then grows in parallel with the slide.
+    val commentsShrinkActive by remember {
+        derivedStateOf {
+            showCommentsSheet && commentsSheetState.targetValue != SheetValue.Hidden
+        }
+    }
+
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
         // read as part of the cinematic surface rather than the surface
@@ -621,7 +655,7 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
-                commentsOpen = showCommentsSheet,
+                commentsOpen = commentsShrinkActive,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 isActivePage = isActivePage,
@@ -647,6 +681,7 @@ private fun DetailContent(
             // Transparent scrim so the shrunk media above the sheet stays
             // bright instead of being dimmed by the default modal scrim.
             scrimColor = Color.Transparent,
+            sheetState = commentsSheetState,
         )
     }
 
@@ -1169,6 +1204,18 @@ private fun MomentDetailContent(
                     .fillMaxWidth()
                     .fillMaxHeight(mediaHeightFraction)
                     .align(Alignment.TopCenter),
+                // This pager fills the whole page (mediaHeightFraction = 1f when
+                // comments are closed), so it sits under every swipe. A
+                // single-payload moment has nowhere to scroll horizontally, but
+                // an *enabled* horizontal Pager still installs a live orientation
+                // -locked `scrollable` that competes with the parent
+                // VerticalPager for the gesture: a slightly-diagonal swipe can
+                // cross horizontal touch-slop first and get claimed here, so the
+                // vertical swipe drops. Gate scrolling on having more than one
+                // page so single-payload moments (the common case) leave the
+                // vertical gesture entirely to the parent. Real carousels keep
+                // horizontal paging.
+                userScrollEnabled = pageCount > 1,
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
@@ -1244,6 +1291,12 @@ private fun MomentDetailContent(
                             // (and vice versa). Letterbox bars take the Box's
                             // black background.
                             preserveAspectRatio = true,
+                            // While the comments sheet is open the pager is
+                            // height-constrained to the top band; fill that box
+                            // (Fit) instead of letting the image's own aspect
+                            // ratio size it and overflow the band — mirrors the
+                            // video tile's fitToContent here.
+                            fitBounds = commentsOpen,
                             messageId = moment.id,
                             shape = RectangleShape,
                             sharedTransitionScope = sharedTransitionScope,
@@ -1547,8 +1600,11 @@ private fun CommentsSheet(
     // the media it shrinks to the top third above the sheet stays bright;
     // other callers keep the default dimming scrim.
     scrimColor: Color? = null,
+    // Lifted in by the detail screen so it can observe the sheet's target state
+    // and re-expand the shrunk media in parallel with the slide-down. Defaults
+    // to a locally-remembered state for callers that don't need that coupling.
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1698,11 +1754,16 @@ private fun CommentRowFromState(
  * feed behind it until the user swipes it down or taps the scrim, so the thread
  * stays locked to the moment it was opened from.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MomentCommentsSheet(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onDismiss: () -> Unit,
+    // Lifted in by the timeline feed list so it can observe the sheet's target
+    // state and drop the shrunk media band in parallel with the slide-down.
+    // Defaults to a locally-remembered state for any other caller.
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
     CommentsSheet(
         uiState = uiState,
@@ -1717,6 +1778,7 @@ internal fun MomentCommentsSheet(
         // Transparent scrim so the shrunk media band above the sheet stays
         // bright instead of being dimmed by the default modal scrim.
         scrimColor = Color.Transparent,
+        sheetState = sheetState,
     )
 
     val deleteCommentTarget = uiState.deleteCommentDialogTarget

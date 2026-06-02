@@ -90,6 +90,14 @@ fun MomentMediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
+    // Fill the box the parent hands us (Fit, whole image visible) instead of
+    // imposing the media's own aspect ratio on the layout. Set when the host
+    // gives an explicit size — e.g. the comments-shrink band or the detail/reels
+    // pager page — so the image collapses into that box like the video tile does
+    // (which fills via plain fillMaxSize). Without this the intrinsic
+    // `.aspectRatio()` modifier below lets the image size to its own ratio inside
+    // a height-constrained pager and overflow the band.
+    fitBounds: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
@@ -105,7 +113,7 @@ fun MomentMediaItem(
     isUploading: Boolean = false,
 ) {
     val contentType = payload.contentType ?: ""
-    val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
+    val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
     val localVideoContextStore = koinInject<LocalAttachmentContextStore>()
     val localContext = if (messageId != null) {
         val ctx by localVideoContextStore.observe(messageId, payload.key)
@@ -128,7 +136,7 @@ fun MomentMediaItem(
     val baseModifier = modifier.clip(shape)
 
     val finalModifier =
-        if (preserveAspectRatio && aspectRatio != null) {
+        if (preserveAspectRatio && aspectRatio != null && !fitBounds) {
             baseModifier.aspectRatio(aspectRatio)
         } else {
             baseModifier
