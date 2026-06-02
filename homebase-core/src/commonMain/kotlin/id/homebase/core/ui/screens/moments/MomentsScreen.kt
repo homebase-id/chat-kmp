@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -47,6 +48,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -519,6 +522,7 @@ private const val FeedPaneWidthFraction = 0.28f
 private val FeedPaneMinWidth = 380.dp
 private val FeedPaneMaxWidth = 480.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
@@ -548,6 +552,13 @@ private fun MomentsFeedList(
     // opened, so the media band above the sheet shows that exact item (the
     // selected carousel page), not always page 0.
     var commentsPayloadKey by remember { mutableStateOf<String?>(null) }
+    // Lifted out of the comments sheet host so the media band can track the
+    // sheet's *target* state. The sheet's onDismissRequest only fires once the
+    // slide-down completes; keying the band off `commentsMomentId` alone makes
+    // the shrunk band linger over the feed for the whole slide before snapping
+    // away. Hiding it the moment the swipe-down settles toward Hidden restores
+    // the full-size feed in parallel with the slide instead.
+    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Which moment (if any) has its "who reacted" roster open. Null = closed.
     // Opened by long-pressing a reaction toggle on a feed card.
     var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }
@@ -665,11 +676,25 @@ private fun MomentsFeedList(
         if (commentsSheetOnTap && bandMomentId != null) {
             val bandMoment = moments.firstOrNull { it.id == bandMomentId }
             if (bandMoment != null) {
+                // Crossfade the band with the sheet's slide rather than hard-
+                // cutting to the live feed. `onDismissRequest` only fires after
+                // the slide completes, so leaving the opaque band up for the
+                // whole slide felt laggy; hard-removing it the instant the swipe
+                // settles toward Hidden made the full-size feed card snap in
+                // behind the still-moving sheet (jarring). Fading the band out
+                // as the sheet settles reveals the feed gradually, in parallel
+                // with the slide. Stays composed (gated on `commentsMomentId`)
+                // until `onDismiss` clears it, so the fade always completes.
+                val bandAlpha by animateFloatAsState(
+                    targetValue = if (commentsSheetState.targetValue == SheetValue.Hidden) 0f else 1f,
+                    label = "momentCommentsBandFade",
+                )
                 MomentCommentsMediaBand(
                     moment = bandMoment,
                     initialPayloadKey = commentsPayloadKey,
                     isMuted = isMuted,
                     onToggleMute = videoSession::toggleMuted,
+                    modifier = Modifier.graphicsLayer { alpha = bandAlpha },
                 )
             }
         }
@@ -683,6 +708,7 @@ private fun MomentsFeedList(
     if (commentsSheetOnTap && sheetMomentId != null) {
         MomentCommentsSheetHost(
             momentId = sheetMomentId,
+            sheetState = commentsSheetState,
             onDismiss = { commentsMomentId = null },
         )
     }
@@ -709,9 +735,11 @@ private fun MomentsFeedList(
  * Reuses the detail screen's [MomentCommentsSheet] so the timeline and the
  * full-screen detail view show an identical thread.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MomentCommentsSheetHost(
     momentId: Uuid,
+    sheetState: SheetState,
     onDismiss: () -> Unit,
 ) {
     DisposableViewModelStoreOwner {
@@ -723,6 +751,7 @@ private fun MomentCommentsSheetHost(
             uiState = uiState,
             onAction = detailVm::onAction,
             onDismiss = onDismiss,
+            sheetState = sheetState,
         )
     }
 }
@@ -754,12 +783,13 @@ private fun MomentCommentsMediaBand(
     initialPayloadKey: String?,
     isMuted: Boolean,
     onToggleMute: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val targetPayload = remember(moment.payloads, initialPayloadKey) {
         moment.payloads.firstOrNull { it.key == initialPayloadKey }
             ?: moment.payloads.firstOrNull()
     }
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         if (targetPayload != null) {
             Box(
                 modifier = Modifier

@@ -1760,6 +1760,10 @@ internal fun MomentCommentsSheet(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onDismiss: () -> Unit,
+    // Lifted in by the timeline feed list so it can observe the sheet's target
+    // state and drop the shrunk media band in parallel with the slide-down.
+    // Defaults to a locally-remembered state for any other caller.
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
     CommentsSheet(
         uiState = uiState,
@@ -1774,6 +1778,7 @@ internal fun MomentCommentsSheet(
         // Transparent scrim so the shrunk media band above the sheet stays
         // bright instead of being dimmed by the default modal scrim.
         scrimColor = Color.Transparent,
+        sheetState = sheetState,
     )
 
     val deleteCommentTarget = uiState.deleteCommentDialogTarget
