@@ -760,21 +760,33 @@ class MomentsPostSenderService(
         val auditFileId = existing.fileId
         val auditTargets = genuinelyNew.map { it.domainName }.toSet()
         scope.launch {
+            Logger.i(tag = TAG) {
+                "MomentAddPeopleAudit: transfer-history poll STARTING moment=$momentUniqueId " +
+                    "fileId=$auditFileId addedTargets=$auditTargets"
+            }
             val pollDelaysMs = longArrayOf(5_000, 10_000, 15_000, 30_000, 60_000)
             for ((i, d) in pollDelaysMs.withIndex()) {
                 delay(d)
-                val history = runCatching {
+                val history = try {
                     driveFileProvider.getTransferHistory(drive, auditFileId)
-                }.getOrElse { e ->
+                } catch (e: Exception) {
                     Logger.w(throwable = e, tag = TAG) {
-                        "MomentAddPeopleAudit: transfer-history poll ${i + 1} threw moment=$momentUniqueId"
+                        "MomentAddPeopleAudit: transfer-history poll ${i + 1} THREW moment=$momentUniqueId"
                     }
-                    null
-                } ?: continue
+                    continue
+                }
+                if (history == null) {
+                    // 404 — no transfer history for this file (yet, or endpoint absent).
+                    Logger.i(tag = TAG) {
+                        "MomentAddPeopleAudit: transfer-history poll ${i + 1} NULL(404) moment=$momentUniqueId fileId=$auditFileId"
+                    }
+                    continue
+                }
                 val results = history.history.results
                 Logger.i(tag = TAG) {
                     "MomentAddPeopleAudit: transfer-history poll ${i + 1} moment=$momentUniqueId " +
                         "fileId=$auditFileId addedTargets=$auditTargets " +
+                        "originalRecipientCount=${history.originalRecipientCount} " +
                         "results=[${results.joinToString { "${it.recipient}=${it.latestTransferStatus}" +
                             "(inOutbox=${it.isInOutbox} deliveredVT=${it.latestSuccessfullyDeliveredVersionTag})" }}]"
                 }
@@ -786,6 +798,9 @@ class MomentsPostSenderService(
                     }
                     break
                 }
+            }
+            Logger.i(tag = TAG) {
+                "MomentAddPeopleAudit: transfer-history poll FINISHED moment=$momentUniqueId"
             }
         }
 
