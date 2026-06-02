@@ -91,6 +91,18 @@ class FFmpegCompressionCommonTest {
         runProgress(stageSampleMovForFfmpegTest())
     }
 
+    // ── re-entry (ffmpeg-kit C11.1: print_report first-tick gate) ───────────────────────
+
+    @Test
+    fun reentry_mp4_repeatedCompressDoesNotCrash() = runTest(timeout = opTimeout) {
+        runReentry(stageSampleVideoForFfmpegTest())
+    }
+
+    @Test
+    fun reentry_mov_repeatedCompressDoesNotCrash() = runTest(timeout = opTimeout) {
+        runReentry(stageSampleMovForFfmpegTest())
+    }
+
     // ── shared bodies ───────────────────────────────────────────────────────────────────
 
     /** Trim forces a re-encode (skips the planner's already-optimal short-circuit), so a
@@ -110,6 +122,41 @@ class FFmpegCompressionCommonTest {
         } finally {
             cleanupStagedSampleVideo(input)
             output?.let { cleanupStagedSampleVideo(it) }
+        }
+    }
+
+    /**
+     * Regression for the ffmpeg-kit in-process **re-entry crash** (homebase-id/ffmpeg-kit
+     * commit `33f2ffb`, "C11.1"): `print_report()`'s first-tick gate statics
+     * (`first_report` / `last_time`) weren't reset between `ffmpeg_execute()` calls, so the
+     * 2nd+ compress in one process fired `print_report` before the muxer dumped output and
+     * SIGSEGV'd. Compressing the same input several times back-to-back drives many
+     * `ffmpeg_execute()`s through one process — pre-C11.1 a later run crashes; post-C11.1 all
+     * succeed.
+     *
+     * **Latency caveat:** the crash window is widest with a HW encoder. On the iOS simulator
+     * there's no `h264_videotoolbox`, so this runs the libx264 fallback (narrower window) — a
+     * reliable post-fix gate / re-entry exerciser, not a guaranteed pre-fix reproducer. The HW
+     * reproducer lives in `CompressVideoAndroidInstrumentedTest` (`h264_mediacodec`, device).
+     */
+    private suspend fun runReentry(input: String?) {
+        if (input == null) return
+        val produced = mutableListOf<String>()
+        try {
+            repeat(3) { i ->
+                val out = VideoCompressionService.compress(
+                    inputPath = input,
+                    onProgress = null,
+                    trimStartMs = 0L,
+                    trimEndMs = 1_500L,
+                    quality = VideoQuality.STANDARD,
+                )
+                assertNotNull(out, "compress #$i returned null — re-entry pipeline broken")
+                produced += out
+            }
+        } finally {
+            cleanupStagedSampleVideo(input)
+            for (p in produced) cleanupStagedSampleVideo(p)
         }
     }
 

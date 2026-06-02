@@ -21,11 +21,20 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         onProgress: @escaping (KotlinLong) -> Void,
         onComplete: @escaping (FFmpegResult) -> Void
     ) -> Int64 {
+        // Guards the add-after-complete race: a fast-failing session's complete
+        // callback can fire (removing the session) before the insert below runs,
+        // which would otherwise re-add an already-finished session that never
+        // gets removed. `completed` is read/written only under sessionsLock so
+        // the insert is skipped once completion has happened.
+        var completed = false
         let session = FFmpegKit.executeAsync(
             command,
             withCompleteCallback: { [weak self] session in
                 let sid = Int64(session?.getId() ?? -1)
-                self?.sessionsLock.withLock { self?.activeSessions.removeValue(forKey: sid) }
+                self?.sessionsLock.withLock {
+                    completed = true
+                    self?.activeSessions.removeValue(forKey: sid)
+                }
                 let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
                 let failStackTrace = session?.getFailStackTrace()
                 onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
@@ -38,7 +47,9 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
-            sessionsLock.withLock { activeSessions[sessionId] = session }
+            sessionsLock.withLock {
+                if !completed { activeSessions[sessionId] = session }
+            }
         }
         return sessionId
     }
@@ -48,11 +59,16 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         onProgress: @escaping (KotlinLong) -> Void,
         onComplete: @escaping (FFmpegResult) -> Void
     ) -> Int64 {
+        // See executeFFmpegAsync: same add-after-complete guard.
+        var completed = false
         let session = FFmpegKit.execute(
             withArgumentsAsync: args,
             withCompleteCallback: { [weak self] session in
                 let sid = Int64(session?.getId() ?? -1)
-                self?.sessionsLock.withLock { self?.activeSessions.removeValue(forKey: sid) }
+                self?.sessionsLock.withLock {
+                    completed = true
+                    self?.activeSessions.removeValue(forKey: sid)
+                }
                 let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
                 let failStackTrace = session?.getFailStackTrace()
                 onComplete(FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace))
@@ -65,7 +81,9 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
-            sessionsLock.withLock { activeSessions[sessionId] = session }
+            sessionsLock.withLock {
+                if !completed { activeSessions[sessionId] = session }
+            }
         }
         return sessionId
     }
