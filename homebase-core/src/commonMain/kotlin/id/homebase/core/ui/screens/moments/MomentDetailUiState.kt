@@ -13,6 +13,14 @@ import org.jetbrains.compose.resources.StringResource
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
     val isLoading: Boolean = true,
+    /**
+     * Coil model for a just-posted moment whose payloads haven't landed yet
+     * (photo file path, or a video's poster-frame JPEG bytes). Lets the
+     * reels/detail media area show the picked media + a spinner during the
+     * "Preparing…" window instead of a black backdrop — mirrors the timeline
+     * card's placeholder behaviour. Null once real payloads arrive.
+     */
+    val pendingLocalPreviewModel: Any? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     /**
      * Payload key the detail carousel should land on when first opened —

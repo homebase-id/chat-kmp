@@ -214,7 +214,13 @@ private fun AlbumMomentCell(
                         driveId = moment.driveId,
                         fileId = moment.fileId,
                         payloadKey = firstImagePayload.key,
-                        previewThumbnail = moment.previewThumbnail,
+                        // Prefer the payload's own embedded thumb (a just-posted
+                        // video carries its poster here) over the moment-level
+                        // one, which is null for a video-only moment — otherwise
+                        // the cell flips from poster to a bare grey backdrop
+                        // while it waits for the server-generated thumbnail.
+                        previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+                            ?: moment.previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
                         isEncrypted = true,
                         keyHeader = id.homebase.api.client.KeyHeader(

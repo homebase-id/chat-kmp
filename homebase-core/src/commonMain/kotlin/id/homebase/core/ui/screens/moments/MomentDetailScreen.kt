@@ -91,12 +91,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
+import coil3.compose.AsyncImage
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -1173,9 +1175,10 @@ private fun MomentDetailContent(
         // pointer detector so taps fall through (the surrounding sheets are
         // opened by the right-edge IconButtons below).
         if (moment.payloads.isEmpty()) {
-            // Description-only moment — there's no media to render, so fill
-            // with the description text centred over the black backdrop. A tap
-            // anywhere opens the detail panel (comments + description + edit).
+            // Either a just-posted moment whose payloads haven't landed yet, or
+            // a genuine description-only moment. A tap anywhere opens the detail
+            // panel (comments + description + edit).
+            val pendingPreview = uiState.pendingLocalPreviewModel
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1188,7 +1191,19 @@ private fun MomentDetailContent(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                if (moment.description.isNotBlank()) {
+                if (pendingPreview != null) {
+                    // Placeholder window after posting: show the picked media
+                    // (a video's poster bytes / a photo's path) with a spinner,
+                    // mirroring the timeline card — otherwise this branch is a
+                    // bare black backdrop until real payloads arrive.
+                    AsyncImage(
+                        model = pendingPreview,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                    CircularProgressIndicator(color = Color.White)
+                } else if (moment.description.isNotBlank()) {
                     Text(
                         text = moment.description,
                         color = Color.White,

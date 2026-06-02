@@ -112,6 +112,7 @@ class MomentDetailViewModel(
         val addRecipientsQuery: String = "",
         val addRecipientsSelected: Set<MomentsRecipientId> = emptySet(),
         val isAddingRecipients: Boolean = false,
+        val pendingLocalPreviewModel: Any? = null,
     )
 
     private val _screenLocal = MutableStateFlow(ScreenLocalState())
@@ -143,6 +144,19 @@ class MomentDetailViewModel(
             recipientLookup.recipients.collect { snapshot ->
                 _screenLocal.update { it.copy(addRecipientsSnapshot = snapshot) }
             }
+        }
+        // Mirror the post sender's transient local preview for *this* moment so
+        // the reels/detail media area can show the picked media (a video's
+        // poster bytes, a photo's path) during the "Preparing…" window before
+        // payloads land — otherwise the empty-payloads branch shows only a
+        // black backdrop (the timeline card already does this via the feed VM).
+        viewModelScope.launch {
+            postSender.pendingLocalPreviews
+                .map { it[momentId] }
+                .distinctUntilChanged()
+                .collect { model ->
+                    _screenLocal.update { it.copy(pendingLocalPreviewModel = model) }
+                }
         }
     }
 
@@ -184,6 +198,7 @@ class MomentDetailViewModel(
         MomentDetailUiState(
             moment = match,
             isLoading = match == null,
+            pendingLocalPreviewModel = local.pendingLocalPreviewModel,
             fullScreenOverlay = overlay,
             initialPayloadKey = initialPayloadKey,
             comments = comments,
