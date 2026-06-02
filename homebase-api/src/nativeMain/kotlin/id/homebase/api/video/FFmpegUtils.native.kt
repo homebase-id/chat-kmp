@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import kotlin.coroutines.resume
 import kotlin.math.roundToLong
@@ -124,6 +125,7 @@ actual object FFmpegUtils {
         quality: VideoQuality,
     ): String? = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
+        Logger.i(tag = "MovCrashProbe") { "native.compressVideo START input=$inputPath exists=${fileManager.fileExistsAtPath(inputPath)}" } // TEMP MovCrashProbe
         if (!fileManager.fileExistsAtPath(inputPath)) {
             println("Docs: Input file not found: $inputPath")
             return@withContext null
@@ -168,6 +170,10 @@ actual object FFmpegUtils {
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
         val durationMs = getDurationMs(inputPath)
 
+        Logger.i(tag = "MovCrashProbe") { // TEMP MovCrashProbe
+            "native.compressVideo PROBE codec=$codecMime ${widthPx}x${heightPx} rot=$rotation pixFmt=$pixFmt bitDepth=$bitDepth hdr=$isHdr durationMs=$durationMs inputBytes=$inputBytes"
+        }
+
         // Try hardware encoder first; fall back to libx264 if it fails. The
         // planner takes the encoder name and emits libx264-only flags
         // (-preset veryfast) only when appropriate.
@@ -211,7 +217,9 @@ actual object FFmpegUtils {
 
             val command = args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
 
+            Logger.i(tag = "MovCrashProbe") { "native.compressVideo EXEC[$encoder] command=$command" } // TEMP MovCrashProbe
             val result = executeFfmpegWithProgress(command, durationMs, onProgress)
+            Logger.i(tag = "MovCrashProbe") { "native.compressVideo EXEC[$encoder] DONE success=${result.isSuccess}" } // TEMP MovCrashProbe
             if (result.isSuccess) {
                 return@withContext outputPath
             }
@@ -451,6 +459,7 @@ actual object FFmpegUtils {
     }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
+        Logger.i(tag = "MovCrashProbe") { "native.getDurationMs input=$inputPath fileSchemeBranch=${inputPath.startsWith("file://")}" } // TEMP MovCrashProbe
         // Defensive: handle both raw paths and file:// URLs. fileURLWithPath
         // would double-encode an already-formed URL; URLWithString won't
         // accept a bare path. Same pattern as LocalVideoPlayerSurface.native.kt.

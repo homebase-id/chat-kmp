@@ -61,6 +61,13 @@ class VideoPayloadProcessor(
         videoQuality: VideoQuality,
     ): VideoProcessResult {
 
+        // TEMP MovCrashProbe — remove after diagnosis. Phase breadcrumbs so homebase.log
+        // shows the LAST phase reached before a hard (native/foreign-thread) crash that
+        // bypasses the addMessageWithFiles catch.
+        Logger.i(tag = "MovCrashProbe") {
+            "process START key=${payload.key} path=${payload.filePath}"
+        }
+
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 
 
@@ -77,7 +84,9 @@ class VideoPayloadProcessor(
 
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
+        Logger.i(tag = "MovCrashProbe") { "PHASE 1 poster START path=${payload.filePath}" } // TEMP MovCrashProbe
         val posterBytes = VideoThumbnailService.extractPosterFrame(payload.filePath)
+        Logger.i(tag = "MovCrashProbe") { "PHASE 1 poster DONE bytes=${posterBytes?.size ?: -1}" } // TEMP MovCrashProbe
         if (posterBytes != null) {
             val (_, generatedTinyThumb, generatedThumbnails) =
                 createThumbnails(posterBytes, payload.key)
@@ -106,6 +115,9 @@ class VideoPayloadProcessor(
         // phase-start 0f emitted above. Without this every raw tick became a suspending
         // PhaseProgress emit — the same EventBus flood the upload path had. See
         // WholePercentProgressGate.
+        Logger.i(tag = "MovCrashProbe") { // TEMP MovCrashProbe
+            "PHASE 2 compress START input=${payload.filePath} inputSize=${inputSize}B trim=$trimStartMs..$trimEndMs quality=$videoQuality"
+        }
         val compressGate = WholePercentProgressGate().also { it.admit(0f) }
         val (compressedPath, compressElapsed) =
             measureTimedValue {
@@ -148,6 +160,7 @@ class VideoPayloadProcessor(
             if (useHls) {
                 // Same whole-percent throttle as compression (see compressGate). No priming —
                 // there is no separate SEGMENTING phase-start emit, so the first tick should land.
+                Logger.i(tag = "MovCrashProbe") { "PHASE 4 segment START input=$compressedPath" } // TEMP MovCrashProbe
                 val segmentGate = WholePercentProgressGate()
                 val (segmented, segmentElapsed) =
                     measureTimedValue {
@@ -190,10 +203,13 @@ class VideoPayloadProcessor(
                     )
                 )
 
+                Logger.i(tag = "MovCrashProbe") { "PHASE 4.5 encrypt START input=$videoPath" } // TEMP MovCrashProbe
                 encryptVideoFile(
                     inputPath = videoPath,
                     keyHeader = keyHeader
-                )
+                ).also {
+                    Logger.i(tag = "MovCrashProbe") { "PHASE 4.5 encrypt DONE output=$it" } // TEMP MovCrashProbe
+                }
 
             } else {
                 videoPath
@@ -202,8 +218,11 @@ class VideoPayloadProcessor(
 
         /* ---------- PHASE 5: METADATA ---------- */
 
+        Logger.i(tag = "MovCrashProbe") { "PHASE 5 metadata START durationProbe=$compressedPath" } // TEMP MovCrashProbe
         val durationMs = probe.getDurationMs(compressedPath)
+        Logger.i(tag = "MovCrashProbe") { "PHASE 5 metadata duration=${durationMs}ms; detecting codec of $finalVideoPath" } // TEMP MovCrashProbe
         val codec = detectVideoCodec(finalVideoPath)
+        Logger.i(tag = "MovCrashProbe") { "PHASE 5 metadata DONE codec=$codec" } // TEMP MovCrashProbe
 
         // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already
         // been re-encoded into either the HLS segment (segmented path) or the
