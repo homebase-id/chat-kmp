@@ -116,6 +116,24 @@ actual object FFmpegUtils {
                 }
             }
 
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!NSFileManager.defaultManager.fileExistsAtPath(inputPath)) return@withContext null
+        val info = bridge.getMediaInformation(inputPath) ?: return@withContext null
+        val v = info.streams.firstOrNull { it.type == "video" } ?: return@withContext null
+        val pixFmt = v.pixelFormat?.lowercase().orEmpty()
+        val bitDepth = when {
+            pixFmt.isBlank() -> 8
+            "12" in pixFmt -> 12
+            "10" in pixFmt || pixFmt.startsWith("p010") -> 10
+            else -> 8
+        }
+        val transfer = v.colorTransfer?.lowercase().orEmpty()
+        val primaries = v.colorPrimaries?.lowercase().orEmpty()
+        val isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
+            primaries.startsWith("bt2020")
+        VideoTrackInfo(v.codec, v.width ?: 0, v.height ?: 0, bitDepth, isHdr)
+    }
+
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,

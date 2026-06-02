@@ -221,6 +221,7 @@ import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -354,27 +355,67 @@ fun ConversationContent(
             }
     }
 
-    // Auto-follow: when the list grows (new sent or received message) and the
-    // user was already at the bottom, scroll to the new last item. If the user
-    // is reading history further up, leave them alone.
+    // Auto-follow: when the list grows, scroll to the new last item if EITHER
+    //  - the user was already at the bottom (a new incoming/sent message while
+    //    reading the latest), OR
+    //  - the growth is the user's OWN just-sent message — so typing while
+    //    scrolled up moves you down to your message (Signal/WhatsApp behaviour).
+    // Someone else's message arriving while you're scrolled up is left alone.
     //
-    // When `hasNewerMessages == true` the user is paged backwards into history;
-    // the bottom of the loaded window is NOT the latest message, and ChatMessageStream
-    // gates incoming-stream upserts on the same flag — so the only way the list
-    // grows here is via prepend, which the user wouldn't want auto-followed.
+    // When `hasNewerMessages == true` the user is paged backwards into history
+    // (or the window was trimmed past MAX_WINDOW_SIZE): the bottom of the loaded
+    // window is NOT the latest message, and ChatMessageStream gates incoming-stream
+    // upserts (including the user's own optimistic send) on the same flag — so the
+    // list can only grow via prepend here and must never auto-follow. The own-send
+    // case in that state is handled separately by a reload (jumpToLatestAfterOwnSend
+    // in the ViewModel), which resets hasNewerMessages and lands on the sent message.
     val hasNewerForAutoFollow = rememberUpdatedState(uiState.hasNewerMessages)
+    val myOdinId = uiState.ownerSession?.odinId
+    // Identity + authorship of the BOTTOM of the merged list: a trailing pending
+    // outgoing placeholder (file/video send, shown before the real bubble lands)
+    // or the last loaded message. The own-send arm below fires only when this
+    // KEY changes to one of the user's own items — so a genuine new send at the
+    // bottom follows, while an older-message prepend (which also grows the list
+    // but leaves the bottom key unchanged) does NOT yank the user back down.
+    val bottomItem = rememberUpdatedState(run {
+        val convoId = conversation.conversation.id
+        val lastMsg = (uiState.messages.lastOrNull { it is MessageListContentModel.Message }
+            as? MessageListContentModel.Message)?.message
+        val trailingPending = uiState.pendingOutgoing
+            .filter { it.conversationId == convoId }
+            .maxByOrNull { it.sentAt }
+        when {
+            // Pending placeholders sort to the bottom only when newer than the
+            // last loaded message (mirrors the mergedItems interleave). They are
+            // always the user's own outgoing content.
+            trailingPending != null &&
+                (lastMsg == null || trailingPending.sentAt > lastMsg.userDate) ->
+                trailingPending.id to true
+            lastMsg != null ->
+                lastMsg.id to (myOdinId != null && lastMsg.sender == myOdinId)
+            else -> null to false
+        }
+    })
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
+        var previousBottomKey: Uuid? = null
         snapshotFlow {
             val info = listState.layoutInfo
             info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
         }.collect { (total, lastVisibleIndex) ->
-            if (total > previousTotal && previousTotal > 0 && wasAtBottom &&
+            val (bottomKey, bottomMine) = bottomItem.value
+            val grew = total > previousTotal && previousTotal > 0
+            // Own-send: the bottom item is the user's AND it just changed (a new
+            // message/placeholder landed at the end), so follow it down even when
+            // the user had scrolled up into history.
+            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
+            if (grew && (wasAtBottom || myNewBottom) &&
                 !hasNewerForAutoFollow.value
             ) {
                 listState.animateScrollToItem(total - 1)
             }
+            previousBottomKey = bottomKey
             // "At the bottom" = the last item is currently visible. This mirrors
             // the scroll-to-bottom FAB's own visibility test (line ~341) and,
             // unlike canScrollForward, does NOT require scrolling the final pixels

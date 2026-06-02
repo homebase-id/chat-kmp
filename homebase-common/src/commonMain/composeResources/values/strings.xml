@@ -1014,6 +1014,20 @@
     <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
 
+    <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
+    <string name="video_info_title">Video info</string>
+    <string name="video_info_container">Container: %1$s</string>
+    <string name="video_info_codec">Codec: %1$s</string>
+    <string name="video_info_resolution">Resolution: %1$s</string>
+    <string name="video_info_bit_depth">Bit depth: %1$s</string>
+    <string name="video_info_hdr">HDR: %1$s</string>
+    <string name="video_info_bitrate">Bitrate: %1$s</string>
+    <string name="video_info_duration">Duration: %1$s</string>
+    <string name="video_info_size">Size: %1$s</string>
+    <string name="video_info_unknown">—</string>
+    <string name="video_info_yes">Yes</string>
+    <string name="video_info_no">No</string>
+
     <!-- Defragmenter issue labels -->
     <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>
     <string name="defragmenter_issue_soft_delete_drift">Soft-delete drift</string>

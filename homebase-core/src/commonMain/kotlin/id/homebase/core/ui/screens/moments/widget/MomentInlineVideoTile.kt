@@ -58,6 +58,7 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.widget.video.VideoPlayerSurface
+import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.moments.services.MomentsVideoSession
 import org.koin.compose.koinInject
@@ -162,6 +163,14 @@ fun MomentInlineVideoTile(
      * next to the mute icon so the user can flip fit ↔ crop on the fly.
      */
     onToggleZoomFill: (() -> Unit)? = null,
+    /**
+     * Force the whole frame to show (fit-with-letterbox), overriding the usual
+     * crop-to-fill — even on the no-native-controls inline path. Set by the
+     * moments comments flow when the media is shrunk to a band above the sheet,
+     * so the entire photo/video is visible instead of being cropped to the
+     * band. Also flips the thumbnail underlay to [ContentScale.Fit] to match.
+     */
+    fitToContent: Boolean = false,
 ) {
     val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
     if (payloadIv == null) {
@@ -204,6 +213,19 @@ fun MomentInlineVideoTile(
     }
 
     val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
+
+    // Hidden debug overlay: long-press the MP4/HLS badge to toggle the codec-info
+    // panel; long-press again (or tap) to dismiss. Reachable while the tile is
+    // idle (the badge is hidden during playback).
+    var showVideoInfo by remember(fileId, payload.key) { mutableStateOf(false) }
+
+    // Effective crop-to-fill decision for both the player surface and the
+    // thumbnail underlay. Preserves the prior behaviour — inline tiles
+    // (no native controls) crop-to-fill, native-controls callers follow their
+    // [useZoomFill] toggle — but [fitToContent] forces fit-with-letterbox so a
+    // shrunk moment shows the whole frame. (VideoPlayerSurface now resizes
+    // purely on its useZoomFill arg, so the tile passes this resolved value.)
+    val cropToFill = if (fitToContent) false else (!useNativeControls || useZoomFill)
 
     // Feed↔detail playback handoff. The session holds at most one entry — the
     // most recently-playing inline video — keyed by (fileId, payloadKey).
@@ -406,7 +428,7 @@ fun MomentInlineVideoTile(
                         "tile first frame painted: fileId=$fileId key=${payload.key}"
                     }
                 },
-                useZoomFill = useZoomFill,
+                useZoomFill = cropToFill,
                 onEnded = {
                     ended = true
                     Logger.d(tag = "MomentVideo") {
@@ -431,15 +453,12 @@ fun MomentInlineVideoTile(
         // on some Android GPUs that produces visible horizontal slices of
         // the thumbnail bleeding through the first decoded frame.
         val thumbnailAlpha = if (isPlaying && firstFramePainted) 0f else 1f
-        // Match the player's resize mode so the thumbnail → first-frame
-        // hand-off doesn't visibly re-crop the image:
-        //   - Native controls, no zoom-fill → RESIZE_MODE_FIT → Fit.
-        //   - Native controls, zoom-fill → RESIZE_MODE_ZOOM → Crop.
-        //   - No native controls (feed carousel) → RESIZE_MODE_ZOOM → Crop.
-        val thumbnailContentScale = if (useNativeControls && !useZoomFill) {
-            ContentScale.Fit
-        } else {
+        // Match the player's resize mode (driven by [cropToFill]) so the
+        // thumbnail → first-frame hand-off doesn't visibly re-crop the image.
+        val thumbnailContentScale = if (cropToFill) {
             ContentScale.Crop
+        } else {
+            ContentScale.Fit
         }
         if (uploadBitmap != null) {
             Image(
@@ -591,7 +610,12 @@ fun MomentInlineVideoTile(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = { showVideoInfo = !showVideoInfo },
+                        )
+                    },
             )
             if (displayDurationMs != null) {
                 Text(
@@ -608,6 +632,21 @@ fun MomentInlineVideoTile(
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
+        }
+
+        if (showVideoInfo && !isUploading) {
+            VideoInfoOverlay(
+                descriptor = videoDescriptor,
+                isHls = isHls,
+                modifier = Modifier
+                    .matchParentSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { showVideoInfo = false },
+                            onLongPress = { showVideoInfo = false },
+                        )
+                    },
+            )
         }
 
         // Preload progress only meaningful while idle; once the user has

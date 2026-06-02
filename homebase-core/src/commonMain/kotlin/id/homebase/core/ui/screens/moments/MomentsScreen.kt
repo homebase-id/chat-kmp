@@ -594,9 +594,10 @@ private fun MomentsFeedList(
         }
     }
 
+    Box(modifier = modifier) {
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         // Chat-style: feed is sorted newest-first by the service, and
@@ -629,7 +630,10 @@ private fun MomentsFeedList(
                 // for the rare "user explicitly wanted to stop or restart"
                 // case — taps still toggle, autoplay re-engages on the next
                 // visibility update.
-                isVideoPlaying = isActive,
+                // Pause the feed's own players while the comments band is up
+                // (the band owns playback) so we never mount two surfaces for
+                // the same moment.
+                isVideoPlaying = isActive && commentsMomentId == null,
                 onToggleVideoPlay = {
                     playingMomentId = if (isActive) null else moment.id
                 },
@@ -640,7 +644,26 @@ private fun MomentsFeedList(
                 autoplayActive = isActive,
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
+                commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
             )
+        }
+    }
+
+        // While a card's comments sheet is open, cover the feed with the tapped
+        // moment's media shrunk to a band at the top (whole frame, fit) so it
+        // sits fully above the (transparent-scrim) sheet — mirroring the detail
+        // screen. Deterministic: no list scrolling, and the feed's own players
+        // are paused below (isVideoPlaying gate) so only the band plays.
+        val bandMomentId = commentsMomentId
+        if (commentsSheetOnTap && bandMomentId != null) {
+            val bandMoment = moments.firstOrNull { it.id == bandMomentId }
+            if (bandMoment != null) {
+                MomentCommentsMediaBand(
+                    moment = bandMoment,
+                    isMuted = isMuted,
+                    onToggleMute = videoSession::toggleMuted,
+                )
+            }
         }
     }
 
@@ -693,6 +716,81 @@ private fun MomentCommentsSheetHost(
             onAction = detailVm::onAction,
             onDismiss = onDismiss,
         )
+    }
+}
+
+/**
+ * Fraction of the screen the tapped moment's media occupies (pinned to the top)
+ * while its comments sheet is open. The sheet takes the bottom ~0.65, so the two
+ * leave a small black gap and both stay visible — see [MomentCommentsMediaBand].
+ */
+private const val MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
+
+/**
+ * Opaque overlay drawn over the feed while a moment's comments sheet is open: the
+ * tapped moment's media, shrunk to the top [MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS]
+ * of the screen and rendered fit-to-content (whole frame), so it sits fully above
+ * the transparent-scrim sheet. Mirrors the detail screen's shrink without touching
+ * the (reverse-layout) list scroll position. The feed's own video players are
+ * paused while this is up (see the `isVideoPlaying` gate at the card call site),
+ * so only this band plays.
+ */
+@Composable
+private fun MomentCommentsMediaBand(
+    moment: MomentFeedItem,
+    isMuted: Boolean,
+    onToggleMute: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS)
+                .align(Alignment.TopCenter),
+        ) {
+            val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { p ->
+                p.contentType?.startsWith("video/") == true ||
+                    p.contentType == "application/vnd.apple.mpegurl"
+            }
+            if (singleVideoPayload != null) {
+                var playing by remember(moment.id) { mutableStateOf(true) }
+                MomentInlineVideoTile(
+                    payload = singleVideoPayload,
+                    fileId = moment.fileId,
+                    driveId = moment.driveId,
+                    keyHeader = moment.keyHeader,
+                    previewThumbnail = moment.previewThumbnail,
+                    isUploading = false,
+                    isPlaying = playing,
+                    onPlayTap = { playing = !playing },
+                    onDoubleTap = {},
+                    isMuted = isMuted,
+                    onToggleMute = onToggleMute,
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    modifier = Modifier.fillMaxSize(),
+                    fitToContent = true,
+                )
+            } else {
+                MomentMediaGallery(
+                    payloads = moment.payloads,
+                    fileId = moment.fileId,
+                    driveId = moment.driveId,
+                    previewThumbnail = moment.previewThumbnail,
+                    keyHeader = moment.keyHeader,
+                    messageId = moment.id,
+                    downloadingFiles = emptySet(),
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    isUploading = false,
+                    isMuted = isMuted,
+                    onToggleMute = onToggleMute,
+                    autoplayActive = true,
+                    modifier = Modifier.fillMaxSize(),
+                    fitToContent = true,
+                )
+            }
+        }
     }
 }
 
@@ -784,6 +882,10 @@ private fun MomentPostCard(
     autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
+    // True while this card's comments sheet is open. Switches the media to
+    // fit-with-letterbox so the whole photo/video is visible (paired with the
+    // shrink/scroll that brings the card above the sheet).
+    commentsOpen: Boolean = false,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -958,6 +1060,7 @@ private fun MomentPostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(aspect),
+                        fitToContent = commentsOpen,
                     )
                 } else {
                     MomentMediaGallery(
@@ -984,6 +1087,7 @@ private fun MomentPostCard(
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
+                        fitToContent = commentsOpen,
                     )
                 }
 

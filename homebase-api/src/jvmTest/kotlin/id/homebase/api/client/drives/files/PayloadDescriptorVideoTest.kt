@@ -39,6 +39,37 @@ class PayloadDescriptorVideoTest {
     }
 
     @Test
+    fun videoDescriptor_surfacesTechnicalMetadata_forDebugOverlay() {
+        // The inline debug overlay reads codec/resolution/bit-depth/HDR/bitrate
+        // off the VideoFile descriptor; pin that they propagate from VideoMetadata.
+        val descriptor = videoDescriptor(
+            VideoMetadata(
+                mimeType = "video/mp4",
+                isSegmented = false,
+                duration = 5_000f,
+                fileSize = 1_234_567L,
+                codec = "h264",
+                widthPx = 1280,
+                heightPx = 720,
+                bitDepth = 10,
+                isHdr = true,
+                videoBitrateBps = 2_500_000L,
+            )
+        )
+
+        val info = descriptor.descriptorInfo()
+        assertTrue(info is DescriptorContent.VideoFile)
+        assertEquals("h264", info.codec)
+        assertEquals(1280, info.widthPx)
+        assertEquals(720, info.heightPx)
+        assertEquals(10, info.bitDepth)
+        assertEquals(true, info.isHdr)
+        assertEquals(2_500_000L, info.videoBitrateBps)
+        assertEquals(1_234_567L, info.fileSizeBytes)
+        assertEquals("video/mp4", info.mimeType)
+    }
+
+    @Test
     fun videoDescriptor_isSegmentedTrue_propagates() {
         val descriptor = videoDescriptor(
             VideoMetadata(

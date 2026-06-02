@@ -95,6 +95,9 @@ fun MomentMediaCarousel(
     // the host can pass it to the tap-into-detail navigation — opening the
     // detail at the page the user was looking at, not always page 0.
     onVisiblePayloadChanged: (String) -> Unit = {},
+    // Force the whole video frame to show (fit) instead of crop-to-fill —
+    // set while the host card is shrunk for the comments sheet.
+    fitToContent: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -193,6 +196,7 @@ fun MomentMediaCarousel(
                     // suppress native player controls so horizontal swipes
                     // reach the carousel pager cleanly.
                     tapMode = MomentVideoTapMode.ButtonOnly,
+                    fitToContent = fitToContent,
                 )
             } else {
                 MomentMediaItem(

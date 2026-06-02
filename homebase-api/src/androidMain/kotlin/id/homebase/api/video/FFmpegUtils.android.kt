@@ -271,6 +271,13 @@ actual object FFmpegUtils {
         val isHdr: Boolean,
     )
 
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!File(inputPath).exists()) return@withContext null
+        val p = probeVideoTrack(inputPath)
+        if (p.videoMime == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
+        VideoTrackInfo(p.videoMime, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
+
     private fun probeVideoTrack(inputPath: String): VideoTrackProbe {
         var videoCount = 0
         var audioCount = 0
