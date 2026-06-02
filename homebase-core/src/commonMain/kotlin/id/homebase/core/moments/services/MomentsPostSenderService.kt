@@ -673,6 +673,32 @@ class MomentsPostSenderService(
             ),
         )
 
+        // === MomentAddPeopleAudit ===
+        // Diagnostic: "add people" never delivers to the new recipients. This
+        // path ships an UpdateFileByUniqueId (AppendOrOverwrite) transited to
+        // peers who have never held the moment. The decisive evidence is the
+        // per-recipient `recipientStatus` the outbox logs once this drains
+        // ("DriveOutboxUploader updateFile: success uniqueId=$momentUniqueId
+        // recipientStatus=..."). Log the full request shape here so that line
+        // can be correlated against exactly who we tried to reach and with what.
+        // Grep: "MomentAddPeopleAudit" + the moment uniqueId, and wait for the
+        // outbox to drain (~60s) before capturing so the result line is present.
+        Logger.i(tag = TAG) {
+            "MomentAddPeopleAudit: ENQUEUE updateFileByUniqueId moment=$momentUniqueId " +
+                "self=${self.domainName} " +
+                "requestedNew=${newRecipients.map { it.domainName }} " +
+                "existing=${existingRecipients.map { it.domainName }} " +
+                "genuinelyNew(transitTo)=${genuinelyNew.map { it.domainName }} " +
+                "merged=${mergedRecipients.map { it.domainName }} " +
+                "reusedPayloads=${reusedPayloads.map { it.key }} " +
+                "(${reusedPayloads.size}/${existing.fileMetadata.payloads.orEmpty().size} expected) " +
+                "reusedThumbs=${reusedThumbs.size} " +
+                "allowDistribution=${unencryptedMetadata.allowDistribution} " +
+                "isEncrypted=${unencryptedMetadata.isEncrypted} " +
+                "aclSet=${unencryptedMetadata.accessControlList != null} " +
+                "versionTag=$versionTag locale=Local useAppNotification=false"
+        }
+
         val request = UpdateFileByUniqueIdRequest(
             driveId = drive,
             uniqueId = momentUniqueId,
