@@ -1,7 +1,12 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+@file:OptIn(
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+    kotlinx.cinterop.BetaInteropApi::class,
+    LowLevelFfmpegApi::class,
+)
 
 package id.homebase.api.video
 
+import id.homebase.api.client.KeyHeader
 import kotlin.concurrent.Volatile
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
@@ -127,6 +132,56 @@ class FFmpegKitVideoDecoderNativeTest {
     }
 
     @Test
+    fun segmentAndEncrypt_cancellationCancelsOnlyItsOwnSession() = runBlocking {
+        // The compression/segmentation counterpart to extractThumbnailStrip_cancellation*:
+        // a cancelled segment job must tear down ONLY its own ffmpeg session, never the
+        // engine-wide cancelAllFFmpegSessions() that would kill concurrent work (the bug
+        // Bishwa's per-session fix removed from the thumbnail side; this guards the encode side).
+        val bridge = RecordingDeferredBridge()
+        FFmpegKitBridgeHolder.setBridge(bridge)
+
+        val fixturePath = stageFixtureOnDisk()
+        try {
+            // Stand in for an unrelated FFmpegKit session running alongside the segment job.
+            val concurrentSessionId = bridge.simulateConcurrentSession()
+            val keyHeader = KeyHeader.newRandom16()
+
+            val job = launch(Dispatchers.Default) {
+                FFmpegUtils.segmentAndEncryptVideo(fixturePath, keyHeader, onProgress = null)
+            }
+
+            // Wait until segmentation has dispatched ffmpeg via the bridge (RecordingDeferredBridge
+            // never fires onComplete, so the job stays parked in executeFfmpegWithProgress).
+            withTimeout(5_000) {
+                while (!bridge.executeAsyncCalled) delay(20)
+            }
+            assertEquals(0, bridge.cancelSessionCalls.size, "no cancel yet — segment job still running")
+
+            job.cancel()
+            job.join()
+
+            assertEquals(
+                1, bridge.cancelSessionCalls.size,
+                "cancelling the segment job must cancel its session exactly once",
+            )
+            assertEquals(
+                bridge.lastSessionId, bridge.cancelSessionCalls.first(),
+                "must cancel the segmentation's own session id",
+            )
+            assertEquals(
+                0, bridge.cancelAllCalls,
+                "encode/segment must use per-session cancel — cancelAllFFmpegSessions must NOT be called",
+            )
+            assertTrue(
+                concurrentSessionId !in bridge.cancelSessionCalls,
+                "a concurrent FFmpegKit session must NOT be torn down by the segment job's cancellation",
+            )
+        } finally {
+            cleanup(fixturePath)
+        }
+    }
+
+    @Test
     fun extractThumbnailStrip_drainsFramesProgressively() = runBlocking {
         // Bridge captures the per-extraction outDir from the command and defers onComplete
         // until the test releases it. The test writes a fake JPEG, then awaits exactly that
@@ -233,8 +288,12 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         command: String,
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
-    ) {
+    ): Long {
+        // Intentionally never invoke onComplete — simulate a long-running session so the
+        // caller's cancellation path runs. Return a session id like the real bridge.
         executeAsyncCalled = true
+        lastSessionId = nextSessionId++
+        return lastSessionId
     }
 
     override fun executeFFmpegAsyncArgs(
@@ -282,11 +341,12 @@ private class DriverBridge : FFmpegKitBridge {
         command: String,
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
-    ) {
+    ): Long {
         val outPattern = command.split('"').firstOrNull { it.endsWith("f_%04d.jpg") }
             ?: error("could not find output pattern in: $command")
         outDirReady.complete(outPattern.substringBeforeLast("/f_%04d.jpg"))
         pendingCompletion = onComplete
+        return 42L
     }
 
     override fun executeFFmpegAsyncArgs(

@@ -13,14 +13,20 @@ import okio.Path.Companion.toPath
  * materialize [SampleVideoFixture] bytes into the okio FakeFileSystem so the decoder can
  * read them at the returned path.
  */
-internal actual suspend fun stageSampleVideoForFfmpegTest(): String? {
+internal actual suspend fun stageSampleVideoForFfmpegTest(): String? =
+    stageFixture("sample.mp4", SampleVideoFixture.bytes)
+
+internal actual suspend fun stageSampleMovForFfmpegTest(): String? =
+    stageFixture("sample.mov", SampleMovFixture.bytes)
+
+private suspend fun stageFixture(fileName: String, bytes: ByteArray): String? {
     if (!awaitFfmpegBridge()) return null
 
-    val path = "/tmp/test_videos/sample.mp4"
+    val path = "/tmp/test_videos/$fileName"
     val okioPath = path.toPath()
     runCatching {
         okioPath.parent?.let { systemFileSystem.createDirectories(it) }
-        systemFileSystem.write(okioPath) { write(SampleVideoFixture.bytes) }
+        systemFileSystem.write(okioPath) { write(bytes) }
     }.onFailure { return null }
     return path
 }

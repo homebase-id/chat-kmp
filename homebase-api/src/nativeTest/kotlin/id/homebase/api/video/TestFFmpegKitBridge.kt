@@ -40,10 +40,13 @@ internal class TestFFmpegKitBridge : FFmpegKitBridge {
         command: String,
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
-    ) {
+    ): Long {
         // Sync-then-fire is sufficient for the cross-platform test surface. See class KDoc.
-        val result = executeFFmpeg(command)
-        onComplete(result)
+        val session = FFmpegKit.execute(command)
+        val isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+        val failStackTrace = session?.getFailStackTrace()
+        onComplete(FFmpegResult(isSuccess = isSuccess, failStackTrace = failStackTrace))
+        return session?.getSessionId() ?: -1L
     }
 
     override fun executeFFmpegAsyncArgs(

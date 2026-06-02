@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.channelFlow
  * called out at `AttachmentHandler.kt:167-171` for `runCatching`; using explicit `try/catch`
  * here keeps cancellation correct.
  */
-class TieredVideoDecoder(
+internal class TieredVideoDecoder(
     private val primary: VideoDecoder,
     private val fallback: VideoDecoder?,
 ) : VideoDecoder {

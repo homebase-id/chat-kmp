@@ -88,7 +88,7 @@ final class FFmpegKitBridgeImplTests: XCTestCase {
         var progressCallbacks = 0
         var lastResult: FFmpegResult?
 
-        bridge.executeFFmpegAsync(
+        _ = bridge.executeFFmpegAsync(
             command: command,
             onProgress: { _ in progressCallbacks += 1 },
             onComplete: { result in
@@ -111,14 +111,16 @@ final class FFmpegKitBridgeImplTests: XCTestCase {
         // inside FFmpegKit dispatch on the sync call. Don't let the bridge
         // shape regress again.
         let asyncStarted = expectation(description: "async started")
-        bridge.executeFFmpegAsync(
+        let sessionId = bridge.executeFFmpegAsync(
             command: "-version",
             onProgress: { _ in },
             onComplete: { _ in asyncStarted.fulfill() }
         )
         wait(for: [asyncStarted], timeout: 10)
 
-        bridge.cancelAllFFmpegSessions()
+        // Per-session cancel is the production path now (compress/segment cancel
+        // only their own session). cancelAll remains valid as a blunt fallback.
+        bridge.cancelFFmpegSession(sessionId: sessionId)
 
         let result = bridge.executeFFmpeg(command: "-version")
         XCTAssertTrue(result.isSuccess, "sync after async+cancel crashed/failed: \(result.failStackTrace ?? "nil")")

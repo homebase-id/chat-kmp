@@ -1,9 +1,11 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
@@ -11,11 +13,15 @@ import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
+import kotlin.time.Duration
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
+    private val compressor: VideoCompressor = VideoCompressionService,
+    private val probe: VideoProber = VideoCompressionService,
 ) {
     private val FIVE_MB = 5L * 1024 * 1024
 
@@ -73,22 +79,18 @@ class VideoPayloadProcessor(
         var tinyThumb: EmbeddedThumb? = null
         var thumbnails: List<ThumbnailFile> = emptyList()
 
-        val thumbnailPath = FFmpegUtils.grabThumbnail(payload.filePath)
-        if (thumbnailPath != null) {
-            try {
-                val bytes = fileOperationsProvider.readFileBytes(thumbnailPath)
-                val (_, generatedTinyThumb, generatedThumbnails) =
-                    createThumbnails(bytes, payload.key)
+        // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
+        // native-first decode per platform), so no temp-file round-trip to read+delete.
+        val posterBytes = VideoThumbnailService.extractPosterFrame(payload.filePath)
+        if (posterBytes != null) {
+            val (_, generatedTinyThumb, generatedThumbnails) =
+                createThumbnails(posterBytes, payload.key)
 
-                tinyThumb = generatedTinyThumb
-                thumbnails = generatedThumbnails.map { thumb ->
-                    thumb.copy(
-                        thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
-                    )
-                }
-
-            } finally {
-                fileOperationsProvider.deleteTempFile(thumbnailPath)
+            tinyThumb = generatedTinyThumb
+            thumbnails = generatedThumbnails.map { thumb ->
+                thumb.copy(
+                    thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
+                )
             }
         }
 
@@ -102,49 +104,132 @@ class VideoPayloadProcessor(
             )
         )
 
-        val compressedPath =
-            FFmpegUtils.compressVideo(
-                inputPath = payload.filePath,
+        val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
+        // Collapse the per-tick ffmpeg progress to one event per whole percent (fractions are
+        // 0f..1f, so key on it*100). Primed at 0 so the first tick doesn't duplicate the
+        // phase-start 0f emitted above. Without this every raw tick became a suspending
+        // PhaseProgress emit — the same EventBus flood the upload path had. See
+        // WholePercentProgressGate.
+        val compressGate = WholePercentProgressGate().also { it.admit(0f) }
+        val (compressedPath, compressElapsed) =
+            measureTimedValue {
+                compressor.compress(
+                    inputPath = payload.filePath,
+                    trimStartMs = trimStartMs,
+                    trimEndMs = trimEndMs,
+                    quality = videoQuality,
+                    allowTenBit = allowTenBit,
+                    onProgress = {
+                        if (compressGate.admit(it * 100f) != null) {
+                            onProgress?.invoke(
+                                VideoPayloadProgressPhase(
+                                    payload.key,
+                                    VideoProcessingPhase.COMPRESSING,
+                                    it
+                                )
+                            )
+                        }
+                    },
+                ) ?: payload.filePath
+            }
+
+        // Everything below consumes the compressed scratch — segmentation, encryption,
+        // and the plaintext metadata probe — so reap it on EVERY exit, including a
+        // segmentation/encryption failure that throws before the success-path read.
+        // Otherwise a repeatedly-failing send (the exact case users retry into) piles up
+        // full-size compressed_*.mp4 files in the cache until the next startup sweep.
+        // Skipped when compressVideo fell back to the input path (compressedPath IS
+        // payload.filePath, owned by the caller).
+        return try {
+            finishProcessing(
+                payload = payload,
+                keyHeader = keyHeader,
+                onProgress = onProgress,
+                descriptorContentPayloadKey = descriptorContentPayloadKey,
+                compressedPath = compressedPath,
+                compressElapsed = compressElapsed,
+                inputSize = inputSize,
+                videoQuality = videoQuality,
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
-                quality = videoQuality,
-                allowTenBit = allowTenBit,
-                onProgress = {
-                    onProgress?.invoke(
-                        VideoPayloadProgressPhase(
-                            payload.key,
-                            VideoProcessingPhase.COMPRESSING,
-                            it
-                        )
-                    )
-                },
-            ) ?: payload.filePath
+                tinyThumb = tinyThumb,
+                thumbnails = thumbnails,
+            )
+        } finally {
+            if (compressedPath != payload.filePath) {
+                fileOperationsProvider.deleteTempFile(compressedPath)
+            }
+        }
+    }
+
+    private suspend fun finishProcessing(
+        payload: PayloadFile,
+        keyHeader: KeyHeader,
+        onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
+        descriptorContentPayloadKey: String,
+        compressedPath: String,
+        compressElapsed: Duration,
+        inputSize: Long,
+        videoQuality: VideoQuality,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
+        tinyThumb: EmbeddedThumb?,
+        thumbnails: List<ThumbnailFile>,
+    ): VideoProcessResult {
 
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 
         val compressedSize = fileOperationsProvider.getFileSize(compressedPath)
         val useHls = compressedSize >= FIVE_MB
 
+        Logger.i(tag = "VideoProcessing") {
+            "compression finished in $compressElapsed: input=${inputSize}B → compressed=${compressedSize}B " +
+                "quality=$videoQuality trim=$trimStartMs..$trimEndMs skipped=${compressedPath == payload.filePath}"
+        }
+        Logger.i(tag = "VideoProcessing") {
+            "HLS decision: compressed=${compressedSize}B threshold=${FIVE_MB}B → " +
+                if (useHls) "SEGMENT (hls)" else "direct mp4"
+        }
+
         /* ---------- PHASE 4: SEGMENT (HLS ONLY) ---------- */
 
         val (playlistPath, videoPath, isSegmented) =
             if (useHls) {
-                val (playlist, segments) =
-                    FFmpegUtils.segmentAndEncryptVideo(
-                        inputPath = compressedPath,
-                        keyHeader = keyHeader,
-                        onProgress = { pct ->
-                            onProgress?.invoke(
-                                VideoPayloadProgressPhase(
-                                    payload.key,
-                                    VideoProcessingPhase.SEGMENTING,
-                                    pct
-                                )
-                            )
+                // Same whole-percent throttle as compression (see compressGate). No priming —
+                // there is no separate SEGMENTING phase-start emit, so the first tick should land.
+                val segmentGate = WholePercentProgressGate()
+                val (segmented, segmentElapsed) =
+                    measureTimedValue {
+                        compressor.segmentAndEncrypt(
+                            inputPath = compressedPath,
+                            keyHeader = keyHeader,
+                            onProgress = { pct ->
+                                if (segmentGate.admit(pct * 100f) != null) {
+                                    onProgress?.invoke(
+                                        VideoPayloadProgressPhase(
+                                            payload.key,
+                                            VideoProcessingPhase.SEGMENTING,
+                                            pct
+                                        )
+                                    )
+                                }
+                            }
+                        ) ?: run {
+                            Logger.e(tag = "VideoProcessing") {
+                                "segmentAndEncrypt returned null (HLS path) — " +
+                                    "compressed=${compressedSize}B quality=$videoQuality " +
+                                    "path=$compressedPath"
+                            }
+                            error("segmentAndEncryptVideo failed")
                         }
-                    ) ?: error("segmentAndEncryptVideo failed")
+                    }
 
-                Triple(playlist, segments, true)
+                Logger.i(tag = "VideoProcessing") {
+                    "segmentation finished in $segmentElapsed: playlist=${segmented.playlistPath} " +
+                        "segments=${fileOperationsProvider.getFileSize(segmented.segmentsPath)}B"
+                }
+
+                Triple(segmented.playlistPath, segmented.segmentsPath, true)
             } else {
                 Triple(null, compressedPath, false)
             }
@@ -173,24 +258,20 @@ class VideoPayloadProcessor(
 
         /* ---------- PHASE 5: METADATA ---------- */
 
-        val durationMs = FFmpegUtils.getDurationMs(compressedPath)
+        val durationMs = probe.getDurationMs(compressedPath)
         // Probe the compressed (pre-encryption) output for real codec info so the
         // descriptor carries truthful metadata for the inline debug overlay. The
         // encrypted/segmented final file can't be probed, so this runs on the
-        // plaintext compressedPath before it's reaped below.
-        val outProbe = FFmpegUtils.probeVideo(compressedPath)
+        // plaintext compressedPath before it's reaped below. Routed through the
+        // VideoProber seam (not FFmpegUtils directly) to honour @LowLevelFfmpegApi.
+        val outProbe = probe.probeVideo(compressedPath)
         val videoBitrateBps =
             if (durationMs > 0L) compressedSize * 8L * 1000L / durationMs else 0L
         val codec = outProbe?.codec ?: detectVideoCodec(finalVideoPath)
 
-        // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already
-        // been re-encoded into either the HLS segment (segmented path) or the
-        // encrypted payload (non-segmented path), and metadata has been read.
-        // Skip when compressVideo fell back to the input path (no compression
-        // happened — compressedPath IS payload.filePath, owned by the caller).
-        if (compressedPath != payload.filePath) {
-            fileOperationsProvider.deleteTempFile(compressedPath)
-        }
+        // (The compressed_*.mp4 scratch is reaped by the caller's finally — its bytes
+        // have already been re-encoded into the HLS segment or encrypted payload, and
+        // its metadata has been read above.)
 
         val playlistContent =
             if (isSegmented && playlistPath != null) {
@@ -263,6 +344,10 @@ class VideoPayloadProcessor(
             }
 
         /* ---------- RESULT ---------- */
+
+        Logger.i(tag = "VideoProcessing") {
+            "video payload ready: segmented=$isSegmented duration=${durationMs}ms"
+        }
 
         onProgress?.invoke(
             VideoPayloadProgressPhase(

@@ -14,7 +14,7 @@ import kotlinx.coroutines.isActive
  * decoder on Windows / macOS / Linux from the JVM. Don't bolt on a Tier 1: it would either be
  * a no-op or duplicate logic that ffmpeg already does correctly.
  */
-class FFmpegSubprocessVideoDecoder : VideoDecoder {
+internal class FFmpegSubprocessVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
         val thumbPath = FFmpegUtils.grabThumbnail(videoPath) ?: return null

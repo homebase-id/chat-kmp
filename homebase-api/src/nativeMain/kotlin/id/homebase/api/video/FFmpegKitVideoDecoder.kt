@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
  * cancels the specific session via [FFmpegKitBridge.cancelFFmpegSession] and clears the cache dir.
  */
 @OptIn(ExperimentalForeignApi::class)
-class FFmpegKitVideoDecoder : VideoDecoder {
+internal class FFmpegKitVideoDecoder : VideoDecoder {
 
     private val bridge: FFmpegKitBridge
         get() = FFmpegKitBridgeHolder.getBridge()

@@ -70,7 +70,7 @@ internal class AttachmentHandler(
         // Duration is needed by the trim screen and is cheap to read; kick it off in
         // parallel with the poster extraction.
         val durationDeferred = scope.async {
-            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
+            runCatching { id.homebase.api.video.VideoCompressionService.getDurationMs(videoPath) }
                 .getOrNull()
         }
         scope.launch {

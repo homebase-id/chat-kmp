@@ -17,6 +17,7 @@ data class VideoTrackInfo(
     val isHdr: Boolean,
 )
 
+@LowLevelFfmpegApi
 expect object FFmpegUtils {
     fun getUniqueId(filePath: String): String
 
