@@ -69,6 +69,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,6 +83,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.window.Dialog
@@ -107,6 +110,7 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentCommentItem
@@ -131,7 +135,10 @@ import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.delivered_to
+import id.homebase.resources.error_unknown
 import id.homebase.resources.failed
+import id.homebase.resources.file_save_failed
+import id.homebase.resources.file_saved_to
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_detail_add_comment_hint
 import id.homebase.resources.moments_detail_comment_cancel
@@ -144,6 +151,7 @@ import id.homebase.resources.moments_detail_delete_comment_dialog_title
 import id.homebase.resources.moments_detail_delete_dialog_title
 import id.homebase.resources.moments_detail_menu_delete
 import id.homebase.resources.moments_detail_menu_more
+import id.homebase.resources.moments_detail_menu_save_current
 import id.homebase.resources.moments_detail_description_hint
 import id.homebase.resources.moments_detail_description_save
 import id.homebase.resources.moments_detail_edit_description
@@ -170,6 +178,7 @@ import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
 import kotlin.time.Instant
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.char
@@ -440,6 +449,8 @@ fun MomentDetailPane(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fileSystemHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // Pop the detail screen as soon as the delete completes. The optimistic
     // writer has already removed the moment from the feed by this point;
@@ -453,6 +464,38 @@ fun MomentDetailPane(
                 is MomentDetailUiEvent.MomentDeleted -> onNavigateBack?.invoke()
                 is MomentDetailUiEvent.ShareFileReady ->
                     fileSystemHandler.shareFile(Path(event.filePath))
+                // "Save current": the VM has finished decrypting (+ remuxing)
+                // the visible payload to a cache file; hand it to the platform
+                // save-to-device flow and confirm with a snackbar. Reuses the
+                // same strings + handler chat's media download uses.
+                is MomentDetailUiEvent.MediaSaveReady ->
+                    fileSystemHandler.saveFile(
+                        file = Path(event.filePath),
+                        suggestedName = event.suggestedName,
+                        onSuccess = { location ->
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    TranslationUtil.getString(MR.string.file_saved_to, location),
+                                )
+                            }
+                        },
+                        onError = { error ->
+                            scope.launch {
+                                val detail = error.message
+                                    ?: TranslationUtil.getString(MR.string.error_unknown)
+                                snackbarHostState.showSnackbar(
+                                    TranslationUtil.getString(MR.string.file_save_failed, detail),
+                                )
+                            }
+                        },
+                    )
+                is MomentDetailUiEvent.MediaSaveFailed -> scope.launch {
+                    val detail = event.message
+                        ?: TranslationUtil.getString(MR.string.error_unknown)
+                    snackbarHostState.showSnackbar(
+                        TranslationUtil.getString(MR.string.file_save_failed, detail),
+                    )
+                }
                 else -> Unit
             }
         }
@@ -481,6 +524,7 @@ fun MomentDetailPane(
                     uiState = uiState,
                     onAction = viewModel::onAction,
                     onNavigateBack = onNavigateBack,
+                    snackbarHostState = snackbarHostState,
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@AnimatedContent,
                     isActivePage = isActivePage,
@@ -546,6 +590,7 @@ private fun DetailContent(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onNavigateBack: (() -> Unit)?,
+    snackbarHostState: SnackbarHostState,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
@@ -576,11 +621,18 @@ private fun DetailContent(
         }
     }
 
+    // The carousel payload currently on screen, reported up from the inner
+    // pager in [MomentDetailContent] so the overflow "Save current" acts on
+    // exactly the photo/video the user is looking at. Null for description-only
+    // moments (nothing to save → the menu item hides).
+    var visiblePayloadKey by remember { mutableStateOf<String?>(null) }
+
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
         // read as part of the cinematic surface rather than the surface
         // colour of the rest of the app.
         containerColor = Color.Black,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 // No screen title in the full-screen view — the post itself
@@ -608,6 +660,15 @@ private fun DetailContent(
                     if (uiState.moment != null) {
                         MomentOverflowMenu(
                             isDeleting = uiState.isDeleting,
+                            isSaving = uiState.isSavingMedia,
+                            // Hidden on description-only moments — nothing on
+                            // screen to save.
+                            showSave = visiblePayloadKey != null,
+                            onSaveClick = {
+                                visiblePayloadKey?.let {
+                                    onAction(MomentDetailUiAction.SaveMedia(it))
+                                }
+                            },
                             // Author-only: only the original author can widen
                             // the audience of a moment.
                             showAddPeople = uiState.isMine,
@@ -657,6 +718,7 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
+                onVisiblePayloadChanged = { visiblePayloadKey = it },
                 commentsOpen = commentsShrinkActive,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
@@ -751,20 +813,23 @@ private fun DetailContent(
 @Composable
 private fun MomentOverflowMenu(
     isDeleting: Boolean,
+    isSaving: Boolean,
+    showSave: Boolean,
+    onSaveClick: () -> Unit,
     showAddPeople: Boolean,
     onAddPeopleClick: () -> Unit,
     onDeleteClick: () -> Unit,
     iconTint: Color = Color.Unspecified,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // While a delete OR a save is in flight the icon is swapped for a spinner.
+    // Same shape as the per-comment delete indicator: tells the user
+    // "something is happening" — for save, that covers the decrypt/remux of
+    // the visible payload before the device-gallery write fires.
+    val busy = isDeleting || isSaving
     Box {
-        // While a delete is in flight the icon is swapped for a spinner.
-        // Same shape as the per-comment delete indicator: tells the user
-        // "something is happening" during the brief window between
-        // confirming the dialog and the optimistic write removing the
-        // moment from the feed (which triggers the nav-pop).
-        IconButton(onClick = { expanded = true }, enabled = !isDeleting) {
-            if (isDeleting) {
+        IconButton(onClick = { expanded = true }, enabled = !busy) {
+            if (busy) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
@@ -784,6 +849,15 @@ private fun MomentOverflowMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            if (showSave) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.moments_detail_menu_save_current)) },
+                    onClick = {
+                        expanded = false
+                        onSaveClick()
+                    },
+                )
+            }
             if (showAddPeople) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.moments_detail_menu_add_people)) },
@@ -1049,6 +1123,12 @@ private fun MomentDetailContent(
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
     onOpenComments: () -> Unit,
+    /**
+     * Reports the key of the carousel payload currently on screen (null for a
+     * description-only moment) so the overflow "Save current" acts on exactly
+     * what the user is looking at.
+     */
+    onVisiblePayloadChanged: (String?) -> Unit = {},
     commentsOpen: Boolean,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -1105,6 +1185,19 @@ private fun MomentDetailContent(
         initialPage = initialPage,
         pageCount = { pageCount },
     )
+
+    // Report the on-screen carousel payload up to the overflow "Save current".
+    // Description-only moments have no payloads → report null so the item hides.
+    // snapshotFlow already dedups, so this only fires on a real page change.
+    LaunchedEffect(pagerState, moment.payloads) {
+        if (moment.payloads.isEmpty()) {
+            onVisiblePayloadChanged(null)
+            return@LaunchedEffect
+        }
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            onVisiblePayloadChanged(moment.payloads.getOrNull(page)?.key)
+        }
+    }
 
     val commentCount = uiState.comments.size
 
