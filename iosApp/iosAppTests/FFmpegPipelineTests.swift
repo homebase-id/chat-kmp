@@ -1,5 +1,6 @@
 import XCTest
 import ffmpegkit
+import AVFoundation
 
 /// iOS FFmpeg pipeline tests — validates the ffmpegkit xcframework across all
 /// production paths on both simulator (libx264) and physical device
@@ -50,6 +51,7 @@ final class FFmpegPipelineTests: XCTestCase {
         case fhd1080p
         case uhd4k
         case iphoneHevc
+        case iphoneSpatial
 
         var name: String {
             switch self {
@@ -57,13 +59,14 @@ final class FFmpegPipelineTests: XCTestCase {
             case .fhd1080p:   return "fixture_1080p"
             case .uhd4k:      return "fixture_4k"
             case .iphoneHevc: return "fixture_iphone_hevc"
+            case .iphoneSpatial: return "fixture_iphone_spatial"
             }
         }
 
         var ext: String {
             switch self {
-            case .iphoneHevc: return "mov"
-            default:          return "mp4"
+            case .iphoneHevc, .iphoneSpatial: return "mov"
+            default:                          return "mp4"
             }
         }
     }
@@ -170,6 +173,118 @@ final class FFmpegPipelineTests: XCTestCase {
 
         let outSize = (try? FileManager.default.attributesOfItem(atPath: output)[.size] as? Int) ?? 0
         print("BASELINE platform=iOS encoder=libx264 fixture=\(fixture.name) quality=\(quality) outputBytes=\(outSize) wallTimeMs=\(wallTimeMs)")
+    }
+
+    // =========================================================================
+    // MARK: - Hardware (VideoToolbox) — iPhone spatial-audio .mov repro
+    //
+    // fixture_iphone_spatial.mov is a 2s trim of a real iPhone 16 Pro recording:
+    // 4K HEVC (hvc1) + AAC + apac (Apple spatial audio) + mebx metadata tracks +
+    // rotation -90. This is the exact shape that crashes the chat video-send flow.
+    //
+    // The production crash is a SIGSEGV inside ffmpeg's print_report on FFmpegKit's
+    // dispatch thread while running the h264_videotoolbox encode (confirmed via the
+    // MovCrashProbe log trail dying at EXEC[h264_videotoolbox] + an EXC_BAD_ACCESS
+    // .ips with ffmpegkit print_report <- ffmpeg_execute frames). These tests pin
+    // down whether the bundled build can (a) probe and (b) HW-encode this file.
+    // =========================================================================
+
+    /// Root cause + fix foundation in ONE check (runs on sim + device; AVFoundation is
+    /// VideoToolbox-independent). FFmpegKit's ffprobe yields no usable video stream for this
+    /// iPhone file (4K HEVC + apac spatial audio + mebx metadata tracks) — verified that
+    /// `-v verbose` logs fine but the JSON show-streams output is empty, so `getMediaInformation`
+    /// is nil. AVFoundation reads the same file correctly, which is exactly why the production
+    /// probe now falls back to AVFoundation (FFmpegUtils.native.kt `probeVideoNative`),
+    /// mirroring how the Android actual probes via MediaExtractor / MediaMetadataRetriever.
+    func test_iphoneSpatial_ffprobeYieldsNothing_butAVFoundationReadsIt() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+
+        // (1) FFmpegKit ffprobe: no usable video stream (documents the root cause).
+        let info = FFprobeKit.getMediaInformation(input)?.getMediaInformation()
+        let ffStreams = (info?.getStreams() as? [StreamInformation]) ?? []
+        let ffVideo = ffStreams.first { ($0.getType() ?? "") == "video" }
+        print("PROBE ffmpegkit streams=\(ffStreams.count) videoCodec=\(ffVideo?.getCodec() ?? "nil")")
+        XCTAssertNil(
+            ffVideo,
+            "Expected FFmpegKit ffprobe to find NO video stream for this iPhone file (matches " +
+            "production: getMediaInformation returns nil). If this ever starts passing, the " +
+            "bundled ffprobe gained support and the AVFoundation fallback could be revisited."
+        )
+
+        // (2) AVFoundation: reads the real track — the basis of the production fix.
+        let asset = AVURLAsset(url: URL(fileURLWithPath: input))
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("AVFoundation must find a video track in the iPhone spatial .mov")
+            return
+        }
+        let size = track.naturalSize
+        let tf = track.preferredTransform
+        let rotation = Int((atan2(tf.b, tf.a) * 180 / .pi).rounded())
+        print("AVPROBE iphone_spatial size=\(Int(size.width))x\(Int(size.height)) rotation=\(rotation)")
+        XCTAssertGreaterThan(size.width, 0, "AVFoundation must report a real width (ffprobe gave 0)")
+        XCTAssertGreaterThan(size.height, 0, "AVFoundation must report a real height (ffprobe gave 0)")
+    }
+
+    /// Sanity: does the bundled h264_videotoolbox encoder run at all on this host
+    /// (simulator or device)? Uses an ordinary H.264 fixture so a failure here means
+    /// "VT encoder unavailable on this host", isolating it from the iPhone-file case below.
+    func test_videotoolbox_baseline_normalFile() {
+        guard let input = copyFixture(.hd720p) else { return }
+        let output = tempDir + "vt_baseline.mp4"
+        let session = FFmpegKit.execute(withArguments: [
+            "-y", "-i", input, "-vf", "scale=-2:720",
+            "-c:v", "h264_videotoolbox", "-b:v", "2500k", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output,
+        ])
+        let rc = session?.getReturnCode()
+        print("VT-BASELINE rc=\(rc?.getValue() ?? -999) fail=\(session?.getFailStackTrace() ?? "nil")")
+        XCTAssertTrue(ReturnCode.isSuccess(rc),
+            "h264_videotoolbox must run on this host for a normal file (rc=\(rc?.getValue() ?? -999))")
+    }
+
+    /// End-to-end fix verification on the hardware encoder. The pre-fix pipeline fed a
+    /// DEGENERATE command (empty probe -> width=0, NO scale filter) to h264_videotoolbox and
+    /// SIGSEGV'd in ffmpeg's print_report. With the AVFoundation probe (the fix), the planner
+    /// gets real dimensions and emits a PROPER scaled command. This runs that proper command
+    /// on h264_videotoolbox and asserts success (no crash, valid output).
+    func test_videotoolbox_iphoneSpatial_properCommand_succeeds() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+
+        // Mirror the fix's probe: AVFoundation supplies the dims ffprobe couldn't.
+        let asset = AVURLAsset(url: URL(fileURLWithPath: input))
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("AVFoundation must find a video track"); return
+        }
+        let size = track.naturalSize
+        print("VT-FIX probe size=\(Int(size.width))x\(Int(size.height))")
+        XCTAssertGreaterThan(size.width, 0, "probe must yield real dims for a proper command")
+
+        let output = tempDir + "vt_iphone_spatial_proper.mp4"
+        // Proper command: real dims -> a scale filter is present (planner scales the short
+        // edge to 720 for STANDARD). The degenerate pre-fix command had NO -vf and crashed.
+        let args = [
+            "-y",
+            "-hwaccel", "videotoolbox",
+            "-i", input,
+            "-vf", "scale=-2:720",
+            "-c:v", "h264_videotoolbox",
+            "-b:v", "2500k",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            output,
+        ]
+        let session = FFmpegKit.execute(withArguments: args)
+        let rc = session?.getReturnCode()
+        let rcVal = rc?.getValue() ?? -999
+        print("VT-FIX h264_videotoolbox rc=\(rcVal) fail=\(session?.getFailStackTrace() ?? "nil")")
+        XCTAssertTrue(
+            ReturnCode.isSuccess(rc),
+            "Proper (scaled) command must succeed on h264_videotoolbox (rc=\(rcVal)). " +
+            "fail=\(session?.getFailStackTrace() ?? "nil")"
+        )
+        assertOutputValid(output, label: "iphone_spatial videotoolbox proper")
     }
 
     // MARK: - Progress statistics — libx264 (sim + device)

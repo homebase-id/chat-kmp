@@ -34,6 +34,7 @@
 		4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; };
 		652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
 		65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */ = {isa = PBXBuildFile; fileRef = FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */; };
+		F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */ = {isa = PBXBuildFile; fileRef = F1207A510000000000005A01 /* fixture_iphone_spatial.mov */; };
 		87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
 		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
 		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
@@ -125,6 +126,7 @@
 		E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_4k.mp4; sourceTree = "<group>"; };
 		F72A108F8868D83B449653CC /* fixture_720p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_720p.mp4; sourceTree = "<group>"; };
 		FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_hevc.mov; sourceTree = "<group>"; };
+		F1207A510000000000005A01 /* fixture_iphone_spatial.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_spatial.mov; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -306,6 +308,7 @@
 				03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */,
 				F72A108F8868D83B449653CC /* fixture_720p.mp4 */,
 				FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */,
+				F1207A510000000000005A01 /* fixture_iphone_spatial.mov */,
 			);
 			name = iosAppTests;
 			path = iosAppTests;
@@ -473,6 +476,7 @@
 				CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */,
 				DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */,
 				65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */,
+				F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

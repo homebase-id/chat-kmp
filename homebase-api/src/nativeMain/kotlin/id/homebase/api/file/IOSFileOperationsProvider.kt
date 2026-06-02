@@ -1,6 +1,5 @@
 package id.homebase.api.file
 
-import co.touchlab.kermit.Logger
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -184,18 +183,13 @@ class IOSFileOperationsProvider : FileOperationsProvider {
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun resolveToFilePath(path: String): String {
-        val phLibraryBranch = path.startsWith("ph://") || path.contains("/L0/")
-        Logger.i(tag = "MovCrashProbe") { "resolveToFilePath raw=$path phLibraryBranch=$phLibraryBranch" } // TEMP MovCrashProbe
-        if (phLibraryBranch) {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
             val bytes = readPhotoLibraryAsset(path)
             val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
             val data = bytes.usePinned { pinned ->
                 NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
             }
             data.writeToFile(tmpPath, atomically = true)
-            Logger.i(tag = "MovCrashProbe") { // TEMP MovCrashProbe — magic bytes: ffd8ff*=JPEG, *66747970=ftyp (mp4/mov)
-                "resolveToFilePath DONE temp=$tmpPath bytes=${bytes.size} magic=${bytes.take(12).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }}"
-            }
             return tmpPath
         }
 
@@ -213,21 +207,15 @@ class IOSFileOperationsProvider : FileOperationsProvider {
             }
 
             val asset = fetchResult.objectAtIndex(0u) as PHAsset
-            Logger.i(tag = "MovCrashProbe") { "readPhotoLibraryAsset assetId=$assetId count=${fetchResult.count} mediaType=${asset.mediaType} (1=image,2=video)" } // TEMP MovCrashProbe
             val options = PHImageRequestOptions().apply {
                 setSynchronous(false)
                 setDeliveryMode(PHImageRequestOptionsDeliveryModeHighQualityFormat)
             }
 
-            // TEMP MovCrashProbe — observe (do NOT guard) multi-callback / double-resume.
-            // If callback #2 logs with active=false, the next resume below is the crash.
-            var callbackCount = 0
             platform.Photos.PHImageManager.defaultManager().requestImageDataForAsset(
                 asset = asset,
                 options = options,
                 resultHandler = { data, _, _, _ ->
-                    callbackCount++
-                    Logger.i(tag = "MovCrashProbe") { "readPhotoLibraryAsset callback #$callbackCount data=${data != null} active=${continuation.isActive}" } // TEMP MovCrashProbe
                     if (data != null) {
                         val bytes = ByteArray(data.length.toInt())
                         bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }

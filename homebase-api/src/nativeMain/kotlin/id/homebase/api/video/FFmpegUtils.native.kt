@@ -1,8 +1,10 @@
 package id.homebase.api.video
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import kotlin.coroutines.resume
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.cinterop.*
 import kotlinx.coroutines.Dispatchers
@@ -119,21 +121,81 @@ actual object FFmpegUtils {
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
         if (!NSFileManager.defaultManager.fileExistsAtPath(inputPath)) return@withContext null
-        val info = bridge.getMediaInformation(inputPath) ?: return@withContext null
-        val v = info.streams.firstOrNull { it.type == "video" } ?: return@withContext null
-        val pixFmt = v.pixelFormat?.lowercase().orEmpty()
-        val bitDepth = when {
-            pixFmt.isBlank() -> 8
-            "12" in pixFmt -> 12
-            "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-            else -> 8
-        }
-        val transfer = v.colorTransfer?.lowercase().orEmpty()
-        val primaries = v.colorPrimaries?.lowercase().orEmpty()
-        val isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
-            primaries.startsWith("bt2020")
-        VideoTrackInfo(v.codec, v.width ?: 0, v.height ?: 0, bitDepth, isHdr)
+        val p = probeVideoNative(inputPath) ?: return@withContext null
+        VideoTrackInfo(p.codec, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
     }
+
+    private data class NativeVideoProbe(
+        val codec: String?,
+        val widthPx: Int,
+        val heightPx: Int,
+        val rotation: Int,
+        val bitDepth: Int,
+        val isHdr: Boolean,
+    )
+
+    /**
+     * Unified video probe. Prefers FFmpegKit's ffprobe (rich: pix_fmt / bit-depth / HDR),
+     * but falls back to AVFoundation when ffprobe yields no usable video stream.
+     *
+     * FFmpegKit's `getMediaInformation` returns nil for modern iPhone captures (4K HEVC +
+     * `apac` spatial audio + `mebx` metadata tracks): verified that `-v verbose` logs fine
+     * but the JSON show-streams output is empty, so the planner was fed width=0 /
+     * no-rotation — a degenerate command that crashed h264_videotoolbox in ffmpeg's
+     * print_report. AVFoundation reads these files natively (it already backs
+     * [getDurationMs] and poster extraction), mirroring how the Android actual probes via
+     * MediaExtractor / MediaMetadataRetriever rather than ffprobe.
+     */
+    private fun probeVideoNative(inputPath: String): NativeVideoProbe? {
+        val v = bridge.getMediaInformation(inputPath)?.streams?.firstOrNull { it.type == "video" }
+        if (v != null && (v.width ?: 0) > 0 && (v.height ?: 0) > 0) {
+            val pixFmt = v.pixelFormat?.lowercase().orEmpty()
+            val transfer = v.colorTransfer?.lowercase().orEmpty()
+            val primaries = v.colorPrimaries?.lowercase().orEmpty()
+            return NativeVideoProbe(
+                codec = v.codec,
+                widthPx = v.width ?: 0,
+                heightPx = v.height ?: 0,
+                rotation = v.rotation ?: 0,
+                bitDepth = bitDepthFromPixFmt(pixFmt),
+                isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
+                    primaries.startsWith("bt2020"),
+            )
+        }
+        return avProbeVideoTrack(inputPath)
+    }
+
+    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
+        pixFmt.isBlank() -> 8
+        "12" in pixFmt -> 12
+        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
+        else -> 8
+    }
+
+    /** AVFoundation track probe — native iOS metadata for files ffprobe can't read. */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun avProbeVideoTrack(inputPath: String): NativeVideoProbe? {
+        val url = avUrl(inputPath) ?: return null
+        val asset = AVURLAsset.URLAssetWithURL(url, options = null)
+        val track = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack
+            ?: return null
+        val (w, h) = track.naturalSize.useContents { width.toInt() to height.toInt() }
+        if (w <= 0 || h <= 0) return null
+        val rotation = track.preferredTransform.useContents {
+            val deg = (atan2(b, a) * 180.0 / PI).roundToInt()
+            ((deg % 360) + 360) % 360
+        }
+        // codec=null on the AVFoundation path: these files are re-encoded regardless
+        // (HEVC -> H.264), so the already-optimal short-circuit must stay off, and the
+        // real output codec is filled in post-encode. bitDepth/HDR default to 8-bit SDR
+        // (the planner's safe yuv420p pin); 10-bit/HDR detection here is a follow-up.
+        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = 8, isHdr = false)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun avUrl(inputPath: String): NSURL? =
+        if (inputPath.startsWith("file://")) NSURL.URLWithString(inputPath)
+        else NSURL.fileURLWithPath(inputPath)
 
     actual suspend fun compressVideo(
         inputPath: String,
@@ -144,7 +206,6 @@ actual object FFmpegUtils {
         allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
-        Logger.i(tag = "MovCrashProbe") { "native.compressVideo START input=$inputPath exists=${fileManager.fileExistsAtPath(inputPath)}" } // TEMP MovCrashProbe
         if (!fileManager.fileExistsAtPath(inputPath)) {
             println("Docs: Input file not found: $inputPath")
             return@withContext null
@@ -159,39 +220,21 @@ actual object FFmpegUtils {
             fileManager.removeItemAtPath(outputPath, null)
         }
 
-        // Probe via the Swift FFmpegKit bridge.
-        val mediaInfo = bridge.getMediaInformation(inputPath)
-        val videoStream = mediaInfo?.streams?.firstOrNull { it.type == "video" }
-        val widthPx = videoStream?.width ?: 0
-        val heightPx = videoStream?.height ?: 0
-        val codecMime = videoStream?.codec  // ffprobe short form, e.g. "h264"
-        // ffprobe reports raw container dims; rotation rides on the side-data
-        // displaymatrix. Planner needs both so portrait phone captures don't
-        // get a landscape scale filter and end up squished.
-        val rotation = videoStream?.rotation ?: 0
-        // Bit depth / HDR drive the planner's 8-bit-output pin (and disable the
-        // already-optimal short-circuit). The videotoolbox H.264 encoder can't
-        // emit 10-bit anyway, but pinning yuv420p keeps the libx264 fallback
-        // (and any 10-bit source) decodable on every receiver.
-        val pixFmt = videoStream?.pixelFormat?.lowercase().orEmpty()
-        val bitDepth = when {
-            pixFmt.isBlank() -> 8
-            "12" in pixFmt -> 12
-            "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-            else -> 8
-        }
-        val transfer = videoStream?.colorTransfer?.lowercase().orEmpty()
-        val primaries = videoStream?.colorPrimaries?.lowercase().orEmpty()
-        val isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
-            primaries.startsWith("bt2020")
+        // Probe metadata: prefer FFmpegKit's ffprobe (rich: pix_fmt/bit-depth/HDR), fall
+        // back to AVFoundation when ffprobe can't read the file (modern iPhone captures).
+        // See probeVideoNative. Raw container dims + rotation feed the planner so portrait
+        // captures aren't squished; bit depth/HDR drive the 8-bit-output pin.
+        val probe = probeVideoNative(inputPath)
+        val widthPx = probe?.widthPx ?: 0
+        val heightPx = probe?.heightPx ?: 0
+        val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
+        val rotation = probe?.rotation ?: 0
+        val bitDepth = probe?.bitDepth ?: 8
+        val isHdr = probe?.isHdr ?: false
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
         val durationMs = getDurationMs(inputPath)
-
-        Logger.i(tag = "MovCrashProbe") { // TEMP MovCrashProbe
-            "native.compressVideo PROBE codec=$codecMime ${widthPx}x${heightPx} rot=$rotation pixFmt=$pixFmt bitDepth=$bitDepth hdr=$isHdr durationMs=$durationMs inputBytes=$inputBytes"
-        }
 
         // Try hardware encoder first; fall back to libx264 if it fails. The
         // planner takes the encoder name and emits libx264-only flags
@@ -245,9 +288,7 @@ actual object FFmpegUtils {
 
             val command = args.joinToString(" ") { if (' ' in it) "\"$it\"" else it }
 
-            Logger.i(tag = "MovCrashProbe") { "native.compressVideo EXEC[$encoder] command=$command" } // TEMP MovCrashProbe
             val result = executeFfmpegWithProgress(command, durationMs, onProgress)
-            Logger.i(tag = "MovCrashProbe") { "native.compressVideo EXEC[$encoder] DONE success=${result.isSuccess}" } // TEMP MovCrashProbe
             if (result.isSuccess) {
                 return@withContext outputPath
             }
@@ -487,7 +528,6 @@ actual object FFmpegUtils {
     }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
-        Logger.i(tag = "MovCrashProbe") { "native.getDurationMs input=$inputPath fileSchemeBranch=${inputPath.startsWith("file://")}" } // TEMP MovCrashProbe
         // Defensive: handle both raw paths and file:// URLs. fileURLWithPath
         // would double-encode an already-formed URL; URLWithString won't
         // accept a bare path. Same pattern as LocalVideoPlayerSurface.native.kt.
