@@ -21,6 +21,7 @@ class AttachmentOptionsTest {
                     onContactClick = {},
                     onLocationClick = {},
                     onEventClick = {},
+                    onGroodleClick = {},
                     onDicesClick = {},
                 )
             }
@@ -40,6 +41,7 @@ class AttachmentOptionsTest {
                     onContactClick = {},
                     onLocationClick = {},
                     onEventClick = {},
+                    onGroodleClick = {},
                     onDicesClick = {},
                 )
             }
@@ -59,6 +61,7 @@ class AttachmentOptionsTest {
                     onContactClick = {},
                     onLocationClick = {},
                     onEventClick = {},
+                    onGroodleClick = {},
                     onDicesClick = {},
                 )
             }

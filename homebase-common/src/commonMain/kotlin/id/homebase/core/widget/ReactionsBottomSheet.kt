@@ -106,7 +106,7 @@ fun ReactionsBottomSheet(
                 }
 
                 ReactionsContent(
-                    reactions = reactions,
+                    rawReactions = reactions,
                     ownerOdinId = ownerOdinId,
                     onContactClick = onContactClick,
                     onAddEmoji = onAddReaction?.let { { showEmojiPicker = true } },
@@ -129,12 +129,17 @@ fun ReactionsBottomSheet(
 
 @Composable
 private fun ColumnScope.ReactionsContent(
-    reactions: List<ReactionDisplayItem>,
+    rawReactions: List<ReactionDisplayItem>,
     ownerOdinId: String?,
     onContactClick: (odinId: String) -> Unit,
     onAddEmoji: (() -> Unit)? = null,
     onToggleReaction: ((String) -> Unit)? = null,
 ) {
+    // Drop machine reactions whose code starts with "_" (e.g. Groodle vote codes
+    // like "_1Y") — they are surfaced by their own kind's bubble, not as emoji.
+    val reactions = remember(rawReactions) {
+        rawReactions.filterNot { it.emoji.startsWith('_') }
+    }
     val grouped = remember(reactions) {
         reactions.groupBy { it.emoji }
     }

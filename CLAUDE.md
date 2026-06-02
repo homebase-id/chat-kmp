@@ -3,8 +3,6 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this
 repository.
 
-**_NOTE:_**  At the end of every task, Codex will review your work
-
 ## Discussions
 
 If I push back and you still think you're right, hold the position and

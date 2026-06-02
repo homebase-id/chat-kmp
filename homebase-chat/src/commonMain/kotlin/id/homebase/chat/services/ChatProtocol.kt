@@ -51,6 +51,15 @@ object ChatProtocol {
      */
     const val ChatDiceRollMessageDataType = 212
 
+    /**
+     * Groodle (group-scheduling poll) message kind. Like [ChatEventMessageDataType],
+     * the full descriptor (title, candidate time slots, deadline) lives in
+     * `appData.content` — no payloads, no fetch on scroll. Votes ride as ordinary
+     * chat reactions encoded by [id.homebase.chat.groodle.GroodleVote]. See
+     * [id.homebase.chat.groodle.GroodleDescriptor].
+     */
+    const val ChatGroodleMessageDataType = 213
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */

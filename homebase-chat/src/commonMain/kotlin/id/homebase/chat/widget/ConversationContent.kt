@@ -119,6 +119,7 @@ import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
+import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.location.LocationResult
@@ -243,6 +244,7 @@ fun ConversationContent(
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
+    var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
@@ -1574,6 +1576,9 @@ fun ConversationContent(
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true
+                    }, onGroodleClick = {
+                        showAttachmentSheet = false
+                        showGroodleComposer = true
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
@@ -1588,6 +1593,14 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showEventComposer = false },
             onSent = { showEventComposer = false },
+        )
+    }
+
+    if (showGroodleComposer) {
+        GroodleComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showGroodleComposer = false },
+            onSent = { showGroodleComposer = false },
         )
     }
 
