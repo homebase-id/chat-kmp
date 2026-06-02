@@ -1244,6 +1244,12 @@ private fun MomentDetailContent(
                             // (and vice versa). Letterbox bars take the Box's
                             // black background.
                             preserveAspectRatio = true,
+                            // While the comments sheet is open the pager is
+                            // height-constrained to the top band; fill that box
+                            // (Fit) instead of letting the image's own aspect
+                            // ratio size it and overflow the band — mirrors the
+                            // video tile's fitToContent here.
+                            fitBounds = commentsOpen,
                             messageId = moment.id,
                             shape = RectangleShape,
                             sharedTransitionScope = sharedTransitionScope,
