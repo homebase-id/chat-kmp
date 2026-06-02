@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,25 +50,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.MediaPager
+import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
-import id.homebase.core.media.ZoomableContainer
+import id.homebase.core.media.MediaUnavailablePlaceholder
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
+import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -85,6 +93,7 @@ fun FullScreenMediaViewer(
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val scope = rememberCoroutineScope()
+    val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
     var showUI by remember { mutableStateOf(true) }
     var showMenu by remember { mutableStateOf(false) }
 
@@ -115,18 +124,43 @@ fun FullScreenMediaViewer(
             pageCount = data.payloads.size,
             modifier = Modifier.fillMaxSize(),
             state = pagerState,
-            swipeToDismiss = true,
-            onDismiss = onDismiss,
         ) { page ->
             val payload = data.payloads[page]
-            val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
+            val payloadIv = remember(payload.iv) {
+                payload.iv?.let {
+                    try {
+                        Base64.decode(it)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
 
-            ZoomableContainer(
-                onTap = { showUI = !showUI },
-            ) {
-                payloadIv?.let { iv ->
-                    val imageData = remember(data.driveId, data.fileId, payload.key, iv) {
-                        HomebaseImageData(
+            // Prefer a locally-available original (an image sent this session)
+            // over a remote fetch + decrypt — same as VaultZoomableImage.
+            val localContext by localAttachmentStore.observe(data.messageId, payload.key)
+                .collectAsStateWithLifecycle(
+                    initialValue = localAttachmentStore.get(data.messageId, payload.key),
+                )
+
+            when (val resolved = resolveMediaPageSource(localContext, payload.iv != null, payloadIv)) {
+                is MediaPageSource.LocalFile -> {
+                    val source = remember(resolved.path) {
+                        SubSamplingImageSource.LocalFile(filePath = resolved.path)
+                    }
+                    ZoomableSubSamplingImage(
+                        source = source,
+                        contentDescription = payload.descriptorContent,
+                        onTap = { showUI = !showUI },
+                        sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                    )
+                }
+
+                is MediaPageSource.Remote -> {
+                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv) {
+                        val imageData = HomebaseImageData(
                             driveId = data.driveId,
                             fileId = data.fileId,
                             payloadKey = payload.key,
@@ -134,18 +168,36 @@ fun FullScreenMediaViewer(
                             loadFullPayload = true,
                             lastModified = payload.lastModified,
                             keyHeader = KeyHeader(
-                                iv = iv,
-                                aesKey = data.keyHeader.aesKey
-                            )
+                                iv = resolved.iv,
+                                aesKey = data.keyHeader.aesKey,
+                            ),
                         )
+                        SubSamplingImageSource.Remote(imageData)
                     }
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
+                    ZoomableSubSamplingImage(
+                        source = source,
                         contentDescription = payload.descriptorContent,
-                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
+                        animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
+                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                    )
+                }
+
+                MediaPageSource.Pending -> {
+                    // Payload not uploaded yet (no iv): show a spinner like the
+                    // vault viewer, not a failure — and keep it tappable.
+                    MediaPendingOverlay(onTap = { showUI = !showUI })
+                }
+
+                MediaPageSource.Unavailable -> {
+                    // iv present but undecodable (corrupt): keep the page
+                    // tappable so the user can still toggle the chrome (and reach
+                    // the back button) instead of a blank, unresponsive page.
+                    MediaUnavailablePlaceholder(
+                        message = stringResource(MR.string.chat_image_unavailable),
+                        icon = Icons.Default.BrokenImage,
+                        onTap = { showUI = !showUI },
                     )
                 }
             }
@@ -254,14 +306,23 @@ fun FullScreenMediaViewer(
                     modifier = Modifier.fillMaxWidth(),
                 ) { _, index, isSelected ->
                     val payload = data.payloads[index]
-                    payload.iv?.let { iv ->
+                    val railIv = remember(payload.iv) {
+                        payload.iv?.let {
+                            try {
+                                Base64.decode(it)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                    }
+                    if (railIv != null) {
                         val thumbImageData = remember(
                             data.driveId,
                             data.fileId,
                             payload.key,
-                            payload.lastModified
+                            payload.lastModified,
+                            railIv,
                         ) {
-                            val payloadIv = Base64.decode(iv)
                             HomebaseImageData(
                                 driveId = data.driveId,
                                 fileId = data.fileId,
@@ -269,7 +330,7 @@ fun FullScreenMediaViewer(
                                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                                 lastModified = payload.lastModified,
                                 keyHeader = KeyHeader(
-                                    iv = payloadIv,
+                                    iv = railIv,
                                     aesKey = data.keyHeader.aesKey
                                 )
                             )
