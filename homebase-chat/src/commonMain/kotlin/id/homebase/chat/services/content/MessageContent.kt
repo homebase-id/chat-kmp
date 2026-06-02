@@ -2,6 +2,7 @@ package id.homebase.chat.services.content
 
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
+import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.notifshared.EVENT_NOTIF_SENTINEL
 
 /**
@@ -96,6 +97,20 @@ sealed interface MessageContent {
     }
 
     /**
+     * A group-scheduling poll: candidate time slots that recipients vote on
+     * (Yes/No/Maybe per slot). Votes are recorded as chat reactions, not edits,
+     * and the tally is rendered inside the bubble's own fullscreen detail dialog —
+     * so [actions] is [ActionPolicy.StructuredOneShot]: no edit (the poll is
+     * immutable; it can only be deleted), no reply/forward, and no inline-reaction
+     * surface (the vote codes would otherwise leak into the long-press emoji
+     * strip). Deletion is not governed by ActionPolicy and remains available.
+     * [descriptor] follows the same nullability contract as [Event.descriptor].
+     */
+    data class Groodle(val descriptor: GroodleDescriptor?) : MessageContent {
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_GROODLE_LABEL
+    }
+
+    /**
      * A typed message whose [dataType] this client doesn't recognize — typically
      * a newer kind (poll, doodle, …) sent from a more up-to-date peer. The
      * receiver can't render the content itself; the bubble shows an
@@ -115,6 +130,7 @@ sealed interface MessageContent {
         // from a @Composable; this getter must work outside composition.
         const val UNPARSEABLE_EVENT_LABEL = "Event"
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
+        const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 

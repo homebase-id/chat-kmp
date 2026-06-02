@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
+import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.services.ChatProtocol
 
 /**
@@ -36,6 +37,7 @@ object MessageContentParser {
         return when (dataType) {
             ChatProtocol.ChatEventMessageDataType -> parseEvent(content)
             ChatProtocol.ChatDiceRollMessageDataType -> parseDiceRoll(content)
+            ChatProtocol.ChatGroodleMessageDataType -> parseGroodle(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
             // descriptor lives on a payload (the header content is still a
@@ -86,6 +88,24 @@ object MessageContentParser {
         MessageContent.DiceRoll(descriptor = null)
     }
 
+    private fun parseGroodle(content: String): MessageContent.Groodle = try {
+        val descriptor = OdinSystemSerializer.deserialize<GroodleDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.Groodle(descriptor)
+        } else {
+            Logger.w(tag = TAG) {
+                "Groodle descriptor failed validation; " +
+                    "slots=${descriptor.slots.size} " +
+                    "titleLen=${descriptor.title.length} " +
+                    "tz=${descriptor.timezone}"
+            }
+            MessageContent.Groodle(descriptor = null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "failed to parse Groodle descriptor; rendering unsupported-format chip" }
+        MessageContent.Groodle(descriptor = null)
+    }
+
     /**
      * Senders only ever construct a [MessageContent] subtype with a real
      * descriptor, so a null descriptor — or a [MessageContent.Unknown] kind —
@@ -100,6 +120,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "DiceRoll descriptor must be non-null on send" }
             )
+        is MessageContent.Groodle ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "Groodle descriptor must be non-null on send" }
+            )
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be serialized")
     }
@@ -107,6 +131,7 @@ object MessageContentParser {
     fun dataTypeFor(content: MessageContent): Int = when (content) {
         is MessageContent.Event -> ChatProtocol.ChatEventMessageDataType
         is MessageContent.DiceRoll -> ChatProtocol.ChatDiceRollMessageDataType
+        is MessageContent.Groodle -> ChatProtocol.ChatGroodleMessageDataType
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
     }
