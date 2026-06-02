@@ -37,6 +37,7 @@ import org.koin.compose.koinInject
 import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeErrorKey
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemNewAccessLogEntryNotification
@@ -125,6 +126,9 @@ actual fun VideoPlayerSurface(
     onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
     useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    paused: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -202,6 +206,26 @@ actual fun VideoPlayerSurface(
         }
     }
 
+    // Press-and-hold pause-in-place. AVPlayer.pause() holds the current frame
+    // on the layer and play() resumes from the same time — no teardown, no
+    // reset. Mirrors the Android playWhenReady toggle.
+    LaunchedEffect(state, paused) {
+        val player = (state as? VpsState.Playing)?.player ?: return@LaunchedEffect
+        if (paused) player.pause() else player.play()
+    }
+
+    // Replay-in-place. The "Watch again" button increments replayToken; seek
+    // the (ended) player back to zero and resume without remounting. Guarded
+    // on > 0 so the initial composition doesn't fire a spurious seek.
+    LaunchedEffect(replayToken) {
+        if (replayToken > 0) {
+            (state as? VpsState.Playing)?.player?.let { player ->
+                player.seekToTime(CMTimeMakeWithSeconds(0.0, 600))
+                player.play()
+            }
+        }
+    }
+
     LaunchedEffect(data) {
         onProgress(0f)
         withContext(Dispatchers.Main) {
@@ -250,6 +274,7 @@ actual fun VideoPlayerSurface(
                         kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
+                        observeEndOfPlayback(playerItem, notificationObservers, onEnded)
                         val player = if (useInlineOptimizations) {
                             playerPool.acquire().also {
                                 it.replaceCurrentItemWithPlayerItem(playerItem)
@@ -306,6 +331,9 @@ actual fun VideoPlayerSurface(
                         } else {
                             AVPlayer(uRL = mp4Url)
                         }
+                        player.currentItem?.let { item ->
+                            observeEndOfPlayback(item, notificationObservers, onEnded)
+                        }
                         if (useInlineOptimizations) {
                             // Same `.readyToPlay` gate as the HLS path —
                             // wait for asset parse before mounting the
@@ -350,13 +378,12 @@ actual fun VideoPlayerSurface(
                         // its own play/pause affordance (moments-feed
                         // carousel).
                         showsPlaybackControls = useNativeControls
-                        // Fit-with-letterbox vs crop-to-fill, controlled by
-                        // the caller. The feed carousel (useNativeControls
-                        // false) always wants resizeAspectFill so the video
-                        // matches its crop-to-fill thumbnail. The detail
-                        // screen passes through the user's session-scoped
-                        // toggle via [useZoomFill].
-                        videoGravity = if (!useNativeControls || useZoomFill) {
+                        // Fit-with-letterbox vs crop-to-fill, driven solely by
+                        // [useZoomFill]. Inline tiles request crop-to-fill
+                        // explicitly to match their crop-to-fill thumbnail; the
+                        // comments-open shrink passes useZoomFill = false so the
+                        // whole frame shows above the sheet.
+                        videoGravity = if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {
                             AVLayerVideoGravityResizeAspect
@@ -373,7 +400,7 @@ actual fun VideoPlayerSurface(
                 },
                 update = { controller ->
                     (controller as? AVPlayerViewController)?.videoGravity =
-                        if (!useNativeControls || useZoomFill) {
+                        if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {
                             AVLayerVideoGravityResizeAspect
@@ -414,6 +441,24 @@ private suspend fun awaitReadyToPlay(playerItem: AVPlayerItem) {
             }
         }
     }
+}
+
+/**
+ * Fire [onEnded] when [playerItem] plays to its end. Registered for both HLS
+ * and MP4 items; the observer token is parked in [observers] so the shared
+ * dispose path removes it before the pooled player is recycled.
+ */
+private fun observeEndOfPlayback(
+    playerItem: AVPlayerItem,
+    observers: MutableList<NSObjectProtocol>,
+    onEnded: () -> Unit,
+) {
+    observers += NSNotificationCenter.defaultCenter.addObserverForName(
+        name = AVPlayerItemDidPlayToEndTimeNotification,
+        `object` = playerItem,
+        queue = NSOperationQueue.mainQueue,
+        usingBlock = { onEnded() },
+    )
 }
 
 private fun attachHlsDiagnostics(

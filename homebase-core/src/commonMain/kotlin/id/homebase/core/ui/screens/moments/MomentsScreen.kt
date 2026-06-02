@@ -9,7 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,10 +31,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
@@ -59,6 +54,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -71,7 +67,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -85,8 +80,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import coil3.compose.AsyncImage
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.OwnerSession
@@ -98,9 +96,6 @@ import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
-import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
@@ -123,7 +118,6 @@ import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.resources.moments_create_action
-import id.homebase.resources.moments_detail_comments_section
 import id.homebase.resources.moments_feed_indicator_private
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
@@ -166,13 +160,6 @@ fun MomentsScreen(
      * navigating.
      */
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit = { _, _ -> },
-    /**
-     * Open a moment's detail view with its comments sheet already expanded.
-     * Invoked by the timeline card's comment button so a tap lands straight
-     * in the thread. Compact layouts only — the wide desktop layout shows the
-     * detail pane (with its own comment affordance) inline.
-     */
-    onOpenMomentComments: (momentId: String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -243,7 +230,6 @@ fun MomentsScreen(
             onCreateMoment = onCreateMoment,
             onProfileClick = onProfileClick,
             onOpenMoment = onOpenMoment,
-            onOpenMomentComments = onOpenMomentComments,
             onAddReaction = viewModel::addReaction,
             onDeleteFailedMoment = viewModel::deleteFailedMoment,
             onDismissUpload = viewModel::dismissUpload,
@@ -268,7 +254,6 @@ private fun CompactMomentsLayout(
     onCreateMoment: () -> Unit,
     onProfileClick: () -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
-    onOpenMomentComments: (momentId: String) -> Unit,
     onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
@@ -311,12 +296,10 @@ private fun CompactMomentsLayout(
                 onAddReaction = onAddReaction,
                 openLabel = openLabel,
                 selectedMomentId = null,
-                // Compact timeline: a tap reveals the inline overlay
-                // (description + right-edge action column) in place rather
-                // than navigating away. The comment button still navigates
-                // into the detail thread.
-                inlineOverlay = true,
-                onOpenComments = { onOpenMomentComments(it.toString()) },
+                // Compact timeline: a tap raises a modal comments + description
+                // sheet for the moment (Instagram-style) rather than navigating
+                // away to the full-screen detail view.
+                commentsSheetOnTap = true,
                 onDeleteFailedMoment = onDeleteFailedMoment,
                 onDismissUpload = onDismissUpload,
                 modifier = contentModifier,
@@ -546,18 +529,28 @@ private fun MomentsFeedList(
     onAddReaction: (Uuid, String) -> Unit,
     openLabel: String,
     selectedMomentId: Uuid?,
-    // When true (compact timeline), a single tap toggles an inline overlay on
-    // the card — description + right-edge action column — instead of invoking
-    // [onOpenMoment]. The wide-desktop layout leaves this false so a tap still
-    // selects the moment for the embedded detail pane.
-    inlineOverlay: Boolean = false,
-    onOpenComments: (Uuid) -> Unit = {},
+    // When true (compact timeline), a single tap opens a modal comments +
+    // description bottom sheet for that moment (Instagram-style) instead of
+    // invoking [onOpenMoment]. The wide-desktop layout leaves this false so a
+    // tap still selects the moment for the embedded detail pane.
+    commentsSheetOnTap: Boolean = false,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
     onDismissUpload: (Uuid) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
+    // Which moment (if any) has its comments bottom sheet open. Null = closed.
+    // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
+    // sheet anchors to this id and blocks the feed until dismissed.
+    var commentsMomentId by remember { mutableStateOf<Uuid?>(null) }
+    // Payload key of the media that was visible when the comments sheet was
+    // opened, so the media band above the sheet shows that exact item (the
+    // selected carousel page), not always page 0.
+    var commentsPayloadKey by remember { mutableStateOf<String?>(null) }
+    // Which moment (if any) has its "who reacted" roster open. Null = closed.
+    // Opened by long-pressing a reaction toggle on a feed card.
+    var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }
     // Session-scoped mute state: a Koin singleton so it survives navigating
     // away from the moments tab and back. Default muted on every fresh app
     // launch (Instagram-style); once the user unmutes, every subsequent
@@ -605,9 +598,10 @@ private fun MomentsFeedList(
         }
     }
 
+    Box(modifier = modifier) {
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         // Chat-style: feed is sorted newest-first by the service, and
@@ -623,11 +617,16 @@ private fun MomentsFeedList(
                 uploadStatus = uploadProgress[moment.id],
                 pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
-                isSelected = selectedMomentId != null && moment.id == selectedMomentId,
+                isSelected = !commentsSheetOnTap &&
+                    selectedMomentId != null && moment.id == selectedMomentId,
                 onCardClick = { payloadKey -> onOpenMoment(moment.id.toString(), payloadKey) },
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
-                inlineOverlay = inlineOverlay,
-                onOpenComments = { onOpenComments(moment.id) },
+                commentsSheetOnTap = commentsSheetOnTap,
+                onOpenComments = { payloadKey ->
+                    commentsPayloadKey = payloadKey
+                    commentsMomentId = moment.id
+                },
+                onShowReactors = { reactionsMomentId = moment.id },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
                 onDismissUpload = { onDismissUpload(moment.id) },
@@ -638,7 +637,10 @@ private fun MomentsFeedList(
                 // for the rare "user explicitly wanted to stop or restart"
                 // case — taps still toggle, autoplay re-engages on the next
                 // visibility update.
-                isVideoPlaying = isActive,
+                // Pause the feed's own players while the comments band is up
+                // (the band owns playback) so we never mount two surfaces for
+                // the same moment.
+                isVideoPlaying = isActive && commentsMomentId == null,
                 onToggleVideoPlay = {
                     playingMomentId = if (isActive) null else moment.id
                 },
@@ -649,8 +651,227 @@ private fun MomentsFeedList(
                 autoplayActive = isActive,
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
+                commentsOpen = commentsSheetOnTap && commentsMomentId == moment.id,
             )
         }
+    }
+
+        // While a card's comments sheet is open, cover the feed with the tapped
+        // moment's media shrunk to a band at the top (whole frame, fit) so it
+        // sits fully above the (transparent-scrim) sheet — mirroring the detail
+        // screen. Deterministic: no list scrolling, and the feed's own players
+        // are paused below (isVideoPlaying gate) so only the band plays.
+        val bandMomentId = commentsMomentId
+        if (commentsSheetOnTap && bandMomentId != null) {
+            val bandMoment = moments.firstOrNull { it.id == bandMomentId }
+            if (bandMoment != null) {
+                MomentCommentsMediaBand(
+                    moment = bandMoment,
+                    initialPayloadKey = commentsPayloadKey,
+                    isMuted = isMuted,
+                    onToggleMute = videoSession::toggleMuted,
+                )
+            }
+        }
+    }
+
+    // Instagram-style: a tap raises a modal comments + description sheet
+    // anchored to the tapped moment. ModalBottomSheet brings its own scrim and
+    // blocks the feed until the user swipes it down (or taps the scrim), so the
+    // thread stays locked to the moment it was opened from.
+    val sheetMomentId = commentsMomentId
+    if (commentsSheetOnTap && sheetMomentId != null) {
+        MomentCommentsSheetHost(
+            momentId = sheetMomentId,
+            onDismiss = { commentsMomentId = null },
+        )
+    }
+
+    // "Who reacted" roster, raised by long-pressing a reaction toggle. Spins up
+    // a throwaway per-moment detail VM (same pattern as the comments host) so
+    // the server-loaded reactor list is fetched and torn down with the sheet.
+    val reactorsMomentId = reactionsMomentId
+    if (reactorsMomentId != null) {
+        MomentReactionsSheetHost(
+            momentId = reactorsMomentId,
+            onDismiss = { reactionsMomentId = null },
+        )
+    }
+}
+
+/**
+ * Hosts the timeline's modal comments sheet for a moment: spins up a
+ * per-moment [MomentDetailViewModel] (keyed by id, same as the wide-desktop
+ * detail pane) inside a disposable [ViewModelStore] so the comments
+ * subscription is torn down as soon as the sheet is dismissed — no leaked VMs
+ * as the user opens one moment's thread after another.
+ *
+ * Reuses the detail screen's [MomentCommentsSheet] so the timeline and the
+ * full-screen detail view show an identical thread.
+ */
+@Composable
+private fun MomentCommentsSheetHost(
+    momentId: Uuid,
+    onDismiss: () -> Unit,
+) {
+    DisposableViewModelStoreOwner {
+        val detailVm: MomentDetailViewModel = koinViewModel(
+            key = "moment-comments-sheet-$momentId",
+        ) { parametersOf(momentId, null) }
+        val uiState by detailVm.uiState.collectAsStateWithLifecycle()
+        MomentCommentsSheet(
+            uiState = uiState,
+            onAction = detailVm::onAction,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/**
+ * Fraction of the screen the tapped moment's media occupies (pinned to the top)
+ * while its comments sheet is open. The sheet takes the bottom ~0.65, so the two
+ * leave a small black gap and both stay visible — see [MomentCommentsMediaBand].
+ */
+private const val MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
+
+/**
+ * Opaque overlay drawn over the feed while a moment's comments sheet is open: the
+ * media the user was looking at, shrunk to the top
+ * [MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS] of the screen and rendered
+ * fit-to-content (whole frame), so it sits fully above the transparent-scrim
+ * sheet. Mirrors the detail screen's shrink without touching the (reverse-layout)
+ * list scroll position. The feed's own video players are paused while this is up
+ * (see the `isVideoPlaying` gate at the card call site), so only this band plays.
+ *
+ * Shows the single [initialPayloadKey] item — the carousel page that was visible
+ * when comments were opened — rather than the whole gallery, so a carousel stays
+ * on the selected item (instead of snapping back to page 0) and an image gets the
+ * same fit-to-content treatment as a video.
+ */
+@Composable
+private fun MomentCommentsMediaBand(
+    moment: MomentFeedItem,
+    initialPayloadKey: String?,
+    isMuted: Boolean,
+    onToggleMute: () -> Unit,
+) {
+    val targetPayload = remember(moment.payloads, initialPayloadKey) {
+        moment.payloads.firstOrNull { it.key == initialPayloadKey }
+            ?: moment.payloads.firstOrNull()
+    }
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        if (targetPayload != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS)
+                    .align(Alignment.TopCenter),
+            ) {
+                val isVideo = targetPayload.contentType?.startsWith("video/") == true ||
+                    targetPayload.contentType == "application/vnd.apple.mpegurl"
+                if (isVideo) {
+                    var playing by remember(moment.id, targetPayload.key) {
+                        mutableStateOf(true)
+                    }
+                    MomentInlineVideoTile(
+                        payload = targetPayload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        keyHeader = moment.keyHeader,
+                        previewThumbnail = moment.previewThumbnail,
+                        isUploading = false,
+                        isPlaying = playing,
+                        onPlayTap = { playing = !playing },
+                        onDoubleTap = {},
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        modifier = Modifier.fillMaxSize(),
+                        fitToContent = true,
+                    )
+                } else {
+                    // Reuse the gallery's single-payload (fit-to-content) layout
+                    // so the whole image is visible, just like the video branch.
+                    MomentMediaGallery(
+                        payloads = listOf(targetPayload),
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        previewThumbnail = moment.previewThumbnail,
+                        keyHeader = moment.keyHeader,
+                        messageId = moment.id,
+                        downloadingFiles = emptySet(),
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        isUploading = false,
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        autoplayActive = true,
+                        modifier = Modifier.fillMaxSize(),
+                        fitToContent = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Hosts the timeline's "who reacted" roster for a moment, opened by long-pressing
+ * a reaction toggle. Mirrors [MomentCommentsSheetHost]: a per-moment
+ * [MomentDetailViewModel] in a disposable [ViewModelStore], dispatched to
+ * [MomentDetailUiAction.OpenReactionsSheet] on open so the reactor list is
+ * fetched once and torn down with the sheet. Reuses the detail screen's
+ * [ReactionsBottomSheet] so the two surfaces show an identical roster.
+ */
+@Composable
+private fun MomentReactionsSheetHost(
+    momentId: Uuid,
+    onDismiss: () -> Unit,
+) {
+    DisposableViewModelStoreOwner {
+        val detailVm: MomentDetailViewModel = koinViewModel(
+            key = "moment-reactions-sheet-$momentId",
+        ) { parametersOf(momentId, null) }
+        val uiState by detailVm.uiState.collectAsStateWithLifecycle()
+        LaunchedEffect(momentId) {
+            detailVm.onAction(MomentDetailUiAction.OpenReactionsSheet)
+        }
+        if (uiState.showReactionsSheet) {
+            ReactionsBottomSheet(
+                isLoading = uiState.isReactionsLoading,
+                reactions = uiState.reactions,
+                onDismiss = {
+                    detailVm.onAction(MomentDetailUiAction.DismissReactionsSheet)
+                    onDismiss()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Scopes its [content] to a fresh [ViewModelStore] that is cleared when the
+ * content leaves composition. Lets a [koinViewModel] hosted outside the
+ * navigation back stack (here, the timeline's comments sheet) be disposed when
+ * it closes instead of living for the whole screen (the default
+ * `LocalViewModelStoreOwner` is the screen/back-stack entry, which never
+ * clears mid-screen).
+ */
+@Composable
+private fun DisposableViewModelStoreOwner(
+    content: @Composable () -> Unit,
+) {
+    val storeOwner = remember {
+        object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        }
+    }
+    DisposableEffect(storeOwner) {
+        onDispose { storeOwner.viewModelStore.clear() }
+    }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides storeOwner) {
+        content()
     }
 }
 
@@ -668,10 +889,16 @@ private fun MomentPostCard(
     // moments and falls through to "open at page 0" downstream.
     onCardClick: (payloadKey: String?) -> Unit,
     onAddReaction: (emoji: String) -> Unit,
-    // Compact timeline only: when true a single tap toggles the inline overlay
-    // (description + right action column) instead of calling [onCardClick].
-    inlineOverlay: Boolean,
-    onOpenComments: () -> Unit,
+    // Compact timeline only: when true a single tap opens the modal comments
+    // sheet (via [onOpenComments]) instead of calling [onCardClick].
+    commentsSheetOnTap: Boolean,
+    // Carries the payload key of whichever carousel page was visible at tap
+    // time so the comments band can open on the media the user was actually
+    // looking at (not always page 0). `null` for single-payload moments.
+    onOpenComments: (payloadKey: String?) -> Unit,
+    // Long-press on a reaction toggle opens the server-loaded "who reacted"
+    // roster for this moment — same sheet the detail screen uses.
+    onShowReactors: () -> Unit,
     onClickLabel: String,
     onDeleteFailedMoment: () -> Unit,
     onDismissUpload: () -> Unit,
@@ -680,6 +907,10 @@ private fun MomentPostCard(
     autoplayActive: Boolean = false,
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
+    // True while this card's comments sheet is open. Switches the media to
+    // fit-with-letterbox so the whole photo/video is visible (paired with the
+    // shrink/scroll that brings the card above the sheet).
+    commentsOpen: Boolean = false,
 ) {
     // Local sheet state — only one moment's failed-upload sheet can be open
     // at a time per card, and the sheet's lifetime tracks the card. No need
@@ -700,13 +931,6 @@ private fun MomentPostCard(
     // composable's lifecycle and is not coupled to detector restarts.
     var tapCount by remember { mutableStateOf(0) }
     var dispatchJob by remember { mutableStateOf<Job?>(null) }
-
-    // Inline-overlay visibility (compact timeline only). A single tap toggles
-    // this; while visible the card shows the bottom description overlay and
-    // the right-edge action column (heart / flame counts + comment button).
-    // Reset per moment id so recycled list slots don't inherit a neighbour's
-    // open state.
-    var overlayVisible by remember(moment.id) { mutableStateOf(false) }
 
     // Tracks which carousel page the user is currently looking at so a
     // tap-to-detail opens on the same page. Defaults to the first payload
@@ -738,11 +962,12 @@ private fun MomentPostCard(
                             val resolved = tapCount
                             tapCount = 0
                             when (resolved) {
-                                // Compact timeline toggles the inline overlay
-                                // in place; wide-desktop still selects the
-                                // moment for the embedded detail pane.
-                                1 -> if (inlineOverlay) {
-                                    overlayVisible = !overlayVisible
+                                // Compact timeline opens the modal comments
+                                // sheet for this moment; wide-desktop still
+                                // selects the moment for the embedded detail
+                                // pane.
+                                1 -> if (commentsSheetOnTap) {
+                                    onOpenComments(visiblePayloadKey)
                                 } else {
                                     onCardClick(visiblePayloadKey)
                                 }
@@ -774,8 +999,8 @@ private fun MomentPostCard(
             // the raw pointerInput above isn't visible to them.
             .semantics {
                 onClick(label = onClickLabel) {
-                    if (inlineOverlay) {
-                        overlayVisible = !overlayVisible
+                    if (commentsSheetOnTap) {
+                        onOpenComments(visiblePayloadKey)
                     } else {
                         onCardClick(visiblePayloadKey)
                     }
@@ -860,6 +1085,7 @@ private fun MomentPostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(aspect),
+                        fitToContent = commentsOpen,
                     )
                 } else {
                     MomentMediaGallery(
@@ -886,6 +1112,7 @@ private fun MomentPostCard(
                         onDoubleTap = { onAddReaction(HeartEmoji) },
                         autoplayActive = autoplayActive,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
+                        fitToContent = commentsOpen,
                     )
                 }
 
@@ -924,86 +1151,66 @@ private fun MomentPostCard(
             )
         }
 
-        // Bottom-right: engagement strip + lock indicator. Engagement strip
-        // surfaces top reaction emoji + comment count from
-        // `moment.reactionPreview` (kept fresh by MomentsFeedService
-        // incremental updates) and renders nothing when empty. The lock badge
-        // signals a private moment (no recipients) — absence implies shared,
-        // which is the common case. Both live on the right so the bottom-left
-        // stays clear of the video duration label rendered by
-        // MomentMediaItem.
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // While the inline overlay is open the right action column shows
-            // the full reaction counts, so suppress the compact at-rest chip
-            // to avoid showing the same numbers twice.
-            if (!(inlineOverlay && overlayVisible)) {
-                EngagementStrip(summary = moment.reactionPreview)
+        // Center-left: reaction toggles — heart + flame, the same interactive
+        // column the detail screen renders (reusing [EmojiReactionButton] so the
+        // two can't drift), minus the comment icon. Tapping toggles the
+        // reaction with the same floating-emoji confirmation as a
+        // double/triple-tap; long-press opens the "who reacted" roster. Skipped
+        // on description-only moments (nothing to overlay against), mirroring the
+        // detail screen.
+        if (moment.payloads.isNotEmpty()) {
+            val heartCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
             }
-            if (moment.isPrivate(selfOdinId)) {
-                IndicatorBadge(
-                    imageVector = Icons.Outlined.Lock,
-                    contentDescription = stringResource(MR.string.moments_feed_indicator_private),
-                )
+            val flameCount = remember(moment.reactionPreview) {
+                countReactionsByEmoji(moment.reactionPreview, FlameEmoji)
             }
-        }
-
-        // Inline overlay (compact timeline): a single tap reveals the
-        // description (bottom) and the left-edge action column (heart /
-        // flame counts + comment button), vertically centred. AnimatedVisibility
-        // fades each in/out so the reveal reads as one gesture response. The
-        // reaction buttons reuse the same floatingController as the
-        // double/triple-tap path so adding or removing a reaction here plays
-        // the identical pop / fall-away animation. The column lives on the
-        // left so it clears the right-side date pill and engagement / lock
-        // badges.
-        if (inlineOverlay) {
-            AnimatedVisibility(
-                visible = overlayVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.CenterStart),
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                FeedActionColumn(
-                    heartCount = countReactionsByEmoji(moment.reactionPreview, HeartEmoji),
-                    flameCount = countReactionsByEmoji(moment.reactionPreview, FlameEmoji),
-                    commentCount = moment.reactionPreview?.totalCommentCount ?: 0,
-                    heartActive = HeartEmoji in moment.ownReactions,
-                    flameActive = FlameEmoji in moment.ownReactions,
-                    commentsEnabled = moment.commentsEnabled,
-                    onToggleHeart = {
-                        // Read ownReactions BEFORE dispatch so we pick the add
-                        // vs remove animation correctly (the toggle is async).
+                EmojiReactionButton(
+                    emoji = HeartEmoji,
+                    count = heartCount,
+                    isActive = HeartEmoji in moment.ownReactions,
+                    onClick = {
                         val isRemoving = HeartEmoji in moment.ownReactions
                         floatingController.show(HeartEmoji, isRemoving)
                         onAddReaction(HeartEmoji)
                     },
-                    onToggleFlame = {
+                    onLongPress = onShowReactors,
+                )
+                EmojiReactionButton(
+                    emoji = FlameEmoji,
+                    count = flameCount,
+                    isActive = FlameEmoji in moment.ownReactions,
+                    onClick = {
                         val isRemoving = FlameEmoji in moment.ownReactions
                         floatingController.show(FlameEmoji, isRemoving)
                         onAddReaction(FlameEmoji)
                     },
-                    onOpenComments = onOpenComments,
-                    // Reuses the navigate-to-detail path (onCardClick) but
-                    // lands on whichever carousel page is currently visible.
-                    onOpenDetail = { onCardClick(visiblePayloadKey) },
-                    modifier = Modifier.padding(start = 12.dp),
+                    onLongPress = onShowReactors,
                 )
             }
-            AnimatedVisibility(
-                visible = overlayVisible && moment.description.isNotBlank(),
-                enter = fadeIn(),
-                exit = fadeOut(),
+        }
+
+        // Bottom-right: lock indicator for a private moment (no recipients) —
+        // absence implies shared, which is the common case. Kept on the right
+        // so the bottom-left stays clear of the video duration label rendered
+        // by MomentMediaItem.
+        if (moment.isPrivate(selfOdinId)) {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth(),
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp),
             ) {
-                FeedDescriptionOverlay(description = moment.description)
+                IndicatorBadge(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = stringResource(MR.string.moments_feed_indicator_private),
+                )
             }
         }
 
@@ -1317,272 +1524,6 @@ private fun IndicatorBadge(
             contentDescription = contentDescription,
             tint = Color.White,
             modifier = Modifier.size(16.dp),
-        )
-    }
-}
-
-/**
- * Inline reaction + comment indicator overlaid on each feed tile. Deliberately
- * subtle:
- *  - Up to three top emoji, each with its count rendered directly beneath it,
- *    and the comment count beneath the comment icon.
- *  - Same dark-scrim chip as [IndicatorBadge] so the indicator family on a
- *    tile reads as one design.
- *  - Renders nothing when both reactions and comments are absent — empty
- *    moments stay visually quiet.
- *
- * Lives on the bottom-right alongside the lock badge, leaving the bottom-left
- * clear for the video duration label rendered by MomentMediaItem.
- */
-@Composable
-private fun EngagementStrip(
-    summary: ReactionSummary?,
-    modifier: Modifier = Modifier,
-) {
-    val topEmoji = remember(summary) {
-        summary?.reactions?.values
-            ?.sortedByDescending { it.count }
-            ?.mapNotNull { entry ->
-                if (entry.count <= 0) return@mapNotNull null
-                decodeReactionEmoji(entry.reactionContent)?.let { emoji -> emoji to entry.count }
-            }
-            ?.take(MaxTopEmoji)
-            .orEmpty()
-    }
-    val commentCount = summary?.totalCommentCount ?: 0
-    if (topEmoji.isEmpty() && commentCount <= 0) return
-
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        topEmoji.forEach { (emoji, count) ->
-            EngagementCount(count = count) {
-                Text(
-                    text = emoji,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White,
-                )
-            }
-        }
-        if (commentCount > 0) {
-            EngagementCount(count = commentCount) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.Comment,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
- * One engagement entry for [EngagementStrip]: the reaction glyph or comment
- * icon with its count rendered directly beneath, so the feed tile surfaces
- * per-emoji and comment counts under each icon.
- */
-@Composable
-private fun EngagementCount(
-    count: Int,
-    icon: @Composable () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        icon()
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White,
-        )
-    }
-}
-
-private const val MaxTopEmoji = 3
-
-/**
- * Decode the JSON-wrapped reaction content into its emoji glyph. Same shape
- * the detail screen uses (see `MomentDetailScreen.decodeReactionEmoji`) —
- * duplicated rather than lifted because there's no third caller yet.
- */
-@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
-private fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
-    OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
-}.getOrNull()
-
-/**
- * Count of reactions carrying [emoji] in [summary]. Mirrors the detail
- * screen's helper of the same name; reads straight off the embedded preview
- * so the inline overlay shows live counts without opening a sheet.
- */
-private fun countReactionsByEmoji(summary: ReactionSummary?, emoji: String): Int {
-    if (summary == null) return 0
-    return summary.reactions.values
-        .firstOrNull { entry -> decodeReactionEmoji(entry.reactionContent) == emoji }
-        ?.count ?: 0
-}
-
-/**
- * Tap-revealed action column for the compact timeline card, mirroring the
- * detail screen's [DetailActionColumn]: heart + flame (with counts, tappable
- * to toggle) and a comment button that opens the detail thread. Vertically
- * centred on the card's right edge by the caller. Heart/flame use a plain
- * [clickable] (no long-press reactor roster here — the timeline has no
- * reactor sheet); reacting feedback comes from the shared floating overlay.
- * The trailing expand button is the timeline's only path into the immersive
- * full-screen detail view (a plain tap toggles this overlay rather than
- * navigating).
- */
-@Composable
-private fun FeedActionColumn(
-    heartCount: Int,
-    flameCount: Int,
-    commentCount: Int,
-    heartActive: Boolean,
-    flameActive: Boolean,
-    commentsEnabled: Boolean,
-    onToggleHeart: () -> Unit,
-    onToggleFlame: () -> Unit,
-    onOpenComments: () -> Unit,
-    onOpenDetail: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        FeedReactionButton(
-            emoji = HeartEmoji,
-            count = heartCount,
-            isActive = heartActive,
-            onClick = onToggleHeart,
-        )
-        FeedReactionButton(
-            emoji = FlameEmoji,
-            count = flameCount,
-            isActive = flameActive,
-            onClick = onToggleFlame,
-        )
-        if (commentsEnabled) {
-            FeedOverlayIconButton(
-                icon = Icons.AutoMirrored.Filled.Chat,
-                contentDescription = stringResource(MR.string.moments_detail_comments_section),
-                count = commentCount,
-                onClick = onOpenComments,
-            )
-        }
-        FeedOverlayIconButton(
-            icon = Icons.Default.ArrowOutward,
-            contentDescription = stringResource(MR.string.moments_post_open),
-            onClick = onOpenDetail,
-        )
-    }
-}
-
-@Composable
-private fun FeedReactionButton(
-    emoji: String,
-    count: Int,
-    isActive: Boolean,
-    onClick: () -> Unit,
-) {
-    // Built outside the Text composable so the Konsist string-literal check
-    // doesn't flag an interpolated Text literal (see CLAUDE.md).
-    val countLabel = remember(count) { count.toString() }
-    val activeTint = if (isActive) Color.White else Color.White.copy(alpha = 0.55f)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = if (isActive) 0.65f else 0.4f))
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = emoji,
-                style = MaterialTheme.typography.titleMedium,
-                color = activeTint,
-            )
-        }
-        if (count > 0) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = countLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun FeedOverlayIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    // Null for action-only buttons (e.g. expand-to-detail); a positive value
-    // renders a count label beneath the icon (e.g. comment count).
-    count: Int? = null,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color.White,
-            )
-        }
-        if (count != null && count > 0) {
-            // Built outside the Text composable so the Konsist string-literal
-            // check doesn't flag an interpolated Text literal (see CLAUDE.md).
-            val countLabel = remember(count) { count.toString() }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = countLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-    }
-}
-
-/**
- * Tap-revealed description strip pinned to the bottom of the timeline card,
- * mirroring the detail screen's bottom overlay: white text over a translucent
- * upward gradient so it reads against any media.
- */
-@Composable
-private fun FeedDescriptionOverlay(
-    description: String,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        Color.Black.copy(alpha = 0.7f),
-                    ),
-                ),
-            )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-    ) {
-        Text(
-            text = description,
-            color = Color.White,
-            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }

@@ -28,6 +28,10 @@ interface VideoCompressor {
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
+        // When true and the source is >8-bit, the backend keeps a 10-bit output
+        // (and drops the H.264 hardware encoder, which can't emit 10-bit). See
+        // FFmpegUtils.compressVideo. Default false = the existing 8-bit-pinned behaviour.
+        allowTenBit: Boolean = false,
     ): String?
 
     /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */

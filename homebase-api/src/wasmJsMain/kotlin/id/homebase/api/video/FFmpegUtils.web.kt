@@ -54,6 +54,13 @@ actual object FFmpegUtils {
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
 
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? {
+        val bytes = readOkioBytes(inputPath) ?: return null
+        val p = FFmpegBridge.probe(bytes) ?: return null
+        // mp4box probe doesn't expose bit depth / colour info; default to 8-bit SDR.
+        return VideoTrackInfo(p.codec, p.widthPx, p.heightPx, 8, false)
+    }
+
     /**
      * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the
      * input, hand it to [FfmpegCompressPlanner], and either short-circuit (already-optimal /
@@ -71,6 +78,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? {
         val inputBytes = readOkioBytes(inputPath) ?: return null
 
@@ -95,6 +103,9 @@ actual object FFmpegUtils {
             inputBytes = inputBytes.size.toLong(),
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
+            // No-op here: the web probe doesn't report bit depth, so output
+            // stays 8-bit yuv420p regardless of the flag.
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {

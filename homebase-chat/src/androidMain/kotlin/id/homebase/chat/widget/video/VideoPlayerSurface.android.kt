@@ -88,6 +88,9 @@ actual fun VideoPlayerSurface(
     onPositionUpdate: (Long) -> Unit,
     onFirstFrame: () -> Unit,
     useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    paused: Boolean,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -142,6 +145,7 @@ actual fun VideoPlayerSurface(
                 Logger.d(tag = "VideoIO") {
                     "player state: fileId=${data.fileId} key=${data.payloadKey} → ${playbackStateName(playbackState)}"
                 }
+                if (playbackState == Player.STATE_ENDED) onEnded()
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 Logger.d(tag = "VideoIO") {
@@ -208,6 +212,28 @@ actual fun VideoPlayerSurface(
             .buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, muted)
             .build()
+    }
+
+    // Press-and-hold pause-in-place. Toggling playWhenReady keeps the decoded
+    // frame on the TextureView (ExoPlayer holds the last frame while paused)
+    // and resumes from the same position when released — no surface teardown,
+    // no thumbnail flash, no reset to the start.
+    LaunchedEffect(exoPlayer, paused) {
+        exoPlayer?.playWhenReady = !paused
+    }
+
+    // Replay-in-place. The "Watch again" button increments replayToken; we
+    // seek the (already-loaded, ended) player back to 0 and resume without
+    // tearing the surface down. Guard on > 0 so the initial composition (token
+    // 0) doesn't trigger a spurious seek before playback has even begun.
+    LaunchedEffect(replayToken) {
+        if (replayToken > 0) {
+            exoPlayer?.let { p ->
+                p.seekTo(0)
+                p.playWhenReady = true
+                p.play()
+            }
+        }
     }
 
     LaunchedEffect(data) {
@@ -393,26 +419,18 @@ actual fun VideoPlayerSurface(
                                 // when we own the gesture stack ourselves.
                                 isClickable = useNativeControls
                                 isFocusable = useNativeControls
-                                // Inline tiles (no native controls) share their
-                                // bounds with a thumbnail laid down underneath
-                                // (see MomentInlineVideoTile) which uses
-                                // ContentScale.Crop. Without ZOOM the video would
-                                // letterbox to FIT inside a portrait carousel
-                                // box, showing black bars over a thumbnail that's
-                                // already cropped to fill — visually inconsistent.
-                                // ZOOM mirrors the thumbnail's crop-to-fill so
-                                // the transition is seamless.
-                                //
-                                // Detail screen (useNativeControls=true) defaults
-                                // to FIT (whole frame visible, letterbox bars on
-                                // mismatched aspects). The caller can opt into
-                                // ZOOM (crop-to-fill, Reels-style) via
-                                // [useZoomFill] — the moments detail screen
-                                // exposes this as a session-scoped toggle.
-                                resizeMode = when {
-                                    !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                    useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                // Resize is driven solely by [useZoomFill]:
+                                // ZOOM (crop-to-fill, Reels-style) when set, FIT
+                                // (whole frame visible, letterbox bars on
+                                // mismatched aspects) when not. Inline tiles
+                                // request crop-to-fill explicitly (to match the
+                                // crop-to-fill thumbnail underneath); the
+                                // comments-open shrink passes useZoomFill = false
+                                // so the whole frame is revealed above the sheet.
+                                resizeMode = if (useZoomFill) {
+                                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                } else {
+                                    AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 }
                                 // Leave the underlying TextureView at its
                                 // default `isOpaque = true`. The earlier code
@@ -438,10 +456,10 @@ actual fun VideoPlayerSurface(
                         view.useController = useNativeControls
                         view.isClickable = useNativeControls
                         view.isFocusable = useNativeControls
-                        view.resizeMode = when {
-                            !useNativeControls -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            useZoomFill -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        view.resizeMode = if (useZoomFill) {
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        } else {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     modifier = Modifier.fillMaxSize(),

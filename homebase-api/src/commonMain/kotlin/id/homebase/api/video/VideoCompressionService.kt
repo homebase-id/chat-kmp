@@ -54,9 +54,10 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? =
         heavyOpLock.withLock {
-            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
+            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, allowTenBit)
         }
 
     override suspend fun segment(
@@ -89,4 +90,8 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     override suspend fun getFfmpegVersion(): String? =
         probe.getFfmpegVersion()
+
+    /** Cheap metadata probe — unguarded (no heavy-op lock), mirrors [getDurationMs]. */
+    override suspend fun probeVideo(inputPath: String): VideoTrackInfo? =
+        probe.probeVideo(inputPath)
 }

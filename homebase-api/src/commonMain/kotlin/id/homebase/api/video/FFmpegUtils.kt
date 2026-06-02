@@ -2,6 +2,21 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 
+/**
+ * Real technical metadata for the first video track of a file, probed via the
+ * platform-native API (ffprobe / MediaExtractor / FFmpegKit). Persisted into
+ * [VideoMetadata] at encode time so the inline debug overlay can show truthful
+ * codec info instead of the hardcoded placeholder. Null fields / 0 dims mean
+ * the probe couldn't determine that property.
+ */
+data class VideoTrackInfo(
+    val codec: String?,
+    val widthPx: Int,
+    val heightPx: Int,
+    val bitDepth: Int,
+    val isHdr: Boolean,
+)
+
 @LowLevelFfmpegApi
 expect object FFmpegUtils {
     fun getUniqueId(filePath: String): String
@@ -10,12 +25,19 @@ expect object FFmpegUtils {
 
     suspend fun getRotationFromFile(filePath: String): Int
 
+    /**
+     * Probe the first video track of [inputPath] for real codec/resolution/
+     * bit-depth/HDR. Returns null if the file can't be probed.
+     */
+    suspend fun probeVideo(inputPath: String): VideoTrackInfo?
+
     suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)? = null,
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
+        allowTenBit: Boolean = false,
     ): String?
 
     suspend fun getDurationMs(inputPath: String): Long

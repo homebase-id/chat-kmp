@@ -33,13 +33,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.ui.screens.help.HelpClickableRow
 import id.homebase.core.ui.screens.help.HelpSectionHeader
+import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
+import id.homebase.resources.dev_menu_allow_ten_bit_video
+import id.homebase.resources.dev_menu_allow_ten_bit_video_description
 import id.homebase.resources.dev_menu_clear_data
 import id.homebase.resources.dev_menu_force_sync
 import id.homebase.resources.dev_menu_section_database
 import id.homebase.resources.dev_menu_section_misc
 import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
+import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
 import id.homebase.resources.dev_menu_title
 import id.homebase.resources.menu_back
@@ -165,6 +169,22 @@ fun DeveloperMenuUi(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Video Section
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_video))
+            CheckboxRow(
+                modifier = Modifier.fillMaxWidth(),
+                label = stringResource(MR.string.dev_menu_allow_ten_bit_video),
+                checked = uiState.allowTenBitVideo,
+                onCheckedChange = { onAction(DeveloperMenuUiAction.ToggleAllowTenBitVideo) }
+            )
+            Text(
+                text = stringResource(MR.string.dev_menu_allow_ten_bit_video_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
             Spacer(modifier = Modifier.height(24.dp))
         }
     }

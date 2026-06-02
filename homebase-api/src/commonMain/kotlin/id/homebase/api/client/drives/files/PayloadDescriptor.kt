@@ -57,6 +57,14 @@ data class PayloadDescriptor(
                     DescriptorContent.VideoFile(
                         durationMs = meta.duration.toLong().takeIf { it > 0 },
                         isSegmented = meta.isSegmented,
+                        codec = meta.codec.takeIf { it.isNotBlank() },
+                        widthPx = meta.widthPx,
+                        heightPx = meta.heightPx,
+                        bitDepth = meta.bitDepth,
+                        isHdr = meta.isHdr,
+                        videoBitrateBps = meta.videoBitrateBps,
+                        fileSizeBytes = meta.fileSize,
+                        mimeType = meta.mimeType,
                     )
                 } catch (e: Exception) {
                     Logger.w("PayloadFile.descriptorInfo", e)
@@ -86,7 +94,18 @@ sealed interface DescriptorContent {
     @Serializable
     data class AudioFile(val name: String?, val lengthSeconds: Int) : DescriptorContent
     /** Surfaces the bits of a video's [VideoMetadata] that the UI cares about. */
-    data class VideoFile(val durationMs: Long?, val isSegmented: Boolean) : DescriptorContent
+    data class VideoFile(
+        val durationMs: Long?,
+        val isSegmented: Boolean,
+        val codec: String? = null,
+        val widthPx: Int = 0,
+        val heightPx: Int = 0,
+        val bitDepth: Int = 0,
+        val isHdr: Boolean = false,
+        val videoBitrateBps: Long = 0L,
+        val fileSizeBytes: Long = 0L,
+        val mimeType: String? = null,
+    ) : DescriptorContent
 
     companion object {
         fun descriptorContentFromAudioFile(name: String, lengthSeconds: Int): String {

@@ -657,6 +657,7 @@
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
     <string name="chat_location_unavailable">Couldn't get your location. Try again outdoors or check that Location is enabled.</string>
     <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
+    <string name="chat_image_unavailable">Image could not be loaded</string>
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
@@ -754,6 +755,7 @@
     <string name="moment_video_mute">Mute video</string>
     <string name="moment_video_unmute">Unmute video</string>
     <string name="moment_video_pause">Pause video</string>
+    <string name="moment_video_watch_again">Watch again</string>
     <string name="moment_video_fill_screen">Fill screen</string>
     <string name="moment_video_fit_screen">Fit to screen</string>
     <string name="chat_message_download_file">Download file</string>
@@ -1005,9 +1007,26 @@
     <string name="dev_menu_section_sync">Sync &amp; Connection</string>
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
+    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
+    <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
+    <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
+
+    <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
+    <string name="video_info_title">Video info</string>
+    <string name="video_info_container">Container: %1$s</string>
+    <string name="video_info_codec">Codec: %1$s</string>
+    <string name="video_info_resolution">Resolution: %1$s</string>
+    <string name="video_info_bit_depth">Bit depth: %1$s</string>
+    <string name="video_info_hdr">HDR: %1$s</string>
+    <string name="video_info_bitrate">Bitrate: %1$s</string>
+    <string name="video_info_duration">Duration: %1$s</string>
+    <string name="video_info_size">Size: %1$s</string>
+    <string name="video_info_unknown">—</string>
+    <string name="video_info_yes">Yes</string>
+    <string name="video_info_no">No</string>
 
     <!-- Defragmenter issue labels -->
     <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>

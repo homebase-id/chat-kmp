@@ -95,6 +95,7 @@ kotlin {
             api(libs.coil3.compose)
             api(libs.coil3.network)
             api(libs.coil3.svg)
+            api(libs.zoomimage.compose.coil3)
             implementation(libs.kermit)
             api(libs.filekit.core)
             api(libs.koin.core)

@@ -47,6 +47,7 @@ class VideoCompressionServiceSerializationTest {
                 trimStartMs: Long?,
                 trimEndMs: Long?,
                 quality: VideoQuality,
+                allowTenBit: Boolean,
             ): String? {
                 active++
                 totalEntries++
@@ -92,6 +93,7 @@ private open class NoopVideoCompressor : VideoCompressor {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = null
 
     override suspend fun segment(

@@ -25,4 +25,11 @@ interface VideoProber {
      * it could not be determined.
      */
     suspend fun getFfmpegVersion(): String?
+
+    /**
+     * Probe the first video track of [inputPath] for real codec/resolution/bit-depth/HDR,
+     * or null if it can't be probed. Cheap (metadata only), so [VideoCompressionService]
+     * leaves it outside the heavy-op lock.
+     */
+    suspend fun probeVideo(inputPath: String): VideoTrackInfo?
 }

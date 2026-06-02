@@ -206,6 +206,7 @@ class ConversationListViewModel(
         shareContentProcessor = shareContentProcessor,
         userPreferences = userPreferences,
         sendEvent = ::sendEvent,
+        dispatch = ::onAction,
         ensureThumbnail = { f -> attachmentHandler.ensureThumbnail(f) },
     )
 

@@ -13,4 +13,7 @@ internal object FFmpegVideoProber : VideoProber {
 
     override suspend fun getFfmpegVersion(): String? =
         FFmpegUtils.getFfmpegVersion()
+
+    override suspend fun probeVideo(inputPath: String): VideoTrackInfo? =
+        FFmpegUtils.probeVideo(inputPath)
 }

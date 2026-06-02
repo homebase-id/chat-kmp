@@ -55,6 +55,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.video.formatDurationLabel
+import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -322,6 +323,10 @@ fun MediaItem(
                 val isHls = videoDescriptor?.isSegmented == true
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+                // Hidden debug overlay: long-press the MP4/HLS tag to toggle a
+                // panel of the video's real technical metadata; long-press again
+                // (or tap) to dismiss.
+                var showVideoInfo by remember(fileId, payload.key) { mutableStateOf(false) }
                 if (!isUploading) {
                     VideoPreloadEffect(
                         data = videoPlayerData,
@@ -404,7 +409,12 @@ fun MediaItem(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                                .padding(horizontal = 3.dp, vertical = 1.dp),
+                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = { showVideoInfo = !showVideoInfo },
+                                    )
+                                },
                         )
                         if (displayDurationMs != null) {
                             Text(
@@ -421,6 +431,20 @@ fun MediaItem(
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
+                    }
+                    if (showVideoInfo && !isUploading) {
+                        VideoInfoOverlay(
+                            descriptor = videoDescriptor,
+                            isHls = isHls,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = { showVideoInfo = false },
+                                        onLongPress = { showVideoInfo = false },
+                                    )
+                                },
+                        )
                     }
                     if (isPreloading && !isUploading) {
                         Box(

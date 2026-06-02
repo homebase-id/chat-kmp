@@ -81,6 +81,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             trimStartMs: Long?,
             trimEndMs: Long?,
             quality: VideoQuality,
+            allowTenBit: Boolean,
         ): String? {
             compressInput = inputPath
             compressQuality = quality
@@ -113,6 +114,7 @@ class VideoPayloadProcessorCompressionSeamTest {
     private class FakeVideoProbe(private val durationMs: Long) : VideoProber {
         override suspend fun getDurationMs(inputPath: String): Long = durationMs
         override suspend fun getFfmpegVersion(): String? = "test"
+        override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = null
     }
 
     @Test

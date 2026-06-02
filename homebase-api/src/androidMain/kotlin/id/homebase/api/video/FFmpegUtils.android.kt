@@ -140,6 +140,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
@@ -188,6 +189,7 @@ actual object FFmpegUtils {
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -268,6 +270,13 @@ actual object FFmpegUtils {
         val bitDepth: Int,
         val isHdr: Boolean,
     )
+
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!File(inputPath).exists()) return@withContext null
+        val p = probeVideoTrack(inputPath)
+        if (p.videoMime == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
+        VideoTrackInfo(p.videoMime, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
 
     private fun probeVideoTrack(inputPath: String): VideoTrackProbe {
         var videoCount = 0

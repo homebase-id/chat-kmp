@@ -109,6 +109,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
@@ -148,6 +149,7 @@ actual object FFmpegUtils {
             rotationDegrees = rotation,
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -193,6 +195,14 @@ actual object FFmpegUtils {
         val bitDepth: Int = 8,
         val isHdr: Boolean = false,
     )
+
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+        if (!File(inputPath).exists()) return@withContext null
+        val p = probeVideoTrackViaFfprobe(inputPath)
+        if (p.codec == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
+        VideoTrackInfo(p.codec, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
 
     private suspend fun probeVideoTrackViaFfprobe(inputPath: String): FfprobeResult {
         val probeCommand = listOf(

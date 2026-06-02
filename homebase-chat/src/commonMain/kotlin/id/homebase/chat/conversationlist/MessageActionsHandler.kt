@@ -83,6 +83,7 @@ internal class MessageActionsHandler(
     private val shareContentProcessor: ShareContentProcessor,
     private val userPreferences: UserPreferences,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
+    private val dispatch: (ConversationListUiAction) -> Unit,
     private val ensureThumbnail: suspend (AttachmentPendingFile.FileVideo) -> AttachmentPendingFile.FileVideo,
 ) {
 
@@ -859,6 +860,7 @@ internal class MessageActionsHandler(
                                 .toPersistentList(),
                         )
                     }
+                    jumpToLatestAfterOwnSend(conversationId)
                 } catch (e: Throwable) {
                     // Throwable, not Exception: a missing platform impl throws kotlin.NotImplementedError
                     // (an Error, not an Exception). Catching only Exception let that escape, killing the
@@ -971,6 +973,28 @@ internal class MessageActionsHandler(
         }
     }
 
+    /**
+     * After the user sends their own message, jump to the latest page if the
+     * loaded window is paged up in history ([MessageListUiState.hasNewerMessages]
+     * == true — they scrolled up, or the window was trimmed past MAX_WINDOW_SIZE).
+     *
+     * In that state the optimistic message was gated out of the window by
+     * ChatMessageStream's `hasNewerMessages` guard, so it isn't visible. Reusing
+     * the [ConversationListUiAction.ScrollToLatest] arm reloads the newest page
+     * (which now contains the just-written optimistic message) and lands on it at
+     * the bottom — matching Signal/WhatsApp, where typing while scrolled up moves
+     * you down to your message. A no-op when already at the latest (the normal
+     * auto-follow in ConversationContent handles that case).
+     *
+     * Call only after the send's suspend call returns, so the optimistic DB write
+     * the reload re-reads has completed.
+     */
+    private fun jumpToLatestAfterOwnSend(conversationId: Uuid) {
+        if (messagesUiState.value.hasNewerMessages) {
+            dispatch(ConversationListUiAction.ScrollToLatest(conversationId))
+        }
+    }
+
     private fun addMessage(
         conversationId: Uuid,
         content: String,
@@ -993,6 +1017,7 @@ internal class MessageActionsHandler(
                     dataType = payloadRenderers.toMessageDataType(),
                 )
                 messageInputTextState.clear()
+                jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
                 Logger.e(
@@ -1040,6 +1065,7 @@ internal class MessageActionsHandler(
                 )
                 messageInputTextState.clear()
                 messagesUiState.update { it.copy(replyToMessage = null) }
+                jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
                 Logger.e(

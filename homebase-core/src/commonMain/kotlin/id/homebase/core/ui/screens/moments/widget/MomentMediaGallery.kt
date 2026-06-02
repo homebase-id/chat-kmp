@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -66,6 +67,9 @@ fun MomentMediaGallery(
     // the host can route tap-to-detail to the right page. No-op on the
     // single-payload path (the host already knows the only payload's key).
     onVisiblePayloadChanged: (String) -> Unit = {},
+    // Force carousel videos to show the whole frame (fit) — set while the host
+    // card is shrunk for the comments sheet.
+    fitToContent: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -85,6 +89,7 @@ fun MomentMediaGallery(
                 messageId = messageId,
                 downloadingFiles = downloadingFiles,
                 isUploading = isUploading,
+                fitToContent = fitToContent,
             )
         } else {
             MomentMediaCarousel(
@@ -105,6 +110,7 @@ fun MomentMediaGallery(
                 animatedVisibilityScope = animatedVisibilityScope,
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
+                fitToContent = fitToContent,
             )
         }
     }
@@ -124,6 +130,10 @@ private fun SingleImageLayout(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     isUploading: Boolean,
+    // When true, show the whole image (fit) filling the host box instead of the
+    // aspect-locked crop — used while the card is shrunk to a band above the
+    // comments sheet so the entire photo is visible.
+    fitToContent: Boolean = false,
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
@@ -139,11 +149,14 @@ private fun SingleImageLayout(
         driveId = driveId,
         keyHeader = keyHeader,
         previewThumbnail = previewThumbnail,
-        modifier = Modifier.fillMaxWidth().aspectRatio(aspect),
+        // Fit-into-host (whole image) when shrunk for comments; otherwise the
+        // aspect-locked crop the feed cell normally uses.
+        modifier = if (fitToContent) Modifier.fillMaxSize()
+        else Modifier.fillMaxWidth().aspectRatio(aspect),
         imageSize = ImageSize.THUMB_LARGE,
         // Aspect set on the modifier — let the image fill it (Crop is a no-op
         // when source aspect matches the box).
-        preserveAspectRatio = false,
+        preserveAspectRatio = fitToContent,
         shape = RectangleShape,
         // Preserve nullability so MomentMediaItem only installs its inner
         // pointerInput when there's an actual click/long-press handler.

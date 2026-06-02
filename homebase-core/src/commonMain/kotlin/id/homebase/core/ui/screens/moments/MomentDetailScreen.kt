@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -101,6 +104,7 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
+import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
@@ -498,6 +502,23 @@ fun MomentDetailPane(
     }
 }
 
+/**
+ * Fraction of the screen height the tapped media shrinks to (pinned at the top)
+ * while the comments sheet is open. The sheet takes the remaining bottom
+ * [1f - MOMENT_MEDIA_FRACTION_WITH_COMMENTS], so the two tile the screen and
+ * both stay visible in one view.
+ */
+private const val MOMENT_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
+
+/**
+ * Height fraction of the comments sheet while it's open. Deliberately a touch
+ * under the remaining 2/3 so the gap between the shrunk media and the sheet
+ * absorbs the sheet's drag handle / rounded top — otherwise the bottom of a
+ * portrait clip (which fills the [MOMENT_MEDIA_FRACTION_WITH_COMMENTS] band)
+ * slips behind the sheet.
+ */
+private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailContent(
@@ -600,6 +621,7 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
+                commentsOpen = showCommentsSheet,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 isActivePage = isActivePage,
@@ -617,6 +639,14 @@ private fun DetailContent(
             commentsEnabled = moment.commentsEnabled,
             onAction = onAction,
             onDismiss = { showCommentsSheet = false },
+            // Media shrinks to the top 1/3 (MOMENT_MEDIA_FRACTION_WITH_COMMENTS);
+            // keep the sheet a little under the remaining 2/3 so the gap absorbs
+            // the sheet's drag handle / rounded top and the whole media — even a
+            // portrait clip that fills the band — stays visible above it.
+            heightFraction = MOMENT_COMMENTS_SHEET_FRACTION,
+            // Transparent scrim so the shrunk media above the sheet stays
+            // bright instead of being dimmed by the default modal scrim.
+            scrimColor = Color.Transparent,
         )
     }
 
@@ -808,7 +838,7 @@ private fun DeleteCommentDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReactionsBottomSheet(
+internal fun ReactionsBottomSheet(
     isLoading: Boolean,
     reactions: List<MomentReactionUiModel>,
     onDismiss: () -> Unit,
@@ -982,12 +1012,21 @@ private fun MomentDetailContent(
     initialPayloadKey: String?,
     onAction: (MomentDetailUiAction) -> Unit,
     onOpenComments: () -> Unit,
+    commentsOpen: Boolean,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
+
+    // While the comments sheet is open, the media animates down to the top
+    // third of the screen (top-aligned) so the tapped photo/video stays fully
+    // visible above the sheet. 1f = full-screen immersive viewer (sheet closed).
+    val mediaHeightFraction by animateFloatAsState(
+        targetValue = if (commentsOpen) MOMENT_MEDIA_FRACTION_WITH_COMMENTS else 1f,
+        label = "momentMediaShrink",
+    )
 
     // Share the mute toggle with the feed via the app-session singleton so a
     // single tap persists across nav-in / nav-out of the detail screen.
@@ -1104,7 +1143,9 @@ private fun MomentDetailContent(
             // anywhere opens the detail panel (comments + description + edit).
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .fillMaxHeight(mediaHeightFraction)
+                    .align(Alignment.TopCenter)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -1124,7 +1165,10 @@ private fun MomentDetailContent(
         } else {
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(mediaHeightFraction)
+                    .align(Alignment.TopCenter),
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
@@ -1181,6 +1225,10 @@ private fun MomentDetailContent(
                             tapMode = MomentVideoTapMode.ButtonOnly,
                             showPauseAffordance = true,
                             useNativeControls = false,
+                            // While the comments sheet is open the media is
+                            // shrunk to the top band — show the whole frame
+                            // (fit) instead of the immersive crop-to-fill.
+                            fitToContent = commentsOpen,
                         )
                     } else {
                         MomentMediaItem(
@@ -1217,7 +1265,10 @@ private fun MomentDetailContent(
         // the user can still see *who* reacted with what. Skip the column
         // entirely on description-only moments — nothing to overlay
         // against.
-        if (moment.payloads.isNotEmpty()) {
+        // Hidden while the comments sheet is open — the column sits at
+        // CenterStart of the full screen, which would otherwise float over the
+        // sheet once the media has shrunk to the top third.
+        if (moment.payloads.isNotEmpty() && !commentsOpen) {
             val heartCount = remember(moment.reactionPreview) {
                 countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
             }
@@ -1260,7 +1311,10 @@ private fun MomentDetailContent(
         // metadata. Translucent gradient backdrop so text reads cleanly
         // over any photo. Only shown when there's media (the description-
         // only branch above already renders the description centred).
-        if (moment.payloads.isNotEmpty()) {
+        // Hidden while the comments sheet is open — the description and capture
+        // date are shown inside the sheet, and this bottom overlay would land
+        // behind / over the sheet anyway.
+        if (moment.payloads.isNotEmpty() && !commentsOpen) {
             DetailBottomOverlay(
                 description = moment.description,
                 userDateMs = moment.userDateMs,
@@ -1274,11 +1328,15 @@ private fun MomentDetailContent(
 
         // Layer 4: floating reaction confirmation — same animation the feed
         // card uses for double/triple-tap reactions. Drawn last so it lands
-        // on top of media + action column + bottom overlay.
-        FloatingReactionOverlay(
-            display = floatingController.display,
-            modifier = Modifier.align(Alignment.Center),
-        )
+        // on top of media + action column + bottom overlay. Suppressed while
+        // the comments sheet is open (reactions aren't reachable then, and a
+        // screen-centred animation would land over the sheet).
+        if (!commentsOpen) {
+            FloatingReactionOverlay(
+                display = floatingController.display,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
     }
 }
 
@@ -1334,7 +1392,7 @@ private fun DetailActionColumn(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EmojiReactionButton(
+internal fun EmojiReactionButton(
     emoji: String,
     count: Int,
     isActive: Boolean,
@@ -1413,7 +1471,7 @@ private fun OverlayActionButton(
     }
 }
 
-private fun countReactionsByEmoji(
+internal fun countReactionsByEmoji(
     summary: id.homebase.api.client.drives.files.ReactionSummary?,
     emoji: String,
 ): Int {
@@ -1480,13 +1538,30 @@ private fun CommentsSheet(
     commentsEnabled: Boolean,
     onAction: (MomentDetailUiAction) -> Unit,
     onDismiss: () -> Unit,
+    // When set, the sheet content is pinned to this fraction of the available
+    // height so the surface behind it stays partly visible (timeline use — the
+    // tapped moment peeks above the sheet). Null sizes to content and grows up
+    // to full height (detail use, over the black immersive viewer).
+    heightFraction: Float? = null,
+    // Overrides the modal scrim. The detail screen passes Color.Transparent so
+    // the media it shrinks to the top third above the sheet stays bright;
+    // other callers keep the default dimming scrim.
+    scrimColor: Color? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        scrimColor = scrimColor ?: BottomSheetDefaults.ScrimColor,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
+                    else Modifier,
+                ),
+        ) {
             MomentDescriptionSection(
                 description = uiState.moment?.description.orEmpty(),
                 isMine = uiState.isMine,
@@ -1532,34 +1607,26 @@ private fun CommentsSheet(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 24.dp),
                 )
+                // Fixed-height sheet: take up the slack so the composer pins to
+                // the bottom instead of floating under the empty-state text.
+                if (heightFraction != null) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             } else {
                 LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false),
+                    // Fill the middle on a fixed-height sheet (composer pinned
+                    // at the bottom); on the content-sized detail sheet, wrap
+                    // so the sheet only grows as tall as the thread needs.
+                    modifier = Modifier.weight(1f, fill = heightFraction != null),
                 ) {
                     // Service emits newest-first; reverse for chat-style
                     // chronological ordering (oldest at top, newest just
                     // above the composer).
                     items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                        val isMine = comment.senderOdinId == null ||
-                            (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
-                        CommentRow(
+                        CommentRowFromState(
+                            uiState = uiState,
                             comment = comment,
-                            isMine = isMine,
-                            isEditing = uiState.editingCommentId == comment.id,
-                            editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
-                            isSaving = uiState.isSavingCommentEdit,
-                            isDeleting = uiState.deletingCommentIds.contains(comment.id),
-                            quickReactions = uiState.userDefaultReactions,
-                            onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
-                            onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
-                            onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
-                            onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
-                            onDeleteClick = {
-                                onAction(MomentDetailUiAction.RequestDeleteComment(comment.id))
-                            },
-                            onToggleReaction = { emoji ->
-                                onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
-                            },
+                            onAction = onAction,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1582,6 +1649,97 @@ private fun CommentsSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * A single [CommentRow] wired from [MomentDetailUiState] — derives the
+ * "is mine" / editing / deleting flags and forwards the per-comment actions.
+ * Extracted so the detail [CommentsSheet] (also reused by the timeline's
+ * [MomentCommentsSheet]) renders identical rows from one place.
+ */
+@Composable
+private fun CommentRowFromState(
+    uiState: MomentDetailUiState,
+    comment: MomentCommentItem,
+    onAction: (MomentDetailUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isMine = comment.senderOdinId == null ||
+        (uiState.selfOdinId != null && comment.senderOdinId == uiState.selfOdinId)
+    CommentRow(
+        comment = comment,
+        isMine = isMine,
+        isEditing = uiState.editingCommentId == comment.id,
+        editDraft = if (uiState.editingCommentId == comment.id) uiState.editingCommentDraft else "",
+        isSaving = uiState.isSavingCommentEdit,
+        isDeleting = uiState.deletingCommentIds.contains(comment.id),
+        quickReactions = uiState.userDefaultReactions,
+        onEditClick = { onAction(MomentDetailUiAction.StartEditComment(comment.id)) },
+        onEditDraftChanged = { onAction(MomentDetailUiAction.EditCommentDraftChanged(it)) },
+        onSaveEdit = { onAction(MomentDetailUiAction.SaveCommentEdit) },
+        onCancelEdit = { onAction(MomentDetailUiAction.CancelCommentEdit) },
+        onDeleteClick = { onAction(MomentDetailUiAction.RequestDeleteComment(comment.id)) },
+        onToggleReaction = { emoji ->
+            onAction(MomentDetailUiAction.ToggleReactionOnComment(comment.id, emoji))
+        },
+        modifier = modifier,
+    )
+}
+
+/**
+ * Modal comments + description sheet for a moment on the compact timeline (see
+ * [MomentsScreen]). Wraps the same [CommentsSheet] the full-screen detail view
+ * uses — so both surfaces show an identical thread — and adds the
+ * comment-delete confirmation dialog (the detail screen wires that itself in
+ * `DetailContent`, which this entry point doesn't go through).
+ *
+ * As a `ModalBottomSheet`, [CommentsSheet] brings its own scrim and blocks the
+ * feed behind it until the user swipes it down or taps the scrim, so the thread
+ * stays locked to the moment it was opened from.
+ */
+@Composable
+internal fun MomentCommentsSheet(
+    uiState: MomentDetailUiState,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    CommentsSheet(
+        uiState = uiState,
+        // Until the moment resolves from the feed, assume comments are allowed
+        // so the composer doesn't flash hidden then in on first frame.
+        commentsEnabled = uiState.moment?.commentsEnabled ?: true,
+        onAction = onAction,
+        onDismiss = onDismiss,
+        // Leave the top third showing the tapped moment (MomentsScreen shrinks
+        // it to a band above the sheet).
+        heightFraction = 0.65f,
+        // Transparent scrim so the shrunk media band above the sheet stays
+        // bright instead of being dimmed by the default modal scrim.
+        scrimColor = Color.Transparent,
+    )
+
+    val deleteCommentTarget = uiState.deleteCommentDialogTarget
+    if (deleteCommentTarget != null) {
+        DeleteCommentDialog(
+            onDeleteForMe = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = false,
+                    ),
+                )
+            },
+            onDeleteForEveryone = {
+                onAction(
+                    MomentDetailUiAction.ConfirmDeleteComment(
+                        commentId = deleteCommentTarget,
+                        forEveryone = true,
+                    ),
+                )
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteCommentDialog) },
+        )
     }
 }
 
