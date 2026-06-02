@@ -544,6 +544,10 @@ private fun MomentsFeedList(
     // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
     // sheet anchors to this id and blocks the feed until dismissed.
     var commentsMomentId by remember { mutableStateOf<Uuid?>(null) }
+    // Payload key of the media that was visible when the comments sheet was
+    // opened, so the media band above the sheet shows that exact item (the
+    // selected carousel page), not always page 0.
+    var commentsPayloadKey by remember { mutableStateOf<String?>(null) }
     // Which moment (if any) has its "who reacted" roster open. Null = closed.
     // Opened by long-pressing a reaction toggle on a feed card.
     var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }
@@ -618,7 +622,10 @@ private fun MomentsFeedList(
                 onCardClick = { payloadKey -> onOpenMoment(moment.id.toString(), payloadKey) },
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 commentsSheetOnTap = commentsSheetOnTap,
-                onOpenComments = { commentsMomentId = moment.id },
+                onOpenComments = { payloadKey ->
+                    commentsPayloadKey = payloadKey
+                    commentsMomentId = moment.id
+                },
                 onShowReactors = { reactionsMomentId = moment.id },
                 onClickLabel = openLabel,
                 onDeleteFailedMoment = { onDeleteFailedMoment(moment.id) },
@@ -660,6 +667,7 @@ private fun MomentsFeedList(
             if (bandMoment != null) {
                 MomentCommentsMediaBand(
                     moment = bandMoment,
+                    initialPayloadKey = commentsPayloadKey,
                     isMuted = isMuted,
                     onToggleMute = videoSession::toggleMuted,
                 )
@@ -728,67 +736,81 @@ private const val MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
 
 /**
  * Opaque overlay drawn over the feed while a moment's comments sheet is open: the
- * tapped moment's media, shrunk to the top [MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS]
- * of the screen and rendered fit-to-content (whole frame), so it sits fully above
- * the transparent-scrim sheet. Mirrors the detail screen's shrink without touching
- * the (reverse-layout) list scroll position. The feed's own video players are
- * paused while this is up (see the `isVideoPlaying` gate at the card call site),
- * so only this band plays.
+ * media the user was looking at, shrunk to the top
+ * [MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS] of the screen and rendered
+ * fit-to-content (whole frame), so it sits fully above the transparent-scrim
+ * sheet. Mirrors the detail screen's shrink without touching the (reverse-layout)
+ * list scroll position. The feed's own video players are paused while this is up
+ * (see the `isVideoPlaying` gate at the card call site), so only this band plays.
+ *
+ * Shows the single [initialPayloadKey] item — the carousel page that was visible
+ * when comments were opened — rather than the whole gallery, so a carousel stays
+ * on the selected item (instead of snapping back to page 0) and an image gets the
+ * same fit-to-content treatment as a video.
  */
 @Composable
 private fun MomentCommentsMediaBand(
     moment: MomentFeedItem,
+    initialPayloadKey: String?,
     isMuted: Boolean,
     onToggleMute: () -> Unit,
 ) {
+    val targetPayload = remember(moment.payloads, initialPayloadKey) {
+        moment.payloads.firstOrNull { it.key == initialPayloadKey }
+            ?: moment.payloads.firstOrNull()
+    }
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS)
-                .align(Alignment.TopCenter),
-        ) {
-            val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { p ->
-                p.contentType?.startsWith("video/") == true ||
-                    p.contentType == "application/vnd.apple.mpegurl"
-            }
-            if (singleVideoPayload != null) {
-                var playing by remember(moment.id) { mutableStateOf(true) }
-                MomentInlineVideoTile(
-                    payload = singleVideoPayload,
-                    fileId = moment.fileId,
-                    driveId = moment.driveId,
-                    keyHeader = moment.keyHeader,
-                    previewThumbnail = moment.previewThumbnail,
-                    isUploading = false,
-                    isPlaying = playing,
-                    onPlayTap = { playing = !playing },
-                    onDoubleTap = {},
-                    isMuted = isMuted,
-                    onToggleMute = onToggleMute,
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                    modifier = Modifier.fillMaxSize(),
-                    fitToContent = true,
-                )
-            } else {
-                MomentMediaGallery(
-                    payloads = moment.payloads,
-                    fileId = moment.fileId,
-                    driveId = moment.driveId,
-                    previewThumbnail = moment.previewThumbnail,
-                    keyHeader = moment.keyHeader,
-                    messageId = moment.id,
-                    downloadingFiles = emptySet(),
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                    isUploading = false,
-                    isMuted = isMuted,
-                    onToggleMute = onToggleMute,
-                    autoplayActive = true,
-                    modifier = Modifier.fillMaxSize(),
-                    fitToContent = true,
-                )
+        if (targetPayload != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(MOMENT_FEED_MEDIA_FRACTION_WITH_COMMENTS)
+                    .align(Alignment.TopCenter),
+            ) {
+                val isVideo = targetPayload.contentType?.startsWith("video/") == true ||
+                    targetPayload.contentType == "application/vnd.apple.mpegurl"
+                if (isVideo) {
+                    var playing by remember(moment.id, targetPayload.key) {
+                        mutableStateOf(true)
+                    }
+                    MomentInlineVideoTile(
+                        payload = targetPayload,
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        keyHeader = moment.keyHeader,
+                        previewThumbnail = moment.previewThumbnail,
+                        isUploading = false,
+                        isPlaying = playing,
+                        onPlayTap = { playing = !playing },
+                        onDoubleTap = {},
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        modifier = Modifier.fillMaxSize(),
+                        fitToContent = true,
+                    )
+                } else {
+                    // Reuse the gallery's single-payload (fit-to-content) layout
+                    // so the whole image is visible, just like the video branch.
+                    MomentMediaGallery(
+                        payloads = listOf(targetPayload),
+                        fileId = moment.fileId,
+                        driveId = moment.driveId,
+                        previewThumbnail = moment.previewThumbnail,
+                        keyHeader = moment.keyHeader,
+                        messageId = moment.id,
+                        downloadingFiles = emptySet(),
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null,
+                        isUploading = false,
+                        isMuted = isMuted,
+                        onToggleMute = onToggleMute,
+                        autoplayActive = true,
+                        modifier = Modifier.fillMaxSize(),
+                        fitToContent = true,
+                    )
+                }
             }
         }
     }
@@ -870,7 +892,10 @@ private fun MomentPostCard(
     // Compact timeline only: when true a single tap opens the modal comments
     // sheet (via [onOpenComments]) instead of calling [onCardClick].
     commentsSheetOnTap: Boolean,
-    onOpenComments: () -> Unit,
+    // Carries the payload key of whichever carousel page was visible at tap
+    // time so the comments band can open on the media the user was actually
+    // looking at (not always page 0). `null` for single-payload moments.
+    onOpenComments: (payloadKey: String?) -> Unit,
     // Long-press on a reaction toggle opens the server-loaded "who reacted"
     // roster for this moment — same sheet the detail screen uses.
     onShowReactors: () -> Unit,
@@ -942,7 +967,7 @@ private fun MomentPostCard(
                                 // selects the moment for the embedded detail
                                 // pane.
                                 1 -> if (commentsSheetOnTap) {
-                                    onOpenComments()
+                                    onOpenComments(visiblePayloadKey)
                                 } else {
                                     onCardClick(visiblePayloadKey)
                                 }
@@ -975,7 +1000,7 @@ private fun MomentPostCard(
             .semantics {
                 onClick(label = onClickLabel) {
                     if (commentsSheetOnTap) {
-                        onOpenComments()
+                        onOpenComments(visiblePayloadKey)
                     } else {
                         onCardClick(visiblePayloadKey)
                     }
