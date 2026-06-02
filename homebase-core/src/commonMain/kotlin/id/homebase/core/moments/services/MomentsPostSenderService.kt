@@ -40,6 +40,7 @@ import id.homebase.core.config.momentsLabeledDrive
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -744,6 +745,47 @@ class MomentsPostSenderService(
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) {
                 "addRecipientsToMoment: optimistic write failed (non-fatal) moment=$momentUniqueId"
+            }
+        }
+
+        // === MomentAddPeopleAudit ===
+        // The outbox logs only the INITIAL recipientStatus ("Enqueued" — queued
+        // in OUR server's outbound transit). The terminal per-recipient outcome
+        // (DeliveredToInbox vs a failure like RecipientReturnedAccessDenied or a
+        // CannotOverwriteNonExistentFile-style rejection of an update to a peer
+        // that never held the file) lands asynchronously in the server-side
+        // transfer history. Poll it a few times so the log captures the real
+        // outcome for the freshly-added recipients without needing their device.
+        // Detached on the service scope so it never delays the caller's UI.
+        val auditFileId = existing.fileId
+        val auditTargets = genuinelyNew.map { it.domainName }.toSet()
+        scope.launch {
+            val pollDelaysMs = longArrayOf(5_000, 10_000, 15_000, 30_000, 60_000)
+            for ((i, d) in pollDelaysMs.withIndex()) {
+                delay(d)
+                val history = runCatching {
+                    driveFileProvider.getTransferHistory(drive, auditFileId)
+                }.getOrElse { e ->
+                    Logger.w(throwable = e, tag = TAG) {
+                        "MomentAddPeopleAudit: transfer-history poll ${i + 1} threw moment=$momentUniqueId"
+                    }
+                    null
+                } ?: continue
+                val results = history.history.results
+                Logger.i(tag = TAG) {
+                    "MomentAddPeopleAudit: transfer-history poll ${i + 1} moment=$momentUniqueId " +
+                        "fileId=$auditFileId addedTargets=$auditTargets " +
+                        "results=[${results.joinToString { "${it.recipient}=${it.latestTransferStatus}" +
+                            "(inOutbox=${it.isInOutbox} deliveredVT=${it.latestSuccessfullyDeliveredVersionTag})" }}]"
+                }
+                // Terminal once every freshly-added recipient has left our outbox.
+                val stillPending = results.any { it.recipient in auditTargets && it.isInOutbox }
+                if (results.isNotEmpty() && !stillPending) {
+                    Logger.i(tag = TAG) {
+                        "MomentAddPeopleAudit: transfer-history terminal moment=$momentUniqueId — stopping poll"
+                    }
+                    break
+                }
             }
         }
 
