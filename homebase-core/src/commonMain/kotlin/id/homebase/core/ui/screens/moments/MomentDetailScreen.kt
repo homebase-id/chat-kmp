@@ -67,6 +67,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +77,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -556,6 +559,21 @@ private fun DetailContent(
     // comment button lands with the thread already open.
     var showCommentsSheet by remember { mutableStateOf(openCommentsInitially) }
 
+    // Lifted out of [CommentsSheet] so the media-shrink animation can track the
+    // sheet's *target* state instead of the post-dismissal callback.
+    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Drives the media shrink. `onDismissRequest` only fires once the sheet has
+    // finished sliding off-screen, so keying the shrink off `showCommentsSheet`
+    // alone makes the media wait for the slide to complete before re-expanding
+    // (a visible lag). Instead re-expand the moment the swipe-down starts
+    // settling toward Hidden — the media then grows in parallel with the slide.
+    val commentsShrinkActive by remember {
+        derivedStateOf {
+            showCommentsSheet && commentsSheetState.targetValue != SheetValue.Hidden
+        }
+    }
+
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
         // read as part of the cinematic surface rather than the surface
@@ -637,7 +655,7 @@ private fun DetailContent(
                 initialPayloadKey = uiState.initialPayloadKey,
                 onAction = onAction,
                 onOpenComments = { showCommentsSheet = true },
-                commentsOpen = showCommentsSheet,
+                commentsOpen = commentsShrinkActive,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 isActivePage = isActivePage,
@@ -663,6 +681,7 @@ private fun DetailContent(
             // Transparent scrim so the shrunk media above the sheet stays
             // bright instead of being dimmed by the default modal scrim.
             scrimColor = Color.Transparent,
+            sheetState = commentsSheetState,
         )
     }
 
@@ -1581,8 +1600,11 @@ private fun CommentsSheet(
     // the media it shrinks to the top third above the sheet stays bright;
     // other callers keep the default dimming scrim.
     scrimColor: Color? = null,
+    // Lifted in by the detail screen so it can observe the sheet's target state
+    // and re-expand the shrunk media in parallel with the slide-down. Defaults
+    // to a locally-remembered state for callers that don't need that coupling.
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1732,6 +1754,7 @@ private fun CommentRowFromState(
  * feed behind it until the user swipes it down or taps the scrim, so the thread
  * stays locked to the moment it was opened from.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MomentCommentsSheet(
     uiState: MomentDetailUiState,
