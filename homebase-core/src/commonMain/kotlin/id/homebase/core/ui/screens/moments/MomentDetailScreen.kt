@@ -337,6 +337,22 @@ private fun MomentDetailLoadedPager(
         // higher-index page coming from above — same as scrolling up the
         // timeline to see older posts.
         reverseLayout = true,
+        // Anchor pages to the moment IDENTITY, not the raw list index.
+        // `MomentsFeedService.emitSorted` re-emits a brand-new sorted list on
+        // every change (a reaction updates the moment header → BatchReceived →
+        // re-emit; new posts, deletes and sync catch-up all do too — see
+        // MomentsFeedService.kt:231). Without a key the pager tracks an integer
+        // index, so any insert/remove/re-sort shifts the index→moment mapping
+        // out from under a settled user: the moment under `currentPage` silently
+        // becomes a different one, `settledPage` remaps across the mounted
+        // panes, every pane's `isActivePage` flips, and the autoplay gate below
+        // tears down + rebuilds its ExoPlayer in a loop (the churn the TEMP
+        // instrumentation above was added to chase) — janking the Main thread so
+        // a quick vertical swipe registers nothing. With a key the pager keeps
+        // the same moment visible across re-emissions, so settledPage stays put
+        // and the players don't churn. Keys must be saveable, so stringify the
+        // Uuid (mirrors the comments LazyColumn's `key = { it.id.toString() }`).
+        key = { page -> feed[page].id.toString() },
     ) { page ->
         val moment = feed[page]
         val pageMomentId = moment.id
@@ -1169,6 +1185,18 @@ private fun MomentDetailContent(
                     .fillMaxWidth()
                     .fillMaxHeight(mediaHeightFraction)
                     .align(Alignment.TopCenter),
+                // This pager fills the whole page (mediaHeightFraction = 1f when
+                // comments are closed), so it sits under every swipe. A
+                // single-payload moment has nowhere to scroll horizontally, but
+                // an *enabled* horizontal Pager still installs a live orientation
+                // -locked `scrollable` that competes with the parent
+                // VerticalPager for the gesture: a slightly-diagonal swipe can
+                // cross horizontal touch-slop first and get claimed here, so the
+                // vertical swipe drops. Gate scrolling on having more than one
+                // page so single-payload moments (the common case) leave the
+                // vertical gesture entirely to the parent. Real carousels keep
+                // horizontal paging.
+                userScrollEnabled = pageCount > 1,
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
