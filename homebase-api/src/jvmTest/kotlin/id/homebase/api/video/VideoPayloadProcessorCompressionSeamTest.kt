@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -69,6 +70,9 @@ class VideoPayloadProcessorCompressionSeamTest {
     private class FakeVideoCompressor(
         private val compressedPath: String,
         private val segmented: SegmentedVideo,
+        // When true, segmentAndEncrypt returns null to simulate a failed HLS segmentation —
+        // the path where the processor throws "segmentAndEncryptVideo failed".
+        private val segmentReturnsNull: Boolean = false,
     ) : VideoCompressor {
         var compressInput: String? = null
         var compressQuality: VideoQuality? = null
@@ -98,8 +102,9 @@ class VideoPayloadProcessorCompressionSeamTest {
             inputPath: String,
             keyHeader: KeyHeader,
             onProgress: VideoProgressListener?,
-        ): SegmentedVideo {
+        ): SegmentedVideo? {
             segmentAndEncryptCalled = true
+            if (segmentReturnsNull) return null
             // Simulate a chunky ffmpeg stream: ~1000 sub-percent ticks across 0f..1f.
             for (i in 0..1000) onProgress?.invoke(i / 1000f)
             return segmented
@@ -235,5 +240,44 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertTrue(segmenting.isNotEmpty(), "expected SEGMENTING progress on the HLS path")
         assertEquals(segmenting, segmenting.distinct(), "SEGMENTING emitted duplicate whole percents")
         assertTrue(segmenting.size <= 101, "SEGMENTING emitted ${segmenting.size} events (expected <= 101)")
+    }
+
+    @Test
+    fun compressedScratchIsReapedWhenHlsSegmentationFails() = runTest {
+        // Regression for the temp-file leak on the HLS failure path: when segmentAndEncrypt
+        // fails (returns null → the processor throws), the compressed_*.mp4 scratch must still
+        // be deleted. Before the fix the reap ran only on the success path, *after* the throw
+        // point, so a repeatedly-failing send leaked a full-size file into the cache each retry.
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        // >= 5 MB → HLS path, where segmentAndEncrypt is invoked (and here, fails).
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(5 * 1024 * 1024),
+        )
+        val fileOps = FakeFileOperationsProvider(store)
+        val compressor = FakeVideoCompressor(
+            compressedPath = compressedPath,
+            segmented = SegmentedVideo("$cacheDir/playlist.m3u8", "$cacheDir/segments.ts"),
+            segmentReturnsNull = true,
+        )
+        val processor = VideoPayloadProcessor(fileOps, compressor, FakeVideoProbe(9_000L))
+
+        assertFailsWith<IllegalStateException> {
+            processor.process(
+                payload = PayloadFile(key = "vid", filePath = inputPath),
+                keyHeader = KeyHeader.newRandom16(),
+                onProgress = null,
+                descriptorContentPayloadKey = "descriptor",
+            )
+        }
+
+        // The scratch was reaped despite the failure...
+        assertFalse(
+            store.containsKey(compressedPath),
+            "compressed scratch must be deleted even when HLS segmentation fails",
+        )
+        // ...and the caller-owned input was left untouched.
+        assertTrue(store.containsKey(inputPath), "the input file must not be reaped")
     }
 }

@@ -244,8 +244,18 @@ actual object FFmpegUtils {
         // h264_videotoolbox entirely: Apple's H.264 hardware encoder cannot
         // produce 10-bit (High 10) output, so only libx264 can honour the
         // yuv420p10le pin.
+        //
+        // Also skip the hardware encoder when dimensions are unknown (probe == null
+        // → widthPx/heightPx == 0). That only happens when BOTH ffprobe and the
+        // AVFoundation fallback fail to read the file (audio-only, DRM, or a container
+        // neither can open). With no dims the planner emits no `-vf scale` filter, and
+        // h264_videotoolbox SIGSEGVs in print_report on that degenerate command — the
+        // original iPhone .mov-send crash. libx264 handles the same scale-less command
+        // safely (re-encodes at native resolution, or fails cleanly to null on a truly
+        // unreadable file), so the hardware encoder is never handed a degenerate command.
+        val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
         val encoders =
-            if (allowTenBit && bitDepth > 8) listOf("libx264")
+            if ((allowTenBit && bitDepth > 8) || dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(

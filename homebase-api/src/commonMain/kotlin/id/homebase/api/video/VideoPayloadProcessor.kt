@@ -13,6 +13,7 @@ import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
+import kotlin.time.Duration
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
@@ -132,6 +133,50 @@ class VideoPayloadProcessor(
                 ) ?: payload.filePath
             }
 
+        // Everything below consumes the compressed scratch — segmentation, encryption,
+        // and the plaintext metadata probe — so reap it on EVERY exit, including a
+        // segmentation/encryption failure that throws before the success-path read.
+        // Otherwise a repeatedly-failing send (the exact case users retry into) piles up
+        // full-size compressed_*.mp4 files in the cache until the next startup sweep.
+        // Skipped when compressVideo fell back to the input path (compressedPath IS
+        // payload.filePath, owned by the caller).
+        return try {
+            finishProcessing(
+                payload = payload,
+                keyHeader = keyHeader,
+                onProgress = onProgress,
+                descriptorContentPayloadKey = descriptorContentPayloadKey,
+                compressedPath = compressedPath,
+                compressElapsed = compressElapsed,
+                inputSize = inputSize,
+                videoQuality = videoQuality,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs,
+                tinyThumb = tinyThumb,
+                thumbnails = thumbnails,
+            )
+        } finally {
+            if (compressedPath != payload.filePath) {
+                fileOperationsProvider.deleteTempFile(compressedPath)
+            }
+        }
+    }
+
+    private suspend fun finishProcessing(
+        payload: PayloadFile,
+        keyHeader: KeyHeader,
+        onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
+        descriptorContentPayloadKey: String,
+        compressedPath: String,
+        compressElapsed: Duration,
+        inputSize: Long,
+        videoQuality: VideoQuality,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
+        tinyThumb: EmbeddedThumb?,
+        thumbnails: List<ThumbnailFile>,
+    ): VideoProcessResult {
+
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 
         val compressedSize = fileOperationsProvider.getFileSize(compressedPath)
@@ -169,7 +214,14 @@ class VideoPayloadProcessor(
                                     )
                                 }
                             }
-                        ) ?: error("segmentAndEncryptVideo failed")
+                        ) ?: run {
+                            Logger.e(tag = "VideoProcessing") {
+                                "segmentAndEncrypt returned null (HLS path) — " +
+                                    "compressed=${compressedSize}B quality=$videoQuality " +
+                                    "path=$compressedPath"
+                            }
+                            error("segmentAndEncryptVideo failed")
+                        }
                     }
 
                 Logger.i(tag = "VideoProcessing") {
@@ -217,14 +269,9 @@ class VideoPayloadProcessor(
             if (durationMs > 0L) compressedSize * 8L * 1000L / durationMs else 0L
         val codec = outProbe?.codec ?: detectVideoCodec(finalVideoPath)
 
-        // Reap the FFmpeg compressed_*.mp4 scratch — its bytes have already
-        // been re-encoded into either the HLS segment (segmented path) or the
-        // encrypted payload (non-segmented path), and metadata has been read.
-        // Skip when compressVideo fell back to the input path (no compression
-        // happened — compressedPath IS payload.filePath, owned by the caller).
-        if (compressedPath != payload.filePath) {
-            fileOperationsProvider.deleteTempFile(compressedPath)
-        }
+        // (The compressed_*.mp4 scratch is reaped by the caller's finally — its bytes
+        // have already been re-encoded into the HLS segment or encrypted payload, and
+        // its metadata has been read above.)
 
         val playlistContent =
             if (isSegmented && playlistPath != null) {
