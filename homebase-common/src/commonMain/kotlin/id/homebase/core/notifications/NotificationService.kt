@@ -9,6 +9,7 @@ import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
@@ -16,6 +17,7 @@ import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -23,12 +25,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -43,6 +48,84 @@ data class SubscriptionVerificationDetail(
 )
 
 /**
+ * Builds the browser-redirect navigation event for a tapped notification from a
+ * web-app companion (community, owner, mail, feed). These open the *logged-in*
+ * identity's own web app — never the message sender's domain: the companion web
+ * clients are served from and authenticated against our own identity, and the
+ * author's host has no session for us. Faithful to the RN app, which built these
+ * from getIdentity(), and to the in-app Feed WebView (https://{ownDomain}/apps/feed).
+ *
+ * @param ownDomain the active (logged-in) identity's domain, or null when logged
+ *   out / credentials not yet ready — in which case there is nothing to open.
+ * @return the [NotificationNavigationEvent.OpenUrl] to emit, or null for a null
+ *   domain or a non-companion appId (e.g. chat, which navigates in-app).
+ */
+internal fun buildCompanionAppUrlEvent(
+    appId: String,
+    ownDomain: String?,
+    typeId: String,
+    tagId: String,
+): NotificationNavigationEvent.OpenUrl? {
+    if (ownDomain.isNullOrBlank()) return null
+    return when (appId) {
+        COMMUNITY_APP_ID ->
+            NotificationNavigationEvent.OpenUrl(
+                "https://$ownDomain/apps/community/redirect/$typeId/$tagId"
+            )
+
+        OWNER_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/owner/connections")
+
+        MAIL_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/mail/inbox/$typeId")
+
+        FEED_APP_ID ->
+            if (tagId.isNotBlank()) {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed/post/$tagId")
+            } else {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed")
+            }
+
+        else -> null
+    }
+}
+
+/** Apps whose notifications open the logged-in identity's own web app in the browser. */
+internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID, FEED_APP_ID)
+
+/**
+ * How long a companion-app tap waits for credentials to be restored before
+ * giving up. Mirrors BackgroundSyncOrchestrator's AUTH_RESTORE_TIMEOUT: the
+ * observed cold-wake restore window is ~12 ms, and 2 s leaves headroom for a
+ * slow-disk / contended-Koin-init start without hanging a logged-out tap.
+ */
+private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
+
+/**
+ * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
+ * from a killed app isn't dropped while `YouAuthFlowManager.restoreSession()` is
+ * still loading credentials — the cold-start counterpart of the background-sync
+ * race closed by [awaitAuthRestored]. The own-identity domain is read from the
+ * resolved [YouAuthState.Authenticated]; returns null when auth does not resolve
+ * to Authenticated within [timeout] (logged out / wedged restore) or the app is
+ * not a companion.
+ *
+ * Extracted as a top-level suspend function so it's unit-testable with virtual
+ * time, without constructing NotificationService's dependency graph.
+ */
+internal suspend fun resolveCompanionAppUrlEvent(
+    appId: String,
+    authState: StateFlow<YouAuthState>,
+    typeId: String,
+    tagId: String,
+    timeout: Duration,
+): NotificationNavigationEvent.OpenUrl? {
+    val resolved = awaitAuthRestored(authState, timeout)
+    val ownDomain = (resolved as? YouAuthState.Authenticated)?.identity?.domainName
+    return buildCompanionAppUrlEvent(appId, ownDomain, typeId, tagId)
+}
+
+/**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
  * notifications. Register as a singleton in Koin.
  */
@@ -55,6 +138,13 @@ class NotificationService(
     private val pendingNotificationTap: PendingNotificationTap,
     private val notificationBackend: NotificationBackend,
     private val eventBus: EventBus,
+    /**
+     * Narrow seam onto [id.homebase.api.youauth.YouAuthFlowManager.authState] so
+     * a companion-app tap can await credential restoration (cold-start race).
+     * A `StateFlow<YouAuthState>` rather than the whole manager keeps the
+     * resolver unit-testable — same pattern as [id.homebase.core.sync.BackgroundSyncOrchestrator].
+     */
+    private val authState: StateFlow<YouAuthState>,
 ) {
 
     private var isListening = false
@@ -431,6 +521,12 @@ class NotificationService(
         } else null
     }
 
+    /** Logs and queues a navigation event onto the buffered nav Channel. */
+    private fun emitNavigationEvent(event: NotificationNavigationEvent) {
+        Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
+        _navigationEvents.trySend(event)
+    }
+
     /**
      * Handles notification tap — emits navigation event for the UI layer.
      * Called from KMPNotifier's onNotificationClicked callback and also
@@ -443,8 +539,8 @@ class NotificationService(
             val appId = notification.options.appId
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
-            val event = when (appId) {
-                Uuid.parse(AppConfig.APP_ID).toString() -> {
+            when {
+                appId == Uuid.parse(AppConfig.APP_ID).toString() -> {
                     // Only set the pending tap when BOTH conversationId and
                     // messageId are present — a messageId-less payload is
                     // ambient "new activity" and should not auto-navigate
@@ -465,44 +561,38 @@ class NotificationService(
                     // Tapping clears only this conversation's notifications + count,
                     // leaving other senders' notifications in the tray.
                     clearConversationNotifications(typeId)
-                    NotificationNavigationEvent.OpenConversation(typeId)
+                    emitNavigationEvent(NotificationNavigationEvent.OpenConversation(typeId))
                 }
 
-                COMMUNITY_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/community/redirect/${typeId}/${tagId}"
-                    )
-
-                OWNER_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/owner/connections"
-                    )
-
-                MAIL_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/mail/inbox/$typeId"
-                    )
-
-                FEED_APP_ID ->
-                    if (tagId.isNotBlank()) {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed/post/$tagId"
+                appId in COMPANION_APP_IDS -> {
+                    // Community, owner, mail and feed open the *logged-in* identity's
+                    // own web app in the browser (see buildCompanionAppUrlEvent) —
+                    // never the sender's host. Resolve the domain by AWAITING auth
+                    // restoration so a tap from a KILLED app isn't dropped while
+                    // restoreSession() is still loading credentials (cold-start
+                    // race). Emit off the injected scope into the buffered nav
+                    // Channel, which queues the event until the UI collector attaches.
+                    scope.launch {
+                        val event = resolveCompanionAppUrlEvent(
+                            appId = appId,
+                            authState = authState,
+                            typeId = typeId,
+                            tagId = tagId,
+                            timeout = COMPANION_AUTH_RESTORE_TIMEOUT,
                         )
-                    } else {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed"
-                        )
+                        if (event != null) {
+                            emitNavigationEvent(event)
+                        } else {
+                            Logger.w(tag = "NotificationService") {
+                                "Companion tap produced no navigation " +
+                                        "(credentials unavailable) appId=$appId"
+                            }
+                        }
                     }
+                }
 
-                else -> null
-            }
-
-            if (event != null) {
-                Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
-                _navigationEvents.trySend(event)
-            } else {
-                Logger.w(tag = "NotificationService") {
-                    "No navigationEvent produced from click (appId unmatched?)"
+                else -> Logger.w(tag = "NotificationService") {
+                    "No navigationEvent produced from click (appId unmatched: $appId)"
                 }
             }
         } catch (e: Exception) {

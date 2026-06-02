@@ -362,7 +362,22 @@ val appModule = module {
     // and the CoroutineScope, which are intentionally Kotlin-default args.
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
-    singleOf(::NotificationService)
+    // Explicit `single` (not `singleOf`) because the ctor takes a
+    // `StateFlow<YouAuthState>` seam that Koin can't resolve reflectively.
+    // Same narrow-seam pattern as BackgroundSyncOrchestrator above.
+    single {
+        NotificationService(
+            api = get(),
+            scope = get(),
+            profileProvider = get(),
+            userPreferences = get(),
+            credentialsManager = get(),
+            pendingNotificationTap = get(),
+            notificationBackend = get(),
+            eventBus = get(),
+            authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+        )
+    }
     singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
