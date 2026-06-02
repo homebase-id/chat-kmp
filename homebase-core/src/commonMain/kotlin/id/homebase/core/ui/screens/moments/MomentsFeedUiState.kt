@@ -26,10 +26,15 @@ data class MomentsFeedUiState(
      * directly during the "Preparing…" window — without it, the tile would be
      * a description-only fallback until thumbnails land.
      *
+     * The value is a Coil model: a local file-path [String] for photos, or the
+     * extracted poster-frame JPEG [ByteArray] for videos. (A raw video path
+     * can't be decoded by an image loader, so videos must hand over their
+     * poster bytes — otherwise the tile renders black for the whole window.)
+     *
      * Populated by [id.homebase.core.moments.services.MomentsPostSenderService]
      * and cleared once the real optimistic write installs the embedded preview.
      */
-    val pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
+    val pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
     val viewMode: MomentsViewMode = MomentsViewMode.Timeline,
     val albumZoom: MomentsAlbumZoom = MomentsAlbumZoom.Day,
 )

@@ -73,7 +73,7 @@ fun MomentsAlbumGrid(
     zoom: MomentsAlbumZoom,
     onZoomChange: (MomentsAlbumZoom) -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
-    pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
+    pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
     modifier: Modifier = Modifier,
 ) {
     // Group + sort once per (moments, zoom) pair. Sorting newest-first inside
@@ -114,7 +114,7 @@ fun MomentsAlbumGrid(
                 ) { moment ->
                     AlbumMomentCell(
                         moment = moment,
-                        pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
+                        pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
                         onClick = { onOpenMoment(moment.id.toString(), null) },
                     )
                 }
@@ -173,7 +173,7 @@ private fun AlbumDateHeader(
 @Composable
 private fun AlbumMomentCell(
     moment: MomentFeedItem,
-    pendingLocalPreviewUri: String?,
+    pendingLocalPreviewModel: Any?,
     onClick: () -> Unit,
 ) {
     val cellShape: Shape = RectangleShape
@@ -188,12 +188,13 @@ private fun AlbumMomentCell(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick),
     ) {
-        if (firstImagePayload == null && pendingLocalPreviewUri != null) {
+        if (firstImagePayload == null && pendingLocalPreviewModel != null) {
             // Placeholder window: row exists locally but thumbnails haven't
-            // been generated yet. Render the user's source file straight from
-            // disk so the album cell shows the picked photo immediately.
+            // been generated yet. Render the local preview model (photo file
+            // path, or a video's poster-frame JPEG bytes) so the album cell
+            // shows the picked media immediately.
             AsyncImage(
-                model = pendingLocalPreviewUri,
+                model = pendingLocalPreviewModel,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

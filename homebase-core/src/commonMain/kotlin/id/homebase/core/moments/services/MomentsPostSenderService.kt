@@ -26,6 +26,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageFormat
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -60,19 +62,33 @@ class MomentsPostSenderService(
 ) {
 
     /**
-     * Local file URI (from the user's picker) for the first renderable attachment
-     * of an in-flight moment. Populated by [postMomentAsync] right after the
-     * placeholder DB write, cleared once the real optimistic write lands (real
-     * `previewThumbnail` bytes are then available on `MomentFeedItem`).
+     * Coil model for the first renderable attachment of an in-flight moment:
+     * the local file URI (from the user's picker) for a photo, or the extracted
+     * poster-frame JPEG bytes for a video. Populated by [postMomentAsync] right
+     * after the placeholder DB write, cleared once the real optimistic write
+     * lands (real `previewThumbnail` bytes are then available on `MomentFeedItem`).
+     *
+     * Videos must hand over poster bytes rather than the raw video path — an
+     * image loader can't decode a video file, so a video path would render the
+     * tile black for the whole "Preparing…" window.
      *
      * The feed VM mirrors this into `MomentsFeedUiState.pendingLocalPreviews`
-     * so the tile can show the user's source image during the brief
+     * so the tile can show the user's source media during the brief
      * "Preparing…" window before thumbnails are generated.
      */
-    private val _pendingLocalPreviews = MutableStateFlow<PersistentMap<Uuid, String>>(persistentMapOf())
-    val pendingLocalPreviews: StateFlow<PersistentMap<Uuid, String>> = _pendingLocalPreviews.asStateFlow()
+    private val _pendingLocalPreviews = MutableStateFlow<PersistentMap<Uuid, Any>>(persistentMapOf())
+    val pendingLocalPreviews: StateFlow<PersistentMap<Uuid, Any>> = _pendingLocalPreviews.asStateFlow()
     companion object {
         private const val TAG = "MomentsPostSenderService"
+
+        /**
+         * Embedded video-poster thumbnail sizing for the optimistic row. The raw
+         * poster is a full-resolution frame; resize it to this cover size so the
+         * inline tile has a crisp-enough still to paint over the player during
+         * warm-up without bloating the local descriptor.
+         */
+        private const val PosterThumbnailMaxDimension = 640
+        private const val PosterThumbnailJpegQuality = 75
     }
 
     private val drive = momentsLabeledDrive.drive.alias
@@ -107,6 +123,11 @@ class MomentsPostSenderService(
         source: MomentSource? = null,
         mediaInfoByAttachment: List<MediaInfo?>? = null,
         commentsEnabled: Boolean = true,
+        // Aligned-by-index with [attachments]: the extracted poster-frame JPEG
+        // for each video attachment (null for non-video / extraction failures).
+        // Used both for the immediate local preview and as the optimistic row's
+        // embedded video thumbnail, so the tile never renders black.
+        posterByAttachment: List<ByteArray?>? = null,
     ): PostMomentResult {
         Logger.d(tag = TAG) {
             "postMomentAsync: enqueueing moment=$momentUniqueId attachments=${attachments.size} recipients=${recipients.size} source=$source"
@@ -150,16 +171,20 @@ class MomentsPostSenderService(
             ),
         )
 
-        // Cache the first renderable attachment's local URI BEFORE writing the
-        // placeholder. The optimistic writer immediately emits BatchReceived,
-        // so the feed VM resolves the tile in the same dispatch loop — by
-        // the time it asks `pendingLocalPreviews[id]`, the entry must already
-        // be there.
-        val firstRenderableUri = attachments.firstOrNull { input ->
+        // Cache the first renderable attachment's preview model BEFORE writing
+        // the placeholder. The optimistic writer immediately emits
+        // BatchReceived, so the feed VM resolves the tile in the same dispatch
+        // loop — by the time it asks `pendingLocalPreviews[id]`, the entry must
+        // already be there. For a video we hand over the poster JPEG bytes
+        // (an image loader can't decode a raw video path); for a photo, the
+        // local file path.
+        val firstRenderableIndex = attachments.indexOfFirst { input ->
             input.contentType.startsWith("image/") || input.contentType.startsWith("video/")
-        }?.filePath
-        if (firstRenderableUri != null) {
-            _pendingLocalPreviews.update { it.put(momentUniqueId, firstRenderableUri) }
+        }
+        if (firstRenderableIndex >= 0) {
+            val poster = posterByAttachment?.getOrNull(firstRenderableIndex)
+            val previewModel: Any = poster ?: attachments[firstRenderableIndex].filePath
+            _pendingLocalPreviews.update { it.put(momentUniqueId, previewModel) }
         }
 
         try {
@@ -199,6 +224,7 @@ class MomentsPostSenderService(
                 keyHeader = keyHeader,
                 tags = tags,
                 isLocalOnly = isLocalOnly,
+                posterByAttachment = posterByAttachment,
             )
         }
 
@@ -223,6 +249,7 @@ class MomentsPostSenderService(
         keyHeader: KeyHeader,
         tags: List<Uuid>?,
         isLocalOnly: Boolean,
+        posterByAttachment: List<ByteArray?>? = null,
     ) {
         // Once the outbox has accepted the request its event stream drives the
         // tile's status (Sending → Uploading → Completed/Failed). Before that,
@@ -232,6 +259,41 @@ class MomentsPostSenderService(
         try {
             // Server constraint: payload keys must match ^[a-z0-9_]{8,10}$.
             val keyForIndex: (Int) -> String = { i -> "mmt_${i.toString().padStart(4, '0')}" }
+
+            // Downscaled video posters keyed by the payload key the builder
+            // will use, so we can graft them onto the video payload descriptors
+            // below. The attachment builder produces no thumbnail for videos
+            // (see MessageAttachmentBuilder's `else` branch), so without this
+            // the optimistic video row has no embedded preview and the inline
+            // tile renders the bare player surface — black — during decoder
+            // warm-up. The raw poster is full-resolution (MediaMetadataRetriever
+            // returns the whole frame), so resize it to an embedded-thumbnail
+            // size before base64-ing it into the local descriptor — otherwise a
+            // multi-hundred-KB string would ride on every video row (and never
+            // get reclaimed for local-only "Save privately" moments, which have
+            // no server resync to replace the optimistic row).
+            @OptIn(ExperimentalEncodingApi::class)
+            val posterThumbByKey: Map<String, ThumbnailDescriptor> = buildMap {
+                posterByAttachment?.forEachIndexed { i, poster ->
+                    if (poster == null) return@forEachIndexed
+                    val thumb = runCatching {
+                        val resized = ImageUtils.resizePreserveAspect(
+                            srcBytes = poster,
+                            maxWidth = PosterThumbnailMaxDimension,
+                            maxHeight = PosterThumbnailMaxDimension,
+                            outputFormat = ImageFormat.JPEG,
+                            quality = PosterThumbnailJpegQuality,
+                        )
+                        ThumbnailDescriptor(
+                            pixelWidth = resized.size.pixelWidth,
+                            pixelHeight = resized.size.pixelHeight,
+                            contentType = "image/jpeg",
+                            content = Base64.encode(resized.bytes),
+                        )
+                    }.getOrNull()
+                    if (thumb != null) put(keyForIndex(i), thumb)
+                }
+            }
             val bundle = MessageAttachmentBuilder.build(
                 attachments = attachments,
                 fileOperationsProvider = fileOps,
@@ -307,19 +369,26 @@ class MomentsPostSenderService(
 
             @OptIn(ExperimentalEncodingApi::class)
             val payloadDescriptors = encrypted.payloads.map { payload ->
+                // Prefer the builder's own preview (photos/audio); fall back to
+                // the extracted video poster so the optimistic video tile has a
+                // still to show over the player surface during warm-up. This
+                // descriptor feeds the local `writeUpdate` only — it isn't part
+                // of the uploaded payload bundle, so there's no header-budget
+                // concern with the full-frame poster bytes.
+                val previewThumb = payload.previewThumbnail?.let {
+                    ThumbnailDescriptor(
+                        pixelWidth = it.pixelWidth,
+                        pixelHeight = it.pixelHeight,
+                        contentType = it.contentType,
+                        content = it.content,
+                    )
+                } ?: posterThumbByKey[payload.key]
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
+                    previewThumbnail = previewThumb,
                 )
             }.ifEmpty { null }
 
