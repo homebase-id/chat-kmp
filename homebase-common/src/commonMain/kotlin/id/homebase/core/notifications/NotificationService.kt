@@ -43,6 +43,49 @@ data class SubscriptionVerificationDetail(
 )
 
 /**
+ * Builds the browser-redirect navigation event for a tapped notification from a
+ * web-app companion (community, owner, mail, feed). These open the *logged-in*
+ * identity's own web app — never the message sender's domain: the companion web
+ * clients are served from and authenticated against our own identity, and the
+ * author's host has no session for us. Faithful to the RN app, which built these
+ * from getIdentity(), and to the in-app Feed WebView (https://{ownDomain}/apps/feed).
+ *
+ * @param ownDomain the active (logged-in) identity's domain, or null when logged
+ *   out / credentials not yet ready — in which case there is nothing to open.
+ * @return the [NotificationNavigationEvent.OpenUrl] to emit, or null for a null
+ *   domain or a non-companion appId (e.g. chat, which navigates in-app).
+ */
+internal fun buildCompanionAppUrlEvent(
+    appId: String,
+    ownDomain: String?,
+    typeId: String,
+    tagId: String,
+): NotificationNavigationEvent.OpenUrl? {
+    if (ownDomain.isNullOrBlank()) return null
+    return when (appId) {
+        COMMUNITY_APP_ID ->
+            NotificationNavigationEvent.OpenUrl(
+                "https://$ownDomain/apps/community/redirect/$typeId/$tagId"
+            )
+
+        OWNER_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/owner/connections")
+
+        MAIL_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/mail/inbox/$typeId")
+
+        FEED_APP_ID ->
+            if (tagId.isNotBlank()) {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed/post/$tagId")
+            } else {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed")
+            }
+
+        else -> null
+    }
+}
+
+/**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
  * notifications. Register as a singleton in Koin.
  */
@@ -468,33 +511,15 @@ class NotificationService(
                     NotificationNavigationEvent.OpenConversation(typeId)
                 }
 
-                COMMUNITY_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/community/redirect/${typeId}/${tagId}"
-                    )
-
-                OWNER_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/owner/connections"
-                    )
-
-                MAIL_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/mail/inbox/$typeId"
-                    )
-
-                FEED_APP_ID ->
-                    if (tagId.isNotBlank()) {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed/post/$tagId"
-                        )
-                    } else {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed"
-                        )
-                    }
-
-                else -> null
+                // Community, owner, mail and feed open the *logged-in* identity's
+                // own web app in the browser (see buildCompanionAppUrlEvent). The
+                // sender's host has no session for us, so senderId must NOT be used.
+                else -> buildCompanionAppUrlEvent(
+                    appId = appId,
+                    ownDomain = credentialsManager.credentialsFlow.value?.domain?.domainName,
+                    typeId = typeId,
+                    tagId = tagId,
+                )
             }
 
             if (event != null) {
