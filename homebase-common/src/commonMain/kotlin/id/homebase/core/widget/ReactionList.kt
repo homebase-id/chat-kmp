@@ -154,7 +154,11 @@ fun ReactionList(
 
 private fun extractEmoji(reactionContent: String): String? {
     return try {
-        OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
+        val emoji = OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
+        // A leading underscore marks a machine reaction (e.g. a Groodle vote code
+        // like "_1Y") that is not meant to be rendered as an emoji. Its own kind's
+        // bubble surfaces it; the generic reaction pill ignores it.
+        if (emoji.startsWith('_')) null else emoji
     } catch (_: Exception) {
         null
     }

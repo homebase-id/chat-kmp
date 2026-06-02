@@ -59,6 +59,7 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
+import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
@@ -156,6 +157,19 @@ fun MessageBubbleRaw(
                 currentOdinId = currentOdinId,
                 chainCap = chainCap,
                 modifier = modifier,
+            )
+            return
+        }
+        is MessageContent.Groodle -> {
+            GroodleBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
             )
             return
         }
