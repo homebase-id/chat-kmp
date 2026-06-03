@@ -13,6 +13,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -98,6 +99,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -107,6 +109,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -122,6 +125,8 @@ import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.common.widget.ImageInfoOverlay
+import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
@@ -156,6 +161,7 @@ import id.homebase.resources.moments_detail_comments_section
 import id.homebase.resources.moments_detail_delete_comment_dialog_title
 import id.homebase.resources.moments_detail_delete_dialog_title
 import id.homebase.resources.moments_detail_menu_delete
+import id.homebase.resources.moments_detail_menu_info
 import id.homebase.resources.moments_detail_menu_more
 import id.homebase.resources.moments_detail_menu_save_current
 import id.homebase.resources.moments_detail_description_hint
@@ -633,6 +639,12 @@ private fun DetailContent(
     // moments (nothing to save → the menu item hides).
     var visiblePayloadKey by remember { mutableStateOf<String?>(null) }
 
+    // Toggled by the overflow "Info" item — shows a technical-info panel over
+    // the media for the payload currently on screen (video → codec panel,
+    // image → image-info panel). Replaces the old long-press-the-badge debug
+    // affordance that used to live on the MP4/HLS tag.
+    var showCurrentInfo by remember { mutableStateOf(false) }
+
     Scaffold(
         // Black so the letterbox bars around a Fit-scaled image or video
         // read as part of the cinematic surface rather than the surface
@@ -691,6 +703,10 @@ private fun DetailContent(
                                     onAction(MomentDetailUiAction.SaveMedia(it))
                                 }
                             },
+                            // Same condition as Save — there's an on-screen
+                            // payload to describe. Opens the info overlay below.
+                            showInfo = visiblePayloadKey != null,
+                            onInfoClick = { showCurrentInfo = true },
                             // Author-only: only the original author can widen
                             // the audience of a moment.
                             showAddPeople = uiState.isMine,
@@ -734,21 +750,61 @@ private fun DetailContent(
                 if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
             }
         } else {
-            MomentDetailContent(
-                uiState = uiState,
-                moment = moment,
-                initialPayloadKey = uiState.initialPayloadKey,
-                onAction = onAction,
-                onOpenComments = { showCommentsSheet = true },
-                onVisiblePayloadChanged = { visiblePayloadKey = it },
-                commentsOpen = commentsShrinkActive,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-                isActivePage = isActivePage,
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(contentPadding),
-            )
+            ) {
+                MomentDetailContent(
+                    uiState = uiState,
+                    moment = moment,
+                    initialPayloadKey = uiState.initialPayloadKey,
+                    onAction = onAction,
+                    onOpenComments = { showCommentsSheet = true },
+                    onVisiblePayloadChanged = { visiblePayloadKey = it },
+                    commentsOpen = commentsShrinkActive,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    isActivePage = isActivePage,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // Technical-info overlay for the on-screen payload, opened from
+                // the overflow "Info" item. Looks up the current payload by the
+                // key the inner pager reports up, then routes to the video codec
+                // panel or the image-info panel. Tap anywhere to dismiss.
+                val infoPayload = remember(showCurrentInfo, visiblePayloadKey, moment.payloads) {
+                    if (!showCurrentInfo) null
+                    else visiblePayloadKey?.let { key ->
+                        moment.payloads.firstOrNull { it.keyEquals(key) }
+                    }
+                }
+                if (infoPayload != null) {
+                    val dismissModifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { showCurrentInfo = false },
+                                onLongPress = { showCurrentInfo = false },
+                            )
+                        }
+                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
+                        infoPayload.contentType == "application/vnd.apple.mpegurl"
+                    if (isVideo) {
+                        val videoDescriptor =
+                            infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
+                        VideoInfoOverlay(
+                            descriptor = videoDescriptor,
+                            isHls = videoDescriptor?.isSegmented == true,
+                            modifier = dismissModifier,
+                        )
+                    } else {
+                        ImageInfoOverlay(
+                            payload = infoPayload,
+                            modifier = dismissModifier,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -838,6 +894,8 @@ private fun MomentOverflowMenu(
     isSaving: Boolean,
     showSave: Boolean,
     onSaveClick: () -> Unit,
+    showInfo: Boolean,
+    onInfoClick: () -> Unit,
     showAddPeople: Boolean,
     onAddPeopleClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -877,6 +935,15 @@ private fun MomentOverflowMenu(
                     onClick = {
                         expanded = false
                         onSaveClick()
+                    },
+                )
+            }
+            if (showInfo) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.moments_detail_menu_info)) },
+                    onClick = {
+                        expanded = false
+                        onInfoClick()
                     },
                 )
             }

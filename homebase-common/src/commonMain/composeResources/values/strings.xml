@@ -363,6 +363,7 @@
     <string name="moments_detail_menu_more">More options</string>
     <string name="moments_detail_menu_delete">Delete</string>
     <string name="moments_detail_menu_save_current">Save current</string>
+    <string name="moments_detail_menu_info">Info</string>
     <string name="moments_detail_menu_add_people">Add people</string>
     <string name="moments_add_people_title">Add people</string>
     <string name="moments_add_people_confirm">Add</string>
@@ -1055,7 +1056,7 @@
     <string name="dev_menu_trigger_test_crash">Trigger test crash</string>
     <string name="dev_menu_trigger_test_crash_description">Intentionally crashes the app right now to verify crash reporting. The app will close immediately — reopen it afterward to let the crash report upload to Crashlytics.</string>
     <string name="dev_menu_crash_confirm_title">Crash the app?</string>
-    <string name="dev_menu_crash_confirm_message">This will intentionally crash the app immediately to test Crashlytics. You\'ll need to reopen the app afterward.</string>
+    <string name="dev_menu_crash_confirm_message">This will intentionally crash the app immediately to test Crashlytics. You'll need to reopen the app afterward.</string>
     <string name="dev_menu_crash_confirm_action">Crash now</string>
 
     <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
@@ -1071,6 +1072,12 @@
     <string name="video_info_unknown">—</string>
     <string name="video_info_yes">Yes</string>
     <string name="video_info_no">No</string>
+
+    <!-- Image info overlay (shown from the moment overflow "Info" menu item) -->
+    <string name="image_info_title">Image info</string>
+    <string name="image_info_type">Type: %1$s</string>
+    <string name="image_info_dimensions">Dimensions: %1$s (approx.)</string>
+    <string name="image_info_date">Date: %1$s</string>
 
     <!-- Defragmenter issue labels -->
     <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>
