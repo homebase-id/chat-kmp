@@ -79,7 +79,18 @@ fun main() {
     // OS-level ANR, so without this a freeze leaves no evidence at all.
     MainThreadWatchdog().start()
 
-    // Initialize Koin first
+    // Initialize the database BEFORE Koin. startKoin eagerly instantiates `createdAtStart`
+    // singletons (e.g. DesktopChatNotificationBridge), and that chain resolves
+    // `DatabaseManager.appDb`, which reads the lateinit `instance`. If the DB isn't initialized
+    // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
+    // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
+    // so it's safe to run here.
+    runBlocking {
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
+    }
+    StartupLogger.checkpoint("database initialized")
+
+    // Initialize Koin
     startKoin { modules(allModules) }
     StartupLogger.checkpoint("Koin DI graph built")
 
@@ -127,10 +138,6 @@ fun main() {
     val minWidth = 480
     val minHeight = 400
     val config = DesktopPreferences()
-
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
 
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
