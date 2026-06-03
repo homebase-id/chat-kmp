@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsPostSenderService
@@ -126,6 +127,13 @@ class MomentAudienceViewModel(
                     // by payload key, so an all-null list yields no `mediaInfo`.
                     mediaInfoByAttachment = draft.attachments
                         .map { it.toMediaInfo() }
+                        .takeIf { list -> list.any { it != null } },
+                    // Poster frame per video attachment (index-aligned with the
+                    // attachments above). Lets the sender render the video's
+                    // first frame in the placeholder tile and as the optimistic
+                    // row's embedded thumbnail instead of a black surface.
+                    posterByAttachment = draft.attachments
+                        .map { (it as? AttachmentPendingFile.FileVideo)?.thumbnailBytes }
                         .takeIf { list -> list.any { it != null } },
                     commentsEnabled = state.commentsEnabled,
                 )

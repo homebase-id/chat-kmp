@@ -13,6 +13,14 @@ import org.jetbrains.compose.resources.StringResource
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
     val isLoading: Boolean = true,
+    /**
+     * Coil model for a just-posted moment whose payloads haven't landed yet
+     * (photo file path, or a video's poster-frame JPEG bytes). Lets the
+     * reels/detail media area show the picked media + a spinner during the
+     * "Preparing…" window instead of a black backdrop — mirrors the timeline
+     * card's placeholder behaviour. Null once real payloads arrive.
+     */
+    val pendingLocalPreviewModel: Any? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     /**
      * Payload key the detail carousel should land on when first opened —
@@ -76,6 +84,15 @@ data class MomentDetailUiState(
 
     /** True while the delete request is in flight. */
     val isDeleting: Boolean = false,
+
+    /**
+     * True while the "Save current" flow is decrypting (and, for HLS video,
+     * remuxing) the visible carousel payload to a cache file. Drives the
+     * overflow-menu spinner so the user knows the save is in progress — the
+     * decrypt/remux is the slow part; the device-gallery write that follows is
+     * near-instant.
+     */
+    val isSavingMedia: Boolean = false,
 
     /**
      * Comment ids whose delete is currently in flight. The comment row reads
@@ -321,6 +338,14 @@ sealed interface MomentDetailUiAction {
      */
     data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
 
+    /**
+     * Overflow-menu "Save current" tapped. Decrypts the given carousel payload
+     * (the one currently on screen) and emits [MomentDetailUiEvent.MediaSaveReady]
+     * so the screen can hand it to the platform save-to-device flow. HLS video
+     * is remuxed to a playable MP4 first.
+     */
+    data class SaveMedia(val payloadKey: String) : MomentDetailUiAction
+
     /** Open the "who reacted" bottom sheet and fetch the reactor list. */
     data object OpenReactionsSheet : MomentDetailUiAction
 
@@ -367,6 +392,17 @@ sealed interface MomentDetailUiEvent {
      */
     data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
+
+    /**
+     * Decrypted (and, for HLS, remuxed) payload is written to [filePath]; the
+     * screen should hand it + [suggestedName] to `FileSystemHandler.saveFile`
+     * to write it into the device gallery / Downloads.
+     */
+    data class MediaSaveReady(
+        val filePath: String,
+        val suggestedName: String,
+    ) : MomentDetailUiEvent
+    data class MediaSaveFailed(val message: String?) : MomentDetailUiEvent
 
     /** Audience successfully widened by [count] new recipients. */
     data class RecipientsAdded(val count: Int) : MomentDetailUiEvent

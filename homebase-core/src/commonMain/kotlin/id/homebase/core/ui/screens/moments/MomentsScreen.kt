@@ -245,7 +245,7 @@ fun MomentsScreen(
 private fun CompactMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
-    pendingLocalPreviews: ImmutableMap<Uuid, String>,
+    pendingLocalPreviews: ImmutableMap<Uuid, Any>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -341,7 +341,7 @@ private fun CompactMomentsLayout(
 private fun WideMomentsLayout(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus>,
-    pendingLocalPreviews: ImmutableMap<Uuid, String>,
+    pendingLocalPreviews: ImmutableMap<Uuid, Any>,
     ownerSession: OwnerSession?,
     connectionStatus: AppConnectionStatus,
     driveIsSyncing: Boolean,
@@ -527,7 +527,7 @@ private val FeedPaneMaxWidth = 480.dp
 private fun MomentsFeedList(
     moments: List<MomentFeedItem>,
     uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
-    pendingLocalPreviews: ImmutableMap<Uuid, String> = persistentMapOf(),
+    pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
     selfOdinId: OdinId?,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     onAddReaction: (Uuid, String) -> Unit,
@@ -626,7 +626,7 @@ private fun MomentsFeedList(
             MomentPostCard(
                 moment = moment,
                 uploadStatus = uploadProgress[moment.id],
-                pendingLocalPreviewUri = pendingLocalPreviews[moment.id],
+                pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
                 selfOdinId = selfOdinId,
                 isSelected = !commentsSheetOnTap &&
                     selectedMomentId != null && moment.id == selectedMomentId,
@@ -910,7 +910,7 @@ private fun DisposableViewModelStoreOwner(
 private fun MomentPostCard(
     moment: MomentFeedItem,
     uploadStatus: UploadStatus?,
-    pendingLocalPreviewUri: String?,
+    pendingLocalPreviewModel: Any?,
     selfOdinId: OdinId?,
     isSelected: Boolean,
     // Carries the payload key of whichever carousel page was visible at tap
@@ -1039,29 +1039,34 @@ private fun MomentPostCard(
             },
     ) {
         if (moment.payloads.isEmpty()) {
-            if (pendingLocalPreviewUri != null) {
+            if (pendingLocalPreviewModel != null) {
                 // Placeholder window after postMomentAsync: the optimistic row
                 // exists but thumbnail generation / encryption are still
                 // running on the post sender's background scope. Render the
-                // user's selected source file straight from disk so the tile
-                // shows the picked photo immediately, with the upload overlay
-                // (Preparing → Sending → …) on top. Once writeUpdate lands
-                // real payload descriptors, this branch stops firing and the
-                // normal MomentMediaGallery path takes over.
+                // local preview model (photo file path, or the extracted poster
+                // JPEG bytes for a video — a raw video path can't be decoded by
+                // the image loader, so it would otherwise render black) so the
+                // tile shows the picked media immediately, with the upload
+                // overlay (Preparing → Sending → …) on top. Once writeUpdate
+                // lands real payload descriptors, this branch stops firing and
+                // the normal MomentMediaGallery path takes over.
                 Box {
                     AsyncImage(
-                        model = pendingLocalPreviewUri,
+                        model = pendingLocalPreviewModel,
                         contentDescription = null,
                         modifier = Modifier.fillMaxWidth(),
                         contentScale = ContentScale.Crop,
                     )
-                    if (uploadStatus != null) {
-                        MomentUploadProgressOverlay(
-                            status = uploadStatus,
-                            modifier = Modifier.matchParentSize(),
-                            onPermanentFailureTap = { failedSheetOpen = true },
-                        )
-                    }
+                    // Always surface a spinner while we're in the placeholder
+                    // window: being here means payloads haven't landed yet, so
+                    // the moment is still preparing even in the brief beat
+                    // before the first PayloadBundlingEvent.Preparing arrives
+                    // (which is when `uploadStatus` first becomes non-null).
+                    MomentUploadProgressOverlay(
+                        status = uploadStatus ?: UploadStatus.Preparing,
+                        modifier = Modifier.matchParentSize(),
+                        onPermanentFailureTap = { failedSheetOpen = true },
+                    )
                 }
             } else {
                 // Description-only / corrupt-payload moment — still render a tile so
