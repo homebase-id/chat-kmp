@@ -90,14 +90,19 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
@@ -1730,6 +1735,29 @@ private fun CommentsSheet(
     // to a locally-remembered state for callers that don't need that coupling.
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
+    // Swiping the (now fully-scrollable) body should only ever scroll it — never
+    // dismiss the sheet. ModalBottomSheet otherwise hands the leftover downward
+    // drag at the list's top edge to its own nested-scroll connection, which
+    // translates it into a drag-to-dismiss. Swallow that leftover here so it
+    // never reaches the sheet. The drag handle (the grab bar up top) drives the
+    // sheet directly, not through nested scroll, so it still dismisses normally.
+    val swallowDownwardDrag = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset =
+                if (source == NestedScrollSource.UserInput && available.y > 0f) {
+                    Offset(0f, available.y)
+                } else {
+                    Offset.Zero
+                }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+                if (available.y > 0f) Velocity(0f, available.y) else Velocity.Zero
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1738,6 +1766,7 @@ private fun CommentsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(swallowDownwardDrag)
                 .then(
                     if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
                     else Modifier,
