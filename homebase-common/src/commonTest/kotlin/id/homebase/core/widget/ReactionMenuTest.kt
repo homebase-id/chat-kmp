@@ -1,6 +1,7 @@
 package id.homebase.core.widget
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -9,10 +10,39 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import id.homebase.core.settings.InMemorySettings
+import id.homebase.core.settings.UserPreferences
 import kotlinx.collections.immutable.persistentListOf
+import org.koin.compose.KoinApplication
+import org.koin.dsl.koinConfiguration
+import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+
+// ---------------------------------------------------------------------------
+// Koin module that satisfies the UserPreferences dependency required by
+// rememberHaptics() → koinInject<UserPreferences>() inside ReactionMenu.
+// ---------------------------------------------------------------------------
+private val hapticsTestModule = module {
+    single { UserPreferences(InMemorySettings()) }
+}
+
+/**
+ * Wraps [content] inside a [KoinApplication] scoped to this composition,
+ * providing [hapticsTestModule] so that [id.homebase.core.haptics.rememberHaptics]
+ * can resolve [UserPreferences] without a globally-started Koin context.
+ *
+ * Using the composable KoinApplication (rather than startKoin/stopKoin) keeps
+ * each test's Koin instance lifecycle tied to the Compose composition, avoiding
+ * cross-test contamination.
+ */
+@Composable
+private fun WithHapticsKoin(content: @Composable () -> Unit) {
+    KoinApplication(configuration = koinConfiguration { modules(hapticsTestModule) }) {
+        content()
+    }
+}
 
 @OptIn(ExperimentalTestApi::class)
 class ReactionMenuTest {
@@ -20,42 +50,48 @@ class ReactionMenuTest {
     @Test
     fun showsDefaultReactions_whenNoUserReactions() = runComposeUiTest {
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
-        onNodeWithText("\u2764\uFE0F").assertExists()  // ❤️
-        onNodeWithText("\uD83D\uDC4D").assertExists()  // 👍
-        onNodeWithText("\uD83D\uDC4E").assertExists()  // 👎
-        onNodeWithText("\uD83D\uDE02").assertExists()  // 😂
+        onNodeWithText("❤️").assertExists()  // ❤️
+        onNodeWithText("👍").assertExists()  // 👍
+        onNodeWithText("👎").assertExists()  // 👎
+        onNodeWithText("😂").assertExists()  // 😂
     }
 
     @Test
     fun selectCallbackFires() = runComposeUiTest {
         var selected = ""
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    onSelect = { selected = it },
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        onSelect = { selected = it },
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
-        onNodeWithText("\uD83D\uDC4D").performClick()  // 👍
-        assertEquals("\uD83D\uDC4D", selected)
+        onNodeWithText("👍").performClick()  // 👍
+        assertEquals("👍", selected)
     }
 
     @Test
     fun showsMoreButton() = runComposeUiTest {
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
         onNodeWithTag("emoji_options_button").assertExists()
@@ -65,11 +101,13 @@ class ReactionMenuTest {
     fun moreButtonFiresShowAllEmojis() = runComposeUiTest {
         var showAll = false
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    onSelect = {},
-                    onShowAllEmojis = { showAll = true },
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        onSelect = {},
+                        onShowAllEmojis = { showAll = true },
+                    )
+                }
             }
         }
         onNodeWithTag("emoji_options_button").performClick()
@@ -81,12 +119,14 @@ class ReactionMenuTest {
         // userDefault has the bare-codepoint form; baseDefaults has the VS-16 form.
         // Both render as the same thumbs-up but compare unequal as Strings.
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    userDefaultReactions = persistentListOf("👍"),  // bare 👍
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        userDefaultReactions = persistentListOf("👍"),  // bare 👍
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
         // Only one rendition of either form should appear.
@@ -98,12 +138,14 @@ class ReactionMenuTest {
     @Test
     fun ownReactionEmojiIsHighlighted() = runComposeUiTest {
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    ownReactions = persistentListOf("👍"),  // 👍
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        ownReactions = persistentListOf("👍"),  // 👍
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
         onAllNodesWithTag("reaction_chip_own").assertCountEquals(1)
@@ -114,12 +156,14 @@ class ReactionMenuTest {
         // ownReactions has the VS-16 form; popup row has the bare form (or vice versa).
         // The chip should still highlight.
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    ownReactions = persistentListOf("👍️"),  // 👍 + VS-16
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        ownReactions = persistentListOf("👍️"),  // 👍 + VS-16
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
         onAllNodesWithTag("reaction_chip_own").assertCountEquals(1)
@@ -128,18 +172,20 @@ class ReactionMenuTest {
     @Test
     fun userReactionsReplaceDefaults() = runComposeUiTest {
         setContent {
-            MaterialTheme {
-                ReactionMenu(
-                    userDefaultReactions = persistentListOf("\uD83C\uDF89", "\uD83D\uDD25"),  // 🎉, 🔥
-                    onSelect = {},
-                    onShowAllEmojis = {},
-                )
+            WithHapticsKoin {
+                MaterialTheme {
+                    ReactionMenu(
+                        userDefaultReactions = persistentListOf("🎉", "🔥"),  // 🎉, 🔥
+                        onSelect = {},
+                        onShowAllEmojis = {},
+                    )
+                }
             }
         }
-        onNodeWithText("\uD83C\uDF89").assertExists()  // 🎉
-        onNodeWithText("\uD83D\uDD25").assertExists()  // 🔥
+        onNodeWithText("🎉").assertExists()  // 🎉
+        onNodeWithText("🔥").assertExists()  // 🔥
         // Default reactions should fill remaining slots
-        onNodeWithText("\u2764\uFE0F").assertExists()  // ❤️
-        onNodeWithText("\uD83D\uDC4D").assertExists()  // 👍
+        onNodeWithText("❤️").assertExists()  // ❤️
+        onNodeWithText("👍").assertExists()  // 👍
     }
 }

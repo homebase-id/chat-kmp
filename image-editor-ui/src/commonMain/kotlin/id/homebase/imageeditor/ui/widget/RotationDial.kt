@@ -32,12 +32,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
@@ -67,7 +67,7 @@ fun RotationDial(
     modifier: Modifier = Modifier,
     @Suppress("UNUSED_PARAMETER") label: String = "",
 ) {
-    val hapticFeedback = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val spaceBetweenIndicatorsPx = with(LocalDensity.current) { SPACE_BETWEEN_INDICATORS.toPx() }
 
     var degrees by remember(valueDegrees) { mutableFloatStateOf(valueDegrees) }
@@ -105,7 +105,7 @@ fun RotationDial(
                         val offEndOfMin = newDialDegrees >= MAX_DEGREES / 2f && prevDialDegrees <= MIN_DEGREES / 2f
 
                         if (prevDialDegrees.roundToInt() != newDialDegrees.roundToInt()) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            haptics.perform(HapticEvent.Selection)
                         }
 
                         val newDegrees = when {

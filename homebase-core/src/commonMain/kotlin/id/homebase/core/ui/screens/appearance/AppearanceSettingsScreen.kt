@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.appearance
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.settings.Language
@@ -30,6 +32,7 @@ import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.setPlatformSystemLocale
 import id.homebase.core.widget.SettingsClickableRow
 import id.homebase.core.widget.SettingsRowItemData
+import id.homebase.core.widget.SettingsToggleRow
 import id.homebase.resources.MR
 import id.homebase.resources.language
 import id.homebase.resources.language_danish
@@ -38,6 +41,7 @@ import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_appearance
+import id.homebase.resources.settings_haptic_feedback
 import id.homebase.resources.theme
 import id.homebase.resources.theme_dark
 import id.homebase.resources.theme_light
@@ -136,6 +140,14 @@ fun AppearanceSettingsUi(
                 onSelected = {
                     onAction(AppearanceSettingsUiAction.ThemeSelected(it))
                 },
+            )
+
+            SettingsToggleRow(
+                modifier = Modifier.testTag("hapticFeedbackToggle"),
+                label = stringResource(MR.string.settings_haptic_feedback),
+                checked = uiState.hapticsEnabled,
+                onCheckedChange = { onAction(AppearanceSettingsUiAction.HapticsEnabledChanged(it)) },
+                contentPadding = PaddingValues(0.dp),
             )
         }
     }
