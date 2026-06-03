@@ -733,11 +733,19 @@ private fun DetailContent(
         // horizontal + bottom insets so the bottom-overlay description and
         // page dots clear the system nav bar.
         val layoutDirection = LocalLayoutDirection.current
+        // The bottom system-nav inset is deliberately NOT applied to the content
+        // box — the media and the bottom metadata scrim run to the true bottom
+        // edge of the screen (fully immersive, like the zeroed top inset above).
+        // The inset is instead handed to MomentDetailContent, which lifts only
+        // the metadata *text* above the nav bar while its gradient still paints
+        // down to the bottom. (Previously the inset pushed the whole overlay up,
+        // so the scrim floated above the bottom and read as a hard line.)
+        val bottomInset = innerPadding.calculateBottomPadding()
         val contentPadding = PaddingValues(
             start = innerPadding.calculateStartPadding(layoutDirection),
             end = innerPadding.calculateEndPadding(layoutDirection),
             top = 0.dp,
-            bottom = innerPadding.calculateBottomPadding(),
+            bottom = 0.dp,
         )
         val moment = uiState.moment
         if (moment == null) {
@@ -766,6 +774,7 @@ private fun DetailContent(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     isActivePage = isActivePage,
+                    bottomContentInset = bottomInset,
                     modifier = Modifier.fillMaxSize(),
                 )
                 // Technical-info overlay for the on-screen payload, opened from
@@ -1222,6 +1231,9 @@ private fun MomentDetailContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
+    // System nav-bar inset, applied to the bottom metadata text so it clears
+    // the nav bar while the media + scrim still extend to the true bottom edge.
+    bottomContentInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = moment.payloads.size.coerceAtLeast(1)
@@ -1570,6 +1582,7 @@ private fun MomentDetailContent(
                 userDateMs = moment.userDateMs,
                 pageCount = if (moment.payloads.size > 1) moment.payloads.size else 0,
                 currentPage = pagerState.currentPage,
+                bottomInset = bottomContentInset,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
@@ -1743,9 +1756,16 @@ private fun DetailBottomOverlay(
     userDateMs: Long,
     pageCount: Int,
     currentPage: Int,
+    bottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     Column(
+        // Bottom-anchored legibility scrim. The gradient is drawn *before* the
+        // padding, so it fills the whole Column — including the [bottomInset]
+        // region — all the way down to the true bottom edge of the reel; only
+        // the text is lifted above the system nav bar. A tall top runway makes
+        // the fade gradual instead of banding into a hard line, and anchoring it
+        // to the bottom edge stops it from floating above the bottom.
         modifier = modifier
             .background(
                 Brush.verticalGradient(
@@ -1755,7 +1775,12 @@ private fun DetailBottomOverlay(
                     ),
                 ),
             )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 32.dp,
+                bottom = bottomInset + 16.dp,
+            ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (pageCount > 1) {
