@@ -63,12 +63,15 @@ fun ZoomableSubSamplingImage(
     // Cross-fade the sharp image in over the placeholder so the unavoidable
     // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
     // smooth focus-pull instead of an abrupt pop. (Modifier.blur is API 31+, so
-    // a blur-up isn't available on older devices; a cross-fade is.)
+    // a blur-up isn't available on older devices; a cross-fade is.) Only remote
+    // images have a placeholder to fade over; a local original loads fast with
+    // nothing beneath it, so it is shown at full opacity (no fade, no blank).
     val sharpAlpha by animateFloatAsState(
         targetValue = if (imageLoaded) 1f else 0f,
         animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
         label = "sharpFade",
     )
+    val contentAlpha = if (source is SubSamplingImageSource.Remote) sharpAlpha else 1f
 
     // Shared-element bounds go on the container (not the inner image) so the
     // placeholder animates with the open/close transition instead of popping in
@@ -113,7 +116,7 @@ fun ZoomableSubSamplingImage(
             model = model,
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
-            modifier = Modifier.fillMaxSize().alpha(sharpAlpha),
+            modifier = Modifier.fillMaxSize().alpha(contentAlpha),
             contentScale = ContentScale.Fit,
             zoomState = zoomState,
             scrollBar = null,

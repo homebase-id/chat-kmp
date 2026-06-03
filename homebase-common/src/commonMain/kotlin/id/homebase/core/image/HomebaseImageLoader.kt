@@ -205,6 +205,15 @@ class HomebaseImageLoader(
         fullPayloadCache.clear()
     }
 
+    /**
+     * Non-suspending best-effort clear for call sites that aren't coroutines
+     * (e.g. the logout hook). Schedules the clear on [cacheScope] so decrypted
+     * bytes for the outgoing user don't linger in RAM.
+     */
+    fun clearMemoryCacheAsync() {
+        cacheScope.launch { fullPayloadCache.clear() }
+    }
+
     private fun fullPayloadCacheKey(data: HomebaseImageData): String =
         "${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
 

@@ -210,6 +210,7 @@ val appModule = module {
     // YouAuthFlowManager.logout() invokes immediately before this hook.
     single {
         val imageLoader: ImageLoader = get()
+        val homebaseImageLoader: HomebaseImageLoader = get()
         val fileOps: FileOperationsProvider = get()
         val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
@@ -234,6 +235,14 @@ val appModule = module {
                     .onFailure {
                         Logger.w(tag = "YouAuthFlowManager", throwable = it) {
                             "coil memory cache clear failed on logout"
+                        }
+                    }
+                // Decrypted full-payload bytes must not survive the outgoing
+                // identity either — same rationale as the Coil clear above.
+                runCatching { homebaseImageLoader.clearMemoryCacheAsync() }
+                    .onFailure {
+                        Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                            "full-payload cache clear failed on logout"
                         }
                     }
                 pendingUpgradeManager.reset()
