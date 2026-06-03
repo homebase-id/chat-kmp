@@ -738,6 +738,62 @@ class OutboxSyncTest {
     }
 
     /**
+     * Regression for the web video-send "stuck on Done forever" scenario
+     * (PR #640 follow-up): a conversation file whose UploadNewFile recovers via
+     * `DriveOutboxUploader.retryAsUpdate` is rejected by the server with HTTP 400
+     * "When updating an encrypted file, the AES key must match the existing key …"
+     * (errorCode collapsed to UnhandledScenario). The outbox row carries a fixed
+     * key, so every retry replays the same wrong key — deterministically
+     * unrecoverable. Without the title-match in `isPermanentFailure` it loops for
+     * 20 retries / ~48h and dependency-chains every message behind it. After the
+     * fix it drops on attempt 1.
+     */
+    @Test
+    fun testPermanentFailure_AesKeyMismatchDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.UnhandledScenario,
+            message = "When updating an encrypted file, the AES key must match the existing key. " +
+                    "Changing the AES key can invalidate existing encrypted payloads. " +
+                    "If you need to rotate keys, re-upload the file instead.",
+        )
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+        }
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(driveId, dropped.driveId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
      * Regression: once the head of a dependency chain is dropped (permanent
      * failure), the next message in the chain must become eligible to
      * checkout. This locks in the SQL behavior in `OutboxQueries.kt`

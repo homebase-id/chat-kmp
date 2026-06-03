@@ -101,6 +101,19 @@ class OutboxSync(
             // sibling quota messages the server emits in the same shape
             // with errorCode collapsed to UnhandledScenario.
             if (msg.contains(Regex("size of \\d+ exceeds \\d+", RegexOption.IGNORE_CASE))) return true
+            // Encrypted-file key mismatch on update: the server rejects an update
+            // whose AES key differs from the existing file's ("When updating an
+            // encrypted file, the AES key must match the existing key …"). The
+            // outbox row carries a fixed key, so every retry replays the same
+            // wrong key against an unchanging server file — deterministically
+            // unrecoverable. Drop it instead of burning ~48h of retries.
+            // GUARDRAIL, not the fix: the root cause is DriveOutboxUploader.
+            // retryAsUpdate adopting the server's versionTag but reusing the
+            // client's freshly-minted keyHeader (seen when the local DB lost the
+            // conversation's key, e.g. the in-memory web DB after a reload, and
+            // optimistically recreated the conversation with a new key). The real
+            // fix re-hydrates the existing server key on ExistingFileWithUniqueId.
+            if (msg.contains("AES key must match", ignoreCase = true)) return true
             // Client-side pre-flight rejections from
             // [UploadValidation.kt]. The validator throws ClientException
             // shaped like a server response so we land here on attempt 1.
