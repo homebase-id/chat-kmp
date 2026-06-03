@@ -82,6 +82,8 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -192,6 +194,7 @@ fun SentMessageBubble(
     // frame then snaps to bubble width on the next composition.
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val haptics = rememberHaptics()
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -343,6 +346,7 @@ fun SentMessageBubble(
                         clusterPosition = clusterPosition,
                         onLongClick = {
                             if (onMessageInfo != null) {
+                                haptics.perform(HapticEvent.LongPress)
                                 popupMode = MessagePopupMode.All
                             }
                         },
@@ -497,6 +501,7 @@ fun ReceivedMessageBubble(
     val hasVisibleBackground = !mediaOnly && !emojiOnly
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
 
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -585,6 +590,7 @@ fun ReceivedMessageBubble(
                             else null,
                             onLongClick = {
                                 if (onMessageInfo != null) {
+                                    haptics.perform(HapticEvent.LongPress)
                                     popupMode = MessagePopupMode.All
                                 }
                             },

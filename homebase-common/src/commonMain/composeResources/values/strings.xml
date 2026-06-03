@@ -168,6 +168,7 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_haptic_feedback">Haptic Feedback</string>
     <string name="settings_connections">Connections</string>
     <string name="connections_already_sent_title">Request already sent</string>
     <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
