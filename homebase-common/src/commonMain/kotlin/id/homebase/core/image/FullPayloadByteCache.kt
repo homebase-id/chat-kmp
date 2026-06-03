@@ -15,8 +15,9 @@ import kotlinx.coroutines.sync.withLock
  * - The fullscreen viewer fetches the same full payload several times per open
  *   (the base image, the subsampling tiler, and any re-decode). Coalescing +
  *   caching collapses that to a single fetch+decrypt.
- * - It lets [HomebaseImageLoader.prefetchFullPayload] warm the bytes on press so
- *   the image is ready by the time the open animation finishes.
+ * - It backs the press-time fullscreen prefetch (a Coil preload that decodes the
+ *   bitmap and, via the fetcher, populates this cache) so the viewer opens
+ *   instantly.
  *
  * Security: RAM-only by design. Decrypted bytes are never written to disk — this
  * matches the deliberate `diskCache(null)` choice, and holds strictly less data

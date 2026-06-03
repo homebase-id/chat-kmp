@@ -45,13 +45,12 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -76,7 +75,7 @@ fun VaultEntryCard(
 
     // Warm the full image on press so the fullscreen viewer opens sharp instead
     // of showing the grid tile upscaled while the payload downloads + decodes.
-    val homebaseImageLoader: HomebaseImageLoader = koinInject()
+    val prefetchImage = rememberFullScreenImagePrefetch()
     val prefetchData: HomebaseImageData? = remember(file.fileId, file.payloadDescriptors) {
         val descriptor = file.payloadDescriptors.firstOrNull() ?: return@remember null
         if (descriptor.contentType?.startsWith("image/") != true) return@remember null
@@ -103,7 +102,7 @@ fun VaultEntryCard(
             .clickable(
                 onClickLabel = description,
                 onClick = {
-                    prefetchData?.let { homebaseImageLoader.prefetchFullPayload(it) }
+                    prefetchData?.let(prefetchImage)
                     onClick()
                 },
             ),

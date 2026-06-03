@@ -18,14 +18,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import coil3.ImageLoader
+import coil3.compose.LocalPlatformContext
+import coil3.size.Size
 import com.github.panpf.zoomimage.CoilZoomAsyncImage
 import com.github.panpf.zoomimage.compose.zoom.ZoomableState
 import com.github.panpf.zoomimage.rememberCoilZoomState
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
 
@@ -53,8 +57,24 @@ fun ZoomableSubSamplingImage(
     // resets to fit.
     PreserveUserZoomAcrossContentSizeChange(zoomState.zoomable)
 
+    val platformContext = LocalPlatformContext.current
+    val windowSize = LocalWindowInfo.current.containerSize
     val model: Any? = when (source) {
-        is SubSamplingImageSource.Remote -> source.imageData
+        is SubSamplingImageSource.Remote -> {
+            val imageData = source.imageData
+            remember(imageData, platformContext, windowSize) {
+                if (windowSize.width > 0 && windowSize.height > 0) {
+                    // Pin the base decode to the window size so a press-time
+                    // prefetch and this request share one Coil memory-cache entry
+                    // — a cold open then hits the already-decoded bitmap.
+                    fullScreenImageRequest(
+                        platformContext, imageData, Size(windowSize.width, windowSize.height)
+                    )
+                } else {
+                    imageData
+                }
+            }
+        }
         is SubSamplingImageSource.LocalFile -> source.filePath
     }
 

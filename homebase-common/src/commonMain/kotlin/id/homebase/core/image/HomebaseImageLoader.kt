@@ -178,26 +178,6 @@ class HomebaseImageLoader(
     }
 
     /**
-     * Best-effort warm-up of an image's full payload so the fullscreen viewer
-     * opens sharp without waiting on a fetch. Fire-and-forget; the load runs on
-     * [cacheScope] so it survives the caller leaving composition (e.g. the grid
-     * item that was pressed). A press that does not lead to an open wastes at
-     * most one image's fetch.
-     */
-    fun prefetchFullPayload(data: HomebaseImageData) {
-        if (data.isPending) return
-        cacheScope.launch {
-            try {
-                loadFullPayload(data)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                // Best-effort warm-up; a real open will retry on a genuine miss.
-            }
-        }
-    }
-
-    /**
      * Drop all cached decrypted full-payload bytes. Wire to the same triggers as
      * the Coil memory cache (manual "Clear cache", logout/account switch).
      */
