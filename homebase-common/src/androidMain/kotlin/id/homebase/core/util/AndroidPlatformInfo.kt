@@ -41,4 +41,6 @@ class AndroidPlatformInfo(private val context: Context) : PlatformInfo {
             0
         }
 
+    // FCM data messages can cold-wake the process headless.
+    override val supportsBackgroundWake: Boolean = true
 }

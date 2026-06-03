@@ -8,9 +8,11 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.core.App
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -22,6 +24,12 @@ fun main() {
         initWebSqlJs()
         DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
         startKoin { modules(allModules) }
+        // Promote AuthConnectionCoordinator out of headless mode. Like desktop,
+        // the web app has no FCM cold-wake — loading the page IS the foreground
+        // signal — so without this the Authenticated branch defers connect()
+        // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
+        // (Android) and MainViewController() (iOS). Idempotent.
+        GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         ComposeViewport("ComposeApp") {
             App(onNavHostReady = { it.bindToBrowserNavigation() })
         }

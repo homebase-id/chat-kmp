@@ -42,6 +42,14 @@ class AuthConnectionCoordinator(
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
     private val onPostAuthenticated: () -> Unit = {},
+    /**
+     * Initial value of [headless]. True only on platforms that can cold-wake the
+     * process in the background (see [PlatformInfo.supportsBackgroundWake]); those
+     * defer foreground-only work until [promoteToForeground]. Defaults to false so
+     * a platform that forgets to wire [promoteToForeground] fails open (connects on
+     * Authenticated) rather than fail closed (hangs on "syncing").
+     */
+    startsHeadless: Boolean = false,
 ) {
     // SupervisorJob so one child's failure doesn't cancel its siblings, plus a
     // top-level handler so an *uncaught* exception in any child (notably a transient
@@ -79,13 +87,16 @@ class AuthConnectionCoordinator(
     // [BackgroundSyncOrchestrator.syncIfAuthenticated] only needs the
     // drive mounts and registry bootstrap to do its QueryBatch.
     //
-    // [headless] starts true. The first foreground entry point
-    // ([MainActivity.onCreate] on Android, `MainViewController()` on iOS)
-    // calls [promoteToForeground], which flips the flag and replays the
-    // deferred work if Authenticated already fired during the headless
-    // window. If Authenticated hasn't fired yet, the next Authenticated
-    // observes !headless and runs the full sequence.
-    @Volatile private var headless: Boolean = true
+    // [headless] starts true ONLY on background-wake-capable platforms
+    // (Android/iOS — see [startsHeadless] / [PlatformInfo.supportsBackgroundWake]);
+    // Desktop and Web start false and connect on Authenticated directly. On the
+    // headless platforms, the first foreground entry point
+    // ([MainActivity.onCreate] on Android, `MainViewController()` on iOS) calls
+    // [promoteToForeground], which flips the flag and replays the deferred work if
+    // Authenticated already fired during the headless window. If Authenticated
+    // hasn't fired yet, the next Authenticated observes !headless and runs the full
+    // sequence.
+    @Volatile private var headless: Boolean = startsHeadless
 
     /**
      * Captured drives from the Authenticated branch's bootstrap step, so

@@ -43,7 +43,8 @@ import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -63,19 +64,31 @@ class GroupSettingsViewModel(
     private val _uiState = MutableStateFlow(GroupSettingsUiState())
     val uiState: StateFlow<GroupSettingsUiState> = _uiState.asStateFlow()
 
+    /** Identity + recipient set of the last conversation we ran the peer/transfer
+     *  audit for. Lets [loadData] skip the network-heavy audit when a conversation
+     *  re-emits with the same recipients (new message, unread/read-state change). */
+    private data class PeerAuditKey(val conversationId: Uuid, val participants: List<OdinId>)
+    private var lastPeerAuditKey: PeerAuditKey? = null
+
     init {
         viewModelScope.launch {
             conversationStream.start()
+            // conversationStream.conversations is a StateFlow over the WHOLE
+            // conversation list; it re-emits on every message arrival, unread
+            // count change, admin enrichment, and re-sort — for ANY
+            // conversation. The old collector filtered only on "is our
+            // conversation present?", so unrelated list churn re-ran the full
+            // audit. Map to our conversation and dedup so a change elsewhere in
+            // the list (or a re-sort) no longer triggers loadData; the
+            // network-heavy peer/transfer audit is gated again inside loadData
+            // on the fields it actually depends on.
             conversationStream.conversations
-                .filter { conversations ->
-                    conversations.items.any { it.id.toString() == route.conversationId }
+                .mapNotNull { conversations ->
+                    conversations.items.find { it.id.toString() == route.conversationId }
                 }
-                .collect { conversations ->
-                    val conversation =
-                        conversations.items.find { it.id.toString() == route.conversationId }
-                    conversation?.let {
-                        loadData(conversation)
-                    }
+                .distinctUntilChanged()
+                .collect { conversation ->
+                    loadData(conversation)
                 }
         }
     }
@@ -402,10 +415,27 @@ class GroupSettingsViewModel(
                 }
 
                 if (conversation.isGroupConversation && !conversation.isLegacyGroup) {
-                    loadTransferHistory(conversation)
-                    // Sibling probe — independent of file-state, so kicked off
-                    // in parallel rather than chained.
-                    launch { loadIntroductionPreflight(conversation, reason = "screen-open") }
+                    // Gate the network-heavy audit (per-recipient peer-exists
+                    // GETs + transfer-history fetch + introduction preflight)
+                    // on the only conversation fields it actually depends on:
+                    // identity + the recipient set. The lightweight state above
+                    // (name, contacts, admin flags) still refreshes on every
+                    // emission, but a model change that leaves the recipients
+                    // untouched (a new message bumping latestMessageTimestamp,
+                    // an unread-count or lastRead update) no longer re-fires the
+                    // audit. Participant add/remove changes the key and re-audits.
+                    val auditKey = PeerAuditKey(conversation.id, conversation.participants)
+                    if (auditKey != lastPeerAuditKey) {
+                        lastPeerAuditKey = auditKey
+                        loadTransferHistory(conversation)
+                        // Sibling probe — independent of file-state, so kicked off
+                        // in parallel rather than chained.
+                        launch { loadIntroductionPreflight(conversation, reason = "screen-open") }
+                    } else {
+                        Logger.d(tag = "HealAudit") {
+                            "loadData: recipients unchanged for ${conversation.id} — skipping peer/transfer audit"
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Logger.e("Failed to load conversation", e)

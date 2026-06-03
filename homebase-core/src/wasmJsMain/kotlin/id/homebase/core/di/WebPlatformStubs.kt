@@ -35,6 +35,9 @@ internal class WebGalleryManager : PlatformGalleryManager {
 internal class WebPlatformInfo : PlatformInfo {
     override val versionName: String = "web"
     override val versionCode: Int = 1
+
+    // The browser tab has no OS background-wake — it only runs while open.
+    override val supportsBackgroundWake: Boolean = false
 }
 
 internal class WebAudioRecorder : AudioRecorder {
