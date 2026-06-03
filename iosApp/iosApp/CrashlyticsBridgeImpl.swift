@@ -9,4 +9,12 @@ class CrashlyticsBridgeImpl: CrashlyticsBridge {
     func setCrashlyticsCollectionEnabled(enabled: Bool) {
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(enabled)
     }
+
+    func log(message: String) {
+        Crashlytics.crashlytics().log(message)
+    }
+
+    func setCustomKey(key: String, value: String) {
+        Crashlytics.crashlytics().setCustomValue(value, forKey: key)
+    }
 }

@@ -12,6 +12,40 @@ import platform.Foundation.NSThread
 private const val TAG = "IOSCrashHandler"
 
 /**
+ * Attaches uncaught-exception context to the Crashlytics report so the fatal crash
+ * carries the Kotlin / ObjC class, message, and stack — instead of a bare
+ * `abort()`/`SIGABRT` with no app frames.
+ *
+ * Crashlytics custom keys and log lines are written to its mmap'd crash context, so
+ * values set on the crashing thread immediately before termination are included in
+ * the report Crashlytics writes from its signal/Mach handler. This requires that
+ * `FirebaseApp.configure()` has already run (see `AppDelegate`); if it hasn't, the
+ * bridge is null and this is a no-op.
+ *
+ * `internal` (not private) and bridge-injectable so it can be unit-tested.
+ */
+@Suppress("TooGenericExceptionCaught")
+internal fun pushCrashContextToCrashlytics(
+    source: String,
+    exceptionClass: String,
+    message: String?,
+    stackLines: List<String>,
+    bridge: CrashlyticsBridge? = CrashlyticsBridgeHolder.getBridge(),
+) {
+    bridge ?: return
+    try {
+        bridge.setCustomKey("crash_source", source)
+        bridge.setCustomKey("exception_class", exceptionClass)
+        bridge.setCustomKey("exception_message", message ?: "")
+        bridge.log("$source uncaught: $exceptionClass: ${message ?: ""}")
+        stackLines.forEach { line -> if (line.isNotBlank()) bridge.log(line) }
+    } catch (e: Throwable) {
+        // Crash reporting must never trigger a secondary crash.
+        println("pushCrashContextToCrashlytics failed: ${e.message}")
+    }
+}
+
+/**
  * Installs the iOS crash handlers so fatal errors are written to `homebase.log`
  * (via Kermit / [CrashLogger]) before the process dies — matching the
  * `Thread.setDefaultUncaughtExceptionHandler` → [CrashLogger.logCrash] wiring
@@ -33,7 +67,15 @@ private const val TAG = "IOSCrashHandler"
  * channels log to the same file support reads, and both still let the process
  * crash normally so Crashlytics keeps capturing the native backtrace.
  *
- * Call once, on the main thread, at startup (see `MainViewController`).
+ * Both channels also enrich the Crashlytics report via [pushCrashContextToCrashlytics]
+ * before terminating. Without this, a Kotlin/Native crash reaches Crashlytics only
+ * as a bare `abort()`/`SIGABRT` with no app frames (the rich Throwable detail lived
+ * only in `homebase.log`). The exception class/message/stack are now attached to the
+ * fatal report as Crashlytics custom keys + logs, so the crash is identifiable.
+ *
+ * Call once, on the main thread, at startup (see `MainViewController`). For the
+ * Crashlytics enrichment to be captured, `FirebaseApp.configure()` must already
+ * have run — it is called first in `AppDelegate.didFinishLaunchingWithOptions`.
  */
 @OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
 fun setupIOSCrashHandler() {
@@ -46,6 +88,13 @@ fun setupIOSCrashHandler() {
                 Logger.e(tag = TAG) { "Reason: ${it.reason}" }
                 Logger.e(tag = TAG) { "Call Stack: ${it.callStackSymbols}" }
                 Logger.e(tag = TAG) { "==========================================" }
+
+                pushCrashContextToCrashlytics(
+                    source = "NSException",
+                    exceptionClass = it.name ?: "NSException",
+                    message = it.reason,
+                    stackLines = it.callStackSymbols.map { frame -> frame.toString() },
+                )
 
                 // Give the file log writer a moment to flush before the process dies.
                 NSThread.sleepForTimeInterval(0.1)
@@ -64,6 +113,14 @@ fun setupIOSCrashHandler() {
     previousHook = setUnhandledExceptionHook { throwable ->
         try {
             CrashLogger.logCrash(thread = "Kotlin/Native", exception = throwable)
+            pushCrashContextToCrashlytics(
+                source = "Kotlin/Native",
+                exceptionClass = throwable::class.qualifiedName
+                    ?: throwable::class.simpleName
+                    ?: "Throwable",
+                message = throwable.message,
+                stackLines = throwable.stackTraceToString().lineSequence().toList(),
+            )
             // Give the file log writer a moment to flush before the process dies.
             NSThread.sleepForTimeInterval(0.1)
         } catch (e: Throwable) {
