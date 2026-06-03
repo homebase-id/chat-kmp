@@ -16,15 +16,26 @@ import okio.Path.Companion.toPath
  * delegate to MediaMetadataRetriever / AVAssetImageGenerator instead of ffmpeg). When the browser
  * can't decode the codec (some HEVC variants on Firefox, etc.), [TieredVideoDecoder] falls
  * through to [FFmpegWasmVideoDecoder].
+ *
+ * `videoPath` may be either:
+ *  - a `blob:` object URL (the editor's fast path — minted once from the picked File and reused for
+ *    poster, duration, filmstrip and playback). We feed it straight to `<video>.src` — no bytes are
+ *    read into wasm and nothing is base64'd. We do NOT revoke it; its owner (the attachment editor)
+ *    does.
+ *  - an okio path (e.g. an ffmpeg-produced file, or `FFmpegUtils.grabThumbnail`). We read the bytes
+ *    and mint a short-lived blob URL for the `<video>`, then revoke it. This is the only path that
+ *    still base64s, and it's off the interactive hot path.
  */
 internal class BrowserVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
-        val bytes = readBytes(videoPath) ?: return null
-        val out = extractPosterFrameJs(Base64.encode(bytes), mimeFromPath(videoPath))
-            .await<JsString>().toString()
-        if (out.isBlank()) return null
-        return Base64.decode(out)
+        val handle = VideoUrlHandle.resolve(videoPath) ?: return null
+        return try {
+            val out = extractPosterFrameJs(handle.url).await<JsString>().toString()
+            if (out.isBlank()) null else Base64.decode(out)
+        } finally {
+            handle.release()
+        }
     }
 
     // Primary decoder — TieredVideoDecoder only populates `skipMask` for fallbacks. Even if
@@ -38,44 +49,68 @@ internal class BrowserVideoDecoder : VideoDecoder {
         skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
-        val bytes = readBytes(videoPath) ?: return@channelFlow
+        val handle = VideoUrlHandle.resolve(videoPath) ?: return@channelFlow
+        try {
+            val step = durationMs.toDouble() / frameCount
+            val timesCsv = (0 until frameCount).joinToString(",") { i ->
+                ((step * (i + 0.5)).toLong().coerceIn(0L, durationMs - 1)).toString()
+            }
 
-        val step = durationMs.toDouble() / frameCount
-        val timesCsv = (0 until frameCount).joinToString(",") { i ->
-            ((step * (i + 0.5)).toLong().coerceIn(0L, durationMs - 1)).toString()
-        }
+            // One JS call seeks to all N timestamps with a single <video>, returning an "index|jpeg"
+            // record per line. We re-derive timeMs from the index here so the JS side doesn't need
+            // to echo it back.
+            val raw = extractStripFramesJs(handle.url, timesCsv, targetHeightPx)
+                .await<JsString>().toString()
+            if (raw.isBlank()) return@channelFlow
 
-        // One JS call seeks to all N timestamps with a single <video>, returning an "index|jpeg"
-        // record per line. We re-derive timeMs from the index here so the JS side doesn't need
-        // to echo it back.
-        val raw = extractStripFramesJs(Base64.encode(bytes), mimeFromPath(videoPath), timesCsv, targetHeightPx)
-            .await<JsString>().toString()
-        if (raw.isBlank()) return@channelFlow
-
-        for (line in raw.split('\n')) {
-            if (line.isBlank()) continue
-            val sep = line.indexOf('|')
-            if (sep <= 0) continue
-            val idx = line.substring(0, sep).toIntOrNull() ?: continue
-            if (idx !in 0 until frameCount) continue
-            val b64 = line.substring(sep + 1)
-            if (b64.isBlank()) continue
-            val jpeg = runCatching { Base64.decode(b64) }.getOrNull() ?: continue
-            if (jpeg.size < 16) continue
-            val timeMs = (step * (idx + 0.5)).toLong()
-            trySend(IndexedFrame(idx, timeMs, jpeg))
+            for (line in raw.split('\n')) {
+                if (line.isBlank()) continue
+                val sep = line.indexOf('|')
+                if (sep <= 0) continue
+                val idx = line.substring(0, sep).toIntOrNull() ?: continue
+                if (idx !in 0 until frameCount) continue
+                val b64 = line.substring(sep + 1)
+                if (b64.isBlank()) continue
+                val jpeg = runCatching { Base64.decode(b64) }.getOrNull() ?: continue
+                if (jpeg.size < 16) continue
+                val timeMs = (step * (idx + 0.5)).toLong()
+                trySend(IndexedFrame(idx, timeMs, jpeg))
+            }
+        } finally {
+            handle.release()
         }
     }
-
-    private fun readBytes(path: String): ByteArray? =
-        runCatching { systemFileSystem.read(path.toPath()) { readByteArray() } }.getOrNull()
 }
+
+/**
+ * Resolves a decoder `videoPath` to a blob URL the `<video>` element can play, tracking whether we
+ * created it (and must therefore revoke it). A `blob:` input is used as-is and not owned; an okio
+ * path is read + wrapped in a fresh, owned blob URL.
+ */
+private class VideoUrlHandle private constructor(val url: String, private val owned: Boolean) {
+    fun release() {
+        if (owned) revokeObjectUrlJs(url)
+    }
+
+    companion object {
+        fun resolve(videoPath: String): VideoUrlHandle? {
+            if (videoPath.startsWith("blob:")) return VideoUrlHandle(videoPath, owned = false)
+            val bytes = readOkioBytes(videoPath) ?: return null
+            val url = objectUrlFromBytesJs(Base64.encode(bytes), mimeFromPath(videoPath))
+            return VideoUrlHandle(url, owned = true)
+        }
+    }
+}
+
+private fun readOkioBytes(path: String): ByteArray? =
+    runCatching { systemFileSystem.read(path.toPath()) { readByteArray() } }.getOrNull()
 
 /**
  * Map a file extension to a Blob MIME so the `<video>` element picks the right demuxer. Most
  * browsers will sniff anyway, but Safari (iOS, macOS) is stricter — `video/mp4` on a `.mov`
  * file can be refused. Falls back to `'video/mp4'` for unknown extensions because that's the
- * dominant capture format in our upload pipeline.
+ * dominant capture format in our upload pipeline. (Only used for the okio fallback; a blob URL
+ * minted from a picked File already carries the File's own MIME type.)
  */
 private fun mimeFromPath(path: String): String =
     when (path.substringAfterLast('.', "").lowercase()) {
@@ -88,23 +123,32 @@ private fun mimeFromPath(path: String): String =
         else -> "video/mp4"
     }
 
-private fun extractPosterFrameJs(videoBase64: String, mimeType: String): Promise<JsString> = js(
+/** atob -> Uint8Array -> Blob -> object URL. Only for the okio fallback (bytes already in wasm). */
+private fun objectUrlFromBytesJs(base64: String, mimeType: String): String = js(
+    """{
+        var bin = atob(base64);
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return URL.createObjectURL(new Blob([arr], { type: mimeType }));
+    }"""
+)
+
+private fun revokeObjectUrlJs(url: String): Unit = js("{ URL.revokeObjectURL(url); }")
+
+/**
+ * Loads [url] into a hidden `<video>`, seeks slightly past 0, and returns the first frame as
+ * base64 JPEG (or `""` on any failure). Does NOT revoke [url] — the caller owns its lifetime.
+ */
+private fun extractPosterFrameJs(url: String): Promise<JsString> = js(
     """{
         return new Promise(function (resolve) {
             var done = false;
-            var url = null;
             function finish(v) {
                 if (done) return;
                 done = true;
-                if (url) URL.revokeObjectURL(url);
                 resolve(v);
             }
             try {
-                var bin = atob(videoBase64);
-                var arr = new Uint8Array(bin.length);
-                for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                url = URL.createObjectURL(new Blob([arr], { type: mimeType }));
-
                 var video = document.createElement('video');
                 video.muted = true;
                 video.playsInline = true;
@@ -153,33 +197,25 @@ private fun extractPosterFrameJs(videoBase64: String, mimeType: String): Promise
 )
 
 /**
- * Seeks through [timesMsCsv] timestamps on a single hidden `<video>` element, drawing each into
- * a reusable `<canvas>` sized to [targetH]. Returns `idx|base64\n` lines — base64-empty entries
- * for timestamps that failed are dropped on the Kotlin side. Resolves with `""` if the browser
- * refuses the codec entirely (the file fails to load) so the tier-runner falls through.
+ * Seeks through [timesMsCsv] timestamps on a single hidden `<video>` element loaded from [url],
+ * drawing each into a reusable `<canvas>` sized to [targetH]. Returns `idx|base64\n` lines —
+ * base64-empty entries for timestamps that failed are dropped on the Kotlin side. Resolves with
+ * `""` if the browser refuses the codec entirely. Does NOT revoke [url] — the caller owns it.
  */
 private fun extractStripFramesJs(
-    videoBase64: String,
-    mimeType: String,
+    url: String,
     timesMsCsv: String,
     targetH: Int,
 ): Promise<JsString> = js(
     """{
         return new Promise(function (resolve) {
             var done = false;
-            var url = null;
             function finish(v) {
                 if (done) return;
                 done = true;
-                if (url) URL.revokeObjectURL(url);
                 resolve(v);
             }
             try {
-                var bin = atob(videoBase64);
-                var arr = new Uint8Array(bin.length);
-                for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                url = URL.createObjectURL(new Blob([arr], { type: mimeType }));
-
                 var times = timesMsCsv.split(',').map(function (s) { return parseInt(s, 10); });
                 var video = document.createElement('video');
                 video.muted = true;

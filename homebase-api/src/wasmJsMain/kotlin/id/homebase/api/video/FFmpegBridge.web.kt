@@ -17,7 +17,9 @@ import kotlinx.coroutines.await
 
 private fun ffIsLoaded(): Boolean = js("globalThis.__odinFfmpeg.isLoaded()")
 private fun ffProbe(b64: String): Promise<JsString> = js("globalThis.__odinFfmpeg.probe(b64)")
+private fun ffProbeFromUrl(url: String): Promise<JsString> = js("globalThis.__odinFfmpeg.probeFromUrl(url)")
 private fun ffWriteFile(path: String, b64: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeFile(path, b64)")
+private fun ffWriteFileFromUrl(path: String, url: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeFileFromUrl(path, url)")
 private fun ffWriteText(path: String, text: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeText(path, text)")
 private fun ffReadFile(path: String): Promise<JsString> = js("globalThis.__odinFfmpeg.readFile(path)")
 private fun ffDeleteFile(path: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.deleteFile(path)")
@@ -37,6 +39,8 @@ internal data class VideoProbe(
     val durationMs: Long,
     /** Rotation degrees from the tkhd display matrix (0/±90/180). */
     val rotationDegrees: Int,
+    /** Input size in bytes — only populated by [FFmpegBridge.probeFromUrl] (0 otherwise). */
+    val sizeBytes: Long = 0L,
 )
 
 /**
@@ -62,8 +66,36 @@ internal object FFmpegBridge {
         )
     }
 
+    /**
+     * mp4box probe of a (blob:) URL read entirely in JS — the bytes never enter Kotlin and are
+     * never base64'd. The returned [VideoProbe.sizeBytes] is the input size (so the compress
+     * planner needn't read the file). Null when unparseable.
+     */
+    suspend fun probeFromUrl(url: String): VideoProbe? {
+        val raw = ffProbeFromUrl(url).await<JsString>().toString()
+        if (raw.isBlank()) return null
+        val parts = raw.split(";")
+        if (parts.size < 5) return null
+        return VideoProbe(
+            codec = parts[0].ifBlank { null },
+            widthPx = parts[1].toIntOrNull() ?: 0,
+            heightPx = parts[2].toIntOrNull() ?: 0,
+            durationMs = parts[3].toLongOrNull() ?: 0L,
+            rotationDegrees = parts[4].toIntOrNull() ?: 0,
+            sizeBytes = parts.getOrNull(5)?.toLongOrNull() ?: 0L,
+        )
+    }
+
     suspend fun writeFile(path: String, bytes: ByteArray) {
         ffWriteFile(path, Base64.encode(bytes)).await<JsAny?>()
+    }
+
+    /**
+     * Fetch a (blob:) URL's bytes in JS and write them straight into ffmpeg's MEMFS — no Kotlin
+     * read, no base64. Revokes the blob: URL once consumed.
+     */
+    suspend fun writeFileFromUrl(path: String, url: String) {
+        ffWriteFileFromUrl(path, url).await<JsAny?>()
     }
 
     suspend fun writeText(path: String, text: String) {
