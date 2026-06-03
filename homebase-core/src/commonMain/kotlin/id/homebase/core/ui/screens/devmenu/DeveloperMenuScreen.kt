@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -21,12 +22,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,10 +39,15 @@ import id.homebase.core.ui.screens.help.HelpClickableRow
 import id.homebase.core.ui.screens.help.HelpSectionHeader
 import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.dev_menu_allow_ten_bit_video
 import id.homebase.resources.dev_menu_allow_ten_bit_video_description
 import id.homebase.resources.dev_menu_clear_data
+import id.homebase.resources.dev_menu_crash_confirm_action
+import id.homebase.resources.dev_menu_crash_confirm_message
+import id.homebase.resources.dev_menu_crash_confirm_title
 import id.homebase.resources.dev_menu_force_sync
+import id.homebase.resources.dev_menu_section_crashlytics
 import id.homebase.resources.dev_menu_section_database
 import id.homebase.resources.dev_menu_section_misc
 import id.homebase.resources.dev_menu_section_sync
@@ -46,6 +55,8 @@ import id.homebase.resources.dev_menu_section_testing
 import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
 import id.homebase.resources.dev_menu_title
+import id.homebase.resources.dev_menu_trigger_test_crash
+import id.homebase.resources.dev_menu_trigger_test_crash_description
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -96,6 +107,33 @@ fun DeveloperMenuUi(
     onBackClick: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
+    var showCrashConfirm by remember { mutableStateOf(false) }
+
+    if (showCrashConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCrashConfirm = false },
+            title = { Text(stringResource(MR.string.dev_menu_crash_confirm_title)) },
+            text = { Text(stringResource(MR.string.dev_menu_crash_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCrashConfirm = false
+                        onAction(DeveloperMenuUiAction.TriggerTestCrash)
+                    },
+                ) {
+                    Text(
+                        text = stringResource(MR.string.dev_menu_crash_confirm_action),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCrashConfirm = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -181,6 +219,25 @@ fun DeveloperMenuUi(
             )
             Text(
                 text = stringResource(MR.string.dev_menu_allow_ten_bit_video_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Crashlytics Section
+            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_crashlytics))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    HelpClickableRow(
+                        label = stringResource(MR.string.dev_menu_trigger_test_crash),
+                        showChevron = false,
+                        onClick = { showCrashConfirm = true }
+                    )
+                }
+            }
+            Text(
+                text = stringResource(MR.string.dev_menu_trigger_test_crash_description),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)

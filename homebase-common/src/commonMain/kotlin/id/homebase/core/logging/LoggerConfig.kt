@@ -40,6 +40,11 @@ object LoggerConfig {
         // Add platform-specific console logger (Logcat on Android, NSLog on iOS, etc.)
         logWriters.add(platformLogWriter())
 
+        // Mirror logs into the platform crash reporter: Info+ become Crashlytics
+        // breadcrumbs (the recent log trail attached to the next crash report)
+        // and Error+ throwables are recorded as non-fatals. No-op on Desktop/Web.
+        logWriters.add(CrashlyticsLogWriter())
+
         // Add rolling file logger
         try {
             val fileLogWriter = createFileLogWriter(
