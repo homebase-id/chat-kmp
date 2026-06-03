@@ -1,9 +1,13 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.systemFileSystem
+import kotlin.js.Promise
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlinx.coroutines.await
 import okio.Path.Companion.toPath
 
 /**
@@ -50,9 +54,16 @@ actual object FFmpegUtils {
     }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
+        // Editor fast path: a blob: URL (minted from the picked File) has no okio bytes for mp4box
+        // to parse. Read the duration straight off an HTML5 <video> instead — any codec the browser
+        // can decode, no bytes copied into wasm, no 22 MB core.
+        if (inputPath.startsWith("blob:")) return videoDurationMsFromUrl(inputPath)
         val bytes = readOkioBytes(inputPath) ?: return 0L
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
+
+    private suspend fun videoDurationMsFromUrl(url: String): Long =
+        videoDurationMsFromUrlJs(url).await<JsNumber>().toDouble().toLong()
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? {
         val bytes = readOkioBytes(inputPath) ?: return null
@@ -335,3 +346,28 @@ actual object FFmpegUtils {
     private const val MEMFS_REMUX_PLAYLIST = "remux_input.m3u8"
     private const val MEMFS_REMUX_OUTPUT = "remux_output.mp4"
 }
+
+/**
+ * Resolve to the duration (ms) of [url] — a `blob:` (or http) video URL — read off a hidden HTML5
+ * `<video>`'s `loadedmetadata`, or 0 on any failure/stall. Only the container header is fetched
+ * (`preload = 'metadata'`); no full download and no bytes cross into wasm.
+ */
+private fun videoDurationMsFromUrlJs(url: String): Promise<JsNumber> = js(
+    """{
+        return new Promise(function (resolve) {
+            var done = false;
+            function finish(v) { if (done) return; done = true; resolve(v); }
+            try {
+                var v = document.createElement('video');
+                v.preload = 'metadata';
+                v.onloadedmetadata = function () {
+                    var d = v.duration;
+                    finish((isFinite(d) && d > 0) ? Math.round(d * 1000) : 0);
+                };
+                v.onerror = function () { finish(0); };
+                v.src = url;
+                setTimeout(function () { finish(0); }, 15000);
+            } catch (e) { finish(0); }
+        });
+    }"""
+)

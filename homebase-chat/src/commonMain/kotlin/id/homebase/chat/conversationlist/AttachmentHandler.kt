@@ -95,6 +95,11 @@ internal class AttachmentHandler(
                         a.copy(
                             thumbnailBytes = bytes ?: a.thumbnailBytes,
                             durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
+                            // videoPath is the okio-readable path the extractor was handed
+                            // (web = materialized okio path, native = file.toString()). Storing
+                            // it here guarantees playablePath is set whenever durationMs is — the
+                            // editor's duration-gated filmstrip/player both depend on it.
+                            playablePath = videoPath,
                         )
                     } else a
                 }
@@ -160,23 +165,11 @@ internal class AttachmentHandler(
                 // patch the pending FileVideo entries when they complete.
                 newFiles.forEach { f ->
                     if (f is AttachmentPendingFile.FileVideo) {
-                        // A web-picked PlatformFile has no path, so materialize its bytes into
-                        // okio first and hand the extractor that readable path (native actuals
-                        // return toString() unchanged — no copy). Best-effort: a failure here
-                        // must not abort the attach, it just leaves the poster blank.
-                        // Plain try/catch rather than runCatching — the latter triggers a
-                        // Kotlin/Native link-time `Lowering ReturnsInsertion: phases [Autobox]
-                        // required, but not satisfied` compiler bug on iOS when its inline lambda
-                        // wraps a suspend call. Re-throw CancellationException so the surrounding
-                        // coroutine still cancels cleanly.
-                        val path = try {
-                            f.file.toUploadPath(fileOperationsProvider)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Throwable) {
-                            null
-                        }
-                        if (path != null) extractThumbnailAsync(f.attachmentId, path)
+                        // Hand the extractor/editor a cheap playable handle: a blob: object URL on
+                        // web (O(1), no whole-file read, no base64) or the real path on native.
+                        // The okio materialization for upload happens later at send time
+                        // (MessageActionsHandler.toUploadPath), not here.
+                        extractThumbnailAsync(f.attachmentId, f.file.toPlayableUrl())
                     }
                 }
             } catch (e: Exception) {
@@ -232,20 +225,12 @@ internal class AttachmentHandler(
                     )
                 }
 
-                // Editor visible — kick off thumbnail extraction in parallel. As in
-                // handleAttachPlatformFile, materialize web-picked bytes into okio first so the
-                // extractor can read them (native: toString() unchanged, no copy). See
-                // handleAttachPlatformFile for why this isn't runCatching (K/N link-time bug).
+                // Editor visible — kick off thumbnail extraction in parallel.
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
                     if (pending is AttachmentPendingFile.FileVideo) {
-                        val path = try {
-                            gallery.file.toUploadPath(fileOperationsProvider)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Throwable) {
-                            null
-                        }
-                        if (path != null) extractThumbnailAsync(pending.attachmentId, path)
+                        // Cheap playable handle (blob: URL on web, real path on native); see
+                        // handleAttachPlatformFile. Send-time materialization is separate.
+                        extractThumbnailAsync(pending.attachmentId, gallery.file.toPlayableUrl())
                     }
                 }
             } catch (e: Exception) {
@@ -276,6 +261,10 @@ internal class AttachmentHandler(
                         fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
                     )
                 }
+                // Release the removed video's playable handle (web blob: URL; no-op on native).
+                fullScreenOverlay.attachments
+                    .filter { it.attachmentId == action.id }
+                    .forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
             } catch (e: Exception) {
                 Logger.e("Failed to unattach file", e)
                 sendEvent(

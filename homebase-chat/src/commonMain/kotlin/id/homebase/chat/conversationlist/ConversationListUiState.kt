@@ -294,6 +294,10 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         val durationMs: Long? = null,
         val trimStartMs: Long? = null,
         val trimEndMs: Long? = null,
+        // okio-readable path for the decoder/player. On web this is the materialized okio path
+        // (a browser-picked PlatformFile has no path, so file.toString() isn't readable); on
+        // native it equals file.toString(). Populated by AttachmentHandler.extractThumbnailAsync.
+        val playablePath: String? = null,
     ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)

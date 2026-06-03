@@ -825,6 +825,11 @@ internal class MessageActionsHandler(
                     scrollToLatestRequest = newMessageId,
                 )
             }
+            // Editor closed — release video playable handles (web blob: URLs; no-op on native).
+            // Safe here: the upload reads bytes via toUploadPath, not these handles.
+            resolvedFiles.forEach {
+                if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl)
+            }
             messageInputTextState.clear()
 
             scope.launch {
