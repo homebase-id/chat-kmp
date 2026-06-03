@@ -61,6 +61,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
@@ -250,6 +251,10 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             driveRegistry = get(),
+            // Start headless only where the OS can cold-wake us in the background
+            // (Android/iOS). Desktop/Web report false → start in foreground mode so
+            // a missing promoteToForeground() can't hang the app on "syncing".
+            startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
