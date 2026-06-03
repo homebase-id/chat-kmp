@@ -45,11 +45,13 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -57,6 +59,7 @@ private val THUMBNAIL_HEIGHT = 88.dp
 private val LABEL_HEIGHT = 32.dp
 private val CARD_CORNER = 12.dp
 
+@OptIn(ExperimentalEncodingApi::class)
 @Composable
 fun VaultEntryCard(
     file: VaultEntry,
@@ -71,6 +74,26 @@ fun VaultEntryCard(
     val description = file.label?.ifBlank { null } ?: file.fileName
     val noteTitle = file.noteDisplayTitle
 
+    // Warm the full image on press so the fullscreen viewer opens sharp instead
+    // of showing the grid tile upscaled while the payload downloads + decodes.
+    val homebaseImageLoader: HomebaseImageLoader = koinInject()
+    val prefetchData: HomebaseImageData? = remember(file.fileId, file.payloadDescriptors) {
+        val descriptor = file.payloadDescriptors.firstOrNull() ?: return@remember null
+        if (descriptor.contentType?.startsWith("image/") != true) return@remember null
+        val ivBytes = descriptor.iv?.let {
+            try { Base64.decode(it) } catch (_: Exception) { null }
+        } ?: return@remember null
+        HomebaseImageData(
+            driveId = file.driveId,
+            fileId = file.fileId,
+            payloadKey = descriptor.key,
+            loadFullPayload = true,
+            lastModified = descriptor.lastModified,
+            isEncrypted = file.isEncrypted,
+            keyHeader = KeyHeader(iv = ivBytes, aesKey = file.keyHeader.aesKey),
+        )
+    }
+
     Column(
         modifier = modifier
             .width(CARD_WIDTH)
@@ -79,7 +102,10 @@ fun VaultEntryCard(
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(
                 onClickLabel = description,
-                onClick = onClick,
+                onClick = {
+                    prefetchData?.let { homebaseImageLoader.prefetchFullPayload(it) }
+                    onClick()
+                },
             ),
     ) {
         // Thumbnail area — top 88dp

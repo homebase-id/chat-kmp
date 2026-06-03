@@ -10,6 +10,10 @@ import id.homebase.core.clipboard.platformFileFromPath
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
 /** Image data container */
@@ -39,8 +43,21 @@ class HomebaseImageLoader(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
+    // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
+    // prefetch whose grid item left composition) does not abort a load that
+    // other callers are awaiting.
+    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val fullPayloadCache = FullPayloadByteCache(
+        maxBytes = MAX_FULL_PAYLOAD_CACHE_BYTES,
+        scope = cacheScope,
+    )
+
     companion object {
         private const val TAG = "HomebaseImageLoader"
+
+        // In-memory budget for cached decrypted full-payload bytes (compressed,
+        // ~a handful of photos). Small next to Coil's decoded-bitmap cache.
+        private const val MAX_FULL_PAYLOAD_CACHE_BYTES = 48L * 1024 * 1024
 
         // Content types whose payload is rendered as-is, bypassing the
         // thumbnail pipeline. GIF stays here because we want the
@@ -152,7 +169,48 @@ class HomebaseImageLoader(
             return fileOperationsProvider.loadPendingFile(data)
         }
 
-        // Fetch from server with retry
+        // Serve from (and populate) the in-memory cache. Concurrent callers for
+        // the same image — the base painter, the subsampling tiler, a prefetch —
+        // coalesce onto a single fetch+decrypt instead of repeating it.
+        return fullPayloadCache.getOrLoad(fullPayloadCacheKey(data)) {
+            fetchFullPayloadUncached(data, retryConfig)
+        }
+    }
+
+    /**
+     * Best-effort warm-up of an image's full payload so the fullscreen viewer
+     * opens sharp without waiting on a fetch. Fire-and-forget; the load runs on
+     * [cacheScope] so it survives the caller leaving composition (e.g. the grid
+     * item that was pressed). A press that does not lead to an open wastes at
+     * most one image's fetch.
+     */
+    fun prefetchFullPayload(data: HomebaseImageData) {
+        if (data.isPending) return
+        cacheScope.launch {
+            try {
+                loadFullPayload(data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // Best-effort warm-up; a real open will retry on a genuine miss.
+            }
+        }
+    }
+
+    /**
+     * Drop all cached decrypted full-payload bytes. Wire to the same triggers as
+     * the Coil memory cache (manual "Clear cache", logout/account switch).
+     */
+    suspend fun clearMemoryCache() {
+        fullPayloadCache.clear()
+    }
+
+    private fun fullPayloadCacheKey(data: HomebaseImageData): String =
+        "${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
+
+    private suspend fun fetchFullPayloadUncached(
+        data: HomebaseImageData, retryConfig: RetryConfig
+    ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
                 driveFileProvider.getPayloadBytesDecrypted(
