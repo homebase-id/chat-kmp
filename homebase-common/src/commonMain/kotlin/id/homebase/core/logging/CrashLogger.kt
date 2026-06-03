@@ -14,7 +14,10 @@ object CrashLogger {
             Logger.e(tag = TAG) { "Thread: $thread" }
             Logger.e(tag = TAG) { "Exception: ${exception::class.simpleName}" }
             Logger.e(tag = TAG) { "Message: ${exception.message}" }
-            Logger.e(throwable = exception, tag = TAG) { "Stack trace:" }
+            // Log the stack as text (not via the `throwable` parameter) so this
+            // fatal isn't double-reported as a non-fatal by CrashlyticsLogWriter
+            // — fatals are captured by the dedicated crash handlers instead.
+            Logger.e(tag = TAG) { "Stack trace:\n${exception.stackTraceToString()}" }
             Logger.e(tag = TAG) { "========================================" }
 
             // TODO: Force flush logs to ensure they're written before crash
