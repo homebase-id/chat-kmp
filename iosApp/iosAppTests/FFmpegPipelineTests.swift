@@ -310,7 +310,10 @@ final class FFmpegPipelineTests: XCTestCase {
     /// FFmpegKit.executeAsync.
     private func productionSpatialCommand(input: String, output: String) -> String {
         let asset = AVURLAsset(url: URL(fileURLWithPath: input))
-        let track = asset.tracks(withMediaType: .video).first!
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("spatial fixture must have a video track")
+            return ""
+        }
         let size = track.naturalSize
         let tf = track.preferredTransform
         let rot = ((Int((atan2(tf.b, tf.a) * 180 / .pi).rounded()) % 360) + 360) % 360
@@ -442,12 +445,16 @@ final class FFmpegPipelineTests: XCTestCase {
         // reports a runner crash. A clean completion (any rc) means the degenerate
         // command is NOT the crash trigger and the cause is elsewhere.
         print("DEGENERATE rc=\(rcVal) passed=\(passed) fail=\(failTrace ?? "nil")")
-        XCTAssertTrue(
-            passed,
-            "DEGENERATE no-scale command result (rc=\(rcVal)). A runner crash here = the " +
-            "original SIGSEGV reproduced. fail=\(failTrace ?? "nil")"
+        // The signal is crash-vs-not, NOT success. A SIGSEGV in print_report dies before
+        // onComplete fires, so rcVal stays -999. Any completion — success OR a clean non-zero
+        // rc (e.g. a sim where 4K VT errors without crashing) — proves the degenerate
+        // SINGLE-session command does not crash, which is the whole point: the crash is
+        // concurrency, not this command. Assert completion, not encode success.
+        XCTAssertNotEqual(
+            rcVal, -999,
+            "degenerate command must COMPLETE without crashing the runner (a SIGSEGV in " +
+            "print_report would prevent onComplete). fail=\(failTrace ?? "nil")"
         )
-        assertOutputValid(output, label: "degenerate spatial")
     }
 
     // =========================================================================

@@ -24,13 +24,18 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
     /// `onDispatchQueue:` runs the whole synchronous `ffmpeg_execute` inside the queue block,
     /// so a serial queue blocks the next session until the current one finishes. The session
     /// object is still returned synchronously, so the session-id cancellation contract holds.
-    private let ffmpegQueue = DispatchQueue(label: "id.homebase.ffmpegkit.serial")
+    ///
+    /// `static`: fftools globals are process-global, so the guarantee must be too. Even though
+    /// production installs exactly one bridge instance, a per-instance queue would let a second
+    /// instance run a concurrent `ffmpeg_execute` and reintroduce the crash. One queue per
+    /// process closes that.
+    private static let ffmpegQueue = DispatchQueue(label: "id.homebase.ffmpegkit.serial")
 
     func executeFFmpeg(command: String) -> FFmpegResult {
         // Run on the same serial queue as the async paths so a sync execute never overlaps a
         // concurrent compress/segment/thumbnail session. Called from Kotlin on Dispatchers.IO,
         // never from inside an ffmpegQueue block, so `.sync` cannot deadlock here.
-        return ffmpegQueue.sync {
+        return Self.ffmpegQueue.sync {
             let session = FFmpegKit.execute(command)
             let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
             let failStackTrace = session?.getFailStackTrace()
@@ -69,7 +74,7 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
             // Serial queue: see `ffmpegQueue` — guarantees this session never overlaps another
             // ffmpeg_execute (the print_report SIGSEGV). The default API would use a concurrent
             // global queue.
-            onDispatchQueue: ffmpegQueue
+            onDispatchQueue: Self.ffmpegQueue
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
@@ -106,7 +111,7 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
             },
             // Serial queue: see `ffmpegQueue`. This is the path the trim-scrubber thumbnail
             // strip uses (FFmpegKitVideoDecoder) — now serialized against compress/segment.
-            onDispatchQueue: ffmpegQueue
+            onDispatchQueue: Self.ffmpegQueue
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
