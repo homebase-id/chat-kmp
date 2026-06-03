@@ -10,4 +10,9 @@ data class AttachmentInput(
     /** Video-only: optional trim applied during compression. */
     val trimStartMs: Long? = null,
     val trimEndMs: Long? = null,
+    /**
+     * Web-only, video-only: a `blob:` object URL for the picked file, threaded to the ffmpeg
+     * compress INPUT so the original is read in JS (no Kotlin copy / base64). Null on native.
+     */
+    val inputBlobUrl: String? = null,
 )

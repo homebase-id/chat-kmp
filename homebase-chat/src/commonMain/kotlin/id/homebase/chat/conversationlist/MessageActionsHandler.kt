@@ -674,6 +674,10 @@ internal class MessageActionsHandler(
                                 displayName = attachment.file.name,
                                 trimStartMs = attachment.trimStartMs,
                                 trimEndMs = attachment.trimEndMs,
+                                // Web: the blob: URL becomes the ffmpeg compress INPUT (read in JS,
+                                // no Kotlin copy / base64). Null on native. Not revoked here — it
+                                // also backs the sent bubble's local preview; freed on logout/reload.
+                                inputBlobUrl = attachment.playablePath,
                             )
                         )
                     }
@@ -746,7 +750,12 @@ internal class MessageActionsHandler(
                             }.getOrNull()
                             LocalAttachmentContext.Video(
                                 thumbnailBytes = bytes,
-                                localFilePath = file.file.toString(),
+                                // On web file.file.toString() is a bare filename (no "://"), which
+                                // the web fileExists() heuristic rejects → the store drops the
+                                // context → the bubble degrades to a generic "1 attachment" with no
+                                // thumb/progress. playablePath is the blob: URL (contains "://") and
+                                // is a real local-preview source there. Native: == file.toString().
+                                localFilePath = file.playablePath ?: file.file.toString(),
                                 aspectRatio = aspect,
                                 trimStartMs = file.trimStartMs,
                                 trimEndMs = file.trimEndMs,
@@ -825,11 +834,9 @@ internal class MessageActionsHandler(
                     scrollToLatestRequest = newMessageId,
                 )
             }
-            // Editor closed — release video playable handles (web blob: URLs; no-op on native).
-            // Safe here: the upload reads bytes via toUploadPath, not these handles.
-            resolvedFiles.forEach {
-                if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl)
-            }
+            // NOTE: do NOT revoke the videos' blob: URLs here — they're now the ffmpeg compress
+            // INPUT and are consumed by the async upload (revoked in writeFileFromUrl once written
+            // into MEMFS). Unattach/dismiss still revoke for never-sent attachments.
             messageInputTextState.clear()
 
             scope.launch {

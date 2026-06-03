@@ -91,14 +91,21 @@ actual object FFmpegUtils {
         quality: VideoQuality,
         allowTenBit: Boolean,
     ): String? {
-        val inputBytes = readOkioBytes(inputPath) ?: return null
+        // Input read strategy:
+        //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
+        //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
+        //    base64'd. Size comes from the probe.
+        //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
+        val isBlob = inputPath.startsWith("blob:")
+        val inputBytes = if (isBlob) null else (readOkioBytes(inputPath) ?: return null)
 
         val hasTrim = trimStartMs != null && trimEndMs != null
         val effTrimStart = if (hasTrim) trimStartMs else null
         val effTrimEnd = if (hasTrim) trimEndMs else null
 
-        val probe = FFmpegBridge.probe(inputBytes)
+        val probe = if (isBlob) FFmpegBridge.probeFromUrl(inputPath) else FFmpegBridge.probe(inputBytes!!)
         val durationMs = probe?.durationMs ?: 0L
+        val inputSizeBytes = if (isBlob) (probe?.sizeBytes ?: 0L) else inputBytes!!.size.toLong()
 
         // MEMFS-relative names so plan.args reference the in-worker files directly.
         val plan = FfmpegCompressPlanner.plan(
@@ -111,7 +118,7 @@ actual object FFmpegUtils {
             probedHeightPx = probe?.heightPx ?: 0,
             probedCodecMime = probe?.codec, // null probe → no short-circuit → transcode
             inputDurationMs = durationMs,
-            inputBytes = inputBytes.size.toLong(),
+            inputBytes = inputSizeBytes,
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
             // No-op here: the web probe doesn't report bit depth, so output
@@ -124,7 +131,8 @@ actual object FFmpegUtils {
             return null
         }
 
-        FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes)
+        if (isBlob) FFmpegBridge.writeFileFromUrl(MEMFS_INPUT, inputPath)
+        else FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes!!)
         val status = FFmpegBridge.exec(plan.args, onProgress)
         if (status != 0) {
             FFmpegBridge.deleteFile(MEMFS_INPUT)
