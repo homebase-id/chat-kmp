@@ -34,7 +34,6 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.ViewAgenda
@@ -275,7 +274,12 @@ private fun CompactMomentsLayout(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateMoment) {
+            FloatingActionButton(
+                onClick = onCreateMoment,
+                // Lifted off the bottom edge a touch so it doesn't sit on top
+                // of whatever's at the bottom of the content under it.
+                modifier = Modifier.padding(bottom = 16.dp),
+            ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = stringResource(MR.string.moments_create_action),
@@ -377,7 +381,12 @@ private fun WideMomentsLayout(
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = onCreateMoment) {
+                FloatingActionButton(
+                    onClick = onCreateMoment,
+                    // Lifted off the bottom edge a touch so it doesn't sit on
+                    // top of whatever's at the bottom of the content under it.
+                    modifier = Modifier.padding(bottom = 16.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.moments_create_action),
@@ -439,7 +448,12 @@ private fun WideMomentsLayout(
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = onCreateMoment) {
+                FloatingActionButton(
+                    onClick = onCreateMoment,
+                    // Lifted off the bottom edge a touch so it doesn't sit on
+                    // top of whatever's at the bottom of the content under it.
+                    modifier = Modifier.padding(bottom = 16.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.moments_create_action),
@@ -1237,28 +1251,6 @@ private fun MomentPostCard(
             }
         }
 
-        // Bottom-right: lock indicator for a private moment (no recipients) —
-        // absence implies shared, which is the common case. On a video moment
-        // the duration chip now also sits bottom-right (see
-        // MomentInlineVideoTile), so lift the lock above it; images have no
-        // duration chip and keep the snug 8.dp corner inset.
-        if (moment.isPrivate(selfOdinId)) {
-            val hasVideo = moment.payloads.any { p ->
-                p.contentType?.startsWith("video/") == true ||
-                    p.contentType == "application/vnd.apple.mpegurl"
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 8.dp, bottom = if (hasVideo) 36.dp else 8.dp),
-            ) {
-                IndicatorBadge(
-                    imageVector = Icons.Outlined.Lock,
-                    contentDescription = stringResource(MR.string.moments_feed_indicator_private),
-                )
-            }
-        }
-
         // Floating-emoji overlay: pops + fades in when a double/triple-tap
         // lands a reaction, then fades back out via [floatingEmojiHideJob].
         // Sits centered on the card so the user sees clear confirmation that
@@ -1530,27 +1522,6 @@ private fun MomentsViewModeMenuItem(
         },
         onClick = onClick,
     )
-}
-
-@Composable
-private fun IndicatorBadge(
-    imageVector: ImageVector,
-    contentDescription: String? = null,
-) {
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = imageVector,
-            contentDescription = contentDescription,
-            tint = Color.White,
-            modifier = Modifier.size(16.dp),
-        )
-    }
 }
 
 internal const val HeartEmoji = "❤️"

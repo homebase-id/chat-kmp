@@ -58,7 +58,6 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.widget.video.VideoPlayerSurface
-import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.moments.services.MomentsVideoSession
 import org.koin.compose.koinInject
@@ -213,11 +212,6 @@ fun MomentInlineVideoTile(
     }
 
     val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
-
-    // Hidden debug overlay: long-press the MP4/HLS badge to toggle the codec-info
-    // panel; long-press again (or tap) to dismiss. Reachable while the tile is
-    // idle (the badge is hidden during playback).
-    var showVideoInfo by remember(fileId, payload.key) { mutableStateOf(false) }
 
     // Effective crop-to-fill decision for both the player surface and the
     // thumbnail underlay. Preserves the prior behaviour — inline tiles
@@ -603,23 +597,6 @@ fun MomentInlineVideoTile(
                     tint = Color.White.copy(alpha = 0.85f),
                 )
             }
-            // Top-right: codec badge. Moved off the top-left so the feed card's
-            // author avatar can own that corner; long-press still opens the
-            // video-info overlay.
-            Text(
-                text = if (isHls) "HLS" else "MP4",
-                color = Color.White,
-                fontSize = 9.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 3.dp, vertical = 1.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = { showVideoInfo = !showVideoInfo },
-                        )
-                    },
-            )
             // Bottom-right: duration. Moved off the bottom-left so the feed
             // card's capture-date pill can own that corner.
             if (displayDurationMs != null) {
@@ -637,21 +614,6 @@ fun MomentInlineVideoTile(
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
-        }
-
-        if (showVideoInfo && !isUploading) {
-            VideoInfoOverlay(
-                descriptor = videoDescriptor,
-                isHls = isHls,
-                modifier = Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { showVideoInfo = false },
-                            onLongPress = { showVideoInfo = false },
-                        )
-                    },
-            )
         }
 
         // Preload progress only meaningful while idle; once the user has
