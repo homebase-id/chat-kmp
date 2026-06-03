@@ -9,11 +9,45 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
     private var activeSessions: [Int64: FFmpegSession] = [:]
     private let sessionsLock = NSLock()
 
+    /// Serializes EVERY FFmpegKit ffmpeg execution (sync and async). ffmpeg's `fftools` layer
+    /// (`ffmpeg.c`) is NOT reentrant — it relies on process-global state (`output_files`,
+    /// `nb_output_streams`, `progress_avio`…). FFmpegKit's default async path dispatches each
+    /// session on the CONCURRENT `com.apple.root.default-qos` queue, so two overlapping
+    /// sessions corrupt each other's globals and crash with a null-deref in `print_report`
+    /// (see `Homebase-2026-06-02-111043.ips`: threads 32 & 34 both in `ffmpeg_execute`, thread
+    /// 34 crashing in `print_report`). The production trigger is a `VideoThumbnailService`
+    /// strip/poster extraction overlapping a `VideoCompressionService` compress — paths that
+    /// `heavyOpLock` does NOT mutually exclude.
+    ///
+    /// Running every session on ONE serial queue guarantees a single `ffmpeg_execute` at a
+    /// time, process-wide, regardless of which caller starts it. FFmpegKit's
+    /// `onDispatchQueue:` runs the whole synchronous `ffmpeg_execute` inside the queue block,
+    /// so a serial queue blocks the next session until the current one finishes. The session
+    /// object is still returned synchronously, so the session-id cancellation contract holds.
+    ///
+    /// `static`: fftools globals are process-global, so the guarantee must be too. Even though
+    /// production installs exactly one bridge instance, a per-instance queue would let a second
+    /// instance run a concurrent `ffmpeg_execute` and reintroduce the crash. One queue per
+    /// process closes that.
+    ///
+    /// `qos: .utility`: a video encode is CPU/GPU/memory-heavy. Without a priority hint the
+    /// encode competes with UI work and the app janks while a send compresses (previously the
+    /// crash aborted compression early, so this load was never felt). `.utility` tells the OS
+    /// to keep the UI responsive and let the encode take slightly longer — the right trade for
+    /// a background send. (HW VideoToolbox encode is partly off-CPU, and ffmpeg's own worker
+    /// threads don't inherit this QoS, so this reduces — not eliminates — contention.)
+    private static let ffmpegQueue = DispatchQueue(label: "id.homebase.ffmpegkit.serial", qos: .utility)
+
     func executeFFmpeg(command: String) -> FFmpegResult {
-        let session = FFmpegKit.execute(command)
-        let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
-        let failStackTrace = session?.getFailStackTrace()
-        return FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace)
+        // Run on the same serial queue as the async paths so a sync execute never overlaps a
+        // concurrent compress/segment/thumbnail session. Called from Kotlin on Dispatchers.IO,
+        // never from inside an ffmpegQueue block, so `.sync` cannot deadlock here.
+        return Self.ffmpegQueue.sync {
+            let session = FFmpegKit.execute(command)
+            let isSuccess = ReturnCode.isSuccess(session?.getReturnCode())
+            let failStackTrace = session?.getFailStackTrace()
+            return FFmpegResult(isSuccess: isSuccess, failStackTrace: failStackTrace)
+        }
     }
 
     func executeFFmpegAsync(
@@ -43,7 +77,11 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
             withStatisticsCallback: { stats in
                 let timeMs = Int64(stats?.getTime() ?? 0)
                 onProgress(KotlinLong(value: timeMs))
-            }
+            },
+            // Serial queue: see `ffmpegQueue` — guarantees this session never overlaps another
+            // ffmpeg_execute (the print_report SIGSEGV). The default API would use a concurrent
+            // global queue.
+            onDispatchQueue: Self.ffmpegQueue
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
@@ -77,7 +115,10 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
             withStatisticsCallback: { stats in
                 let timeMs = Int64(stats?.getTime() ?? 0)
                 onProgress(KotlinLong(value: timeMs))
-            }
+            },
+            // Serial queue: see `ffmpegQueue`. This is the path the trim-scrubber thumbnail
+            // strip uses (FFmpegKitVideoDecoder) — now serialized against compress/segment.
+            onDispatchQueue: Self.ffmpegQueue
         )
         let sessionId = Int64(session?.getId() ?? -1)
         if sessionId >= 0, let session = session {
