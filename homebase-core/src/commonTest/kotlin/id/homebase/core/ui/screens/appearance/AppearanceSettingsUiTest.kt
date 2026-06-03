@@ -107,6 +107,21 @@ class AppearanceSettingsUiTest {
     }
 
     @Test
+    fun showsHapticFeedbackRow() = runComposeUiTest {
+        setTestLocale("en-US")
+        setContent {
+            MaterialTheme {
+                AppearanceSettingsUi(
+                    uiState = AppearanceSettingsUiState(),
+                    onAction = {},
+                    onBackClick = {},
+                )
+            }
+        }
+        onNodeWithText("Haptic Feedback").assertExists()
+    }
+
+    @Test
     fun backClickFires() = runComposeUiTest {
         setTestLocale("en-US")
         var backClicked = false

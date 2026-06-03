@@ -2,8 +2,10 @@ package id.homebase.core.ui.screens.appearance
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,14 +17,18 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.settings.Language
@@ -38,6 +44,7 @@ import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_appearance
+import id.homebase.resources.settings_haptic_feedback
 import id.homebase.resources.theme
 import id.homebase.resources.theme_dark
 import id.homebase.resources.theme_light
@@ -137,7 +144,35 @@ fun AppearanceSettingsUi(
                     onAction(AppearanceSettingsUiAction.ThemeSelected(it))
                 },
             )
+
+            SettingsToggleRow(
+                modifier = Modifier.testTag("hapticFeedbackToggle"),
+                label = stringResource(MR.string.settings_haptic_feedback),
+                checked = uiState.hapticsEnabled,
+                onCheckedChange = { onAction(AppearanceSettingsUiAction.HapticsEnabledChanged(it)) },
+            )
         }
+    }
+}
+
+@Composable
+private fun SettingsToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
