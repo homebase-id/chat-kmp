@@ -121,6 +121,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
+import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -637,8 +638,24 @@ private fun DetailContent(
             TopAppBar(
                 // No screen title in the full-screen view — the post itself
                 // is the title. Keep the bar transparent so it floats over
-                // the media.
-                title = {},
+                // the media. The only title-slot content is the author avatar:
+                // the reel's equivalent of the feed card's top-left badge,
+                // placed here (right of the back arrow) so it can't collide
+                // with the nav icon or the overflow menu. Same author
+                // resolution as the feed — prefer originalAuthor (which
+                // survives the server stripping senderOdinId on the author's
+                // own copy), then senderOdinId, then self.
+                title = {
+                    val moment = uiState.moment
+                    if (moment != null) {
+                        val avatarOdinId = moment.originalAuthor
+                            ?: moment.senderOdinId
+                            ?: uiState.selfOdinId
+                        if (avatarOdinId != null) {
+                            SenderAvatarBadge(odinId = avatarOdinId)
+                        }
+                    }
+                },
                 navigationIcon = {
                     // Embedded (desktop wide) pane: no nav target, so suppress
                     // the back arrow rather than offering a tap that does

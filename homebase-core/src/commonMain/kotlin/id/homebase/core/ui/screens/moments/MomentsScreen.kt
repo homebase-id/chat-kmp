@@ -98,7 +98,6 @@ import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.MomentsAlbumZoom
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
@@ -108,6 +107,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
+import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
 import kotlinx.collections.immutable.ImmutableMap
@@ -1161,13 +1161,16 @@ private fun MomentPostCard(
             }
         }
 
-        // Top-right: localized capture date pill. Sourced from the moment's
-        // userDate (which is set from EXIF if any photo had it, else the
-        // post-time clock — see MomentComposeViewModel.deriveMomentInstant).
+        // Bottom-left: localized capture date pill, matching the reel detail's
+        // bottom-left date. Sourced from the moment's userDate (which is set
+        // from EXIF if any photo had it, else the post-time clock — see
+        // MomentComposeViewModel.deriveMomentInstant). The video duration chip
+        // moved to bottom-right (see MomentInlineVideoTile) so this corner is
+        // clear.
         MomentDatePill(
             timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
             modifier = Modifier
-                .align(Alignment.TopEnd)
+                .align(Alignment.BottomStart)
                 .padding(8.dp),
         )
 
@@ -1235,14 +1238,19 @@ private fun MomentPostCard(
         }
 
         // Bottom-right: lock indicator for a private moment (no recipients) —
-        // absence implies shared, which is the common case. Kept on the right
-        // so the bottom-left stays clear of the video duration label rendered
-        // by MomentMediaItem.
+        // absence implies shared, which is the common case. On a video moment
+        // the duration chip now also sits bottom-right (see
+        // MomentInlineVideoTile), so lift the lock above it; images have no
+        // duration chip and keep the snug 8.dp corner inset.
         if (moment.isPrivate(selfOdinId)) {
+            val hasVideo = moment.payloads.any { p ->
+                p.contentType?.startsWith("video/") == true ||
+                    p.contentType == "application/vnd.apple.mpegurl"
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(8.dp),
+                    .padding(end = 8.dp, bottom = if (hasVideo) 36.dp else 8.dp),
             ) {
                 IndicatorBadge(
                     imageVector = Icons.Outlined.Lock,
@@ -1522,26 +1530,6 @@ private fun MomentsViewModeMenuItem(
         },
         onClick = onClick,
     )
-}
-
-@Composable
-private fun SenderAvatarBadge(
-    odinId: OdinId,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        PublicAvatar(
-            odinId = odinId,
-            initials = odinId.toString().firstOrNull()?.toString()?.uppercase(),
-            options = AvatarOptions(size = 24.dp, fontSize = 10.sp),
-        )
-    }
 }
 
 @Composable
