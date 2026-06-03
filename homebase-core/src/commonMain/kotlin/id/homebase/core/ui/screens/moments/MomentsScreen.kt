@@ -1171,15 +1171,17 @@ private fun MomentPostCard(
                 .padding(8.dp),
         )
 
-        // Top-left: sender avatar for inbound moments. Same "is mine" rule as
-        // `isPrivate` below — null senderOdinId or a self-match means this is
-        // the user's own post (sender's drive copy is null; the optimistic
-        // writer stamps self on the local copy), so we skip the badge to keep
-        // the user's own feed visually quiet.
-        val sender = moment.senderOdinId
-        if (sender != null && sender != selfOdinId) {
+        // Top-left: author avatar — shown on every moment, including the user's
+        // own. Prefer originalAuthor: it resolves to the post's author on both
+        // inbound transfers and the user's own drive copy, where senderOdinId
+        // comes back null after sync (the server strips it; only the optimistic
+        // local copy stamps self). Fall back to senderOdinId, then to the active
+        // user (a null author only happens on legacy posts, which are the user's
+        // own), so the badge always renders with the correct face.
+        val avatarOdinId = moment.originalAuthor ?: moment.senderOdinId ?: selfOdinId
+        if (avatarOdinId != null) {
             SenderAvatarBadge(
-                odinId = sender,
+                odinId = avatarOdinId,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp),

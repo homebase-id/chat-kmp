@@ -281,6 +281,15 @@ data class MomentFeedItem(
      */
     val senderOdinId: OdinId?,
     /**
+     * Identity that authored the post. Unlike [senderOdinId] this is populated
+     * on the author's *own* drive copy too (the optimistic writer stamps self,
+     * and the server preserves it across transfer), so it is the reliable
+     * signal of "whose face to show" for the feed avatar — for the user's own
+     * moments [senderOdinId] comes back null after sync but [originalAuthor]
+     * still resolves to self. Null only on legacy posts that pre-date the field.
+     */
+    val originalAuthor: OdinId?,
+    /**
      * Audience the post was originally addressed to — surfaced on the detail
      * screen's "Shared with" row. Null on legacy moments that pre-date the
      * source field, on local-only posts, or when the header fails to
@@ -340,6 +349,19 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
     val ownReactions = fileMetadata.localAppData?.localReactions
         ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
         .orEmpty()
+    // Diagnostic for the missing-avatar investigation: senderOdinId is expected
+    // to be null on the author's own drive copy (server strips it), but should
+    // be present on inbound transfers. Log the null case alongside originalAuthor
+    // so we can tell an expected own-post null apart from an inbound moment that
+    // unexpectedly arrived without a sender. Drop once the data is understood.
+    val senderOdinId = fileMetadata.senderOdinId
+    if (senderOdinId == null) {
+        Logger.d(tag = "MomentsFeedService") {
+            "toFeedItem: null senderOdinId uniqueId=$uniqueId " +
+                "originalAuthor=${fileMetadata.originalAuthor} " +
+                "recipients=${content?.recipients?.size ?: 0} source=${content?.source}"
+        }
+    }
     return MomentFeedItem(
         id = uniqueId,
         fileId = fileId,
@@ -351,7 +373,8 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         createdMs = fileMetadata.created.milliseconds,
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
-        senderOdinId = fileMetadata.senderOdinId,
+        senderOdinId = senderOdinId,
+        originalAuthor = fileMetadata.originalAuthor,
         source = content?.source,
         recipients = content?.recipients.orEmpty(),
         // Default true when content failed to parse OR when an older post
