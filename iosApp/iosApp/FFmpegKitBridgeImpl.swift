@@ -29,7 +29,14 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
     /// production installs exactly one bridge instance, a per-instance queue would let a second
     /// instance run a concurrent `ffmpeg_execute` and reintroduce the crash. One queue per
     /// process closes that.
-    private static let ffmpegQueue = DispatchQueue(label: "id.homebase.ffmpegkit.serial")
+    ///
+    /// `qos: .utility`: a video encode is CPU/GPU/memory-heavy. Without a priority hint the
+    /// encode competes with UI work and the app janks while a send compresses (previously the
+    /// crash aborted compression early, so this load was never felt). `.utility` tells the OS
+    /// to keep the UI responsive and let the encode take slightly longer — the right trade for
+    /// a background send. (HW VideoToolbox encode is partly off-CPU, and ffmpeg's own worker
+    /// threads don't inherit this QoS, so this reduces — not eliminates — contention.)
+    private static let ffmpegQueue = DispatchQueue(label: "id.homebase.ffmpegkit.serial", qos: .utility)
 
     func executeFFmpeg(command: String) -> FFmpegResult {
         // Run on the same serial queue as the async paths so a sync execute never overlaps a
