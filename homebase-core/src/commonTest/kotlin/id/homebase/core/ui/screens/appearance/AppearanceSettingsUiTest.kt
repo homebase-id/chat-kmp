@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.appearance
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -10,6 +11,7 @@ import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.test.setTestLocale
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -119,6 +121,27 @@ class AppearanceSettingsUiTest {
             }
         }
         onNodeWithText("Haptic Feedback").assertExists()
+    }
+
+    @Test
+    fun hapticFeedbackToggleFiresAction() = runComposeUiTest {
+        setTestLocale("en-US")
+        var newValue: Boolean? = null
+        setContent {
+            MaterialTheme {
+                AppearanceSettingsUi(
+                    uiState = AppearanceSettingsUiState(hapticsEnabled = true),
+                    onAction = { action ->
+                        if (action is AppearanceSettingsUiAction.HapticsEnabledChanged) {
+                            newValue = action.enabled
+                        }
+                    },
+                    onBackClick = {},
+                )
+            }
+        }
+        onNode(isToggleable()).performClick()
+        assertEquals(false, newValue)
     }
 
     @Test

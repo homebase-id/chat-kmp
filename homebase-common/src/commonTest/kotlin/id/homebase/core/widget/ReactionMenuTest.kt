@@ -10,7 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
-import com.russhwolf.settings.Settings
+import id.homebase.core.settings.InMemorySettings
 import id.homebase.core.settings.UserPreferences
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.KoinApplication
@@ -19,37 +19,6 @@ import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-
-// ---------------------------------------------------------------------------
-// Minimal in-memory Settings for tests — avoids pulling in the
-// multiplatform-settings-test artifact just to get MapSettings.
-// ---------------------------------------------------------------------------
-private class InMemorySettings : Settings {
-    private val backing = mutableMapOf<String, Any>()
-    override val keys: Set<String> get() = backing.keys.toSet()
-    override val size: Int get() = backing.size
-    override fun clear() = backing.clear()
-    override fun remove(key: String) { backing.remove(key) }
-    override fun hasKey(key: String): Boolean = backing.containsKey(key)
-    override fun putInt(key: String, value: Int) { backing[key] = value }
-    override fun getInt(key: String, defaultValue: Int): Int = (backing[key] as? Int) ?: defaultValue
-    override fun getIntOrNull(key: String): Int? = backing[key] as? Int
-    override fun putLong(key: String, value: Long) { backing[key] = value }
-    override fun getLong(key: String, defaultValue: Long): Long = (backing[key] as? Long) ?: defaultValue
-    override fun getLongOrNull(key: String): Long? = backing[key] as? Long
-    override fun putString(key: String, value: String) { backing[key] = value }
-    override fun getString(key: String, defaultValue: String): String = (backing[key] as? String) ?: defaultValue
-    override fun getStringOrNull(key: String): String? = backing[key] as? String
-    override fun putFloat(key: String, value: Float) { backing[key] = value }
-    override fun getFloat(key: String, defaultValue: Float): Float = (backing[key] as? Float) ?: defaultValue
-    override fun getFloatOrNull(key: String): Float? = backing[key] as? Float
-    override fun putDouble(key: String, value: Double) { backing[key] = value }
-    override fun getDouble(key: String, defaultValue: Double): Double = (backing[key] as? Double) ?: defaultValue
-    override fun getDoubleOrNull(key: String): Double? = backing[key] as? Double
-    override fun putBoolean(key: String, value: Boolean) { backing[key] = value }
-    override fun getBoolean(key: String, defaultValue: Boolean): Boolean = (backing[key] as? Boolean) ?: defaultValue
-    override fun getBooleanOrNull(key: String): Boolean? = backing[key] as? Boolean
-}
 
 // ---------------------------------------------------------------------------
 // Koin module that satisfies the UserPreferences dependency required by
