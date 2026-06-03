@@ -1051,6 +1051,12 @@
     <string name="dev_menu_test_notification">Test Rich Notification</string>
     <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
+    <string name="dev_menu_section_crashlytics">Crashlytics</string>
+    <string name="dev_menu_trigger_test_crash">Trigger test crash</string>
+    <string name="dev_menu_trigger_test_crash_description">Intentionally crashes the app right now to verify crash reporting. The app will close immediately — reopen it afterward to let the crash report upload to Crashlytics.</string>
+    <string name="dev_menu_crash_confirm_title">Crash the app?</string>
+    <string name="dev_menu_crash_confirm_message">This will intentionally crash the app immediately to test Crashlytics. You\'ll need to reopen the app afterward.</string>
+    <string name="dev_menu_crash_confirm_action">Crash now</string>
 
     <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
     <string name="video_info_title">Video info</string>

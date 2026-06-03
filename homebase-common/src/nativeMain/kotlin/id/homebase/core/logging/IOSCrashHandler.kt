@@ -47,6 +47,15 @@ fun setupIOSCrashHandler() {
                 Logger.e(tag = TAG) { "Call Stack: ${it.callStackSymbols}" }
                 Logger.e(tag = TAG) { "==========================================" }
 
+                // Record to Crashlytics with the readable ObjC name/reason/stack.
+                // The SDK's signal handler would otherwise capture this only as an
+                // opaque native backtrace.
+                CrashlyticsBridgeHolder.getBridge()?.recordException(
+                    name = it.name ?: "NSException",
+                    reason = it.reason ?: "",
+                    stackTrace = it.callStackSymbols.mapNotNull { sym -> sym as? String },
+                )
+
                 // Give the file log writer a moment to flush before the process dies.
                 NSThread.sleepForTimeInterval(0.1)
             } catch (e: Exception) {
@@ -63,6 +72,11 @@ fun setupIOSCrashHandler() {
     var previousHook: ((Throwable) -> Unit)? = null
     previousHook = setUnhandledExceptionHook { throwable ->
         try {
+            // Record to Crashlytics first — a Kotlin/Native exception aborts the
+            // process without raising an NSException, so the SDK never sees it
+            // unless we record it explicitly here. This is the only path that
+            // gets pure-Kotlin crashes into the dashboard with a readable stack.
+            crashlyticsRecordException(throwable)
             CrashLogger.logCrash(thread = "Kotlin/Native", exception = throwable)
             // Give the file log writer a moment to flush before the process dies.
             NSThread.sleepForTimeInterval(0.1)
