@@ -146,7 +146,7 @@ fun FullScreenAttachmentEditor(
         val map = framesByAtt.getOrPut(v.attachmentId) { mutableStateMapOf() }
         if (map.size >= frameStripCount) return@LaunchedEffect
         VideoThumbnailService.extractThumbnailStrip(
-            videoPath = v.file.toString(),
+            videoPath = v.playablePath ?: v.file.toString(),
             durationMs = dur,
             frameCount = frameStripCount,
             targetHeightPx = 96,
@@ -210,7 +210,7 @@ fun FullScreenAttachmentEditor(
                         ) {
                             if (durationMs != null && durationMs > 0L) {
                                 TrimmableVideoPlayerSurface(
-                                    filePath = attachment.file.toString(),
+                                    filePath = attachment.playablePath ?: attachment.file.toString(),
                                     clipStartMs = clipStart,
                                     clipEndMs = clipEnd,
                                     isPlaying = isPlaying,

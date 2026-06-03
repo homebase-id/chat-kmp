@@ -1,9 +1,13 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.systemFileSystem
+import kotlin.js.Promise
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlinx.coroutines.await
 import okio.Path.Companion.toPath
 
 /**
@@ -50,9 +54,16 @@ actual object FFmpegUtils {
     }
 
     actual suspend fun getDurationMs(inputPath: String): Long {
+        // Editor fast path: a blob: URL (minted from the picked File) has no okio bytes for mp4box
+        // to parse. Read the duration straight off an HTML5 <video> instead — any codec the browser
+        // can decode, no bytes copied into wasm, no 22 MB core.
+        if (inputPath.startsWith("blob:")) return videoDurationMsFromUrl(inputPath)
         val bytes = readOkioBytes(inputPath) ?: return 0L
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
+
+    private suspend fun videoDurationMsFromUrl(url: String): Long =
+        videoDurationMsFromUrlJs(url).await<JsNumber>().toDouble().toLong()
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? {
         val bytes = readOkioBytes(inputPath) ?: return null
@@ -80,14 +91,21 @@ actual object FFmpegUtils {
         quality: VideoQuality,
         allowTenBit: Boolean,
     ): String? {
-        val inputBytes = readOkioBytes(inputPath) ?: return null
+        // Input read strategy:
+        //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
+        //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
+        //    base64'd. Size comes from the probe.
+        //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
+        val isBlob = inputPath.startsWith("blob:")
+        val inputBytes = if (isBlob) null else (readOkioBytes(inputPath) ?: return null)
 
         val hasTrim = trimStartMs != null && trimEndMs != null
         val effTrimStart = if (hasTrim) trimStartMs else null
         val effTrimEnd = if (hasTrim) trimEndMs else null
 
-        val probe = FFmpegBridge.probe(inputBytes)
+        val probe = if (isBlob) FFmpegBridge.probeFromUrl(inputPath) else FFmpegBridge.probe(inputBytes!!)
         val durationMs = probe?.durationMs ?: 0L
+        val inputSizeBytes = if (isBlob) (probe?.sizeBytes ?: 0L) else inputBytes!!.size.toLong()
 
         // MEMFS-relative names so plan.args reference the in-worker files directly.
         val plan = FfmpegCompressPlanner.plan(
@@ -100,7 +118,7 @@ actual object FFmpegUtils {
             probedHeightPx = probe?.heightPx ?: 0,
             probedCodecMime = probe?.codec, // null probe → no short-circuit → transcode
             inputDurationMs = durationMs,
-            inputBytes = inputBytes.size.toLong(),
+            inputBytes = inputSizeBytes,
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
             // No-op here: the web probe doesn't report bit depth, so output
@@ -113,7 +131,8 @@ actual object FFmpegUtils {
             return null
         }
 
-        FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes)
+        if (isBlob) FFmpegBridge.writeFileFromUrl(MEMFS_INPUT, inputPath)
+        else FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes!!)
         val status = FFmpegBridge.exec(plan.args, onProgress)
         if (status != 0) {
             FFmpegBridge.deleteFile(MEMFS_INPUT)
@@ -335,3 +354,28 @@ actual object FFmpegUtils {
     private const val MEMFS_REMUX_PLAYLIST = "remux_input.m3u8"
     private const val MEMFS_REMUX_OUTPUT = "remux_output.mp4"
 }
+
+/**
+ * Resolve to the duration (ms) of [url] — a `blob:` (or http) video URL — read off a hidden HTML5
+ * `<video>`'s `loadedmetadata`, or 0 on any failure/stall. Only the container header is fetched
+ * (`preload = 'metadata'`); no full download and no bytes cross into wasm.
+ */
+private fun videoDurationMsFromUrlJs(url: String): Promise<JsNumber> = js(
+    """{
+        return new Promise(function (resolve) {
+            var done = false;
+            function finish(v) { if (done) return; done = true; resolve(v); }
+            try {
+                var v = document.createElement('video');
+                v.preload = 'metadata';
+                v.onloadedmetadata = function () {
+                    var d = v.duration;
+                    finish((isFinite(d) && d > 0) ? Math.round(d * 1000) : 0);
+                };
+                v.onerror = function () { finish(0); };
+                v.src = url;
+                setTimeout(function () { finish(0); }, 15000);
+            } catch (e) { finish(0); }
+        });
+    }"""
+)

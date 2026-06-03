@@ -23,6 +23,12 @@ data class PayloadFile(
     val trimStartMs: Long? = null,
     /** Video-only: trim end, ms, applied during compression. Null = no trim. */
     val trimEndMs: Long? = null,
+    /**
+     * Web-only, video-only: a `blob:` object URL for the original picked file, used as the ffmpeg
+     * compress INPUT so the bytes are read in JS (no Kotlin copy / base64). Null elsewhere. Not part
+     * of [equals]/[hashCode] — it's a transient input handle, like [trimStartMs]/[trimEndMs].
+     */
+    val inputBlobUrl: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

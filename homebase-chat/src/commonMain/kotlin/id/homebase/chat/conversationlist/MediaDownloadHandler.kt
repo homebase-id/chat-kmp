@@ -427,6 +427,10 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCloseFullScreenOverlay() {
+        // Dismissing the attachment editor: release any video playable handles (web blob: URLs;
+        // no-op on native) so the browser can drop the File references.
+        (messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.attachments
+            ?.forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
         messagesUiState.update { it.copy(fullScreenOverlay = null) }
     }
 

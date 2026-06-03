@@ -88,6 +88,7 @@ object MessageAttachmentBuilder {
                                         descriptorContent = attachment.displayName,
                                         trimStartMs = attachment.trimStartMs,
                                         trimEndMs = attachment.trimEndMs,
+                                        inputBlobUrl = attachment.inputBlobUrl,
                                     )
                                 ),
                             thumbnails = emptyList(),

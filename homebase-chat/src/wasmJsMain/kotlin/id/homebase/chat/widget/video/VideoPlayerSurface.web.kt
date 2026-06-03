@@ -92,7 +92,7 @@ actual fun VideoPlayerSurface(
                     val mime = content.metadata.mimeType.ifBlank { "video/mp4" }
                     val url = bytesToObjectUrl(Base64.encode(content.bytes), mime)
                     objectUrl = url
-                    val el = createVideoOverlay(muted)
+                    val el = createVideoOverlay(muted, controls = true)
                     addVideoOverlayProgressListener(el) { _, _ -> onProgress(1f) }
                     addVideoOverlayEndedListener(el) { onEnded() }
                     setVideoOverlaySrc(el, url)
