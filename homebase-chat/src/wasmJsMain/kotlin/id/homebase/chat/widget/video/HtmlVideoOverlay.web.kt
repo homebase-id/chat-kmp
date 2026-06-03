@@ -17,12 +17,16 @@ package id.homebase.chat.widget.video
  * (a direct Uint8Array bridge is a possible follow-up if large-clip playback proves slow).
  */
 
-/** Create a hidden fixed-position <video> (controls on) appended to <body>; returns the handle. */
-internal fun createVideoOverlay(muted: Boolean): JsAny = js(
+/**
+ * Create a hidden fixed-position <video> appended to <body>; returns the handle. [controls] toggles
+ * the browser's native control bar — on for plain playback, off for the trim surface (which draws
+ * its own scrubber).
+ */
+internal fun createVideoOverlay(muted: Boolean, controls: Boolean): JsAny = js(
     """{
         var v = document.createElement('video');
         v.setAttribute('playsinline', '');
-        v.controls = true;
+        v.controls = controls;
         v.muted = muted;
         v.style.position = 'fixed';
         v.style.objectFit = 'contain';
@@ -60,6 +64,20 @@ internal fun setVideoOverlaySrc(el: JsAny, url: String): Unit = js(
 
 internal fun playVideoOverlay(el: JsAny): Unit = js(
     "{ var p = el.play(); if (p && typeof p.catch === 'function') p.catch(function () {}); }"
+)
+
+internal fun pauseVideoOverlay(el: JsAny): Unit = js(
+    "{ try { el.pause(); } catch (e) {} }"
+)
+
+/** Seek to [seconds]. Wrapped in try/catch — assigning currentTime before metadata can throw. */
+internal fun setVideoOverlayCurrentTime(el: JsAny, seconds: Double): Unit = js(
+    "{ try { el.currentTime = seconds; } catch (e) {} }"
+)
+
+/** Fire [cb] once the element's first frame is decoded (safe point to seek to a clip start). */
+internal fun addVideoOverlayLoadedListener(el: JsAny, cb: () -> Unit): Unit = js(
+    "{ el.addEventListener('loadeddata', function () { cb(); }); }"
 )
 
 /** Notify [cb] with (currentTimeSec, durationSec) on data-ready / playing / timeupdate. */

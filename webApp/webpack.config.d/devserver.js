@@ -18,16 +18,49 @@ config.devServer.historyApiFallback = {
 };
 
 // Open Chrome (not the OS default browser) when running `wasmJsBrowserDevelopmentRun`.
-// webpack-dev-server delegates to the `open` npm package, whose Chrome app name differs per OS.
-// If Chrome isn't installed the dev server still starts — it just won't auto-open a tab, so this
-// is safe for teammates on other setups.
-const chromeAppName =
-    process.platform === 'darwin' ? 'google chrome' :
-    process.platform === 'win32' ? 'chrome' :
-    'google-chrome';
-// Default: open plain Chrome. When HB_DEBUG_CHROME=1, suppress auto-open so a separate
+// webpack-dev-server delegates to the `open` npm package, which spawns the named browser.
+// IMPORTANT: `open` emits a fatal 'error' event if the named binary doesn't exist (ENOENT),
+// which crashes the Gradle task — it does NOT silently fall back. So on Linux we must resolve a
+// binary that actually exists rather than hardcoding `google-chrome` (many distros ship only
+// `chromium` / `chromium-browser`, e.g. via apt or snap). macOS/Windows use the `open`/`start`
+// app-name conventions, which are stable.
+//
+// Resolution order on Linux: explicit CHROME_BIN/BROWSER override → first Chrome/Chromium-family
+// binary found on PATH → fall back to the OS default browser (open: true) so the dev server still
+// auto-opens *something* instead of crashing.
+function resolveLinuxBrowser() {
+    const fs = require('fs');
+    const path = require('path');
+
+    const explicit = process.env.CHROME_BIN || process.env.BROWSER;
+    if (explicit && fs.existsSync(explicit)) return explicit;
+
+    const candidates = [
+        'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser',
+        'brave-browser', 'microsoft-edge', 'microsoft-edge-stable',
+    ];
+    const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    for (const name of candidates) {
+        for (const dir of dirs) {
+            const full = path.join(dir, name);
+            if (fs.existsSync(full)) return full;
+        }
+    }
+    return null;
+}
+
+// Default: open a Chrome-family browser. When HB_DEBUG_CHROME=1, suppress auto-open so a separate
 // remote-debugging Chrome (launched out-of-band with --remote-debugging-port) is the only
 // app window — lets the console be captured over CDP without a competing tab.
-config.devServer.open = process.env.HB_DEBUG_CHROME === '1'
-    ? false
-    : { app: { name: chromeAppName } };
+let openConfig;
+if (process.env.HB_DEBUG_CHROME === '1') {
+    openConfig = false;
+} else if (process.platform === 'darwin') {
+    openConfig = { app: { name: 'google chrome' } };
+} else if (process.platform === 'win32') {
+    openConfig = { app: { name: 'chrome' } };
+} else {
+    const bin = resolveLinuxBrowser();
+    openConfig = bin ? { app: { name: bin } } : true;
+}
+config.devServer.open = openConfig;

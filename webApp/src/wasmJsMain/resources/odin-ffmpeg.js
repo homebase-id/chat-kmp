@@ -107,10 +107,11 @@
     return lc;
   }
 
-  // Returns "codec;width;height;durationMs;rotation" (raw container dims + rotation,
-  // matching what the Android probe feeds the planner), or "" if the file isn't a
-  // parseable mp4/mov. Never loads the ffmpeg core.
-  function probe(b64) {
+  // Core mp4box probe over a Uint8Array. [extraField] is appended as a trailing
+  // ";<value>" when non-null (used by probeFromUrl to report the input byte size so the
+  // Kotlin planner needn't read the bytes). Returns "codec;width;height;durationMs;rotation"
+  // (+ optional extra), or "" if the file isn't a parseable mp4/mov. Never loads the core.
+  function probeBytes(u8, extraField) {
     return new Promise(function (resolve) {
       var done = false;
       function finish(v) { if (!done) { done = true; resolve(v); } }
@@ -141,11 +142,12 @@
               codec = normalizeCodec(v.codec);
             }
             var durationMs = info.timescale ? Math.round((info.duration / info.timescale) * 1000) : 0;
-            finish(codec + ";" + width + ";" + height + ";" + durationMs + ";" + rotation);
+            var out = codec + ";" + width + ";" + height + ";" + durationMs + ";" + rotation;
+            if (extraField != null) out += ";" + extraField;
+            finish(out);
           } catch (ex) { finish(""); }
         };
-        var bytes = b64ToBytes(b64);
-        var ab = bytes.buffer;
+        var ab = u8.buffer;
         ab.fileStart = 0;
         mp4.appendBuffer(ab);
         mp4.flush();
@@ -157,17 +159,51 @@
     });
   }
 
+  function probe(b64) {
+    return probeBytes(b64ToBytes(b64), null);
+  }
+
+  // JS-native input read: fetch the (blob:) URL's bytes WITHOUT crossing into Kotlin and
+  // probe them. Always appends ";sizeBytes" (even when mp4box can't parse the container, so the
+  // compress planner still gets a real input size and transcodes rather than wrongly skipping).
+  function probeFromUrl(url) {
+    return fetch(url)
+      .then(function (r) { return r.arrayBuffer(); })
+      .then(function (buf) {
+        var size = buf.byteLength;
+        return probeBytes(new Uint8Array(buf), size).then(function (res) {
+          return res || (";;;;;" + size);
+        });
+      })
+      .catch(function () { return ""; });
+  }
+
   globalThis.__odinFfmpeg = {
     isLoaded: function () { return ffmpeg != null; },
     load: function () { return ensureLoaded().then(function () { return true; }); },
 
     probe: probe,
+    probeFromUrl: probeFromUrl,
 
     setProgress: function (cb) { progressCb = cb; },
 
     writeFile: function (path, b64) {
       return ensureLoaded().then(function (f) {
         return f.writeFile(path, b64ToBytes(b64)).then(function () { return true; });
+      });
+    },
+
+    // JS-native input: fetch the (blob:) URL's bytes and write them straight into ffmpeg's
+    // MEMFS — the original video never enters Kotlin/Wasm memory and is never base64'd.
+    // NOTE: do NOT revoke the blob: URL here — the same URL doubles as the sent message's
+    // local-preview source (LocalAttachmentContext.Video.localFilePath); revoking it would
+    // break the bubble preview/playback. It's released on logout (store reset) / page reload.
+    writeFileFromUrl: function (path, url) {
+      return ensureLoaded().then(function (f) {
+        return fetch(url)
+          .then(function (r) { return r.arrayBuffer(); })
+          .then(function (buf) { return f.writeFile(path, new Uint8Array(buf)); })
+          .then(function () { return true; });
       });
     },
     writeText: function (path, text) {

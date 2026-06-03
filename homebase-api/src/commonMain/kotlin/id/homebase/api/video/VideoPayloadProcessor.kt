@@ -34,6 +34,7 @@ class VideoPayloadProcessor(
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         allowTenBit: Boolean = false,
+        inputBlobUrl: String? = null,
     ): VideoProcessResult =
         // Resolve content URIs (Android copies the gallery pick into cacheDir as
         // resolved_*; other platforms no-op) and reap that copy when we're done,
@@ -51,6 +52,7 @@ class VideoPayloadProcessor(
                 trimEndMs = trimEndMs,
                 videoQuality = videoQuality,
                 allowTenBit = allowTenBit,
+                inputBlobUrl = inputBlobUrl,
             )
         }
 
@@ -63,7 +65,14 @@ class VideoPayloadProcessor(
         trimEndMs: Long?,
         videoQuality: VideoQuality,
         allowTenBit: Boolean,
+        // Web only: a blob: URL for the original. When present it's the ffmpeg/decoder INPUT read
+        // (poster + compress), so the original is read in JS — never copied into Kotlin or base64'd.
+        // null on native → falls back to the okio path. Read-only here; revoked by writeFileFromUrl.
+        inputBlobUrl: String?,
     ): VideoProcessResult {
+        // The okio path stays the source of truth for size, the compress-skip fallback, and the
+        // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
+        val ffmpegInputPath = inputBlobUrl ?: payload.filePath
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 
@@ -81,7 +90,7 @@ class VideoPayloadProcessor(
 
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
-        val posterBytes = VideoThumbnailService.extractPosterFrame(payload.filePath)
+        val posterBytes = VideoThumbnailService.extractPosterFrame(ffmpegInputPath)
         if (posterBytes != null) {
             val (_, generatedTinyThumb, generatedThumbnails) =
                 createThumbnails(posterBytes, payload.key)
@@ -114,7 +123,7 @@ class VideoPayloadProcessor(
         val (compressedPath, compressElapsed) =
             measureTimedValue {
                 compressor.compress(
-                    inputPath = payload.filePath,
+                    inputPath = ffmpegInputPath,
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
