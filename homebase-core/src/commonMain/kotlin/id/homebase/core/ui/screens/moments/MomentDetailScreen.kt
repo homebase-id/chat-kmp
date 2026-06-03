@@ -1726,63 +1726,73 @@ private fun CommentsSheet(
                     else Modifier,
                 ),
         ) {
-            MomentDescriptionSection(
-                description = uiState.moment?.description.orEmpty(),
-                isMine = uiState.isMine,
-                isEditing = uiState.isEditingDescription,
-                draft = uiState.descriptionDraft,
-                isSaving = uiState.isSavingDescription,
-                onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
-                onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
-                onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
-                onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-            // Capture time + "Shared with" recipients. Lives here (the info/
-            // comments sheet) because the immersive media view has no room for
-            // an expandable, network-backed recipient list. Expanding the
-            // "Shared with" row lazily fetches transfer history via the VM.
-            MetadataSection(
-                capturedAtMs = uiState.moment?.userDateMs ?: 0L,
-                sharedWith = uiState.sharedWith,
-                sharedWithExpanded = uiState.sharedWithExpanded,
-                onToggleSharedWith = {
-                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
-                },
-                isMine = uiState.isMine,
-                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
-                recipientDeliveries = uiState.recipientDeliveries,
-                recipientAvatars = uiState.recipientAvatars,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            HorizontalDivider()
-            CommentsHeader(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            if (uiState.comments.isEmpty()) {
-                CommentsEmpty(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
-                )
-                // Fixed-height sheet: take up the slack so the composer pins to
-                // the bottom instead of floating under the empty-state text.
-                if (heightFraction != null) {
-                    Spacer(modifier = Modifier.weight(1f))
+            // Single scroll container for the whole sheet body: the description,
+            // the (expandable) "Shared with" metadata, and the comments thread all
+            // live inside one LazyColumn. Expanding the recipient list then grows
+            // the scroll content instead of overflowing a static header — the
+            // earlier layout pinned those sections above the comments LazyColumn,
+            // so expansion pushed content off-screen with no way to scroll it back.
+            // Only the composer below stays pinned.
+            LazyColumn(
+                // Fill the middle on a fixed-height sheet (composer pinned at the
+                // bottom); on the content-sized detail sheet, wrap so the sheet
+                // only grows as tall as the content needs.
+                modifier = Modifier.weight(1f, fill = heightFraction != null),
+            ) {
+                item(key = "description") {
+                    MomentDescriptionSection(
+                        description = uiState.moment?.description.orEmpty(),
+                        isMine = uiState.isMine,
+                        isEditing = uiState.isEditingDescription,
+                        draft = uiState.descriptionDraft,
+                        isSaving = uiState.isSavingDescription,
+                        onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
+                        onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
+                        onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
+                        onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
                 }
-            } else {
-                LazyColumn(
-                    // Fill the middle on a fixed-height sheet (composer pinned
-                    // at the bottom); on the content-sized detail sheet, wrap
-                    // so the sheet only grows as tall as the thread needs.
-                    modifier = Modifier.weight(1f, fill = heightFraction != null),
-                ) {
+                // Capture time + "Shared with" recipients. Lives here (the info/
+                // comments sheet) because the immersive media view has no room for
+                // an expandable, network-backed recipient list. Expanding the
+                // "Shared with" row lazily fetches transfer history via the VM.
+                item(key = "metadata") {
+                    MetadataSection(
+                        capturedAtMs = uiState.moment?.userDateMs ?: 0L,
+                        sharedWith = uiState.sharedWith,
+                        sharedWithExpanded = uiState.sharedWithExpanded,
+                        onToggleSharedWith = {
+                            onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
+                        },
+                        isMine = uiState.isMine,
+                        isTransferHistoryLoading = uiState.isTransferHistoryLoading,
+                        recipientDeliveries = uiState.recipientDeliveries,
+                        recipientAvatars = uiState.recipientAvatars,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                item(key = "divider") { HorizontalDivider() }
+                item(key = "comments-header") {
+                    CommentsHeader(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                if (uiState.comments.isEmpty()) {
+                    item(key = "comments-empty") {
+                        CommentsEmpty(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 24.dp),
+                        )
+                    }
+                } else {
                     // Service emits newest-first; reverse for chat-style
                     // chronological ordering (oldest at top, newest just
                     // above the composer).
