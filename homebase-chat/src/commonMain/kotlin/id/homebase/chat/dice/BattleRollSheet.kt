@@ -42,8 +42,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -53,6 +51,8 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.resources.MR
 import id.homebase.resources.chat_dice_battle_target
 import id.homebase.resources.chat_dice_battle_title
@@ -105,7 +105,7 @@ private fun BattleRollSheetContent(
     val sender: ChatMessageSenderService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
     val shakeDetector: ShakeDetector = koinInject()
-    val haptic = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
 
     val parentDescriptor = (parentMessage.messageContent as? MessageContent.DiceRoll)?.descriptor
@@ -142,7 +142,7 @@ private fun BattleRollSheetContent(
     val doRoll: () -> Unit = roll@{
         if (isBusy) return@roll
         if (ownerOdinId == null) return@roll
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        haptics.perform(HapticEvent.LongPress)
         rolling = true
         val seed = if (shakeTriggered) shakeSamples else null
         val finalResults = if (mode == DiceRollMode.OpenEndedD100) {
@@ -160,7 +160,7 @@ private fun BattleRollSheetContent(
             )
             while (displayValues.size < finalResults.size) displayValues.add(null)
             for (i in finalResults.indices) displayValues[i] = finalResults[i]
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptics.perform(HapticEvent.LongPress)
             rolling = false
             sending = true
 
