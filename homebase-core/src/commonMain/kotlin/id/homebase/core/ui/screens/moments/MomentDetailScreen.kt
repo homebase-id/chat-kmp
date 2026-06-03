@@ -90,14 +90,19 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
@@ -121,6 +126,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
+import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -637,8 +643,24 @@ private fun DetailContent(
             TopAppBar(
                 // No screen title in the full-screen view — the post itself
                 // is the title. Keep the bar transparent so it floats over
-                // the media.
-                title = {},
+                // the media. The only title-slot content is the author avatar:
+                // the reel's equivalent of the feed card's top-left badge,
+                // placed here (right of the back arrow) so it can't collide
+                // with the nav icon or the overflow menu. Same author
+                // resolution as the feed — prefer originalAuthor (which
+                // survives the server stripping senderOdinId on the author's
+                // own copy), then senderOdinId, then self.
+                title = {
+                    val moment = uiState.moment
+                    if (moment != null) {
+                        val avatarOdinId = moment.originalAuthor
+                            ?: moment.senderOdinId
+                            ?: uiState.selfOdinId
+                        if (avatarOdinId != null) {
+                            SenderAvatarBadge(odinId = avatarOdinId)
+                        }
+                    }
+                },
                 navigationIcon = {
                     // Embedded (desktop wide) pane: no nav target, so suppress
                     // the back arrow rather than offering a tap that does
@@ -1713,6 +1735,29 @@ private fun CommentsSheet(
     // to a locally-remembered state for callers that don't need that coupling.
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
+    // Swiping the (now fully-scrollable) body should only ever scroll it — never
+    // dismiss the sheet. ModalBottomSheet otherwise hands the leftover downward
+    // drag at the list's top edge to its own nested-scroll connection, which
+    // translates it into a drag-to-dismiss. Swallow that leftover here so it
+    // never reaches the sheet. The drag handle (the grab bar up top) drives the
+    // sheet directly, not through nested scroll, so it still dismisses normally.
+    val swallowDownwardDrag = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset =
+                if (source == NestedScrollSource.UserInput && available.y > 0f) {
+                    Offset(0f, available.y)
+                } else {
+                    Offset.Zero
+                }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+                if (available.y > 0f) Velocity(0f, available.y) else Velocity.Zero
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1721,68 +1766,79 @@ private fun CommentsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(swallowDownwardDrag)
                 .then(
                     if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
                     else Modifier,
                 ),
         ) {
-            MomentDescriptionSection(
-                description = uiState.moment?.description.orEmpty(),
-                isMine = uiState.isMine,
-                isEditing = uiState.isEditingDescription,
-                draft = uiState.descriptionDraft,
-                isSaving = uiState.isSavingDescription,
-                onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
-                onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
-                onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
-                onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-            // Capture time + "Shared with" recipients. Lives here (the info/
-            // comments sheet) because the immersive media view has no room for
-            // an expandable, network-backed recipient list. Expanding the
-            // "Shared with" row lazily fetches transfer history via the VM.
-            MetadataSection(
-                capturedAtMs = uiState.moment?.userDateMs ?: 0L,
-                sharedWith = uiState.sharedWith,
-                sharedWithExpanded = uiState.sharedWithExpanded,
-                onToggleSharedWith = {
-                    onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
-                },
-                isMine = uiState.isMine,
-                isTransferHistoryLoading = uiState.isTransferHistoryLoading,
-                recipientDeliveries = uiState.recipientDeliveries,
-                recipientAvatars = uiState.recipientAvatars,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            HorizontalDivider()
-            CommentsHeader(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            if (uiState.comments.isEmpty()) {
-                CommentsEmpty(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
-                )
-                // Fixed-height sheet: take up the slack so the composer pins to
-                // the bottom instead of floating under the empty-state text.
-                if (heightFraction != null) {
-                    Spacer(modifier = Modifier.weight(1f))
+            // Single scroll container for the whole sheet body: the description,
+            // the (expandable) "Shared with" metadata, and the comments thread all
+            // live inside one LazyColumn. Expanding the recipient list then grows
+            // the scroll content instead of overflowing a static header — the
+            // earlier layout pinned those sections above the comments LazyColumn,
+            // so expansion pushed content off-screen with no way to scroll it back.
+            // Only the composer below stays pinned.
+            LazyColumn(
+                // Fill the middle on a fixed-height sheet (composer pinned at the
+                // bottom); on the content-sized detail sheet, wrap so the sheet
+                // only grows as tall as the content needs.
+                modifier = Modifier.weight(1f, fill = heightFraction != null),
+            ) {
+                item(key = "description") {
+                    MomentDescriptionSection(
+                        description = uiState.moment?.description.orEmpty(),
+                        isMine = uiState.isMine,
+                        isEditing = uiState.isEditingDescription,
+                        draft = uiState.descriptionDraft,
+                        isSaving = uiState.isSavingDescription,
+                        onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
+                        onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
+                        onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
+                        onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
                 }
-            } else {
-                LazyColumn(
-                    // Fill the middle on a fixed-height sheet (composer pinned
-                    // at the bottom); on the content-sized detail sheet, wrap
-                    // so the sheet only grows as tall as the thread needs.
-                    modifier = Modifier.weight(1f, fill = heightFraction != null),
-                ) {
+                // Capture time + "Shared with" recipients. Lives here (the info/
+                // comments sheet) because the immersive media view has no room for
+                // an expandable, network-backed recipient list. Expanding the
+                // "Shared with" row lazily fetches transfer history via the VM.
+                item(key = "metadata") {
+                    MetadataSection(
+                        capturedAtMs = uiState.moment?.userDateMs ?: 0L,
+                        sharedWith = uiState.sharedWith,
+                        sharedWithExpanded = uiState.sharedWithExpanded,
+                        onToggleSharedWith = {
+                            onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
+                        },
+                        isMine = uiState.isMine,
+                        isTransferHistoryLoading = uiState.isTransferHistoryLoading,
+                        recipientDeliveries = uiState.recipientDeliveries,
+                        recipientAvatars = uiState.recipientAvatars,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                item(key = "divider") { HorizontalDivider() }
+                item(key = "comments-header") {
+                    CommentsHeader(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                if (uiState.comments.isEmpty()) {
+                    item(key = "comments-empty") {
+                        CommentsEmpty(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 24.dp),
+                        )
+                    }
+                } else {
                     // Service emits newest-first; reverse for chat-style
                     // chronological ordering (oldest at top, newest just
                     // above the composer).

@@ -604,12 +604,15 @@ fun MomentInlineVideoTile(
                     tint = Color.White.copy(alpha = 0.85f),
                 )
             }
+            // Top-right: codec badge. Moved off the top-left so the feed card's
+            // author avatar can own that corner; long-press still opens the
+            // video-info overlay.
             Text(
                 text = if (isHls) "HLS" else "MP4",
                 color = Color.White,
                 fontSize = 9.sp,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
+                    .align(Alignment.TopEnd)
                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
                     .padding(horizontal = 3.dp, vertical = 1.dp)
                     .pointerInput(Unit) {
@@ -618,13 +621,15 @@ fun MomentInlineVideoTile(
                         )
                     },
             )
+            // Bottom-right: duration. Moved off the bottom-left so the feed
+            // card's capture-date pill can own that corner.
             if (displayDurationMs != null) {
                 Text(
                     text = formatDurationLabel(displayDurationMs),
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomEnd)
                         .padding(4.dp)
                         .background(
                             Color.Black.copy(alpha = 0.55f),
@@ -706,7 +711,7 @@ private fun MomentVideoIvMissingFallback(
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomEnd)
                         .padding(4.dp)
                         .background(
                             Color.Black.copy(alpha = 0.55f),
