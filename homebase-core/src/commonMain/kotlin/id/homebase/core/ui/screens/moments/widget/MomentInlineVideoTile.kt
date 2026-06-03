@@ -43,10 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -61,6 +59,8 @@ import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.moments.services.MomentsVideoSession
 import org.koin.compose.koinInject
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
@@ -330,6 +330,8 @@ fun MomentInlineVideoTile(
         }
     }
 
+    val haptics = rememberHaptics()
+
     Box(modifier = modifier) {
         // Layer 1: video surface (only while playing). Rendered FIRST so it
         // sits at the bottom of the stack; the thumbnail above covers it
@@ -344,7 +346,6 @@ fun MomentInlineVideoTile(
                     payload = payload,
                 )
             }
-            val haptic = LocalHapticFeedback.current
             VideoPlayerSurface(
                 data = fullScreenData,
                 modifier = Modifier
@@ -374,12 +375,12 @@ fun MomentInlineVideoTile(
                     // register a tap when the user lifts their finger. The
                     // `finally` guarantees we un-pause even if the gesture is
                     // cancelled (e.g. the tile scrolls away mid-hold).
-                    .pointerInput(haptic) {
+                    .pointerInput(haptics) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val longPressed = awaitLongPressOrCancellation(down.id)
                                 ?: return@awaitEachGesture
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.perform(HapticEvent.LongPress)
                             try {
                                 heldPaused = true
                                 longPressed.consume()

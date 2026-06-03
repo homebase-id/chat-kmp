@@ -35,6 +35,11 @@ class AppearanceSettingsViewModel(
                 userPreferences.theme = action.theme
                 _uiState.value = _uiState.value.copy(selectedTheme = action.theme)
             }
+
+            is AppearanceSettingsUiAction.HapticsEnabledChanged -> {
+                userPreferences.hapticsEnabled = action.enabled
+                _uiState.value = _uiState.value.copy(hapticsEnabled = action.enabled)
+            }
         }
     }
 
@@ -48,7 +53,8 @@ class AppearanceSettingsViewModel(
 
         _uiState.value = _uiState.value.copy(
             selectedLanguage = selectedLanguage,
-            selectedTheme = userPreferences.theme
+            selectedTheme = userPreferences.theme,
+            hapticsEnabled = userPreferences.hapticsEnabled,
         )
     }
 
