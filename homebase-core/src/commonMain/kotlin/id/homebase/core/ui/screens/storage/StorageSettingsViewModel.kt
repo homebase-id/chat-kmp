@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
@@ -34,6 +35,7 @@ class StorageSettingsViewModel(
     private val credentialsManager: CredentialsManager,
     private val databaseManager: DatabaseManager,
     private val imageLoader: ImageLoader,
+    private val homebaseImageLoader: HomebaseImageLoader,
     private val databaseSizeProbe: DatabaseSizeProbe,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveRegistry: DriveRegistry,
@@ -200,6 +202,8 @@ class StorageSettingsViewModel(
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }
             runCatching { imageLoader.memoryCache?.clear() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "coil memory clear failed" } }
+            runCatching { homebaseImageLoader.clearMemoryCache() }
+                .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "full-payload cache clear failed" } }
             // CacheSweeper absorbs the role of "delete orphan coil3_disk_cache" + adds
             // diagnostic logging for any other untracked entries — replaces the
             // standalone safeDeleteRecursively("coil3_disk_cache") line that used to

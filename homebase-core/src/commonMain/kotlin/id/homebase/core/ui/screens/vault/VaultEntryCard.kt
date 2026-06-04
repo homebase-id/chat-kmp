@@ -36,19 +36,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import id.homebase.api.client.KeyHeader
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.imageDataFor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.stringResource
 
 private val CARD_WIDTH = 100.dp
@@ -71,6 +70,15 @@ fun VaultEntryCard(
     val description = file.label?.ifBlank { null } ?: file.fileName
     val noteTitle = file.noteDisplayTitle
 
+    // Warm the full image on press so the fullscreen viewer opens sharp instead
+    // of showing the grid tile upscaled while the payload downloads + decodes.
+    val prefetchImage = rememberFullScreenImagePrefetch()
+    val prefetchData: HomebaseImageData? = remember(file.fileId, file.payloadDescriptors) {
+        val descriptor = file.payloadDescriptors.firstOrNull() ?: return@remember null
+        if (descriptor.contentType?.startsWith("image/") != true) return@remember null
+        file.imageDataFor(descriptor, loadFullPayload = true)
+    }
+
     Column(
         modifier = modifier
             .width(CARD_WIDTH)
@@ -79,7 +87,10 @@ fun VaultEntryCard(
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(
                 onClickLabel = description,
-                onClick = onClick,
+                onClick = {
+                    prefetchData?.let(prefetchImage)
+                    onClick()
+                },
             ),
     ) {
         // Thumbnail area — top 88dp
@@ -232,7 +243,6 @@ fun VaultEntryCard(
     }
 }
 
-@OptIn(ExperimentalEncodingApi::class)
 @Composable
 private fun VaultCardThumbnail(
     file: VaultEntry,
@@ -271,26 +281,19 @@ private fun VaultCardThumbnail(
 
     // 2. Encrypted server thumbnail (image or PDF — same HomebaseImage path)
     val descriptor = file.payloadDescriptors.firstOrNull()
-    val payloadIv = remember(descriptor?.iv) {
-        descriptor?.iv?.let {
-            try { Base64.decode(it) } catch (_: Exception) { null }
-        }
-    }
-    if ((file.isImage || file.isPdf) && descriptor != null && payloadIv != null) {
-        HomebaseImage(
-            imageData = HomebaseImageData(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                payloadKey = descriptor.key,
+    val thumbnailData = remember(descriptor, file.previewThumbnail) {
+        descriptor?.let {
+            file.imageDataFor(
+                it,
+                loadFullPayload = false,
                 previewThumbnail = file.previewThumbnail,
                 requestedSize = ImageSize.THUMB_MEDIUM,
-                isEncrypted = file.isEncrypted,
-                keyHeader = KeyHeader(
-                    iv = payloadIv,
-                    aesKey = file.keyHeader.aesKey,
-                ),
-                lastModified = descriptor.lastModified,
-            ),
+            )
+        }
+    }
+    if ((file.isImage || file.isPdf) && thumbnailData != null) {
+        HomebaseImage(
+            imageData = thumbnailData,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
             contentDescription = description,

@@ -3,8 +3,8 @@ package id.homebase.core.media.subsample
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -15,22 +15,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
+import coil3.size.Size
 import com.github.panpf.zoomimage.CoilZoomAsyncImage
 import com.github.panpf.zoomimage.compose.zoom.ZoomableState
 import com.github.panpf.zoomimage.rememberCoilZoomState
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.image.HomebaseImageKeyer
+import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.image.decodeBitmap
+import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
 
@@ -59,30 +58,44 @@ fun ZoomableSubSamplingImage(
     PreserveUserZoomAcrossContentSizeChange(zoomState.zoomable)
 
     val platformContext = LocalPlatformContext.current
+    val windowSize = LocalWindowInfo.current.containerSize
     val model: Any? = when (source) {
         is SubSamplingImageSource.Remote -> {
             val imageData = source.imageData
-            remember(imageData, platformContext) {
-                ImageRequest.Builder(platformContext)
-                    .data(imageData)
-                    .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))
-                    .build()
+            remember(imageData, platformContext, windowSize) {
+                if (windowSize.width > 0 && windowSize.height > 0) {
+                    // Pin the base decode to the window size so a press-time
+                    // prefetch and this request share one Coil memory-cache entry
+                    // — a cold open then hits the already-decoded bitmap.
+                    fullScreenImageRequest(
+                        platformContext, imageData, Size(windowSize.width, windowSize.height)
+                    )
+                } else {
+                    imageData
+                }
             }
         }
         is SubSamplingImageSource.LocalFile -> source.filePath
     }
 
-    // Decode the embedded tiny thumbnail so a blurred preview shows immediately
-    // while an uncached thumbnail/full image loads (cold cache). When a real
-    // thumbnail is cached it renders on top via placeholderMemoryCacheKey.
-    val previewBitmap: ImageBitmap? = remember(source) {
-        (source as? SubSamplingImageSource.Remote)?.imageData?.previewThumbnail?.decodeBitmap()
-    }
     var imageLoaded by remember(model) { mutableStateOf(false) }
 
+    // Cross-fade the sharp image in over the placeholder so the unavoidable
+    // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
+    // smooth focus-pull instead of an abrupt pop. (Modifier.blur is API 31+, so
+    // a blur-up isn't available on older devices; a cross-fade is.) Only remote
+    // images have a placeholder to fade over; a local original loads fast with
+    // nothing beneath it, so it is shown at full opacity (no fade, no blank).
+    val sharpAlpha by animateFloatAsState(
+        targetValue = if (imageLoaded) 1f else 0f,
+        animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        label = "sharpFade",
+    )
+    val contentAlpha = if (source is SubSamplingImageSource.Remote) sharpAlpha else 1f
+
     // Shared-element bounds go on the container (not the inner image) so the
-    // blurred preview animates with the open/close transition instead of
-    // popping in full-screen behind the still-animating image.
+    // placeholder animates with the open/close transition instead of popping in
+    // full-screen behind the still-animating image.
     var containerModifier: Modifier = modifier.fillMaxSize()
     if (sharedContentStateKey != null && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
@@ -101,19 +114,32 @@ fun ZoomableSubSamplingImage(
     }
 
     Box(modifier = containerModifier) {
-        if (!imageLoaded && previewBitmap != null) {
-            Image(
-                bitmap = previewBitmap,
+        // While the full-resolution payload downloads, show a thumbnail
+        // (loadFullPayload = false) as the bridge under the cross-fade.
+        // HomebaseImage paints the already-decoded list/grid tile for this image
+        // synchronously on the first frame — its thumbnail cache key is
+        // size-independent, so the tile the user just tapped is reused as a
+        // placeholder — then sharpens to a screen-resolution server thumbnail.
+        // So the bridge is the sharp tile, not the ~20px embedded blur, and there
+        // is no low-res-to-sharp jump. A local file is already the original on
+        // disk, so the image below loads it directly with no intermediate fetch.
+        if (sharpAlpha < 1f && source is SubSamplingImageSource.Remote) {
+            val imageData = source.imageData
+            val thumbnailData = remember(imageData) {
+                imageData.copy(loadFullPayload = false)
+            }
+            HomebaseImage(
+                imageData = thumbnailData,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().blur(PreviewBlurRadius),
+                modifier = Modifier.fillMaxSize(),
             )
         }
         CoilZoomAsyncImage(
             model = model,
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().alpha(contentAlpha),
             contentScale = ContentScale.Fit,
             zoomState = zoomState,
             scrollBar = null,
@@ -198,4 +224,3 @@ private data class ContentZoomSample(
 )
 
 private const val USER_SCALE_EPSILON = 1.01f
-private val PreviewBlurRadius = 12.dp
