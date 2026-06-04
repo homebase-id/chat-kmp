@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -348,6 +349,11 @@ internal fun VlcjPlayer(
         }
     }
 
+    // Latest mute state for the VLC event thread's playing() callback to read,
+    // since the listener is created once per videoPath and would otherwise close
+    // over a stale value.
+    val mutedState = rememberUpdatedState(muted)
+
     LaunchedEffect(muted) {
         mediaPlayer.audio().isMute = muted
     }
@@ -406,6 +412,14 @@ internal fun VlcjPlayer(
             true,
         )
         val eventListener = object : MediaPlayerEventAdapter() {
+            override fun playing(mp: uk.co.caprica.vlcj.player.base.MediaPlayer) {
+                // VLC creates its native audio output lazily — isMute set before the
+                // media is actually playing is silently ignored, which is why an
+                // autoplaying (muted) moment still emitted sound. Re-apply mute here,
+                // once the audio output exists. Read the current Compose state so a
+                // toggle that landed during the async start is honoured too.
+                mp.audio().isMute = mutedState.value
+            }
             override fun timeChanged(mp: uk.co.caprica.vlcj.player.base.MediaPlayer, newTime: Long) {
                 atomicPositionMs.set(newTime)
             }
@@ -434,7 +448,8 @@ internal fun VlcjPlayer(
         } else {
             mediaPlayer.media().play(videoPath)
         }
-        mediaPlayer.audio().isMute = muted
+        // Mute is applied in the playing() event above — VLC ignores isMute set
+        // before its native audio output exists, so setting it here would be a no-op.
 
         onDispose {
             mediaPlayer.events().removeMediaPlayerEventListener(eventListener)
