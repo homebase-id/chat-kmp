@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -98,6 +99,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -2078,6 +2085,17 @@ private fun CommentsPanelContent(
     fillHeight: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    // Land on the newest comment (bottom of the thread) when the panel opens and
+    // whenever the count grows — comments read oldest→newest with the latest just
+    // above the composer, so a notification/deep-link into comments should show
+    // the message that prompted it. Int.MAX_VALUE is the scroll-to-end idiom;
+    // LazyColumn clamps it to the last item, so this stays correct regardless of
+    // how many header items precede the comments.
+    val commentCount = uiState.comments.size
+    LaunchedEffect(commentCount) {
+        if (commentCount > 0) listState.scrollToItem(Int.MAX_VALUE)
+    }
     Column(modifier = modifier) {
         // Single scroll container for the whole panel body: the description,
         // the (expandable) "Shared with" metadata, and the comments thread all
@@ -2087,6 +2105,7 @@ private fun CommentsPanelContent(
         // so expansion pushed content off-screen with no way to scroll it back.
         // Only the composer below stays pinned.
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f, fill = fillHeight),
         ) {
             item(key = "description") {
@@ -2997,7 +3016,24 @@ private fun AddCommentRow(
             value = draft,
             onValueChange = onDraftChanged,
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                // Enter sends (primarily for desktop's hardware keyboard);
+                // Shift+Enter is left for the platform so it isn't hijacked.
+                // We consume every plain Enter so it never inserts into the
+                // field, and only post when there's a non-blank, non-in-flight
+                // draft.
+                .onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown &&
+                        (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
+                        !e.isShiftPressed
+                    ) {
+                        if (canSend) onSend()
+                        true
+                    } else {
+                        false
+                    }
+                },
             singleLine = true,
             enabled = !isPosting,
         )

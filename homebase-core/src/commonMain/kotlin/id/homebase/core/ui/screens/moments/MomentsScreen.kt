@@ -609,7 +609,13 @@ private fun MomentsFeedList(
     // equality, so no extra distinctUntilChanged — emissions only happen
     // when the active key actually changes (see CLAUDE.md note on the
     // double-equality-check trap).
-    LaunchedEffect(listState, videoMomentIds) {
+    //
+    // Disabled on desktop: on a pointer-driven window the feed shouldn't start
+    // playing videos on its own as the user scrolls — playback stays manual
+    // (tap a card's play button, which sets playingMomentId via onToggleVideoPlay).
+    val feedAutoplayEnabled = !isDesktop()
+    LaunchedEffect(listState, videoMomentIds, feedAutoplayEnabled) {
+        if (!feedAutoplayEnabled) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             if (info.visibleItemsInfo.isEmpty() || videoMomentIds.isEmpty()) return@snapshotFlow null
