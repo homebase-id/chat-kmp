@@ -192,6 +192,28 @@ val appModule = module {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
             mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
+            // Per-drive fresh-sync policy (sync-back window + custom initial queries) is
+            // wired and tested, but no drive opts in yet — chat behaves like every other
+            // drive (sync everything). Part 2 re-enables the chat policy below together
+            // with the "load older messages when scrolling to the top" feature; until
+            // then a fresh login would only see the last N days, which is confusing
+            // without that scroll-to-load path. Diagnostics confirmed the window itself
+            // is correct (cursor: zero duplicates / no floor breaches at 7/30/60 days).
+            //
+            // To re-enable, add the imports
+            //   id.homebase.api.client.drives.SystemDriveConstants
+            //   id.homebase.api.client.drives.query.FileQueryParams
+            //   id.homebase.api.sync.DriveSyncPolicy
+            //   kotlin.time.Duration.Companion.days
+            // and pass:
+            // driveSyncPolicies = mapOf(
+            //     SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
+            //         fullSyncWindow = 30.days,
+            //         initialQueries = listOf(
+            //             FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+            //         ),
+            //     ),
+            // ),
         )
     }
 
