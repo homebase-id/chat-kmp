@@ -73,18 +73,17 @@ class ShareShortcutPublisher(
             .setIcon(icon)
             .build()
 
-        // Share intent: receive shared content and route to the conversation
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            component = ComponentName(context, ShareReceiverActivity::class.java)
-            data = "homebase-fchat://conversation/${conversation.id}".toUri()
-            type = "*/*"
-        }
-
-        // Main intent: open the conversation directly when tapped from launcher long-press,
-        // and also runs underneath the shareIntent on Direct Share so the user lands on the
-        // conversation after sending. The EXTRA lets MainActivity tag the resulting
-        // OpenConversation event as Source.ShareIntent so AppNavHost routes via
-        // selectConversationOnChatList instead of the PendingNotificationTap path.
+        // Launch intent: open the conversation directly when the shortcut is tapped from
+        // the launcher long-press. This is the ONLY use of the shortcut's own intent — a
+        // launcher tap starts it via startActivities() semantics. Direct Share does NOT use
+        // it: the share sheet routes shared content to ShareReceiverActivity via the
+        // <share-target> entry in share_shortcuts.xml plus EXTRA_SHORTCUT_ID, and the
+        // receiver itself startActivity()s back into the conversation after sending. So
+        // this must NOT be an ACTION_SEND into ShareReceiverActivity — a launcher tap has
+        // no shared content, which would show "nothing to share" and finish.
+        // The EXTRA lets MainActivity tag the resulting OpenConversation event as
+        // Source.ShareIntent so AppNavHost routes via selectConversationOnChatList instead
+        // of the PendingNotificationTap path.
         val mainIntent = Intent(Intent.ACTION_VIEW).apply {
             component = ComponentName(context, MainActivity::class.java)
             data = "homebase-fchat://conversation/${conversation.id}".toUri()
@@ -103,7 +102,7 @@ class ShareShortcutPublisher(
             .setShortLabel(label)
             .setLongLabel(label)
             .setIcon(icon)
-            .setIntents(arrayOf(mainIntent, shareIntent))
+            .setIntent(mainIntent)
             .setLongLived(true)
             .setIsConversation()
             .setRank(rank)
