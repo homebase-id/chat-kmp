@@ -14,6 +14,7 @@
  */
 package id.homebase.core
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeUIViewController
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
@@ -95,7 +96,7 @@ fun initializeApp() {
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalComposeUiApi::class)
 fun MainViewController(): UIViewController {
     initializeApp()
     // Promote AuthCC out of headless mode — this is the iOS analogue of
@@ -107,7 +108,12 @@ fun MainViewController(): UIViewController {
     val authCC: id.homebase.core.auth.AuthConnectionCoordinator =
         org.koin.mp.KoinPlatformTools.defaultContext().get().get()
     authCC.promoteToForeground()
-    val controller = ComposeUIViewController { App() }
+    // Compose Multiplatform 1.11 turns concurrent (separate-render-thread) rendering ON by
+    // default. We pin it OFF here so this upgrade isolates the Skia m138->m144 bump from the
+    // new threading behaviour — the dedicated render thread adds glyph-atlas upload/present
+    // synchronization that is exactly the surface our cold-start blank-text race lives on.
+    // Revisit (flip to true) only as a deliberate, separately-tested experiment.
+    val controller = ComposeUIViewController(configure = { parallelRendering = false }) { App() }
     MainViewControllerRef.instance = controller
     return controller
 }
