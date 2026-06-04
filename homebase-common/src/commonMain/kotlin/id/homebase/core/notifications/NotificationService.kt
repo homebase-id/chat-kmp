@@ -543,6 +543,12 @@ class NotificationService(
             val appId = notification.options.appId
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
+            // Instrumentation: capture exactly what the backend delivered so we can
+            // confirm whether a moments-comment push arrives with its sentinel tagId
+            // intact, or whether the server rewrote/validated tagId in transit.
+            Logger.i(tag = "NotificationService") {
+                "tap payload: appId=$appId typeId=$typeId tagId=$tagId sender=${notification.senderId}"
+            }
             val momentsTap = if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
                 resolveMomentsTap(typeId, tagId)
             } else null
