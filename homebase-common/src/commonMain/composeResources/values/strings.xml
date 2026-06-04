@@ -324,6 +324,7 @@
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>
+    <string name="moments_home_subtitle">Photos, clips and notes worth keeping</string>
     <string name="moments_onboarding_title">Moments worth remembering</string>
     <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
     <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>

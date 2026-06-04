@@ -590,6 +590,7 @@ fun AppNavHost(
                                 HomeScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
+                                    onNavigateToMoments = openMoments,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
