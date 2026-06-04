@@ -42,6 +42,14 @@ internal class FullPayloadByteCache(
     private val inFlight = HashMap<String, Deferred<CachedImage?>>()
     private var sizeBytes = 0L
 
+    // Bumped by [clear]. A load captures the generation it was scheduled under
+    // and only writes its result back if the generation still matches — so a
+    // decrypt that was already in flight when [clear] ran (e.g. logout fires
+    // mid-load) cannot repopulate the cache afterward. The capture and the
+    // bump both happen under [mutex], so there is no window where a stale
+    // write-back slips past a clear.
+    private var generation = 0
+
     /**
      * Returns the cached image for [key], or loads it via [loader] exactly once
      * (coalescing concurrent callers) and caches a non-null result.
@@ -54,12 +62,15 @@ internal class FullPayloadByteCache(
                 entries[key] = hit
                 return hit
             }
+            val loadGeneration = generation
             inFlight[key] ?: scope.async(start = CoroutineStart.LAZY) {
                 try {
                     val result = loader()
                     mutex.withLock {
                         inFlight.remove(key)
-                        if (result != null) putLocked(key, result)
+                        // Skip the write-back if a clear happened since this load
+                        // was scheduled — its bytes belong to a now-cleared epoch.
+                        if (result != null && loadGeneration == generation) putLocked(key, result)
                     }
                     result
                 } catch (t: Throwable) {
@@ -92,6 +103,11 @@ internal class FullPayloadByteCache(
         mutex.withLock {
             entries.clear()
             sizeBytes = 0L
+            // Forget the in-flight slots and advance the epoch so any load still
+            // running (e.g. a decrypt that was underway when logout fired) cannot
+            // write its now-stale bytes back into the cache when it finishes.
+            inFlight.clear()
+            generation++
         }
     }
 }

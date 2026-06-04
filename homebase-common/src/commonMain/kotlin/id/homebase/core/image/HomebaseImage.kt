@@ -81,10 +81,20 @@ fun HomebaseImage(
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
 
-    // When loading full payload, use the cached thumbnail as a placeholder
+    // Paint the already-decoded thumbnail synchronously on the first frame
+    // instead of the tiny embedded preview. The thumbnail cache key is
+    // size-independent (see HomebaseImageKeyer), so whatever thumbnail is in
+    // memory for this image — a list/grid tile, or a previously loaded
+    // full-screen thumb — is shown immediately while the request resolves:
+    //   - full-payload request: bridges thumb -> full (low-res to sharp),
+    //   - thumbnail request (e.g. the full-screen viewer's placeholder): the
+    //     placeholder key equals the request's own key, so a grid/list tile
+    //     already in memory paints on frame 0 rather than the ~20px tinyThumb.
+    // Pending (local, not-yet-uploaded) files have no server thumbnail to key
+    // against, so they fall through to the raw data + embedded preview.
     val platformContext = LocalPlatformContext.current
     val model: Any = remember(imageData, platformContext) {
-        if (imageData.loadFullPayload && !imageData.isPending) {
+        if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
                 .data(imageData)
                 .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))

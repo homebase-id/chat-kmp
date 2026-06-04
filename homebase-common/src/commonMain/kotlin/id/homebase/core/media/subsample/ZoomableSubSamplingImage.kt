@@ -114,16 +114,19 @@ fun ZoomableSubSamplingImage(
     }
 
     Box(modifier = containerModifier) {
-        // While the full-resolution payload downloads, show a thumbnail sized to
-        // this fullscreen container (loadFullPayload = false) instead of letting
-        // the viewer blow up a tiny list/grid thumbnail. HomebaseImage shows the
-        // embedded blurred preview first and sharpens to a screen-resolution
-        // server thumbnail, so the user never sees the low-res-to-sharp jump.
-        // A local file is already the original on disk, so the image below loads
-        // it directly with no intermediate fetch.
+        // While the full-resolution payload downloads, show a thumbnail
+        // (loadFullPayload = false) as the bridge under the cross-fade.
+        // HomebaseImage paints the already-decoded list/grid tile for this image
+        // synchronously on the first frame — its thumbnail cache key is
+        // size-independent, so the tile the user just tapped is reused as a
+        // placeholder — then sharpens to a screen-resolution server thumbnail.
+        // So the bridge is the sharp tile, not the ~20px embedded blur, and there
+        // is no low-res-to-sharp jump. A local file is already the original on
+        // disk, so the image below loads it directly with no intermediate fetch.
         if (sharpAlpha < 1f && source is SubSamplingImageSource.Remote) {
-            val thumbnailData = remember(source) {
-                source.imageData.copy(loadFullPayload = false)
+            val imageData = source.imageData
+            val thumbnailData = remember(imageData) {
+                imageData.copy(loadFullPayload = false)
             }
             HomebaseImage(
                 imageData = thumbnailData,

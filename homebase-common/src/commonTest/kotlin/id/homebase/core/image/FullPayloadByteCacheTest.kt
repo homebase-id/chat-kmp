@@ -119,6 +119,32 @@ class FullPayloadByteCacheTest {
     }
 
     @Test
+    fun `clear while a load is in flight does not repopulate the cache`() = runTest {
+        val cache = newCache(10_000)
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val loader: suspend () -> CachedImage? = { calls++; gate.await(); cachedImage(100) }
+
+        // A decrypt is in flight: the load registers and parks at the gate.
+        val inFlight = async { cache.getOrLoad("k", loader) }
+        advanceUntilIdle()
+        assertEquals(1, calls)
+
+        // Logout-style clear runs while the load is still parked.
+        cache.clear()
+
+        // The parked load now finishes. Its bytes belong to the cleared epoch,
+        // so they must NOT be written back — but the awaiter still gets them.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(100, inFlight.await()?.bytes?.size)
+
+        // A fresh request reloads, proving the stale load did not repopulate.
+        cache.getOrLoad("k") { calls++; cachedImage(100) }
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun `entry larger than the whole budget is served but not retained`() = runTest {
         val cache = newCache(100)
         var calls = 0
