@@ -342,11 +342,24 @@ fun AppNavHost(
                     }
                     // Only route when Moments is activated (receiving a moment push
                     // implies the moments drive is subscribed, so this normally holds).
-                    // Push Moments first so back-press from the reels detail lands on
-                    // the feed, then open the detail pager on the tapped moment. The
-                    // pager resolves the moment from MomentsFeedService's live feed,
-                    // which is already syncing post-auth (and waits for it to arrive).
                     if (momentId != null && momentsPreferences.activated.value) {
+                        // Cold-start safety: a tap can arrive while the NavHost is
+                        // still on Route.AppLoading (startDestination). AppLoadingScreen
+                        // finishes by navigating to ChatList with
+                        // popUpTo(AppLoading, inclusive = true) — so anything we push
+                        // *during* loading (Moments/MomentDetail) gets popped off with
+                        // AppLoading and the user lands on ChatList. Gate on ChatList
+                        // being present (returns immediately when warm; on cold start
+                        // resolves the instant AppLoading→ChatList completes, by which
+                        // point AppLoading is already gone) before pushing. Mirrors the
+                        // OpenConversation gate above.
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        // Push Moments first so back-press from the reels detail lands
+                        // on the feed, then open the detail pager on the tapped moment.
+                        // The pager resolves the moment from MomentsFeedService's live
+                        // feed, which is already syncing post-auth (and waits for it).
                         navController.navigate(Route.Moments) {
                             popUpTo(Route.ChatList) { saveState = true }
                             launchSingleTop = true
