@@ -44,6 +44,8 @@ import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.emoji.EmojiNormalization.containsEmoji
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_reaction
@@ -187,6 +189,7 @@ fun ReactionMenu(
     val baseDefaults = listOf("❤️", "👍", "👎", "😂", "😮", "😢")
     val reactions = (userDefaultReactions + baseDefaults).distinctByEmoji().take(6)
     val scrollState = rememberScrollState()
+    val haptics = rememberHaptics()
 
     Surface(
         modifier = modifier
@@ -211,7 +214,10 @@ fun ReactionMenu(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .clickable { onSelect(emoji) }
+                        .clickable {
+                            haptics.perform(HapticEvent.Confirm)
+                            onSelect(emoji)
+                        }
                         .let { if (isOwn) it.testTag("reaction_chip_own") else it },
                 ) {
                     Box(

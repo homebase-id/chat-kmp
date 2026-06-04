@@ -20,6 +20,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,8 @@ class ChatMessageStream(
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
-    private val driveFileProvider: DriveFileProvider
+    private val driveFileProvider: DriveFileProvider,
+    private val optimisticWriter: OptimisticWriter
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
@@ -67,6 +69,18 @@ class ChatMessageStream(
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
                             paginatedState.removeMessage(event.uniqueId)
+                        }
+                    }
+
+                    // The outbox permanently gave up on this item (permanent failure
+                    // or 20 retries exhausted). For a message that means it will never
+                    // arrive back from the server to clear isPendingSendTag — so the
+                    // bubble would spin forever. Swap the pending tag for the failed
+                    // tag so the bubble shows the error icon. Conversation/admin file
+                    // drops are ignored in markSendFailed (no bubble).
+                    is BackendEvent.OutboxEvent.OutboxItemDropped -> {
+                        if (event.driveId == chatDrive) {
+                            scope.launch { markSendFailed(event.uniqueId) }
                         }
                     }
 
@@ -370,6 +384,28 @@ class ChatMessageStream(
             chatDrive,
             messageId
         )
+    }
+
+    /**
+     * An outbox item for [uniqueId] was permanently dropped. If it's a chat *message*,
+     * swap its [ChatProtocol.isPendingSendTag] for [ChatProtocol.isFailedSendTag] so the
+     * bubble shows the Failed icon instead of spinning forever.
+     *
+     * Non-message drops are ignored: a dropped conversation file
+     * (`uniqueId == conversationId`) or admin file has no message bubble; its dependent
+     * messages each surface their own outcome via this same handler when they drop.
+     */
+    private suspend fun markSendFailed(uniqueId: Uuid) {
+        val file = getMessageFile(uniqueId) ?: return
+        if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) return
+
+        val existingTags = file.fileMetadata.localAppData?.tags.orEmpty()
+        // Already terminal — nothing to do (avoids a redundant upsert/BatchReceived).
+        if (ChatProtocol.isFailedSendTag in existingTags) return
+
+        val newTags = existingTags
+            .filterNot { it == ChatProtocol.isPendingSendTag } + ChatProtocol.isFailedSendTag
+        optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
     }
 
     /** Walk the open conversations' in-memory message lists for a model whose

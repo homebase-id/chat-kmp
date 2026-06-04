@@ -43,10 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -58,10 +56,11 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.widget.video.VideoPlayerSurface
-import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.moments.services.MomentsVideoSession
 import org.koin.compose.koinInject
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
@@ -214,11 +213,6 @@ fun MomentInlineVideoTile(
 
     val isButtonOnly = tapMode == MomentVideoTapMode.ButtonOnly
 
-    // Hidden debug overlay: long-press the MP4/HLS badge to toggle the codec-info
-    // panel; long-press again (or tap) to dismiss. Reachable while the tile is
-    // idle (the badge is hidden during playback).
-    var showVideoInfo by remember(fileId, payload.key) { mutableStateOf(false) }
-
     // Effective crop-to-fill decision for both the player surface and the
     // thumbnail underlay. Preserves the prior behaviour — inline tiles
     // (no native controls) crop-to-fill, native-controls callers follow their
@@ -336,6 +330,8 @@ fun MomentInlineVideoTile(
         }
     }
 
+    val haptics = rememberHaptics()
+
     Box(modifier = modifier) {
         // Layer 1: video surface (only while playing). Rendered FIRST so it
         // sits at the bottom of the stack; the thumbnail above covers it
@@ -350,7 +346,6 @@ fun MomentInlineVideoTile(
                     payload = payload,
                 )
             }
-            val haptic = LocalHapticFeedback.current
             VideoPlayerSurface(
                 data = fullScreenData,
                 modifier = Modifier
@@ -380,12 +375,12 @@ fun MomentInlineVideoTile(
                     // register a tap when the user lifts their finger. The
                     // `finally` guarantees we un-pause even if the gesture is
                     // cancelled (e.g. the tile scrolls away mid-hold).
-                    .pointerInput(haptic) {
+                    .pointerInput(haptics) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val longPressed = awaitLongPressOrCancellation(down.id)
                                 ?: return@awaitEachGesture
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.perform(HapticEvent.LongPress)
                             try {
                                 heldPaused = true
                                 longPressed.consume()
@@ -603,27 +598,15 @@ fun MomentInlineVideoTile(
                     tint = Color.White.copy(alpha = 0.85f),
                 )
             }
-            Text(
-                text = if (isHls) "HLS" else "MP4",
-                color = Color.White,
-                fontSize = 9.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 3.dp, vertical = 1.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = { showVideoInfo = !showVideoInfo },
-                        )
-                    },
-            )
+            // Bottom-right: duration. Moved off the bottom-left so the feed
+            // card's capture-date pill can own that corner.
             if (displayDurationMs != null) {
                 Text(
                     text = formatDurationLabel(displayDurationMs),
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomEnd)
                         .padding(4.dp)
                         .background(
                             Color.Black.copy(alpha = 0.55f),
@@ -632,21 +615,6 @@ fun MomentInlineVideoTile(
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
-        }
-
-        if (showVideoInfo && !isUploading) {
-            VideoInfoOverlay(
-                descriptor = videoDescriptor,
-                isHls = isHls,
-                modifier = Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { showVideoInfo = false },
-                            onLongPress = { showVideoInfo = false },
-                        )
-                    },
-            )
         }
 
         // Preload progress only meaningful while idle; once the user has
@@ -705,7 +673,7 @@ private fun MomentVideoIvMissingFallback(
                     color = Color.White,
                     fontSize = 10.sp,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomEnd)
                         .padding(4.dp)
                         .background(
                             Color.Black.copy(alpha = 0.55f),
