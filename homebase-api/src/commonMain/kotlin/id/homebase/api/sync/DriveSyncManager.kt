@@ -37,6 +37,12 @@ class DriveSyncManager(
     // valid (before the WebSocket handshake), so these drives appear in [driveStatuses]
     // independently of WS state.
     private val mandatoryDrives: Map<Uuid, String>,
+    // Per-drive fresh-sync overrides (sync-back window + initial queries), keyed by
+    // drive alias — same key space as [mandatoryDrives]. An absent key means the
+    // default policy (sync everything, no initial query). Assembled in
+    // homebase-core's AppModule where chat-specific fileTypes are visible; this layer
+    // stays drive-agnostic.
+    private val driveSyncPolicies: Map<Uuid, DriveSyncPolicy> = emptyMap(),
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
     // All writes are serialized via driveSyncsMutex, which provides the happens-before
@@ -321,6 +327,7 @@ class DriveSyncManager(
                     eventBus = eventBus,
                     scope = scope,
                     expectFreshCursor = freshLogin,
+                    policy = driveSyncPolicies[driveId] ?: DriveSyncPolicy(),
                 )
             } catch (e: CancellationException) {
                 // Don't swallow cancellation — let the caller's scope tear down cleanly.

@@ -37,6 +37,7 @@ class DriveSync(
     private val eventBus: EventBus,
     scope: CoroutineScope? = null,
     expectFreshCursor: Boolean = false,
+    private val policy: DriveSyncPolicy = DriveSyncPolicy(),
 ) {
     // Background work is Network and DB bound, so using IO
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -125,6 +126,29 @@ class DriveSync(
         var pendingDbJob: Deferred<Unit>? = null
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+
+        // Snapshot fresh-sync state BEFORE the windowed loop below mutates `cursor`.
+        // Fresh = first login or a discarded stale cursor (loadCursor returned null).
+        // Both policy knobs gate on this; re-reading the field later would be wrong
+        // because the first windowed batch overwrites `cursor`.
+        val isFreshSync = cursor == null
+        if (isFreshSync) {
+            // (a) Custom initial queries (e.g. the chat conversation list). These
+            //     persist NO cursor, so an interruption simply re-runs them on the
+            //     next fresh sync. totalCount carries forward so the windowed
+            //     Progress counts continue upward (DriveSyncManager's monotonic
+            //     `>= current.count` guard would otherwise swallow the first one).
+            totalCount = runInitialQueries(startCount = totalCount)
+
+            // (b) Seed the windowed crawl floor. fromStartPoint sets paging.time
+            //     only; OldestFirst makes the first page return rows changed after
+            //     the floor. Subsequent pages advance via the response cursorState.
+            policy.fullSyncWindow?.let { window ->
+                val floor = UnixTimeUtc().addMilliseconds(-window.inWholeMilliseconds)
+                cursor = QueryBatchCursor.fromStartPoint(floor)
+                Logger.i("DriveSync: fresh sync on $driveId seeded window floor=${floor.milliseconds}")
+            }
+        }
 
         var retryCount = 0
         val maxRetries = 3
@@ -269,5 +293,69 @@ class DriveSync(
             Logger.e("Sync failed due to DB error: ${e.message}")
             eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Aborted(e.message ?: "DB upsert failed")))
         }
+    }
+
+    /**
+     * Runs each [DriveSyncPolicy.initialQueries] entry to completion (full
+     * pagination) at the start of a fresh sync, upserting results with
+     * `cursor = null` so the drive's persisted CursorStorage position is never
+     * touched. Returns the running total so the windowed crawl's Progress counts
+     * continue from here. Uses the same OldestFirst / AnyChangeDate ordering as the
+     * main crawl, paginating with a LOCAL cursor that's never saved.
+     *
+     * Best-effort: a query failure is logged and we fall through to the windowed
+     * crawl rather than aborting the whole round — a conversation-list hiccup must
+     * not block message sync. The next fresh sync re-runs these (idempotent
+     * upserts), so nothing is lost.
+     */
+    private suspend fun runInitialQueries(startCount: Int): Int {
+        if (policy.initialQueries.isEmpty()) return startCount
+        var runningTotal = startCount
+
+        for (queryParams in policy.initialQueries) {
+            var initialCursor: QueryBatchCursor? = null
+            while (true) {
+                val request = QueryBatchRequest(
+                    queryParams = queryParams,
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(
+                        maxRecords = batchSize,
+                        includeMetadataHeader = true,
+                        cursorState = initialCursor?.toJson(),
+                        includeTransferHistory = true,
+                        ordering = QueryBatchSortOrder.OldestFirst,
+                        sorting = QueryBatchSortField.AnyChangeDate
+                    )
+                )
+
+                val response = try {
+                    killroy.value = false // Atomic
+                    driveQueryProvider.queryBatch(driveId, request)
+                } catch (e: Exception) {
+                    Logger.w("DriveSync: initial query on $driveId failed, continuing to windowed crawl: ${e.message}")
+                    return runningTotal
+                }
+
+                if (response.cursorState != null)
+                    initialCursor = QueryBatchCursor.fromJson(response.cursorState)
+
+                val results = response.searchResults
+                if (results.isNotEmpty()) {
+                    // cursor = null: do NOT clobber the windowed drive cursor —
+                    // performBaseUpsert persists any non-null cursor to CursorStorage.
+                    fileHeaderProcessor.baseUpsertEntryZapZap(
+                        identityId = identityId,
+                        driveId = driveId,
+                        fileHeaders = results,
+                        cursor = null
+                    )
+                    runningTotal += results.size
+                    eventBus.emit(BackendEvent.DriveEvent.Progress(driveId, runningTotal))
+                }
+
+                if (!response.hasMoreRows) break
+            }
+        }
+        Logger.i("DriveSync: initial queries done on $driveId, $runningTotal records")
+        return runningTotal
     }
 }
