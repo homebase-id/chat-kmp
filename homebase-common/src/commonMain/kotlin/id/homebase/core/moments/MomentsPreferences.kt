@@ -13,7 +13,10 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
     private val _activated = MutableStateFlow(readBoolean(ACTIVATED_KEY, default = false))
     val activated: StateFlow<Boolean> = _activated.asStateFlow()
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = false))
+    // Visible by default — Moments shows in the bottom nav out of the box; tapping
+    // it before onboarding routes to the activation flow (see AppNavHost.openMoments).
+    // Users can still hide it from Settings (persists false, overriding this default).
+    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     private val _viewMode = MutableStateFlow(readViewMode())
