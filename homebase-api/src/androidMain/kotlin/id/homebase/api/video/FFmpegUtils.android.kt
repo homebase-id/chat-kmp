@@ -78,26 +78,11 @@ actual object FFmpegUtils {
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
-    actual suspend fun grabThumbnail(inputPath: String): String? =
-        withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireApplicationContext()
-            val uniqueId = getUniqueId(inputPath)
-            val outputFile = File(context.cacheDir, "thumb-$uniqueId.jpg")
-            if (outputFile.exists() && outputFile.length() > 0L) {
-                return@withContext outputFile.absolutePath
-            }
-
-            // Delegate to the platform-native poster-frame extractor. Same
-            // MediaMetadataRetriever + content-resolver fallbacks that the
-            // scrubber preview uses; works for both file paths and content://
-            // URIs, and avoids the FFmpegKit JNI surface entirely (the v7
-            // upgrade aborted on HLS-remuxed MP4 inputs here, see homebase.log
-            // tombstone from 2026-05-17).
-            val bytes = VideoThumbnailService.extractPosterFrame(inputPath)
-                ?: return@withContext null
-            outputFile.writeBytes(bytes)
-            outputFile.absolutePath
-        }
+    // No `grabThumbnail` actual: Android's thumbnail decoder is MediaMetadataRetriever-backed
+    // (platformFfmpegDecoder() == null), so nothing on this platform needs the ffmpeg poster
+    // helper. Poster frames go through VideoThumbnailService.extractPosterFrame. grabThumbnail
+    // is no longer in the FFmpegUtils expect — it survives only as a JVM/native-internal helper
+    // for the two platforms whose thumbnail decoder is ffmpeg-backed.
 
     actual suspend fun getRotationFromFile(filePath: String): Int =
         withContext(Dispatchers.IO) {

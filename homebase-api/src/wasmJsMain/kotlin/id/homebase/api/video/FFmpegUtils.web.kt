@@ -35,18 +35,10 @@ actual object FFmpegUtils {
 
     actual fun getUniqueId(filePath: String): String = filePath
 
-    actual suspend fun grabThumbnail(inputPath: String): String? {
-        val safe = inputPath.substringAfterLast('/').ifBlank { "video" }
-        val thumbPath = "$CACHE_DIR/thumb-$safe.jpg"
-        val existing = thumbPath.toPath()
-        if (systemFileSystem.exists(existing) &&
-            (systemFileSystem.metadataOrNull(existing)?.size ?: 0L) > 0L
-        ) {
-            return thumbPath
-        }
-        val jpeg = VideoThumbnailService.extractPosterFrame(inputPath) ?: return null
-        return writeCacheBytes("thumb-$safe.jpg", jpeg)
-    }
+    // No `grabThumbnail` actual: web poster frames go through VideoThumbnailService
+    // (<video>+<canvas> primary, ffmpeg.wasm fallback). grabThumbnail is no longer in the
+    // FFmpegUtils expect — it survives only as a JVM/native-internal helper for the two
+    // platforms whose thumbnail decoder is ffmpeg-backed.
 
     actual suspend fun getRotationFromFile(filePath: String): Int {
         val bytes = readOkioBytes(filePath) ?: return 0
