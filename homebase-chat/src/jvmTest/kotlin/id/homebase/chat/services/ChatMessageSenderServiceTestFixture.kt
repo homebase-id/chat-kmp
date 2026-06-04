@@ -178,7 +178,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         )
     }
 
-    fun outboxRowCount(): Long = dbm.outbox.count()
+    suspend fun outboxRowCount(): Long = dbm.outbox.count()
 
     /**
      * Drain checked-out rows. Same caveat as the helper in

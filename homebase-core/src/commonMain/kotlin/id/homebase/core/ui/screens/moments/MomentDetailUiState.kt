@@ -5,12 +5,22 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
+import id.homebase.core.moments.services.MomentsRecipientId
+import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource
 
 data class MomentDetailUiState(
     val moment: MomentFeedItem? = null,
     val isLoading: Boolean = true,
+    /**
+     * Coil model for a just-posted moment whose payloads haven't landed yet
+     * (photo file path, or a video's poster-frame JPEG bytes). Lets the
+     * reels/detail media area show the picked media + a spinner during the
+     * "Preparing…" window instead of a black backdrop — mirrors the timeline
+     * card's placeholder behaviour. Null once real payloads arrive.
+     */
+    val pendingLocalPreviewModel: Any? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     /**
      * Payload key the detail carousel should land on when first opened —
@@ -39,6 +49,16 @@ data class MomentDetailUiState(
     val isSavingCommentEdit: Boolean = false,
 
     /**
+     * True while the moment's description is being edited inline in the detail
+     * panel. Only the author (see [isMine]) can enter this state. [descriptionDraft]
+     * holds the in-progress text; [isSavingDescription] is set while the
+     * `updateMoment` write is in flight.
+     */
+    val isEditingDescription: Boolean = false,
+    val descriptionDraft: String = "",
+    val isSavingDescription: Boolean = false,
+
+    /**
      * Quick-react emoji set surfaced in the moment's reactions row and the
      * per-comment react affordance. Sourced from `UserPreferences.preferredUserReactions`
      * (same store the chat composer reads). Empty when the user hasn't
@@ -64,6 +84,15 @@ data class MomentDetailUiState(
 
     /** True while the delete request is in flight. */
     val isDeleting: Boolean = false,
+
+    /**
+     * True while the "Save current" flow is decrypting (and, for HLS video,
+     * remuxing) the visible carousel payload to a cache file. Drives the
+     * overflow-menu spinner so the user knows the save is in progress — the
+     * decrypt/remux is the slow part; the device-gallery write that follows is
+     * near-instant.
+     */
+    val isSavingMedia: Boolean = false,
 
     /**
      * Comment ids whose delete is currently in flight. The comment row reads
@@ -118,6 +147,63 @@ data class MomentDetailUiState(
      * is empty.
      */
     val recipientAvatars: List<RecipientBaseUiModel> = emptyList(),
+
+    /**
+     * Whether the "who reacted" bottom sheet is open. Opening it triggers
+     * an on-demand fetch via `MomentActionService.getReactionsForMoment` so
+     * the sheet only pays the round-trip when the user actually asks. The
+     * chips above the sheet keep using `moment.reactionPreview`, which is
+     * already live-updated by the feed.
+     */
+    val showReactionsSheet: Boolean = false,
+
+    /** True while a reaction-list fetch is in flight. */
+    val isReactionsLoading: Boolean = false,
+
+    /**
+     * Per-reactor rows for the bottom sheet — one entry per (odinId, emoji)
+     * pair returned by the server. Resolved against the user's contact list
+     * for display names so the sheet matches chat's MessageInfo "Reactions"
+     * section visually and semantically.
+     */
+    val reactions: List<MomentReactionUiModel> = emptyList(),
+
+    /**
+     * Whether the "Add people" recipient picker sheet is open. Author-only
+     * (gated on [isMine]); lets the author widen an already-posted moment's
+     * audience without re-composing.
+     */
+    val showAddRecipientsSheet: Boolean = false,
+
+    /**
+     * Recipient candidates for the "Add people" sheet — the same MRU /
+     * groups / contacts snapshot the compose-time audience picker uses,
+     * mirrored from `MomentsRecipientLookupService`.
+     */
+    val addRecipientsSnapshot: MomentsRecipientsSnapshot = MomentsRecipientsSnapshot.empty(),
+
+    /** Search query inside the "Add people" sheet. */
+    val addRecipientsQuery: String = "",
+
+    /**
+     * Newly-picked recipients in the "Add people" sheet (the additions only —
+     * recipients already on the moment render as locked and aren't selectable).
+     */
+    val addRecipientsSelected: Set<MomentsRecipientId> = emptySet(),
+
+    /** True while the add-recipients update is being enqueued. */
+    val isAddingRecipients: Boolean = false,
+)
+
+/**
+ * One row in the "who reacted" bottom sheet. Shape mirrors chat's
+ * `ReactionUiModel` in MessageInfoUiState — same fields, same render — but
+ * lives in the moments namespace so the surfaces can evolve independently.
+ */
+data class MomentReactionUiModel(
+    val odinId: OdinId,
+    val displayName: String,
+    val emoji: String,
 )
 
 /**
@@ -196,6 +282,16 @@ sealed interface MomentDetailUiAction {
     data object SaveCommentEdit : MomentDetailUiAction
     data object CancelCommentEdit : MomentDetailUiAction
 
+    /**
+     * Edit the moment's own description (owner-only). Start seeds the draft
+     * with the current description; Save commits via `updateMoment`; Cancel
+     * discards.
+     */
+    data object StartEditDescription : MomentDetailUiAction
+    data class DescriptionDraftChanged(val text: String) : MomentDetailUiAction
+    data object SaveDescriptionEdit : MomentDetailUiAction
+    data object CancelDescriptionEdit : MomentDetailUiAction
+
     /** Toggle a reaction on the moment itself. */
     data class ToggleReactionOnMoment(val emoji: String) : MomentDetailUiAction
 
@@ -241,11 +337,47 @@ sealed interface MomentDetailUiAction {
      * platform share sheet.
      */
     data class ShareMedia(val payloadKey: String) : MomentDetailUiAction
+
+    /**
+     * Overflow-menu "Save current" tapped. Decrypts the given carousel payload
+     * (the one currently on screen) and emits [MomentDetailUiEvent.MediaSaveReady]
+     * so the screen can hand it to the platform save-to-device flow. HLS video
+     * is remuxed to a playable MP4 first.
+     */
+    data class SaveMedia(val payloadKey: String) : MomentDetailUiAction
+
+    /** Open the "who reacted" bottom sheet and fetch the reactor list. */
+    data object OpenReactionsSheet : MomentDetailUiAction
+
+    /** Dismiss the "who reacted" bottom sheet. */
+    data object DismissReactionsSheet : MomentDetailUiAction
+
+    /**
+     * Overflow-menu "Add people" tapped — open the recipient picker sheet to
+     * widen the moment's audience. Author-only; the VM re-checks [isMine].
+     */
+    data object RequestAddRecipients : MomentDetailUiAction
+
+    /** Dismiss the "Add people" sheet without sending. */
+    data object DismissAddRecipientsSheet : MomentDetailUiAction
+
+    /** Search query changed inside the "Add people" sheet. */
+    data class AddRecipientsQueryChanged(val text: String) : MomentDetailUiAction
+
+    /** Toggle a candidate recipient's selection in the "Add people" sheet. */
+    data class ToggleAddRecipient(val id: MomentsRecipientId) : MomentDetailUiAction
+
+    /**
+     * Confirm the additions — re-distributes the existing media to the newly
+     * picked recipients via `MomentsPostSenderService.addRecipientsToMoment`.
+     */
+    data object ConfirmAddRecipients : MomentDetailUiAction
 }
 
 sealed interface MomentDetailUiEvent {
     data class CommentPostFailed(val message: String?) : MomentDetailUiEvent
     data class CommentEditFailed(val message: String?) : MomentDetailUiEvent
+    data class DescriptionEditFailed(val message: String?) : MomentDetailUiEvent
     data class ReactionFailed(val message: String?) : MomentDetailUiEvent
 
     /** Delete completed — screen should pop back to the feed. */
@@ -260,4 +392,19 @@ sealed interface MomentDetailUiEvent {
      */
     data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
+
+    /**
+     * Decrypted (and, for HLS, remuxed) payload is written to [filePath]; the
+     * screen should hand it + [suggestedName] to `FileSystemHandler.saveFile`
+     * to write it into the device gallery / Downloads.
+     */
+    data class MediaSaveReady(
+        val filePath: String,
+        val suggestedName: String,
+    ) : MomentDetailUiEvent
+    data class MediaSaveFailed(val message: String?) : MomentDetailUiEvent
+
+    /** Audience successfully widened by [count] new recipients. */
+    data class RecipientsAdded(val count: Int) : MomentDetailUiEvent
+    data class AddRecipientsFailed(val message: String?) : MomentDetailUiEvent
 }

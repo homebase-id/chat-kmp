@@ -2,6 +2,8 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -53,9 +55,12 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.video.formatDurationLabel
+import id.homebase.common.widget.VideoInfoOverlay
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -226,7 +231,7 @@ fun MediaItem(
         contentType.startsWith("image/") -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
-                val gestureModifier = if (onClick != null || onLongPress != null) {
+                var imageModifier = if (onClick != null || onLongPress != null) {
                     finalModifier.pointerInput(onClick, onLongPress) {
                         detectTapGestures(
                             onTap = { onClick?.invoke() },
@@ -236,14 +241,30 @@ fun MediaItem(
                 } else {
                     finalModifier
                 }
+                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        imageModifier = imageModifier.sharedBounds(
+                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = { _, _ ->
+                                tween(
+                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                                    easing = FastOutSlowInEasing,
+                                )
+                            },
+                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                        )
+                    }
+                }
                 AsyncImage(
                     model = imageLocalContext.localFilePath,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = gestureModifier,
+                    modifier = imageModifier,
                     contentScale = imageContentScale,
                 )
             } else {
                 // Render image via HomebaseImage
+                val prefetchImage = rememberFullScreenImagePrefetch()
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
@@ -268,7 +289,14 @@ fun MediaItem(
                         modifier = finalModifier,
                         contentScale = imageContentScale,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onClick = onClick,
+                        onClick = onClick?.let { click ->
+                            {
+                                // Warm the fullscreen bitmap on tap so the viewer
+                                // opens instantly (mirrors the Vault grid).
+                                prefetchImage(imageData.copy(loadFullPayload = true))
+                                click()
+                            }
+                        },
                         onLongPress = onLongPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -304,6 +332,10 @@ fun MediaItem(
                 val isHls = videoDescriptor?.isSegmented == true
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+                // Hidden debug overlay: long-press the MP4/HLS tag to toggle a
+                // panel of the video's real technical metadata; long-press again
+                // (or tap) to dismiss.
+                var showVideoInfo by remember(fileId, payload.key) { mutableStateOf(false) }
                 if (!isUploading) {
                     VideoPreloadEffect(
                         data = videoPlayerData,
@@ -386,7 +418,12 @@ fun MediaItem(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                                .padding(horizontal = 3.dp, vertical = 1.dp),
+                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = { showVideoInfo = !showVideoInfo },
+                                    )
+                                },
                         )
                         if (displayDurationMs != null) {
                             Text(
@@ -403,6 +440,20 @@ fun MediaItem(
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
+                    }
+                    if (showVideoInfo && !isUploading) {
+                        VideoInfoOverlay(
+                            descriptor = videoDescriptor,
+                            isHls = isHls,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = { showVideoInfo = false },
+                                        onLongPress = { showVideoInfo = false },
+                                    )
+                                },
+                        )
                     }
                     if (isPreloading && !isUploading) {
                         Box(

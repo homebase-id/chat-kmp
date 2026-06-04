@@ -69,8 +69,12 @@ class ChatReadCountWrapper(
      * Select all conversations (fileType 8888) from DriveMainIndex
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectAllConversations(identityId: Uuid): List<HomebaseFile> {
-        val list = delegate.selectAllCoversations(identityId).executeAsList()
+    suspend fun selectAllConversations(identityId: Uuid): List<HomebaseFile> {
+        // Read on the read lane so it doesn't serialize behind cold-load DriveSync writes
+        // on the single writer connection; map outside the lane (CPU-bound deserialize).
+        val list = databaseManager.readValue("selectAllConversations") {
+            delegate.selectAllCoversations(identityId).executeAsList()
+        }
         return list.mapNotNull {
             try {
                 OdinSystemSerializer.deserialize<HomebaseFile>(it)
@@ -86,19 +90,23 @@ class ChatReadCountWrapper(
      * set. Cheap (index-backed, empty in the normal case); intended to run once per cold
      * start after the chat drive's initial sync settles.
      */
-    fun selectOrphanedAtRestConversations(
+    suspend fun selectOrphanedAtRestConversations(
         identityId: Uuid,
         selfDomain: String,
     ): List<OrphanedAtRestConversation> {
-        return delegate.selectOrphanedAtRestConversations(identityId = identityId, selfDomain = selfDomain)
-            .executeAsList()
-            .map {
-                OrphanedAtRestConversation(
-                    conversationId = it.groupId,
-                    messageCount = it.messageCount,
-                    counterpartyAuthor = it.counterpartyAuthor,
-                )
-            }
+        val rows = databaseManager.readValue("chatReadCount.selectOrphanedAtRestConversations") {
+            delegate.selectOrphanedAtRestConversations(
+                identityId = identityId,
+                selfDomain = selfDomain,
+            ).executeAsList()
+        }
+        return rows.map {
+            OrphanedAtRestConversation(
+                conversationId = it.groupId,
+                messageCount = it.messageCount,
+                counterpartyAuthor = it.counterpartyAuthor,
+            )
+        }
     }
 
     private val logger = Logger.withTag("ConversationQueries")
@@ -109,11 +117,15 @@ class ChatReadCountWrapper(
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
 
-    fun selectAllConversationPlusLastMessage(identityId: Uuid): List<ConversationWithLastMessage> {
+    suspend fun selectAllConversationPlusLastMessage(identityId: Uuid): List<ConversationWithLastMessage> {
 
         val start = Clock.System.now().toEpochMilliseconds()
 
-        val list = delegate.selectAllConversationPlusLastMessage(identityId).executeAsList()
+        // Read on the read lane (correlated-subquery aggregate — heavy on cold cache); map
+        // outside the lane. SlowDbRead logs this read's own queueWait/sql split.
+        val list = databaseManager.readValue("selectAllConversationPlusLastMessage") {
+            delegate.selectAllConversationPlusLastMessage(identityId).executeAsList()
+        }
 
         logger.d { "Fetched rows=${list.size} in ${Clock.System.now().toEpochMilliseconds() - start}ms" }
 
@@ -163,19 +175,19 @@ class ChatReadCountWrapper(
      * Get unread message count for a specific conversation
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectUnreadCountForConversation(
+    suspend fun selectUnreadCountForConversation(
         identityId: Uuid,
         groupId: Uuid,
         selfDomain: OdinId,
     ): Long {
-        val result = delegate.selectUnreadCountForConversation(
-            identityId, groupId, selfDomain.domainName
-        ).executeAsOneOrNull()
-
-        if (result == null)
-            return 0
-
-        return result
+        val result = databaseManager.readValue("chatReadCount.selectUnreadCountForConversation") {
+            delegate.selectUnreadCountForConversation(
+                identityId,
+                groupId,
+                selfDomain.domainName,
+            ).executeAsOneOrNull()
+        }
+        return result ?: 0
     }
 
     /**
@@ -183,7 +195,12 @@ class ChatReadCountWrapper(
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
     suspend fun selectAllUnreadCount(identityId: Uuid, originalAuthor: OdinId): List<ConversationUnreadCount> {
-        val list = delegate.selectAllUnreadCount(identityId, originalAuthor.domainName).executeAsList()
+        // The cold-load unread aggregate (full DriveMainIndex GROUP BY) — the read that the
+        // device log showed blocking early taps for ~2.8s while it contended with the sync
+        // writer on the single connection. On the read lane it runs concurrently instead.
+        val list = databaseManager.readValue("selectAllUnreadCount") {
+            delegate.selectAllUnreadCount(identityId, originalAuthor.domainName).executeAsList()
+        }
         return list.map {
             ConversationUnreadCount(
                 conversationId = it.groupId,
@@ -194,9 +211,10 @@ class ChatReadCountWrapper(
     }
 
     /** Raw stored lastReadTime (epoch ms) for a conversation, or null if none. */
-    fun selectLastReadTimeMs(groupId: Uuid): Long? {
-        return delegate.selectLastReadTime(groupId).executeAsOneOrNull()
-    }
+    suspend fun selectLastReadTimeMs(groupId: Uuid): Long? =
+        databaseManager.readValue("chatReadCount.selectLastReadTimeMs") {
+            delegate.selectLastReadTime(groupId).executeAsOneOrNull()
+        }
 
     /**
      * Upsert last read time for a conversation

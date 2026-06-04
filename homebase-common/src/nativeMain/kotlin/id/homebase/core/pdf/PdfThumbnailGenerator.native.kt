@@ -40,6 +40,7 @@ actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThu
         try {
             val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
             try {
+                @Suppress("UNCHECKED_CAST")
                 val document = CGPDFDocumentCreateWithURL(
                     cfUrl as platform.CoreFoundation.CFURLRef,
                 ) ?: return null

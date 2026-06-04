@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -79,6 +78,7 @@ import id.homebase.resources.vault_note_share
 import id.homebase.resources.vault_note_title_placeholder
 import id.homebase.resources.vault_note_title_required
 import id.homebase.resources.vault_permission_cancel
+import id.homebase.core.util.rememberImeOffsetState
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalRichTextApi::class, ExperimentalComposeUiApi::class)
@@ -91,6 +91,7 @@ fun VaultNoteEditorScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val richTextState = rememberRichTextState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val imeState = rememberImeOffsetState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var seedGeneration by remember { mutableStateOf(0) }
@@ -216,10 +217,11 @@ fun VaultNoteEditorScreen(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
+                val pureImeBottomDp = with(imeState.density) { imeState.pureImeBottomPx.toDp() }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .imePadding(),
+                        .padding(bottom = pureImeBottomDp),
                 ) {
                     NoteTitle(
                         title = uiState.title,

@@ -8,6 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.notifications.conversationNotificationIds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,9 +36,10 @@ class NotificationMarkReadReceiver : BroadcastReceiver(), KoinComponent {
             "Marking conversation as read: $conversationId"
         }
 
-        // Dismiss notification and clear accumulated message count
+        // Dismiss the notification + its group summary, and clear accumulated count
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(notificationId)
+        nm.cancel(conversationNotificationIds(conversationId).second)
         notificationService.clearNotificationCount(conversationId)
 
         val pendingResult = goAsync()

@@ -90,7 +90,8 @@ actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
 actual object ImageUtils {
 
     private fun decodeBitmap(bytes: ByteArray): Bitmap {
-        val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
+        val isHeic = ImageFormatDetector.isHeic(bytes)
+        val inputBytes = if (isHeic) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
         } else bytes
         val options = BitmapFactory.Options().apply {
@@ -99,7 +100,14 @@ actual object ImageUtils {
         }
         val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
-        return applyExifOrientation(bitmap, inputBytes)
+        // HEIC special-case: the orientation tag lives in the original HEIC,
+        // and our convertHeicToJpeg goes Bitmap → JPEG via Bitmap.compress
+        // which writes no EXIF — reading from inputBytes (the converted JPEG)
+        // would always return ORIENTATION_NORMAL and silently drop the iPhone
+        // camera's rotation. Read from the original HEIC bytes instead;
+        // androidx.exifinterface supports HEIC since 1.2.
+        val exifBytes = if (isHeic) bytes else inputBytes
+        return applyExifOrientation(bitmap, exifBytes)
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {

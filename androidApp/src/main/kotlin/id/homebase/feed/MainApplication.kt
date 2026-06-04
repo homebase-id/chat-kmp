@@ -51,6 +51,11 @@ class MainApplication : Application(), KoinComponent {
 
         if (getProcessName() != packageName) return
 
+        // Earliest app-code mark. The existing "APP STARTUP" header is logged late (after
+        // DB + Koin), so these checkpoints are what actually size the cold-start phases —
+        // diff their log timestamps. See StartupLogger.
+        StartupLogger.checkpoint("onCreate start")
+
         // Register the application Context up-front so components that only
         // need Context (cacheDir, ContentResolver — e.g. FFmpegUtils Android
         // actuals, VideoThumbnailExtractor) can resolve it before MainActivity
@@ -65,6 +70,7 @@ class MainApplication : Application(), KoinComponent {
         runBlocking {
             DatabaseManager.initializeWithRecovery(DatabaseDriverFactory(applicationContext))
         }
+        StartupLogger.checkpoint("db init done")
 
         startKoin {
             // Log Koin into Android logger
@@ -74,6 +80,7 @@ class MainApplication : Application(), KoinComponent {
             // Load modules
             modules(allModules)
         }
+        StartupLogger.checkpoint("koin started")
 
         // Configure Crashlytics based on user preference
         val userPreferences = get<UserPreferences>()
@@ -124,6 +131,9 @@ class MainApplication : Application(), KoinComponent {
         // before the UI composes are not lost
         val notificationService: NotificationService = get()
         notificationService.startListening()
+        // Brackets createNotificationChannels + NotifierManager.initialize() (KMPNotifier/
+        // Firebase) — a prime suspect for cold-process stalls on the FCM boot.
+        StartupLogger.checkpoint("notifications init done")
 
         // Publish share shortcuts when conversations change
         initShareShortcuts()
@@ -138,6 +148,8 @@ class MainApplication : Application(), KoinComponent {
         // Cold-start is covered by StartupCacheAudit; this is the bound on
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
+
+        StartupLogger.checkpoint("onCreate end")
     }
 
     private fun registerShareOutboundForegroundSweep() {

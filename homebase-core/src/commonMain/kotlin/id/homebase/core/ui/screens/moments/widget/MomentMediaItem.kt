@@ -2,6 +2,8 @@ package id.homebase.core.ui.screens.moments.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -54,6 +56,7 @@ import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.DocumentMediaItem
 import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.chat.widget.LocationPreviewCard
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -86,6 +89,14 @@ fun MomentMediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
+    // Fill the box the parent hands us (Fit, whole image visible) instead of
+    // imposing the media's own aspect ratio on the layout. Set when the host
+    // gives an explicit size — e.g. the comments-shrink band or the detail/reels
+    // pager page — so the image collapses into that box like the video tile does
+    // (which fills via plain fillMaxSize). Without this the intrinsic
+    // `.aspectRatio()` modifier below lets the image size to its own ratio inside
+    // a height-constrained pager and overflow the band.
+    fitBounds: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
@@ -101,7 +112,7 @@ fun MomentMediaItem(
     isUploading: Boolean = false,
 ) {
     val contentType = payload.contentType ?: ""
-    val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
+    val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
     val localVideoContextStore = koinInject<LocalAttachmentContextStore>()
     val localContext = if (messageId != null) {
         val ctx by localVideoContextStore.observe(messageId, payload.key)
@@ -124,7 +135,7 @@ fun MomentMediaItem(
     val baseModifier = modifier.clip(shape)
 
     val finalModifier =
-        if (preserveAspectRatio && aspectRatio != null) {
+        if (preserveAspectRatio && aspectRatio != null && !fitBounds) {
             baseModifier.aspectRatio(aspectRatio)
         } else {
             baseModifier
@@ -204,7 +215,7 @@ fun MomentMediaItem(
         contentType.startsWith("image/") -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
-                val gestureModifier = if (onClick != null || onLongPress != null) {
+                var imageModifier = if (onClick != null || onLongPress != null) {
                     finalModifier.pointerInput(onClick, onLongPress) {
                         detectTapGestures(
                             onTap = { onClick?.invoke() },
@@ -214,10 +225,25 @@ fun MomentMediaItem(
                 } else {
                     finalModifier
                 }
+                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        imageModifier = imageModifier.sharedBounds(
+                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = { _, _ ->
+                                tween(
+                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                                    easing = FastOutSlowInEasing,
+                                )
+                            },
+                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                        )
+                    }
+                }
                 AsyncImage(
                     model = imageLocalContext.localFilePath,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = gestureModifier,
+                    modifier = imageModifier,
                     contentScale = imageContentScale,
                 )
             } else {
@@ -274,7 +300,6 @@ fun MomentMediaItem(
                 val videoDescriptor = remember(payload.descriptorContent) {
                     payload.descriptorInfo() as? DescriptorContent.VideoFile
                 }
-                val isHls = videoDescriptor?.isSegmented == true
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
                 if (!isUploading) {
@@ -351,15 +376,6 @@ fun MomentMediaItem(
                                 .size(48.dp)
                                 .align(Alignment.Center),
                             tint = Color.White.copy(alpha = 0.85f)
-                        )
-                        Text(
-                            text = if (isHls) "HLS" else "MP4",
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                                .padding(horizontal = 3.dp, vertical = 1.dp),
                         )
                         if (displayDurationMs != null) {
                             Text(
@@ -478,7 +494,7 @@ fun MomentMediaItem(
 }
 
 @Composable
-private fun VideoPreloadEffect(
+internal fun VideoPreloadEffect(
     data: VideoPlayerData,
     onPreloading: (Boolean) -> Unit,
     onProgress: (Float) -> Unit,
@@ -496,7 +512,7 @@ private fun VideoPreloadEffect(
     }
 }
 
-private fun formatDurationLabel(ms: Long): String {
+internal fun formatDurationLabel(ms: Long): String {
     val totalSec = ms / 1000
     val m = totalSec / 60
     val s = totalSec % 60

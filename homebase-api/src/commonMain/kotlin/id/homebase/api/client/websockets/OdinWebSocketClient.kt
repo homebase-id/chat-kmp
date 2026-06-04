@@ -1,6 +1,8 @@
 package id.homebase.api.client.websockets
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.PlatformType
+import id.homebase.api.getPlatform
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.TargetDrive
@@ -19,6 +21,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.http.HttpHeaders
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
@@ -244,19 +247,80 @@ class OdinWebSocketClient(
 
         _connectionState.value = WebSocketState.Connecting
 
-        val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
+        // Browsers always use HTTP/2 WebSocket upgrades (RFC 8441 Extended
+        // CONNECT) when the server advertises h2; native engines (CIO/OkHttp/
+        // Darwin) always use HTTP/1.1 GET + Upgrade. The two methods need
+        // different route attributes on the server ([AcceptVerbs("GET",
+        // "CONNECT")] vs [HttpGet]) and the two attribute sets each break the
+        // other transport in subtle ways — so the server exposes the same
+        // controller body behind two route URLs and we pick the right one per
+        // platform.
+        val isWasm = getPlatform().name == PlatformType.JS
+        val wsRoute = if (isWasm) "ws-token-wasm" else "ws-token"
+        val wsUrl = "wss://${identity}/api/v2/notify/$wsRoute"
         Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
 
-        val appCookieName = "BX0900"
+        // Auth for the v2 ws-token route is carried on the WebSocket upgrade itself
+        // via Sec-WebSocket-Protocol — no cookie, no Authorization header. We send
+        // two subprotocol values: the application protocol (which the server must
+        // echo back in the 101) and a bearer credential of the form
+        // odin.bearer.<base64url(33-byte App ClientAuthToken)>.
+        //
+        // clientAccessToken is STANDARD base64 (see YouAuthProvider). A Sec-WebSocket-Protocol
+        // value must be an RFC 7230 token, and '/' — which standard base64 emits for ~50% of
+        // 33-byte tokens — is not a legal token char, so the browser's WebSocket constructor
+        // throws SyntaxError before connecting (proven against Chromium). Convert to base64url
+        // (no padding); the server reverses it via Base64UrlToBase64. Native engines happened to
+        // tolerate standard base64, but the wire value must be base64url for the browser/wasm path.
+        val bearerToken = creds.clientAccessToken.replace('+', '-').replace('/', '_').trimEnd('=')
+        val bearer = "odin.bearer.$bearerToken"
 
         client.webSocket(
             urlString = wsUrl,
             request = {
-                headers.append("Cookie", "$appCookieName=${creds.clientAccessToken}")
+                // Single comma-joined value, no whitespace. Two earlier
+                // attempts failed:
+                //   - "odin.notify.v1, $bearer" (with space) crashes the Ktor
+                //     JS engine: it splits the header on ',' and passes the
+                //     tokens to new WebSocket(url, protocols); " odin.bearer.*"
+                //     has a leading space, violates the RFC 7230 token grammar,
+                //     and the browser throws SyntaxError pre-flight.
+                //   - Two headers.append(...) calls fixes the browser but on
+                //     CIO/OkHttp emits two separate Sec-WebSocket-Protocol
+                //     header lines; ASP.NET Core's WebSocketRequestedProtocols
+                //     reads only the first and the controller sees no bearer
+                //     value → 401.
+                // The no-space single-string form is the only variant that
+                // produces one wire-format header on every engine AND parses
+                // cleanly in the browser's WebSocket constructor.
+                if(isWasm)
+                {
+                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1")
+                    headers.append(HttpHeaders.SecWebSocketProtocol, bearer)
+                }
+                else {
+                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
+                }
             }
         ) {
             session = this
             _connectionState.value = WebSocketState.Connected
+
+            // Verify the server committed to our application subprotocol on the 101.
+            // The log line is deliberately verbose on the first connect so we can
+            // confirm the engine passed our comma-separated header through intact
+            // and the server negotiated the expected value.
+            val negotiated = call.response.headers[HttpHeaders.SecWebSocketProtocol]
+            Logger.i(tag = "WebSocket") {
+                "WS[$instanceId] negotiated Sec-WebSocket-Protocol=$negotiated"
+            }
+            if (negotiated?.trim() != "odin.notify.v1") {
+                Logger.w(tag = "WebSocket") {
+                    "WS[$instanceId] server did not commit to odin.notify.v1 (got=$negotiated) — closing"
+                }
+                close()
+                return@webSocket
+            }
 
             handshakeDone = false
             establishConnectionRequest()

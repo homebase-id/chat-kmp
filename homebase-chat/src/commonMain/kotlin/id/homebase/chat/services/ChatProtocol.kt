@@ -51,6 +51,15 @@ object ChatProtocol {
      */
     const val ChatDiceRollMessageDataType = 212
 
+    /**
+     * Groodle (group-scheduling poll) message kind. Like [ChatEventMessageDataType],
+     * the full descriptor (title, candidate time slots, deadline) lives in
+     * `appData.content` — no payloads, no fetch on scroll. Votes ride as ordinary
+     * chat reactions encoded by [id.homebase.chat.groodle.GroodleVote]. See
+     * [id.homebase.chat.groodle.GroodleDescriptor].
+     */
+    const val ChatGroodleMessageDataType = 213
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */
@@ -62,6 +71,17 @@ object ChatProtocol {
 
     /** Indicates a file was optimistically written and not coming from the server */
     val isPendingSendTag = Uuid.parse("6e87beb3-412a-4a8c-aaec-b21a7ec620a7")
+
+    /**
+     * Local metadata tag: the optimistic send was permanently dropped by the outbox
+     * (permanent failure or retries exhausted). Set by [ChatMessageStream] on
+     * [id.homebase.api.client.eventbus.BackendEvent.OutboxEvent.OutboxItemDropped],
+     * replacing [isPendingSendTag]. The mapper reads it to show the Failed delivery
+     * icon instead of the pending spinner — without it a never-uploaded message maps
+     * to Sent (no server transfer history → checkmark). Local-only; never sent to the
+     * server.
+     */
+    val isFailedSendTag = Uuid.parse("7a1c0e3d-4b6f-4c2a-9e8d-5f3b2a1c0d4e")
 
     /** Local metadata tag: conversation has been archived by the user */
     val ConversationArchivedTag = Uuid.parse("a569e5cd-6fd8-41e0-8ccc-b6b31dac6b73")

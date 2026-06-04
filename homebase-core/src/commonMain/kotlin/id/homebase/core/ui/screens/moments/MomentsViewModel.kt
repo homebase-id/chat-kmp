@@ -38,12 +38,22 @@ class MomentsViewModel(
                 .filter { it }
                 .collect {
                     if (!momentsPreferences.activated.value) {
+                        // Auto-activate as soon as the drive is authorized — including the
+                        // passive launch-time autoCheck grant. Activation persists the flag
+                        // and mounts the drive; it does not move the user.
+                        val initiatedByUser = _uiState.value.setupInitiated
                         momentsPreferences.setActivated(true)
                         authConnectionCoordinator.mountDrive(momentsLabeledDrive)
                         _uiState.update {
                             it.copy(isCheckingPermissions = false, setupInitiated = false)
                         }
-                        _events.tryEmit(MomentsUiEvent.Activated)
+                        // Only navigate when the user actively completed onboarding (tapped
+                        // "Set up"). AppNavHost pops the onboarding screen and navigates to
+                        // Route.Moments on this event, so firing it for a passive launch-time
+                        // grant would yank the user off the default ChatList tab.
+                        if (initiatedByUser) {
+                            _events.tryEmit(MomentsUiEvent.Activated)
+                        }
                     }
                 }
         }

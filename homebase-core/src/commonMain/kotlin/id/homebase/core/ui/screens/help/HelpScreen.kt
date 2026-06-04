@@ -82,7 +82,16 @@ fun HelpScreen(
 
             is HelpUiEvent.ShareFile -> {
                 viewModel.eventConsumed()
-                uriHandler.shareFile(event.filePath)
+                uriHandler.shareFile(
+                    file = event.filePath,
+                    onError = { error ->
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = "Failed to share log: ${error.message}"
+                            )
+                        }
+                    },
+                )
             }
 
             is HelpUiEvent.ShowError -> {

@@ -5,12 +5,18 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
+import id.homebase.api.coroutines.ioDispatcher
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.nanoseconds
+import kotlin.time.TimeSource
 
 /**
  * One-shot signal that the local DB was just wiped because the on-disk schema
@@ -71,13 +77,55 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
     identityIdAdapter = UuidAdapter
 )
 
+/**
+ * Latency breakdown of the most recent read.
+ *
+ * - [queueWaitMs] — time the request sat waiting for a read-dispatcher slot. A large
+ *   value means scheduling pressure, not a slow query.
+ * - [sqlMs] — total wall-clock spent inside `driver.executeQuery` (raw-SQL path) or
+ *   the SQLDelight `executeAs*` block (typed-query path). This is "SQL + mapper",
+ *   not "SQL alone".
+ * - [mapperMs] — for the raw-SQL path, the subset of [sqlMs] spent on mapper CPU
+ *   *between* `SqlCursor.next()` calls (field gets, object construction, JSON
+ *   deserialization). The "real SQL" portion is therefore `sqlMs - mapperMs`.
+ *   Zero for the typed-query path ([readValue]) because we don't instrument the
+ *   SQLDelight-generated mapper there (its mapper is a thin code-gen constructor,
+ *   not a JSON deserialization, so the split would be noise).
+ *
+ * Surfaced via [DatabaseManager.lastReadTiming] — but note this is a SINGLE shared cell
+ * overwritten by every read, so it is only reliable when you control concurrency (e.g. the
+ * read-lane unit test). Do NOT read it after the fact to attribute timing to a specific
+ * query from arbitrary code — a concurrent read on another coroutine will have clobbered it
+ * (this caused garbled `queueWait` in `SlowMessageFetch`). For accurate per-query timing,
+ * use the `SlowDbRead` log line that [executeReadQuery]/[readValue] emit for that exact read.
+ */
+data class ReadTiming(
+    val queueWaitMs: Long,
+    val sqlMs: Long,
+    val mapperMs: Long = 0,
+)
+
 class DatabaseManager(
     driverProvider: () -> SqlDriver,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    // Reads run off the single write [dispatcher] so they don't queue behind a long
+    // write transaction. True concurrency comes from each platform driver's reader
+    // pool under WAL (iOS NativeSqliteDriver.maxReaderConnections, Android's framework
+    // WAL pool, desktop's per-thread JDBC connections); where a platform can't serve a
+    // concurrent reader the reads simply serialize — benign, never incorrect. We still
+    // run on the *existing* single driver — no second managed SqlDriver/connection.
+    private val readDispatcher: CoroutineDispatcher =
+        ioDispatcher.limitedParallelism(READ_PARALLELISM)
 ) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
+
+    // Latency split of the most recent read; see [ReadTiming]. Updated on every
+    // executeReadQuery; readers should treat it as best-effort (concurrent reads
+    // race on this single cell) — it's a diagnostic, not a correctness signal.
+    private val _lastReadTiming = atomic<ReadTiming?>(null)
+    val lastReadTiming: ReadTiming? get() = _lastReadTiming.value
 
     init {
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
@@ -103,13 +151,31 @@ class DatabaseManager(
         val busyTimeoutMs = readPragmaLong("PRAGMA busy_timeout") ?: -1L
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
         logger.i {
-            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms synchronous=$synchronous"
+            "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
+                "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
         }
     }
 
     companion object {
         private const val DATABASE_VERSION =
             5  // Increase to wipe the database and rebuild all tables
+
+        // Max concurrent reads on [readDispatcher]. Kept in step with iOS
+        // NativeSqliteDriver.maxReaderConnections=4 so the dispatcher doesn't admit more
+        // readers than the platform connection pool can serve. On Android the SQLCipher WAL
+        // pool size is platform-determined (net.zetetic's SupportOpenHelperFactory exposes no
+        // knob, unlike iOS) — if it serves fewer than this, the extra reads block in
+        // SQLiteConnectionPool.waitForConnection, which is counted inside the read's `sql=`
+        // time (the wait happens inside driver.executeQuery), so it surfaces as an inflated
+        // `sql=` in a SlowDbRead line. That's the verification signal: if device logs show a
+        // normally-fast read with a large `sql=` during a read burst, lower this to match the
+        // pool. Since reads are off the Main thread (DriveMainIndexWrapper + the list readers
+        // both route through the read lane), such a wait queues a background read, not the UI.
+        private const val READ_PARALLELISM = 4
+
+        // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.
+        private val SLOW_READ_THRESHOLD = 50.milliseconds
+
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
@@ -230,18 +296,145 @@ class DatabaseManager(
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
+    // Reads run on [readDispatcher], NOT the single write [dispatcher], so a read
+    // issued while a long write transaction holds the writer slot starts
+    // immediately instead of queueing behind it. [requestedAt]..inside-withContext
+    // measures that queue-wait; the inner mark measures the SQL itself. The split is
+    // stored in [lastReadTiming] and warn-logged when slow, so device logs show
+    // whether read latency was scheduling or SQL.
+    //
+    // SlowDbRead reports a triple: `queueWait` / `sql` / `mapper`. The
+    // driver invokes the user [mapper] *inline* (cursor.open → mapper(cursor)
+    // → cursor.close all under `driver.executeQuery`), and for shapes like
+    // QueryBatch that mapper does `OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)`
+    // per row. Without splitting, big-payload deserialization shows up under
+    // `sql=` and looks like a slow query plan. We instrument the cursor's
+    // `next()` (each call is a row pull from SQLite) and treat that as
+    // "real SQL"; whatever wall-clock the mapper spends between `next()`
+    // calls is reported as `mapper=`. The two should sum to the legacy
+    // `sql=` number ± a few µs of accounting noise.
     suspend fun <R> executeReadQuery(
         identifier: Int?,
         sql: String,
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)? = null
-    ): QueryResult<R> = withContext(dispatcher) {
-        try {
-            driver.executeQuery(identifier, sql, mapper, parameters, binders)
-        } catch (e: Exception) {
-            logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
-            throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+    ): QueryResult<R> {
+        val requestedAt = TimeSource.Monotonic.markNow()
+        return withContext(readDispatcher) {
+            val queueWait = requestedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                // Capture the wrapper used for the (single) mapper invocation so
+                // we can read its accumulated next()-time after the driver call
+                // returns. A `var` is fine here — `driver.executeQuery` is
+                // synchronous within this coroutine continuation.
+                var timing: TimingCursor? = null
+                val result = driver.executeQuery(
+                    identifier,
+                    sql,
+                    { rawCursor ->
+                        val tc = TimingCursor(rawCursor)
+                        timing = tc
+                        mapper(tc)
+                    },
+                    parameters,
+                    binders,
+                )
+                val total = sqlStart.elapsedNow()
+                // If for some reason the driver never invoked the mapper (it
+                // shouldn't, but be defensive), credit everything to SQL.
+                val sqlOnly = timing?.nextNanos?.nanoseconds ?: total
+                // Monotonic clocks guarantee mapper ≥ 0, but coerce as a belt-
+                // and-braces against any future driver oddity (cached cursors,
+                // pre-fetched rows where next() reports near-zero).
+                val mapperOnly = (total - sqlOnly).coerceAtLeast(Duration.ZERO)
+                _lastReadTiming.value = ReadTiming(
+                    queueWaitMs = queueWait.inWholeMilliseconds,
+                    sqlMs = total.inWholeMilliseconds,
+                    mapperMs = mapperOnly.inWholeMilliseconds,
+                )
+                if (queueWait + total > SLOW_READ_THRESHOLD) {
+                    logger.w {
+                        "SlowDbRead queueWait=$queueWait sql=$sqlOnly mapper=$mapperOnly sqlPreview=${sql.take(120)}"
+                    }
+                }
+                result
+            } catch (e: Exception) {
+                logger.e { "executeReadQuery failed: ${e.message}\nSQL: $sql\nStack: ${e.stackTraceToString()}" }
+                throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
+            }
+        }
+    }
+
+    /**
+     * Accumulates the wall-clock time spent in [SqlCursor.next] (the row-
+     * advance call) for the wrapping read. This is a close proxy for SQL
+     * time in practice — but it isn't literally "all driver work":
+     * column extraction via `getString` / `getLong` etc. is also driver
+     * work, just typically trivial against an already-fetched cursor row
+     * buffer. Whatever wall-clock the mapper spends *between* `next()`
+     * calls (column gets + object construction + JSON deserialization)
+     * is what the surrounding `total - nextNanos` in [executeReadQuery]
+     * reports as `mapper=`. The split is honest for the case that
+     * motivated it (QueryBatch's per-row `HomebaseFile` deserialization);
+     * a hypothetical mapper that pushed heavy work into `getString`
+     * callbacks (e.g. lazy column decryption) would land that work in
+     * `mapper=` even though it's driver-side — read the numbers with
+     * that nuance in mind.
+     *
+     * Uses Kotlin's interface delegation so `getString`/`getLong`/etc. forward
+     * to the underlying cursor unchanged — only `next()` is instrumented.
+     */
+    private class TimingCursor(private val delegate: SqlCursor) : SqlCursor by delegate {
+        var nextNanos: Long = 0L
+            private set
+
+        override fun next(): QueryResult<Boolean> {
+            val s = TimeSource.Monotonic.markNow()
+            try {
+                return delegate.next()
+            } finally {
+                nextNanos += s.elapsedNow().inWholeNanoseconds
+            }
+        }
+    }
+
+    /**
+     * Run a read that uses the SQLDelight generated-query DSL (rather than raw SQL) on the
+     * read lane — the counterpart to [executeReadQuery] for the `*Wrapper` reads that call
+     * `delegate.x().executeAsList()`. Same [readDispatcher] + queue-wait/SQL split +
+     * SlowDbRead warn; [label] names the read in the log since there's no SQL string.
+     *
+     * **No `sql=` / `mapper=` split here** (unlike [executeReadQuery]). The mapper that
+     * runs inside `executeAsList` is owned by SQLDelight code-gen — typically a thin
+     * `(col1, col2, …) -> Row(col1, col2, …)` — so the legacy single-timer reading is
+     * accurate enough for the typed-query path. The split exists for [executeReadQuery]
+     * because QueryBatch's mapper does row-level JSON deserialization that can dwarf the
+     * SQL itself; SQLDelight rows don't have that hazard.
+     *
+     * Keep [block] to the DB read itself (executeAsList / executeAsOneOrNull) and do any
+     * mapping/deserialization outside, so a read-lane slot is held only for the SQL — not
+     * for CPU-bound row mapping.
+     */
+    suspend fun <R> readValue(label: String, block: () -> R): R {
+        val requestedAt = TimeSource.Monotonic.markNow()
+        return withContext(readDispatcher) {
+            val queueWait = requestedAt.elapsedNow()
+            val sqlStart = TimeSource.Monotonic.markNow()
+            try {
+                val result = block()
+                val sqlElapsed = sqlStart.elapsedNow()
+                _lastReadTiming.value =
+                    ReadTiming(queueWait.inWholeMilliseconds, sqlElapsed.inWholeMilliseconds)
+                if (queueWait + sqlElapsed > SLOW_READ_THRESHOLD) {
+                    logger.w { "SlowDbRead queueWait=$queueWait sql=$sqlElapsed read=$label" }
+                }
+                result
+            } catch (e: Exception) {
+                logger.e { "read failed [$label]: ${e.message}\nStack: ${e.stackTraceToString()}" }
+                throw e
+            }
         }
     }
 

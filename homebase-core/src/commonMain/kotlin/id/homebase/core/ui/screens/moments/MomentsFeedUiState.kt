@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.moments.MomentsAlbumZoom
+import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -17,6 +19,24 @@ data class MomentsFeedUiState(
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    /**
+     * Transient map of (moment uniqueId → local file URI) for moments whose
+     * placeholder row has been written but whose real thumbnails/payloads are
+     * still being generated. Lets the feed tile render the user's source image
+     * directly during the "Preparing…" window — without it, the tile would be
+     * a description-only fallback until thumbnails land.
+     *
+     * The value is a Coil model: a local file-path [String] for photos, or the
+     * extracted poster-frame JPEG [ByteArray] for videos. (A raw video path
+     * can't be decoded by an image loader, so videos must hand over their
+     * poster bytes — otherwise the tile renders black for the whole window.)
+     *
+     * Populated by [id.homebase.core.moments.services.MomentsPostSenderService]
+     * and cleared once the real optimistic write installs the embedded preview.
+     */
+    val pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
+    val viewMode: MomentsViewMode = MomentsViewMode.Timeline,
+    val albumZoom: MomentsAlbumZoom = MomentsAlbumZoom.Day,
 )
 
 /**

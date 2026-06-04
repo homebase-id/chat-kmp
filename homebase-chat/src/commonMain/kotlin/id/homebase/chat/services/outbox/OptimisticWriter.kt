@@ -340,7 +340,8 @@ class OptimisticWriter(
     suspend fun writeUpdate(
         driveId: Uuid,
         keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata
+        unecryptedMetadata: UploadFileMetadata,
+        payloadDescriptors: List<PayloadDescriptor>? = null,
     ) {
 
         val credentials = credentialsManager.requireActiveCredentials()
@@ -381,6 +382,11 @@ class OptimisticWriter(
                 ),
                 localAppData = newLocalAppData,
                 updated = lastModified,
+                // Null preserves the existing payloads (description-only edits).
+                // Non-null replaces them — used by the moments "placeholder → real"
+                // promotion where the first write had no payloads and the second
+                // installs the real encrypted set after thumbnail/encrypt finishes.
+                payloads = payloadDescriptors ?: existingFile.fileMetadata.payloads,
             ),
             serverMetadata = ServerMetadata(
                 accessControlList = unecryptedMetadata.accessControlList ?: AccessControlList(

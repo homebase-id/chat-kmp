@@ -6,7 +6,8 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.FFmpegUtils
+import id.homebase.api.video.VideoCompressionService
+import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
@@ -69,11 +70,9 @@ internal class MediaDownloadHandler(
                     KeyHeader(payloadIv, message.keyHeader.aesKey)
                 )
                 if (bytes != null) {
-                    var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                    extension = when (extension) {
-                        "jpeg" -> "jpg"
-                        else -> extension
-                    }
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
                     // Cleartext copy of an end-to-end-encrypted Homebase
                     // payload — sequestered into the share_outbound subdir so
                     // the cold-start + foreground sweepers can reap it as a
@@ -257,14 +256,15 @@ internal class MediaDownloadHandler(
                     )
                 )
 
-                val fileName = payload.filename() ?: payload.key
-                var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                extension = when (extension) {
-                    "jpeg" -> "jpg"
-                    else -> extension
+                val rawName = payload.filename() ?: payload.key
+                val filePath = if (rawName.contains('.')) {
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName"
+                } else {
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName.$extension"
                 }
-                val filePath =
-                    "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,
@@ -427,6 +427,10 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCloseFullScreenOverlay() {
+        // Dismissing the attachment editor: release any video playable handles (web blob: URLs;
+        // no-op on native) so the browser can drop the File references.
+        (messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.attachments
+            ?.forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
         messagesUiState.update { it.copy(fullScreenOverlay = null) }
     }
 
@@ -501,12 +505,12 @@ internal class MediaDownloadHandler(
 
         // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
         // same directory as tsPath — the playlist's relative segment reference resolves correctly.
-        val playlistPath = FFmpegUtils.cacheInputVideo(
+        val playlistPath = VideoCompressionService.cacheInputVideo(
             fileName = "hlsdl_${uid}.m3u8",
             data = rewrittenPlaylist.encodeToByteArray(),
         )
 
-        val ok = FFmpegUtils.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
+        val ok = VideoCompressionService.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
 
         // Clean up intermediates regardless of success
         runCatching { fileOperationsProvider.deleteTempFile(tsPath) }

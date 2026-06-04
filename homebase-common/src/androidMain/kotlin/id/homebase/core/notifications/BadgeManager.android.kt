@@ -6,7 +6,6 @@ import android.content.Context
 /**
  * Android badge management.
  * Badge count is managed per-notification via setNumber() on the notification builder.
- * clear() cancels all notifications (resetting badge count).
  */
 actual object BadgeManager {
     internal var badgeCount = 0
@@ -16,10 +15,23 @@ actual object BadgeManager {
         badgeCount++
     }
 
-    actual fun clear() {
+    actual fun resetCount() {
         badgeCount = 0
-        val context = RichNotificationDisplayer.appContext ?: return
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.cancelAll()
+    }
+
+    actual fun cancelAll() {
+        badgeCount = 0
+        notificationManager()?.cancelAll()
+    }
+
+    actual fun cancelConversationNotifications(messageId: Int, summaryId: Int) {
+        val nm = notificationManager() ?: return
+        nm.cancel(messageId)
+        nm.cancel(summaryId)
+    }
+
+    private fun notificationManager(): NotificationManager? {
+        val context = RichNotificationDisplayer.appContext ?: return null
+        return context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 }

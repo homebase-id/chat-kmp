@@ -78,6 +78,8 @@ class ConnectionService(
                     // When the websocket comes back after an offline window, reconcile
                     // against the server — covers the airplane-mode-off case.
                     is BackendEvent.ConnectionOnline -> launchRefresh()
+                    // Logout: drop the previous identity's connection map.
+                    is BackendEvent.SessionEnded -> reset()
                     else -> {}
                 }
             }
@@ -91,6 +93,19 @@ class ConnectionService(
             hydrateFromCache()
             launchRefresh()
         }
+    }
+
+    /**
+     * Logout: cancel any in-flight refresh and drop the connection map back to
+     * the not-loaded state. Clearing `started` lets the next login's [start]
+     * re-hydrate from cache and re-fetch. The init eventBus collector is left
+     * running (it's app-scoped, single, and gates on the new session's events).
+     */
+    fun reset() {
+        refreshJob?.cancel()
+        refreshJob = null
+        started = false
+        _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
     }
 
     private suspend fun hydrateFromCache() {

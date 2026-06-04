@@ -27,6 +27,7 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.logging.CrashLogger
@@ -79,12 +80,34 @@ fun main() {
     // OS-level ANR, so without this a freeze leaves no evidence at all.
     MainThreadWatchdog().start()
 
-    // Initialize Koin first
+    // Initialize the database BEFORE Koin. startKoin eagerly instantiates `createdAtStart`
+    // singletons (e.g. DesktopChatNotificationBridge), and that chain resolves
+    // `DatabaseManager.appDb`, which reads the lateinit `instance`. If the DB isn't initialized
+    // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
+    // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
+    // so it's safe to run here.
+    runBlocking {
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
+    }
+    StartupLogger.checkpoint("database initialized")
+
+    // Initialize Koin
     startKoin { modules(allModules) }
     StartupLogger.checkpoint("Koin DI graph built")
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+
+    // Promote AuthConnectionCoordinator out of headless mode. AuthCC starts
+    // headless = true to suppress foreground-only work (WebSocket connect,
+    // driveRegistry.start, loadProfile, UI preload) during FCM cold-wakes on
+    // mobile. Desktop has no background FCM wake — launching the process IS
+    // the foreground signal — so without this call the Authenticated branch
+    // defers connect() forever and the app hangs on "syncing" after login.
+    // Mirrors MainActivity.onCreate (Android) and MainViewController() (iOS).
+    // Idempotent and order-independent: if Authenticated hasn't fired yet it
+    // simply flips the flag so the next Authenticated runs the full sequence.
+    GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
 
     // Bridge the local callback server's /permission-callback hit (after the user
     // returns from the owner-console "Extend Permissions" flow) to the in-app event
@@ -127,10 +150,6 @@ fun main() {
     val minWidth = 480
     val minHeight = 400
     val config = DesktopPreferences()
-
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
 
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }

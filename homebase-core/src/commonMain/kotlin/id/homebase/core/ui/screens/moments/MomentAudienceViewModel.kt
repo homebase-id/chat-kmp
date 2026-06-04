@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsPostSenderService
@@ -57,11 +58,17 @@ class MomentAudienceViewModel(
                 _uiState.update {
                     val next = if (action.id in it.selected) it.selected - action.id
                     else it.selected + action.id
-                    it.copy(selected = next)
+                    it.copy(selected = next, selfOnly = false)
                 }
 
             is MomentAudienceUiAction.CommentsEnabledChanged ->
                 _uiState.update { it.copy(commentsEnabled = action.enabled) }
+
+            MomentAudienceUiAction.ToggleSelfOnly ->
+                _uiState.update {
+                    if (it.selfOnly) it.copy(selfOnly = false)
+                    else it.copy(selfOnly = true, selected = emptySet())
+                }
 
             MomentAudienceUiAction.PostClicked -> post()
         }
@@ -96,7 +103,12 @@ class MomentAudienceViewModel(
 
         viewModelScope.launch {
             try {
-                postSender.postMoment(
+                // postMomentAsync only blocks on the synchronous placeholder
+                // write + Preparing event emit (~ms); the heavy work (thumbnail
+                // generation, encryption, upload, final optimistic update) runs
+                // on the service's singleton scope and is tracked by the feed
+                // tile via the existing BackendEvent → UploadStatus pipeline.
+                postSender.postMomentAsync(
                     // Editor stores AttachmentPendingFile so back-nav can
                     // rehydrate the composer; convert to AttachmentInput at
                     // the post boundary (HEIC/trim/etc. metadata flows through).
@@ -116,6 +128,14 @@ class MomentAudienceViewModel(
                     mediaInfoByAttachment = draft.attachments
                         .map { it.toMediaInfo() }
                         .takeIf { list -> list.any { it != null } },
+                    // Poster frame per video attachment (index-aligned with the
+                    // attachments above). Lets the sender render the video's
+                    // first frame in the placeholder tile and as the optimistic
+                    // row's embedded thumbnail instead of a black surface.
+                    posterByAttachment = draft.attachments
+                        .map { (it as? AttachmentPendingFile.FileVideo)?.thumbnailBytes }
+                        .takeIf { list -> list.any { it != null } },
+                    commentsEnabled = state.commentsEnabled,
                 )
                 // recordUsed is fire-and-forget on the lookup service's own
                 // singleton scope — see its KDoc. Calling it from

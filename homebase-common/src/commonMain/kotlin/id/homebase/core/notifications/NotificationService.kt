@@ -2,11 +2,14 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
@@ -14,6 +17,7 @@ import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -21,12 +25,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -41,6 +48,84 @@ data class SubscriptionVerificationDetail(
 )
 
 /**
+ * Builds the browser-redirect navigation event for a tapped notification from a
+ * web-app companion (community, owner, mail, feed). These open the *logged-in*
+ * identity's own web app — never the message sender's domain: the companion web
+ * clients are served from and authenticated against our own identity, and the
+ * author's host has no session for us. Faithful to the RN app, which built these
+ * from getIdentity(), and to the in-app Feed WebView (https://{ownDomain}/apps/feed).
+ *
+ * @param ownDomain the active (logged-in) identity's domain, or null when logged
+ *   out / credentials not yet ready — in which case there is nothing to open.
+ * @return the [NotificationNavigationEvent.OpenUrl] to emit, or null for a null
+ *   domain or a non-companion appId (e.g. chat, which navigates in-app).
+ */
+internal fun buildCompanionAppUrlEvent(
+    appId: String,
+    ownDomain: String?,
+    typeId: String,
+    tagId: String,
+): NotificationNavigationEvent.OpenUrl? {
+    if (ownDomain.isNullOrBlank()) return null
+    return when (appId) {
+        COMMUNITY_APP_ID ->
+            NotificationNavigationEvent.OpenUrl(
+                "https://$ownDomain/apps/community/redirect/$typeId/$tagId"
+            )
+
+        OWNER_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/owner/connections")
+
+        MAIL_APP_ID ->
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/mail/inbox/$typeId")
+
+        FEED_APP_ID ->
+            if (tagId.isNotBlank()) {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed/post/$tagId")
+            } else {
+                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed")
+            }
+
+        else -> null
+    }
+}
+
+/** Apps whose notifications open the logged-in identity's own web app in the browser. */
+internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID, FEED_APP_ID)
+
+/**
+ * How long a companion-app tap waits for credentials to be restored before
+ * giving up. Mirrors BackgroundSyncOrchestrator's AUTH_RESTORE_TIMEOUT: the
+ * observed cold-wake restore window is ~12 ms, and 2 s leaves headroom for a
+ * slow-disk / contended-Koin-init start without hanging a logged-out tap.
+ */
+private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
+
+/**
+ * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
+ * from a killed app isn't dropped while `YouAuthFlowManager.restoreSession()` is
+ * still loading credentials — the cold-start counterpart of the background-sync
+ * race closed by [awaitAuthRestored]. The own-identity domain is read from the
+ * resolved [YouAuthState.Authenticated]; returns null when auth does not resolve
+ * to Authenticated within [timeout] (logged out / wedged restore) or the app is
+ * not a companion.
+ *
+ * Extracted as a top-level suspend function so it's unit-testable with virtual
+ * time, without constructing NotificationService's dependency graph.
+ */
+internal suspend fun resolveCompanionAppUrlEvent(
+    appId: String,
+    authState: StateFlow<YouAuthState>,
+    typeId: String,
+    tagId: String,
+    timeout: Duration,
+): NotificationNavigationEvent.OpenUrl? {
+    val resolved = awaitAuthRestored(authState, timeout)
+    val ownDomain = (resolved as? YouAuthState.Authenticated)?.identity?.domainName
+    return buildCompanionAppUrlEvent(appId, ownDomain, typeId, tagId)
+}
+
+/**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
  * notifications. Register as a singleton in Koin.
  */
@@ -52,13 +137,21 @@ class NotificationService(
     private val credentialsManager: CredentialsManager,
     private val pendingNotificationTap: PendingNotificationTap,
     private val notificationBackend: NotificationBackend,
+    private val eventBus: EventBus,
+    /**
+     * Narrow seam onto [id.homebase.api.youauth.YouAuthFlowManager.authState] so
+     * a companion-app tap can await credential restoration (cold-start race).
+     * A `StateFlow<YouAuthState>` rather than the whole manager keeps the
+     * resolver unit-testable — same pattern as [id.homebase.core.sync.BackgroundSyncOrchestrator].
+     */
+    private val authState: StateFlow<YouAuthState>,
 ) {
 
     private var isListening = false
     private val richDisplayer = RichNotificationDisplayer()
 
     /** Per-conversation message count for notification summary display. */
-    private val conversationMessageCounts = mutableMapOf<String, Int>()
+    private val counts = ConversationNotificationCounts()
 
     /** Chime cooldown: suppress alert sounds within this window. */
     private val ALERT_COOLDOWN = 15.minutes
@@ -91,7 +184,14 @@ class NotificationService(
         // Clear message counts when user opens a conversation
         scope.launch {
             ActiveConversation.conversation.collect { id ->
-                if (id != null) conversationMessageCounts.remove(id.toString())
+                if (id != null) clearConversationNotifications(id.toString())
+            }
+        }
+        // Logout: drop per-conversation unread counts and the chime cooldown so the
+        // previous identity's notification summary state doesn't carry into the next.
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.SessionEnded) reset()
             }
         }
         // Route clicks from platform backends (Nucleus on JVM) through the shared
@@ -106,7 +206,27 @@ class NotificationService(
 
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
     fun clearNotificationCount(conversationId: String) {
-        conversationMessageCounts.remove(conversationId)
+        counts.clear(conversationId)
+    }
+
+    /**
+     * Clears a single conversation's notification state: forgets its summary
+     * count and cancels its posted notification + group summary from the tray.
+     * Called when the user taps the conversation's notification or opens the
+     * conversation in-app — scoped to one conversation so other senders'
+     * notifications are left intact.
+     */
+    private fun clearConversationNotifications(conversationId: String) {
+        counts.clear(conversationId)
+        val (messageId, summaryId) = conversationNotificationIds(conversationId)
+        BadgeManager.cancelConversationNotifications(messageId, summaryId)
+    }
+
+    /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
+    fun reset() {
+        counts.clearAll()
+        BadgeManager.cancelAll()
+        lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
     }
 
     /**
@@ -244,7 +364,7 @@ class NotificationService(
                     Logger.d(tag = "NotificationService") {
                         "Suppressing notification — user is on chat screen"
                     }
-                    conversationMessageCounts.remove(conversationId)
+                    counts.clear(conversationId)
                     return@launch
                 }
 
@@ -285,9 +405,7 @@ class NotificationService(
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
-                    val count = (conversationMessageCounts[conversationId] ?: 0) + 1
-                    conversationMessageCounts[conversationId] = count
-                    count
+                    counts.increment(conversationId)
                 } else 1
 
                 // Override body with count summary when multiple messages accumulated
@@ -403,6 +521,12 @@ class NotificationService(
         } else null
     }
 
+    /** Logs and queues a navigation event onto the buffered nav Channel. */
+    private fun emitNavigationEvent(event: NotificationNavigationEvent) {
+        Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
+        _navigationEvents.trySend(event)
+    }
+
     /**
      * Handles notification tap — emits navigation event for the UI layer.
      * Called from KMPNotifier's onNotificationClicked callback and also
@@ -415,8 +539,8 @@ class NotificationService(
             val appId = notification.options.appId
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
-            val event = when (appId) {
-                Uuid.parse(AppConfig.APP_ID).toString() -> {
+            when {
+                appId == Uuid.parse(AppConfig.APP_ID).toString() -> {
                     // Only set the pending tap when BOTH conversationId and
                     // messageId are present — a messageId-less payload is
                     // ambient "new activity" and should not auto-navigate
@@ -434,44 +558,41 @@ class NotificationService(
                                     "typeId=$typeId tagId=$tagId; no auto-navigate"
                         }
                     }
-                    NotificationNavigationEvent.OpenConversation(typeId)
+                    // Tapping clears only this conversation's notifications + count,
+                    // leaving other senders' notifications in the tray.
+                    clearConversationNotifications(typeId)
+                    emitNavigationEvent(NotificationNavigationEvent.OpenConversation(typeId))
                 }
 
-                COMMUNITY_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/community/redirect/${typeId}/${tagId}"
-                    )
-
-                OWNER_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/owner/connections"
-                    )
-
-                MAIL_APP_ID ->
-                    NotificationNavigationEvent.OpenUrl(
-                        "https://${notification.senderId}/apps/mail/inbox/$typeId"
-                    )
-
-                FEED_APP_ID ->
-                    if (tagId.isNotBlank()) {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed/post/$tagId"
+                appId in COMPANION_APP_IDS -> {
+                    // Community, owner, mail and feed open the *logged-in* identity's
+                    // own web app in the browser (see buildCompanionAppUrlEvent) —
+                    // never the sender's host. Resolve the domain by AWAITING auth
+                    // restoration so a tap from a KILLED app isn't dropped while
+                    // restoreSession() is still loading credentials (cold-start
+                    // race). Emit off the injected scope into the buffered nav
+                    // Channel, which queues the event until the UI collector attaches.
+                    scope.launch {
+                        val event = resolveCompanionAppUrlEvent(
+                            appId = appId,
+                            authState = authState,
+                            typeId = typeId,
+                            tagId = tagId,
+                            timeout = COMPANION_AUTH_RESTORE_TIMEOUT,
                         )
-                    } else {
-                        NotificationNavigationEvent.OpenUrl(
-                            "https://${notification.senderId}/apps/feed"
-                        )
+                        if (event != null) {
+                            emitNavigationEvent(event)
+                        } else {
+                            Logger.w(tag = "NotificationService") {
+                                "Companion tap produced no navigation " +
+                                        "(credentials unavailable) appId=$appId"
+                            }
+                        }
                     }
+                }
 
-                else -> null
-            }
-
-            if (event != null) {
-                Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
-                _navigationEvents.trySend(event)
-            } else {
-                Logger.w(tag = "NotificationService") {
-                    "No navigationEvent produced from click (appId unmatched?)"
+                else -> Logger.w(tag = "NotificationService") {
+                    "No navigationEvent produced from click (appId unmatched: $appId)"
                 }
             }
         } catch (e: Exception) {
@@ -686,4 +807,31 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
     val msgUuid = tagId.takeIf { it.isNotBlank() }?.let { Uuid.parseOrNull(it) }
         ?: return null
     return convoUuid to msgUuid
+}
+
+/**
+ * Reserved offset so a conversation's group-summary id never collides with a
+ * per-message notification id. Shared between the Android displayer (which posts
+ * with these ids) and [conversationNotificationIds] (which cancels by them) so
+ * the two can never drift.
+ */
+internal const val SUMMARY_ID_OFFSET = 100_000
+
+/**
+ * Derives the (per-message id, group-summary id) pair that a chat conversation's
+ * notifications were posted under, so a single conversation can be cancelled
+ * without touching any other. Must reproduce exactly what the display path used:
+ *  - per-message id = [PushNotificationPayloadOptions.conversationNotificationId]
+ *    (the raw, unmasked `typeId.hashCode()`), and
+ *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash (see
+ *    RichNotificationDisplayer.postSummaryNotification).
+ *
+ * Degenerate case: if `conversationId.hashCode() == 0` the display path posts the
+ * per-message notification under a random id instead, so a derived cancel would
+ * miss it — astronomically rare for a UUID string, not special-cased.
+ */
+fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
+    val messageId = conversationId.hashCode()
+    val summaryId = SUMMARY_ID_OFFSET + (conversationId.hashCode() and 0x7FFFFFFF)
+    return messageId to summaryId
 }

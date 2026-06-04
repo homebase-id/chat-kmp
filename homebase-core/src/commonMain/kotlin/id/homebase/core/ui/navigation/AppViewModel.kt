@@ -116,7 +116,10 @@ class AppViewModel(
         authConnectionCoordinator.setForeground(true)
         refreshData()
         checkForUpdate()
-        BadgeManager.clear()
+        // Reset the icon-badge counter without wiping the tray — notifications
+        // clear per conversation when the user taps or reads them, so opening
+        // the app from the launcher leaves other senders' notifications intact.
+        BadgeManager.resetCount()
     }
 
     /** Called when the app leaves RESUMED state. */

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ import id.homebase.resources.moments_audience_section_contacts
 import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
 import id.homebase.resources.moments_audience_title
+import id.homebase.resources.moments_audience_to_myself_only
 import id.homebase.resources.moments_compose_comments_enabled
 import id.homebase.resources.moments_create_search_hint
 import id.homebase.resources.moments_create_selected_count
@@ -110,6 +112,7 @@ fun MomentAudienceScreen(
         bottomBar = {
             AudienceBottomBar(
                 selectedCount = uiState.selected.size,
+                selfOnly = uiState.selfOnly,
                 isPosting = uiState.isPosting,
                 enabled = uiState.canPost,
                 onPost = { viewModel.onAction(MomentAudienceUiAction.PostClicked) },
@@ -164,6 +167,17 @@ fun MomentAudienceScreen(
                     )
                 }
                 HorizontalDivider()
+            }
+
+            // Static "To myself only" option — explicit private save. Mutually
+            // exclusive with any recipient selection (see ViewModel).
+            item(key = "self-only") {
+                SelfOnlyRow(
+                    selected = uiState.selfOnly,
+                    onClick = {
+                        viewModel.onAction(MomentAudienceUiAction.ToggleSelfOnly)
+                    },
+                )
             }
 
             // Recent (MRU) — preserves the order returned by the lookup service
@@ -279,6 +293,42 @@ private fun RecipientRow(
 }
 
 @Composable
+private fun SelfOnlyRow(
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Text(
+            text = stringResource(MR.string.moments_audience_to_myself_only),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        SelectionIndicator(selected = selected)
+    }
+}
+
+@Composable
 private fun CreateGroupRow(label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
@@ -337,6 +387,7 @@ private fun SelectionIndicator(selected: Boolean) {
 @Composable
 private fun AudienceBottomBar(
     selectedCount: Int,
+    selfOnly: Boolean,
     isPosting: Boolean,
     enabled: Boolean,
     onPost: () -> Unit,
@@ -373,7 +424,7 @@ private fun AudienceBottomBar(
                 ) {
                     Text(
                         stringResource(
-                            if (selectedCount == 0) MR.string.moments_audience_save_privately
+                            if (selfOnly) MR.string.moments_audience_save_privately
                             else MR.string.moments_audience_post,
                         ),
                     )

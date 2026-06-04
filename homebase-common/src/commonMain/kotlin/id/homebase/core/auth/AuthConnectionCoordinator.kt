@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
 class AuthConnectionCoordinator(
@@ -41,6 +42,14 @@ class AuthConnectionCoordinator(
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
     private val onPostAuthenticated: () -> Unit = {},
+    /**
+     * Initial value of [headless]. True only on platforms that can cold-wake the
+     * process in the background (see [PlatformInfo.supportsBackgroundWake]); those
+     * defer foreground-only work until [promoteToForeground]. Defaults to false so
+     * a platform that forgets to wire [promoteToForeground] fails open (connects on
+     * Authenticated) rather than fail closed (hangs on "syncing").
+     */
+    startsHeadless: Boolean = false,
 ) {
     // SupervisorJob so one child's failure doesn't cancel its siblings, plus a
     // top-level handler so an *uncaught* exception in any child (notably a transient
@@ -67,6 +76,36 @@ class AuthConnectionCoordinator(
 
     private val _connectionState = MutableStateFlow(AuthConnectionState())
     val connectionState: StateFlow<AuthConnectionState> = _connectionState.asStateFlow()
+
+    // region Headless mode — FCM-cold-wake suppression of foreground-only work.
+    //
+    // On Android (and iOS) the process is woken for FCM data messages before
+    // the user is looking at the UI. Application init + Koin spin-up means
+    // [onAuthStateChanged] still fires Authenticated, but for a headless
+    // wake-up we should NOT open the WebSocket, run [onPostAuthenticated]'s
+    // UI preload, start the registry observer, or load the profile.
+    // [BackgroundSyncOrchestrator.syncIfAuthenticated] only needs the
+    // drive mounts and registry bootstrap to do its QueryBatch.
+    //
+    // [headless] starts true ONLY on background-wake-capable platforms
+    // (Android/iOS — see [startsHeadless] / [PlatformInfo.supportsBackgroundWake]);
+    // Desktop and Web start false and connect on Authenticated directly. On the
+    // headless platforms, the first foreground entry point
+    // ([MainActivity.onCreate] on Android, `MainViewController()` on iOS) calls
+    // [promoteToForeground], which flips the flag and replays the deferred work if
+    // Authenticated already fired during the headless window. If Authenticated
+    // hasn't fired yet, the next Authenticated observes !headless and runs the full
+    // sequence.
+    @Volatile private var headless: Boolean = startsHeadless
+
+    /**
+     * Captured drives from the Authenticated branch's bootstrap step, so
+     * [promoteToForeground] can replay [connect]/[driveRegistry.start] with
+     * the same drive list the headless Authenticated branch already
+     * mounted. Null until the first Authenticated lands.
+     */
+    @Volatile private var lastAuthenticatedDrives: List<LabeledDrive>? = null
+    // endregion
 
     /**
      * True when the WebSocket is connected AND the server handshake has completed
@@ -111,18 +150,26 @@ class AuthConnectionCoordinator(
         logLifecycleSnapshot("onAuthStateChanged:${state::class.simpleName}")
         when (state) {
             is YouAuthState.Authenticated -> {
-                onPostAuthenticated()
+                // Foreground-only UI preload — see kdoc on [headless]. Runs FIRST in
+                // foreground mode (matches pre-headless-mode ordering: preload starts
+                // local-DB warmups while drive mount + WS handshake happen in
+                // parallel). Deferred to [promoteToForeground] in headless mode.
+                if (!headless) {
+                    onPostAuthenticated()
+                }
 
                 // Mount mandatory drives FIRST — before bootstrap, before any network I/O.
                 // Encodes the invariant that this app's sync engine always syncs these
                 // drives; nothing about the WS handshake or the registry should be able to
                 // prevent them from appearing in driveStatuses.
+                // Unconditional: BG sync's syncAll() needs the drives mounted.
                 driveSyncManager.ensureMandatoryMounted()
 
                 // Resolve the cross-device registry: local DB on cold boot (free), or one
                 // targeted server fetch on fresh login. Either way we have the canonical
                 // list before opening the WebSocket, so the first WS connect already
                 // subscribes to the full set — no late observer-driven reconnect.
+                // Unconditional: BG sync's syncAll() needs the drive list.
                 val initialDrives = driveRegistry.bootstrap()
                 // Pre-mount optional drives so they're in driveSyncs when
                 // onConnected fires start() + syncAll(). mountDrive() defers
@@ -132,6 +179,18 @@ class AuthConnectionCoordinator(
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
                 logLifecycleSnapshot("drives mounted")
+
+                // Stash for [promoteToForeground] replay if we're headless.
+                lastAuthenticatedDrives = initialDrives
+
+                if (headless) {
+                    Logger.i(tag = "AuthLifecycle") {
+                        "AuthCC: Authenticated branch — mode=headless " +
+                            "deferred=[onPostAuthenticated, connect, driveRegistry.start, loadProfile]"
+                    }
+                    return
+                }
+
                 connect(extraDrives = initialDrives)
                 // Observe cross-device registry changes. We seed the diff baseline with the
                 // bootstrap result so the chat-drive sync that later writes the same file
@@ -147,9 +206,69 @@ class AuthConnectionCoordinator(
             is YouAuthState.Initializing -> {
                 // ignore
             }
+            is YouAuthState.Unauthenticated -> {
+                disconnect()
+                // The profile is loaded here on auth (loadProfile); clear it on the
+                // way out so the owner avatar/name doesn't bleed into the login screen
+                // or the next identity. AuthCC owns the profile lifecycle, so it clears
+                // it directly rather than over the bus.
+                ownerSessionRepository.clear()
+                // Broadcast session end so every stateful singleton clears its own
+                // in-memory caches (conversations, messages, contacts, moments,
+                // vault, …). Emitted AFTER disconnect() — WS is closed and DriveSync
+                // stopped — so nothing can re-populate after the services reset.
+                Logger.i(tag = "AuthLifecycle") { "AuthCC: emitting SessionEnded (logout)" }
+                eventBus.tryEmit(BackendEvent.SessionEnded)
+            }
             else -> {
                 disconnect()
             }
+        }
+    }
+
+    /**
+     * Flip out of headless mode and run any deferred foreground-only work
+     * (`onPostAuthenticated`, `connect`, `driveRegistry.start`,
+     * `loadProfile`) that the headless [onAuthStateChanged] branch skipped.
+     *
+     * Called by the first foreground entry point per process —
+     * `MainActivity.onCreate` on Android, `MainViewController()` on iOS.
+     * Both fire only on actual UI launch (FCM cold-wake doesn't trigger
+     * either), which is exactly the signal we want.
+     *
+     * Idempotent: safe on Activity recreation (config change, return from
+     * background) and on multiple iOS view-controller creates. Non-suspend
+     * for caller ergonomics — the actual replay runs on the AuthCC scope.
+     */
+    fun promoteToForeground() {
+        if (!headless) {
+            Logger.d(tag = "AuthLifecycle") {
+                "AuthCC: promoteToForeground() — already foreground, no-op"
+            }
+            return
+        }
+        headless = false
+        val drives = lastAuthenticatedDrives
+        if (drives == null) {
+            Logger.i(tag = "AuthLifecycle") {
+                "AuthCC: promoteToForeground() — flipped to foreground; auth not yet resolved, " +
+                    "deferred work will run on the next Authenticated"
+            }
+            return
+        }
+        Logger.i(tag = "AuthLifecycle") {
+            "AuthCC: promoteToForeground() — running deferred=[onPostAuthenticated, connect, " +
+                "driveRegistry.start, loadProfile]"
+        }
+        scope.launch {
+            onPostAuthenticated()
+            connect(extraDrives = drives)
+            driveRegistry.start(
+                onMount = { drive -> mountDrive(drive, persist = false) },
+                onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
+                initialBaseline = drives.mapTo(HashSet()) { it.drive.alias },
+            )
+            loadProfile()
         }
     }
 

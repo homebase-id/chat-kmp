@@ -29,7 +29,12 @@ class CursorStorage(
      *   wipes the whole KeyValue table.
      */
     fun loadCursor(expectFresh: Boolean = false): QueryBatchCursor? {
-        val cursor = databaseManager.keyValue.selectByKey(driveId)?.let {
+        // Bootstrap-only sync read — called from DriveSync.init / MainIndexMeta
+        // outside a coroutine context. See KeyValueWrapper.selectByKeyBootstrapSync
+        // for why we can't be suspend here (commonMain has no runBlocking on
+        // wasmJs). The follow-up to async-init these bootstrap paths is tracked
+        // separately.
+        val cursor = databaseManager.keyValue.selectByKeyBootstrapSync(driveId)?.let {
             QueryBatchCursor.fromJson(it.data_.decodeToString())
         }
         if (expectFresh && cursor != null) {

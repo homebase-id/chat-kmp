@@ -34,8 +34,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Run JVM unit tests
-        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest homebase-core:jvmTest
+      - name: Set up Chrome
+        # Required by Karma to run wasmJs tests headless.
+        uses: browser-actions/setup-chrome@latest
+
+      - name: Run JVM + Android unit tests
+        # Unqualified `jvmTest` fans out to every subproject's jvmTest, so newly
+        # added modules are covered automatically (no per-module allow-list to drift).
+        # `testDebugUnitTest` runs the androidApp module's unit tests (jvmTest
+        # doesn't reach those — androidApp has no jvm target).
+        run: ./gradlew jvmTest testDebugUnitTest
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+          CI: true
+
+      - name: Run wasmJs tests
+        # ffmpeg.wasm assets are mirrored into wasmJsTest resources by the
+        # `mirrorWebAppFfmpegAssetsForTest` task in homebase-api/build.gradle.kts
+        # (see karma.config.d/01-ffmpeg.js). wasmJs gradle tasks don't support
+        # Gradle's configuration-cache or parallel-project execution (KT-52074
+        # and friends), hence the two flags below.
+        run: ./gradlew :homebase-api:wasmJsTest --no-configuration-cache --no-parallel
         env:
           JDK_21: ${{ env.JAVA_HOME }}
           CI: true
@@ -45,11 +64,23 @@ jobs:
         if: always()  # Run even if tests fail
         with:
           files: |
-            homebase-api/build/test-results/jvmTest/TEST-*.xml
-            homebase-chat/build/test-results/jvmTest/TEST-*.xml
-            homebase-auth/build/test-results/jvmTest/TEST-*.xml
-            homebase-common/build/test-results/jvmTest/TEST-*.xml
+            **/build/test-results/jvmTest/TEST-*.xml
+            **/build/test-results/testDebugUnitTest/TEST-*.xml
+            **/build/test-results/wasmJsTest/TEST-*.xml
+          # Branch protection on `main` requires the literal context "JVM Test Results".
+          # The check now covers JVM + Android unit + wasmJs results in one publish; the
+          # name stays as-is until the required-status-check list is updated.
           check_name: JVM Test Results
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 30
 
   build:
     strategy:
@@ -101,6 +132,15 @@ jobs:
 
       - name: Run build command
         run: ${{ matrix.build-command }}
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      # iOS simulator tests for homebase-api — covers FfmpegDecoderCommonTest (real FFmpegKit
+      # via cinterop), FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by mock
+      # bridges), and the full commonTest suite (sync/database/outbox/etc.).
+      - name: Run iOS simulator tests
+        if: ${{ matrix.name == 'iOS' }}
+        run: ./gradlew :homebase-api:iosSimulatorArm64Test
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 

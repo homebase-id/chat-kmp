@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -29,11 +31,11 @@ kotlin {
 
     jvm()
 
-//    @OptIn(ExperimentalWasmDsl::class)
-//    wasmJs {
-//        browser()
-//        binaries.executable()
-//    }
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        binaries.executable()
+    }
 
     listOf(
         iosArm64(),
@@ -120,9 +122,9 @@ kotlin {
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).
-//        wasmJsMain.dependencies {
-//            implementation(libs.ktor.client.js)
-//        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
@@ -145,19 +147,6 @@ kotlin {
                     freeCompilerArgs.add("-Xexpect-actual-classes")
                 }
             }
-        }
-    }
-}
-
-// Skip flaky navigation lifecycle tests in CI (headless environment has stricter lifecycle management)
-tasks.withType<Test>().configureEach {
-    val isCI = System.getenv("CI")?.toBoolean() ?: false
-    if (isCI) {
-        filter {
-            // These tests access NavController back stack entries outside composition,
-            // which triggers IllegalStateException in headless test environments
-            excludeTestsMatching("id.homebase.core.ui.navigation.NotificationTapColdStartTest.warm_start_notification_tap_from_detail_navigates_via_chatlist")
-            excludeTestsMatching("id.homebase.core.ui.navigation.NotificationTapColdStartTest.broken_top_only_gate_hangs_when_on_detail")
         }
     }
 }

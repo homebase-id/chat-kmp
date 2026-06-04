@@ -81,6 +81,24 @@ class PaginatedConversationStateTest {
     }
 
     @Test
+    fun reset_dropsAllCachedWindows() {
+        val state = PaginatedConversationState()
+        val otherConvoId = Uuid.parse("22222222-2222-2222-2222-222222222222")
+        state.setInitialWindow(convoId, listOf(message(userDateMs = 10, conversationId = convoId)))
+        state.setInitialWindow(otherConvoId, listOf(message(userDateMs = 20, conversationId = otherConvoId)))
+        assertTrue(state.hasCachedMessages(convoId))
+        assertTrue(state.hasCachedMessages(otherConvoId))
+
+        // Logout: every previous-identity window must be gone.
+        state.reset()
+
+        assertFalse(state.hasCachedMessages(convoId))
+        assertFalse(state.hasCachedMessages(otherConvoId))
+        assertNull(state.getWindow(convoId))
+        assertTrue(state.windows.value.isEmpty())
+    }
+
+    @Test
     fun prependOlderMessages_keepsAscendingOrder_andDedupesByMessageId() {
         val state = PaginatedConversationState()
         val mid = message(userDateMs = 50, conversationId = convoId)

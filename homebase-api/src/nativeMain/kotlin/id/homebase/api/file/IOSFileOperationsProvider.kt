@@ -142,7 +142,9 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         val data = bytes.usePinned { pinned ->
             NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
         }
-        data.writeToFile(filePath, atomically = true)
+        if (!data.writeToFile(filePath, atomically = true)) {
+            error("Failed to write share file to $filePath")
+        }
         return filePath
     }
 

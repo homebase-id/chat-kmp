@@ -106,6 +106,16 @@ data class MessageListUiState(
      *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
      *  this state. Null means no host-level event detail is open. */
     val replyTargetEventDetail: ReplyTargetEventDetail? = null,
+    /** One-time "follow my own send to the bottom" token. Set to a fresh value
+     *  whenever the user sends a message through the full-screen attachment
+     *  editor (image/video/file): closing that overlay tears [ConversationContent]
+     *  — and its layout-growth auto-follow effect — out of composition, so the
+     *  effect restarts with `previousTotal = 0` and never observes the placeholder
+     *  as growth. ConversationContent collects this token on (re)mount, animates to
+     *  the latest item, and dispatches [ConversationListUiAction.ConsumeScrollToLatestRequest]
+     *  to clear it. Null once consumed, so unrelated remounts (closing the image
+     *  viewer) don't re-scroll. */
+    val scrollToLatestRequest: Uuid? = null,
 )
 
 /**
@@ -284,6 +294,10 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         val durationMs: Long? = null,
         val trimStartMs: Long? = null,
         val trimEndMs: Long? = null,
+        // okio-readable path for the decoder/player. On web this is the materialized okio path
+        // (a browser-picked PlatformFile has no path, so file.toString() isn't readable); on
+        // native it equals file.toString(). Populated by AttachmentHandler.extractThumbnailAsync.
+        val playablePath: String? = null,
     ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)

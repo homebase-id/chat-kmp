@@ -78,26 +78,17 @@ actual object FFmpegUtils {
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
-    actual suspend fun grabThumbnail(inputPath: String): String? =
-        withContext(Dispatchers.IO) {
-            val context = ActivityProvider.requireApplicationContext()
-            val uniqueId = getUniqueId(inputPath)
-            val outputFile = File(context.cacheDir, "thumb-$uniqueId.jpg")
-            if (outputFile.exists() && outputFile.length() > 0L) {
-                return@withContext outputFile.absolutePath
-            }
-
-            // Delegate to the platform-native poster-frame extractor. Same
-            // MediaMetadataRetriever + content-resolver fallbacks that the
-            // scrubber preview uses; works for both file paths and content://
-            // URIs, and avoids the FFmpegKit JNI surface entirely (the v7
-            // upgrade aborted on HLS-remuxed MP4 inputs here, see homebase.log
-            // tombstone from 2026-05-17).
-            val bytes = VideoThumbnailExtractor.extractPosterFrame(inputPath)
-                ?: return@withContext null
-            outputFile.writeBytes(bytes)
-            outputFile.absolutePath
-        }
+    // No `grabThumbnail` actual: Android's thumbnail decoder is *currently*
+    // MediaMetadataRetriever-backed (platformFfmpegDecoder() == null), so nothing on this
+    // platform calls the ffmpeg poster helper today, and grabThumbnail is no longer in the
+    // FFmpegUtils expect. Poster frames go through VideoThumbnailService.extractPosterFrame.
+    //
+    // An Android ffmpeg fallback is still possible: add a VideoDecoder that drives FFmpegKit
+    // (directly, as the compressVideo path below already does, or via a re-added Android-internal
+    // grabThumbnail mirroring the JVM/native helpers) and return it from platformFfmpegDecoder().
+    // If you do, that decoder MUST serialize its ffmpeg_execute against compress/segment: Android's
+    // FFmpegKit is the same non-reentrant engine that SIGSEGV'd on iOS when two sessions overlapped
+    // (PR #644). Today the MediaMetadataRetriever path is the only reason Android can't hit that.
 
     actual suspend fun getRotationFromFile(filePath: String): Int =
         withContext(Dispatchers.IO) {
@@ -140,6 +131,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
@@ -158,6 +150,11 @@ actual object FFmpegUtils {
         val inputDurationMs = getDurationMs(inputPath)
         val inputBytes = inFile.length()
         val probe = probeVideoTrack(inputPath)
+        // MediaExtractor reports raw container dims; rotation lives in a
+        // separate track-header field. Planner needs both so it can swap
+        // before computing the scale target (else portrait camera captures
+        // get a landscape scale and the decoded frames get squished).
+        val rotation = getRotationFromFile(inputPath)
         val trimDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
             effectiveTrimEnd - effectiveTrimStart
         } else {
@@ -177,9 +174,13 @@ actual object FFmpegUtils {
             probedCodecMime = if (probe.videoTrackCount == 1 && probe.audioTrackCount <= 1) probe.videoMime else null,
             inputDurationMs = inputDurationMs,
             inputBytes = inputBytes,
+            rotationDegrees = rotation,
             // Default encoder = libx264. Android doesn't expose a hardware
             // libavcodec wrapper (h264_mediacodec exists but is unreliable in
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
+            probedBitDepth = probe.bitDepth,
+            probedIsHdr = probe.isHdr,
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -257,7 +258,16 @@ actual object FFmpegUtils {
         val videoMime: String?,
         val widthPx: Int,
         val heightPx: Int,
+        val bitDepth: Int,
+        val isHdr: Boolean,
     )
+
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!File(inputPath).exists()) return@withContext null
+        val p = probeVideoTrack(inputPath)
+        if (p.videoMime == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
+        VideoTrackInfo(p.videoMime, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
 
     private fun probeVideoTrack(inputPath: String): VideoTrackProbe {
         var videoCount = 0
@@ -265,6 +275,8 @@ actual object FFmpegUtils {
         var videoMime: String? = null
         var widthPx = 0
         var heightPx = 0
+        var bitDepth = 8
+        var isHdr = false
 
         val extractor = android.media.MediaExtractor()
         try {
@@ -279,6 +291,8 @@ actual object FFmpegUtils {
                             videoMime = mime
                             widthPx = readDim(fmt, android.media.MediaFormat.KEY_WIDTH, "display-width")
                             heightPx = readDim(fmt, android.media.MediaFormat.KEY_HEIGHT, "display-height")
+                            bitDepth = readBitDepth(fmt)
+                            isHdr = readIsHdr(fmt)
                         }
                     }
                     mime.startsWith("audio/") -> audioCount++
@@ -289,7 +303,49 @@ actual object FFmpegUtils {
         } finally {
             try { extractor.release() } catch (_: Exception) {}
         }
-        return VideoTrackProbe(videoCount, audioCount, videoMime, widthPx, heightPx)
+        return VideoTrackProbe(videoCount, audioCount, videoMime, widthPx, heightPx, bitDepth, isHdr)
+    }
+
+    /**
+     * Luma bit depth of the video track, inferred from the codec profile.
+     * Returns 8 when the profile is missing or a known 8-bit one. 10-bit
+     * profiles (H.264 High 10, HEVC Main 10, VP9 Profile 2, AV1 Main with
+     * 10-bit) must be re-encoded so the output can be pinned to 8-bit.
+     */
+    private fun readBitDepth(fmt: android.media.MediaFormat): Int {
+        val profile = if (fmt.containsKey(android.media.MediaFormat.KEY_PROFILE)) {
+            try { fmt.getInteger(android.media.MediaFormat.KEY_PROFILE) } catch (_: Exception) { -1 }
+        } else -1
+        val tenBitProfiles = setOf(
+            android.media.MediaCodecInfo.CodecProfileLevel.AVCProfileHigh10,
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10Plus,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile3,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile3HDR,
+        )
+        return if (profile in tenBitProfiles) 10 else 8
+    }
+
+    /**
+     * HDR detection mirroring Signal's MediaCodecCompat.isHdrVideo (see
+     * [VideoThumbnailsMediaCodec]'s copy): a PQ/HLG colour-transfer, or static
+     * HDR10 / dynamic HDR10+ metadata on the track.
+     */
+    private fun readIsHdr(fmt: android.media.MediaFormat): Boolean {
+        val transfer = if (fmt.containsKey(android.media.MediaFormat.KEY_COLOR_TRANSFER)) {
+            try { fmt.getInteger(android.media.MediaFormat.KEY_COLOR_TRANSFER) } catch (_: Exception) { -1 }
+        } else -1
+        if (transfer == android.media.MediaFormat.COLOR_TRANSFER_ST2084 ||
+            transfer == android.media.MediaFormat.COLOR_TRANSFER_HLG
+        ) return true
+        if (fmt.containsKey(android.media.MediaFormat.KEY_HDR_STATIC_INFO)) return true
+        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+            fmt.containsKey(android.media.MediaFormat.KEY_HDR10_PLUS_INFO)
+        ) return true
+        return false
     }
 
     private fun readDim(format: android.media.MediaFormat, primary: String, display: String): Int {

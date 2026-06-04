@@ -274,8 +274,11 @@ class ChatMessageActionServiceTestFixture(
     }
 
     /**
-     * Register a MessageUiModel with the fake lookup so getMessages([id]) returns it.
-     * Returns the message's uniqueId so tests can pass it into markAsReadByFiles.
+     * Register a [MessageUiModel] with the fake lookup so `getMessages` returns
+     * it, and return the model itself. Tests pass the model into
+     * `markAsReadByFiles` directly (mirroring the production code path, where
+     * the in-memory window supplies the model and no DB round-trip is needed).
+     * Use `.id` when a test needs the bare uniqueId.
      */
     fun seedMessage(
         conversationId: Uuid,
@@ -286,8 +289,8 @@ class ChatMessageActionServiceTestFixture(
         isPendingSend: Boolean = false,
         id: Uuid = Uuid.random(),
         fileId: Uuid = Uuid.random(),
-    ): Uuid {
-        messageLookup.records += MessageUiModel(
+    ): MessageUiModel {
+        val model = MessageUiModel(
             id = id,
             globalTransitId = null,
             fileId = fileId,
@@ -310,7 +313,8 @@ class ChatMessageActionServiceTestFixture(
             keyHeader = KeyHeader.empty(),
             hasMore = false,
         )
-        return id
+        messageLookup.records += model
+        return model
     }
 
     /**
@@ -553,12 +557,26 @@ private class NoopFileOperationsProvider : FileOperationsProvider {
 class FakeMessageLookup : MessageLookup {
     val records = mutableListOf<MessageUiModel>()
 
+    /** Number of `getMessages(ids, conversationId)` invocations against this
+     *  fake. The MarkAsRead drop-the-DB-load test asserts this stays 0 after
+     *  `markAsReadByFiles` — proving no by-IDs DB round-trip is happening on
+     *  the scroll-visibility / per-message swipe paths. */
+    var getMessagesCallCount = 0
+        private set
+
     override suspend fun getMessage(messageId: Uuid): MessageUiModel? =
         records.firstOrNull { it.id == messageId }
 
-    override suspend fun getMessages(messageIds: List<Uuid>): BatchResult<MessageUiModel> {
+    override suspend fun getMessages(
+        messageIds: List<Uuid>,
+        conversationId: Uuid,
+    ): BatchResult<MessageUiModel> {
+        getMessagesCallCount++
         val wanted = messageIds.toSet()
-        val matched = records.filter { it.id in wanted }
+        // Mirror the real implementation: scope the lookup to the supplied
+        // conversation so a test can register messages across multiple
+        // conversations and still get the right slice back.
+        val matched = records.filter { it.id in wanted && it.conversationId == conversationId }
         return BatchResult(
             records = matched,
             hasMoreRows = false,

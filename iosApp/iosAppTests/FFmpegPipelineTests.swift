@@ -1,5 +1,6 @@
 import XCTest
 import ffmpegkit
+import AVFoundation
 
 /// iOS FFmpeg pipeline tests — validates the ffmpegkit xcframework across all
 /// production paths on both simulator (libx264) and physical device
@@ -50,6 +51,7 @@ final class FFmpegPipelineTests: XCTestCase {
         case fhd1080p
         case uhd4k
         case iphoneHevc
+        case iphoneSpatial
 
         var name: String {
             switch self {
@@ -57,13 +59,14 @@ final class FFmpegPipelineTests: XCTestCase {
             case .fhd1080p:   return "fixture_1080p"
             case .uhd4k:      return "fixture_4k"
             case .iphoneHevc: return "fixture_iphone_hevc"
+            case .iphoneSpatial: return "fixture_iphone_spatial"
             }
         }
 
         var ext: String {
             switch self {
-            case .iphoneHevc: return "mov"
-            default:          return "mp4"
+            case .iphoneHevc, .iphoneSpatial: return "mov"
+            default:                          return "mp4"
             }
         }
     }
@@ -170,6 +173,337 @@ final class FFmpegPipelineTests: XCTestCase {
 
         let outSize = (try? FileManager.default.attributesOfItem(atPath: output)[.size] as? Int) ?? 0
         print("BASELINE platform=iOS encoder=libx264 fixture=\(fixture.name) quality=\(quality) outputBytes=\(outSize) wallTimeMs=\(wallTimeMs)")
+    }
+
+    // =========================================================================
+    // MARK: - Hardware (VideoToolbox) — iPhone spatial-audio .mov repro
+    //
+    // fixture_iphone_spatial.mov is a 2s trim of a real iPhone 16 Pro recording:
+    // 4K HEVC (hvc1) + AAC + apac (Apple spatial audio) + mebx metadata tracks +
+    // rotation -90. This is the exact shape that crashes the chat video-send flow.
+    //
+    // The production crash is a SIGSEGV inside ffmpeg's print_report on FFmpegKit's
+    // dispatch thread while running the h264_videotoolbox encode (confirmed via the
+    // MovCrashProbe log trail dying at EXEC[h264_videotoolbox] + an EXC_BAD_ACCESS
+    // .ips with ffmpegkit print_report <- ffmpeg_execute frames). These tests pin
+    // down whether the bundled build can (a) probe and (b) HW-encode this file.
+    // =========================================================================
+
+    /// Root cause + fix foundation in ONE check (runs on sim + device; AVFoundation is
+    /// VideoToolbox-independent). FFmpegKit's ffprobe yields no usable video stream for this
+    /// iPhone file (4K HEVC + apac spatial audio + mebx metadata tracks) — verified that
+    /// `-v verbose` logs fine but the JSON show-streams output is empty, so `getMediaInformation`
+    /// is nil. AVFoundation reads the same file correctly, which is exactly why the production
+    /// probe now falls back to AVFoundation (FFmpegUtils.native.kt `probeVideoNative`),
+    /// mirroring how the Android actual probes via MediaExtractor / MediaMetadataRetriever.
+    func test_iphoneSpatial_ffprobeYieldsNothing_butAVFoundationReadsIt() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+
+        // (1) FFmpegKit ffprobe: no usable video stream (documents the root cause).
+        let info = FFprobeKit.getMediaInformation(input)?.getMediaInformation()
+        let ffStreams = (info?.getStreams() as? [StreamInformation]) ?? []
+        let ffVideo = ffStreams.first { ($0.getType() ?? "") == "video" }
+        print("PROBE ffmpegkit streams=\(ffStreams.count) videoCodec=\(ffVideo?.getCodec() ?? "nil")")
+        XCTAssertNil(
+            ffVideo,
+            "Expected FFmpegKit ffprobe to find NO video stream for this iPhone file (matches " +
+            "production: getMediaInformation returns nil). If this ever starts passing, the " +
+            "bundled ffprobe gained support and the AVFoundation fallback could be revisited."
+        )
+
+        // (2) AVFoundation: reads the real track — the basis of the production fix.
+        let asset = AVURLAsset(url: URL(fileURLWithPath: input))
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("AVFoundation must find a video track in the iPhone spatial .mov")
+            return
+        }
+        let size = track.naturalSize
+        let tf = track.preferredTransform
+        let rotation = Int((atan2(tf.b, tf.a) * 180 / .pi).rounded())
+        print("AVPROBE iphone_spatial size=\(Int(size.width))x\(Int(size.height)) rotation=\(rotation)")
+        XCTAssertGreaterThan(size.width, 0, "AVFoundation must report a real width (ffprobe gave 0)")
+        XCTAssertGreaterThan(size.height, 0, "AVFoundation must report a real height (ffprobe gave 0)")
+    }
+
+    /// Sanity: does the bundled h264_videotoolbox encoder run at all on this host
+    /// (simulator or device)? Uses an ordinary H.264 fixture so a failure here means
+    /// "VT encoder unavailable on this host", isolating it from the iPhone-file case below.
+    func test_videotoolbox_baseline_normalFile() {
+        guard let input = copyFixture(.hd720p) else { return }
+        let output = tempDir + "vt_baseline.mp4"
+        let session = FFmpegKit.execute(withArguments: [
+            "-y", "-i", input, "-vf", "scale=-2:720",
+            "-c:v", "h264_videotoolbox", "-b:v", "2500k", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output,
+        ])
+        let rc = session?.getReturnCode()
+        print("VT-BASELINE rc=\(rc?.getValue() ?? -999) fail=\(session?.getFailStackTrace() ?? "nil")")
+        XCTAssertTrue(ReturnCode.isSuccess(rc),
+            "h264_videotoolbox must run on this host for a normal file (rc=\(rc?.getValue() ?? -999))")
+    }
+
+    /// End-to-end fix verification on the hardware encoder. The pre-fix pipeline fed a
+    /// DEGENERATE command (empty probe -> width=0, NO scale filter) to h264_videotoolbox and
+    /// SIGSEGV'd in ffmpeg's print_report. With the AVFoundation probe (the fix), the planner
+    /// gets real dimensions and emits a PROPER scaled command. This runs that proper command
+    /// on h264_videotoolbox and asserts success (no crash, valid output).
+    func test_videotoolbox_iphoneSpatial_properCommand_succeeds() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+
+        // Mirror the fix's probe: AVFoundation supplies the dims ffprobe couldn't.
+        let asset = AVURLAsset(url: URL(fileURLWithPath: input))
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("AVFoundation must find a video track"); return
+        }
+        let size = track.naturalSize
+        print("VT-FIX probe size=\(Int(size.width))x\(Int(size.height))")
+        XCTAssertGreaterThan(size.width, 0, "probe must yield real dims for a proper command")
+
+        let output = tempDir + "vt_iphone_spatial_proper.mp4"
+        // Proper command: real dims -> a scale filter is present (planner scales the short
+        // edge to 720 for STANDARD). The degenerate pre-fix command had NO -vf and crashed.
+        let args = [
+            "-y",
+            "-hwaccel", "videotoolbox",
+            "-i", input,
+            "-vf", "scale=-2:720",
+            "-c:v", "h264_videotoolbox",
+            "-b:v", "2500k",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            output,
+        ]
+        let session = FFmpegKit.execute(withArguments: args)
+        let rc = session?.getReturnCode()
+        let rcVal = rc?.getValue() ?? -999
+        print("VT-FIX h264_videotoolbox rc=\(rcVal) fail=\(session?.getFailStackTrace() ?? "nil")")
+        XCTAssertTrue(
+            ReturnCode.isSuccess(rc),
+            "Proper (scaled) command must succeed on h264_videotoolbox (rc=\(rcVal)). " +
+            "fail=\(session?.getFailStackTrace() ?? "nil")"
+        )
+        assertOutputValid(output, label: "iphone_spatial videotoolbox proper")
+    }
+
+    // =========================================================================
+    // MARK: - PRODUCTION-FAITHFUL repro: async String command + statistics cb
+    //
+    // The test above uses the SYNC FFmpegKit.execute(withArguments:[array]) — no
+    // statistics callback and no argv-string parsing. Production's
+    // FFmpegUtils.compressVideo does NEITHER: it joins the planner argv into one
+    // STRING (args.joinToString(" ") { quote-if-space }) and runs it via
+    // FFmpegKit.executeAsync(command:) WITH a withStatisticsCallback (see
+    // FFmpegKitBridgeImpl.executeFFmpegAsync). The original production crash was a
+    // SIGSEGV in ffmpeg's print_report ON THE DISPATCH THREAD — i.e. the statistics
+    // path. These two tests run the EXACT production command shape on the spatial
+    // file so a green sync-array test can't mask a crash that only the production
+    // execution path triggers.
+    // =========================================================================
+
+    /// Rebuilds the exact production command for the spatial file, mirroring
+    /// FFmpegUtils.native.kt + FfmpegCompressPlanner: AVFoundation dims (ffprobe
+    /// reads nothing) → display-dim swap for rotation → scale short-edge to 720 →
+    /// h264_videotoolbox with `-hwaccel videotoolbox`, then `args.joinToString(" ")`
+    /// with quote-only-if-space — the same single string production hands to
+    /// FFmpegKit.executeAsync.
+    private func productionSpatialCommand(input: String, output: String) -> String {
+        let asset = AVURLAsset(url: URL(fileURLWithPath: input))
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            XCTFail("spatial fixture must have a video track")
+            return ""
+        }
+        let size = track.naturalSize
+        let tf = track.preferredTransform
+        let rot = ((Int((atan2(tf.b, tf.a) * 180 / .pi).rounded()) % 360) + 360) % 360
+        let swap = abs(rot % 360) % 180 == 90
+        let dispW = swap ? Int(size.height) : Int(size.width)
+        let dispH = swap ? Int(size.width) : Int(size.height)
+        let shortEdge = 720
+        var scaleArg: String? = nil
+        if min(dispW, dispH) > shortEdge {
+            func even(_ x: Int) -> Int { x % 2 == 0 ? x : x + 1 }
+            let outW: Int, outH: Int
+            if dispW < dispH { outW = shortEdge; outH = dispH * shortEdge / dispW }
+            else { outW = dispW * shortEdge / dispH; outH = shortEdge }
+            scaleArg = "scale=\(even(outW)):\(even(outH))"
+        }
+        var args = ["-y", "-hwaccel", "videotoolbox", "-i", input,
+                    "-c:v", "h264_videotoolbox", "-b:v", "2500k"]
+        if let s = scaleArg { args += ["-vf", s] }
+        args += ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+                 "-movflags", "+faststart", output]
+        return args.map { $0.contains(" ") ? "\"\($0)\"" : $0 }.joined(separator: " ")
+    }
+
+    /// THE production path: string command via executeAsync WITH a statistics
+    /// callback (the print_report / dispatch-thread path the crash lived in).
+    func test_videotoolbox_iphoneSpatial_productionAsyncPath_succeeds() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+        let output = tempDir + "prod_async_spatial.mp4"
+        let command = productionSpatialCommand(input: input, output: output)
+        print("PROD-ASYNC command: \(command)")
+
+        let done = expectation(description: "production async compress completes")
+        var passed = false
+        var rcVal: Int32 = -999
+        var failTrace: String? = nil
+        let statsLock = NSLock()
+        var statsTicks = 0
+
+        FFmpegKit.executeAsync(
+            command,
+            withCompleteCallback: { session in
+                let rc = session?.getReturnCode()
+                passed = ReturnCode.isSuccess(rc)
+                rcVal = rc?.getValue() ?? -999
+                failTrace = session?.getFailStackTrace()
+                done.fulfill()
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                // Mirror production: touch stats.time on FFmpegKit's dispatch
+                // thread — this is the forward_report / print_report path.
+                _ = Int64(stats?.getTime() ?? 0)
+                statsLock.lock(); statsTicks += 1; statsLock.unlock()
+            }
+        )
+        wait(for: [done], timeout: 180)
+
+        statsLock.lock(); let ticks = statsTicks; statsLock.unlock()
+        print("PROD-ASYNC rc=\(rcVal) statsTicks=\(ticks) fail=\(failTrace ?? "nil")")
+        XCTAssertTrue(
+            passed,
+            "production async (string + statistics callback) command must succeed on the " +
+            "spatial file (rc=\(rcVal)). fail=\(failTrace ?? "nil")"
+        )
+        assertOutputValid(output, label: "prod async spatial")
+    }
+
+    /// Isolates the argv-string parser: same production STRING command, but SYNC
+    /// (no statistics callback). If this passes while the async test crashes, the
+    /// statistics/print_report path is the trigger; if both crash, the string
+    /// parser is involved (the passing array test would then be the only safe form).
+    func test_videotoolbox_iphoneSpatial_syncStringCommand_succeeds() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+        let output = tempDir + "sync_string_spatial.mp4"
+        let command = productionSpatialCommand(input: input, output: output)
+        print("SYNC-STRING command: \(command)")
+
+        let session = FFmpegKit.execute(command)
+        let rc = session?.getReturnCode()
+        let rcVal = rc?.getValue() ?? -999
+        print("SYNC-STRING rc=\(rcVal) fail=\(session?.getFailStackTrace() ?? "nil")")
+        XCTAssertTrue(
+            ReturnCode.isSuccess(rc),
+            "sync string command must succeed on the spatial file (rc=\(rcVal)). " +
+            "fail=\(session?.getFailStackTrace() ?? "nil")"
+        )
+        assertOutputValid(output, label: "sync string spatial")
+    }
+
+    /// PRE-FIX degenerate command repro — the smoking gun. This is what the pipeline
+    /// built BEFORE the AVFoundation probe fallback: FFmpegKit ffprobe returned nothing
+    /// → probe width=0 → FfmpegCompressPlanner.computeOutputDims returned null → NO
+    /// `-vf scale` → h264_videotoolbox was handed the FULL-4K spatial file, with the
+    /// statistics callback installed (the production async path). This reproduces that
+    /// exact command. A SIGSEGV here (runner crash) confirms the original cause and
+    /// proves the fix — supplying real dims so a scale filter IS present — is what
+    /// prevents it. Runs on device + sim; the device hardware encoder is the suspect.
+    func test_videotoolbox_iphoneSpatial_degenerateNoScale_asyncPath() {
+        guard let input = copyFixture(.iphoneSpatial) else { return }
+        let output = tempDir + "degenerate_spatial.mp4"
+        // NO -vf scale — exactly what width=0 produced before the fix.
+        let args = ["-y", "-hwaccel", "videotoolbox", "-i", input,
+                    "-c:v", "h264_videotoolbox", "-b:v", "2500k",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart", output]
+        let command = args.map { $0.contains(" ") ? "\"\($0)\"" : $0 }.joined(separator: " ")
+        print("DEGENERATE command: \(command)")
+
+        let done = expectation(description: "degenerate async compress completes")
+        var passed = false
+        var rcVal: Int32 = -999
+        var failTrace: String? = nil
+        FFmpegKit.executeAsync(
+            command,
+            withCompleteCallback: { session in
+                let rc = session?.getReturnCode()
+                passed = ReturnCode.isSuccess(rc)
+                rcVal = rc?.getValue() ?? -999
+                failTrace = session?.getFailStackTrace()
+                done.fulfill()
+            },
+            withLogCallback: nil,
+            withStatisticsCallback: { stats in
+                _ = Int64(stats?.getTime() ?? 0)
+            }
+        )
+        wait(for: [done], timeout: 180)
+        // The signal is crash-vs-not: a SIGSEGV dies before fulfilling and xcodebuild
+        // reports a runner crash. A clean completion (any rc) means the degenerate
+        // command is NOT the crash trigger and the cause is elsewhere.
+        print("DEGENERATE rc=\(rcVal) passed=\(passed) fail=\(failTrace ?? "nil")")
+        // The signal is crash-vs-not, NOT success. A SIGSEGV in print_report dies before
+        // onComplete fires, so rcVal stays -999. Any completion — success OR a clean non-zero
+        // rc (e.g. a sim where 4K VT errors without crashing) — proves the degenerate
+        // SINGLE-session command does not crash, which is the whole point: the crash is
+        // concurrency, not this command. Assert completion, not encode success.
+        XCTAssertNotEqual(
+            rcVal, -999,
+            "degenerate command must COMPLETE without crashing the runner (a SIGSEGV in " +
+            "print_report would prevent onComplete). fail=\(failTrace ?? "nil")"
+        )
+    }
+
+    // =========================================================================
+    // MARK: - ROOT CAUSE regression: serial queue prevents the print_report crash
+    //
+    // ffmpeg's fftools (ffmpeg.c) is NOT reentrant — it uses process-global state
+    // (output_files, nb_output_streams, progress_avio…). On FFmpegKit's DEFAULT async path
+    // (the CONCURRENT com.apple.root.default-qos queue) two overlapping ffmpeg_execute
+    // sessions corrupt each other's globals and crash with a null-deref in print_report —
+    // the real production crash (Homebase-2026-06-02-111043.ips: threads 32 & 34 both in
+    // ffmpeg_execute, thread 34 in print_report; reproduced live on-device with 8 concurrent
+    // DEFAULT-queue sessions). The production trigger is a VideoThumbnailService strip
+    // extraction overlapping a compress — paths VideoCompressionService.heavyOpLock does NOT
+    // mutually exclude.
+    //
+    // The fix (FFmpegKitBridgeImpl) routes EVERY execution through ONE serial DispatchQueue
+    // via FFmpegKit's `onDispatchQueue:` API. This test pins that exact mechanism: 8 sessions
+    // fired at once but bound to a single serial queue must all complete without a crash.
+    // Drop the `onDispatchQueue:` arg (or pass a concurrent queue) and this crashes — that's
+    // the bug. (A test driving FFmpegKitBridgeImpl directly is a follow-up: the iosAppTests
+    // target doesn't yet link ComposeApp, so it can't @testable-import the bridge class.)
+    // =========================================================================
+    func test_concurrentFFmpegSessions_onSerialQueue_doNotCrash() {
+        guard let input = copyFixture(.hd720p) else { return }
+        let serial = DispatchQueue(label: "test.ffmpegkit.serial")
+        let n = 8
+        var exps: [XCTestExpectation] = []
+        for i in 0..<n {
+            let out = tempDir + "serial_concurrent_\(i).mp4"
+            // libx264 (software; deterministic on sim + device). -t 2 keeps each quick.
+            let args = ["-y", "-i", input, "-t", "2", "-c:v", "libx264", "-preset", "veryfast",
+                        "-b:v", "1500k", "-vf", "scale=-2:480", "-c:a", "aac", "-b:a", "128k", out]
+            let e = expectation(description: "serialized session \(i)")
+            exps.append(e)
+            FFmpegKit.execute(
+                withArgumentsAsync: args,
+                withCompleteCallback: { session in
+                    XCTAssertTrue(
+                        ReturnCode.isSuccess(session?.getReturnCode()),
+                        "serialized session \(i) failed: \(session?.getFailStackTrace() ?? "nil")"
+                    )
+                    e.fulfill()
+                },
+                withLogCallback: nil,
+                withStatisticsCallback: { stats in _ = Int64(stats?.getTime() ?? 0) },
+                onDispatchQueue: serial
+            )
+        }
+        wait(for: exps, timeout: 300)
     }
 
     // MARK: - Progress statistics — libx264 (sim + device)

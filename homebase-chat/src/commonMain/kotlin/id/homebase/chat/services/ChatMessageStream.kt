@@ -20,6 +20,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,8 @@ class ChatMessageStream(
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
-    private val driveFileProvider: DriveFileProvider
+    private val driveFileProvider: DriveFileProvider,
+    private val optimisticWriter: OptimisticWriter
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
@@ -62,9 +64,23 @@ class ChatMessageStream(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop cached message windows for the previous identity.
+                    is BackendEvent.SessionEnded -> paginatedState.reset()
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
                             paginatedState.removeMessage(event.uniqueId)
+                        }
+                    }
+
+                    // The outbox permanently gave up on this item (permanent failure
+                    // or 20 retries exhausted). For a message that means it will never
+                    // arrive back from the server to clear isPendingSendTag — so the
+                    // bubble would spin forever. Swap the pending tag for the failed
+                    // tag so the bubble shows the error icon. Conversation/admin file
+                    // drops are ignored in markSendFailed (no bubble).
+                    is BackendEvent.OutboxEvent.OutboxItemDropped -> {
+                        if (event.driveId == chatDrive) {
+                            scope.launch { markSendFailed(event.uniqueId) }
                         }
                     }
 
@@ -370,6 +386,28 @@ class ChatMessageStream(
         )
     }
 
+    /**
+     * An outbox item for [uniqueId] was permanently dropped. If it's a chat *message*,
+     * swap its [ChatProtocol.isPendingSendTag] for [ChatProtocol.isFailedSendTag] so the
+     * bubble shows the Failed icon instead of spinning forever.
+     *
+     * Non-message drops are ignored: a dropped conversation file
+     * (`uniqueId == conversationId`) or admin file has no message bubble; its dependent
+     * messages each surface their own outcome via this same handler when they drop.
+     */
+    private suspend fun markSendFailed(uniqueId: Uuid) {
+        val file = getMessageFile(uniqueId) ?: return
+        if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) return
+
+        val existingTags = file.fileMetadata.localAppData?.tags.orEmpty()
+        // Already terminal — nothing to do (avoids a redundant upsert/BatchReceived).
+        if (ChatProtocol.isFailedSendTag in existingTags) return
+
+        val newTags = existingTags
+            .filterNot { it == ChatProtocol.isPendingSendTag } + ChatProtocol.isFailedSendTag
+        optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
+    }
+
     /** Walk the open conversations' in-memory message lists for a model whose
      *  `id == messageId` and return its `fileId`. The hit rate is effectively
      *  100% for messageId-keyed actions invoked from a visible message
@@ -436,6 +474,11 @@ class ChatMessageStream(
         val mapElapsed = mapStart.elapsedNow()
 
         if (queryElapsed + mapElapsed > 200.milliseconds) {
+            // dbQuery (queue-wait + SQL) and mapping are measured locally here, so both are
+            // accurate. The queue-wait-vs-SQL split for THIS exact query is in the paired
+            // SlowDbRead line that executeReadQuery emits — we deliberately no longer read
+            // DatabaseManager.lastReadTiming, a single shared cell a concurrent read can
+            // clobber (it produced a garbled queueWait here).
             Logger.w(tag = "SlowMessageFetch") {
                 "conversationId=$conversationId " +
                         "rawRecords=${result.records.size} " +
@@ -492,13 +535,29 @@ class ChatMessageStream(
     }
 
     override suspend fun getMessages(
-        messageIds: List<Uuid>
+        messageIds: List<Uuid>,
+        conversationId: Uuid,
     ): BatchResult<MessageUiModel> {
+
+        // Empty input is a no-op — no need to round-trip the driver. Note this
+        // also dodges the QueryBatch `uniqueIdAnyOf = emptyList()` shape that
+        // would otherwise emit a `uniqueId IN ()` clause SQLite rejects.
+        if (messageIds.isEmpty()) {
+            return BatchResult(
+                records = emptyList(),
+                hasMoreRows = false,
+                cursor = QueryBatchCursor(),
+            )
+        }
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
-        // TODO - inject searchQuery into actual db query
+        // Passing groupIdAnyOf alongside uniqueIdAnyOf makes the chat-shape
+        // branch in QueryBatch (kt:262) fire, pinning idx_chatmessage_convid_userDate
+        // via INDEXED BY — the lookup becomes a tight per-conversation seek
+        // rather than the global CreatedDate scan the planner picks without
+        // ANALYZE statistics. See MessageLookup.getMessages for context.
         val result =
             queryBatch.queryBatchAsync(
                 dbm = dbm,
@@ -506,10 +565,11 @@ class ChatMessageStream(
                 noOfItems = messageIds.size,
                 cursor = null,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
+                sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-                uniqueIdAnyOf = messageIds
+                groupIdAnyOf = listOf(conversationId),
+                uniqueIdAnyOf = messageIds,
             )
 
         return BatchResult(

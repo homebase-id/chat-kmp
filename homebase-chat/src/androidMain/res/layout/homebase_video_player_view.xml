@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Surface type is set to texture_view (instead of the PlayerView default
+  ~ surface_view) so the player composes correctly with the Compose hierarchy:
+  ~ no separate Surface "punched into" the window, no black-hole flash before
+  ~ the first frame paints, and View alpha animations are honoured.
+  ~
+  ~ The TextureView is left at its default `isOpaque = true`. The empty /
+  ~ uninitialized texture state during decoder warm-up is hidden by a
+  ~ thumbnail drawn *over* the player by MomentInlineVideoTile, which drops
+  ~ once VideoPlayerSurface fires its onFirstFrame callback. We tried the
+  ~ inverted layering (thumbnail under, isOpaque=false so the texture blends)
+  ~ but some Android GPUs hand back uninitialized GL memory whose alpha
+  ~ channel produces visible horizontal slices of the thumbnail through the
+  ~ first decoded frame.
+  ~
+  ~ The shutter stays transparent so it never causes a black flash on its
+  ~ own; the overlay above is what hides the warm-up window.
+  ~
+  ~ keep_content_on_player_reset is set to false so a player handed back to
+  ~ ExoPlayerPool and re-leased for a different tile does not briefly paint
+  ~ the previous tile's last frame on the new TextureView.
+  -->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:keep_content_on_player_reset="false"
+    app:shutter_background_color="@android:color/transparent" />

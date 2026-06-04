@@ -119,6 +119,7 @@ import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
+import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.location.LocationResult
@@ -152,6 +153,7 @@ import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
@@ -208,6 +210,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -220,6 +223,7 @@ import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -241,6 +245,7 @@ fun ConversationContent(
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEventComposer by remember { mutableStateOf(false) }
+    var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
@@ -353,38 +358,104 @@ fun ConversationContent(
             }
     }
 
-    // Auto-follow: when the list grows (new sent or received message) and the
-    // user was already at the bottom, scroll to the new last item. If the user
-    // is reading history further up, leave them alone.
+    // Auto-follow: when the list grows, scroll to the new last item if EITHER
+    //  - the user was already at the bottom (a new incoming/sent message while
+    //    reading the latest), OR
+    //  - the growth is the user's OWN just-sent message — so typing while
+    //    scrolled up moves you down to your message (Signal/WhatsApp behaviour).
+    // Someone else's message arriving while you're scrolled up is left alone.
     //
-    // When `hasNewerMessages == true` the user is paged backwards into history;
-    // the bottom of the loaded window is NOT the latest message, and ChatMessageStream
-    // gates incoming-stream upserts on the same flag — so the only way the list
-    // grows here is via prepend, which the user wouldn't want auto-followed.
+    // When `hasNewerMessages == true` the user is paged backwards into history
+    // (or the window was trimmed past MAX_WINDOW_SIZE): the bottom of the loaded
+    // window is NOT the latest message, and ChatMessageStream gates incoming-stream
+    // upserts (including the user's own optimistic send) on the same flag — so the
+    // list can only grow via prepend here and must never auto-follow. The own-send
+    // case in that state is handled separately by a reload (jumpToLatestAfterOwnSend
+    // in the ViewModel), which resets hasNewerMessages and lands on the sent message.
     val hasNewerForAutoFollow = rememberUpdatedState(uiState.hasNewerMessages)
+    val myOdinId = uiState.ownerSession?.odinId
+    // Identity + authorship of the BOTTOM of the merged list: a trailing pending
+    // outgoing placeholder (file/video send, shown before the real bubble lands)
+    // or the last loaded message. The own-send arm below fires only when this
+    // KEY changes to one of the user's own items — so a genuine new send at the
+    // bottom follows, while an older-message prepend (which also grows the list
+    // but leaves the bottom key unchanged) does NOT yank the user back down.
+    val bottomItem = rememberUpdatedState(run {
+        val convoId = conversation.conversation.id
+        val lastMsg = (uiState.messages.lastOrNull { it is MessageListContentModel.Message }
+            as? MessageListContentModel.Message)?.message
+        val trailingPending = uiState.pendingOutgoing
+            .filter { it.conversationId == convoId }
+            .maxByOrNull { it.sentAt }
+        when {
+            // Pending placeholders sort to the bottom only when newer than the
+            // last loaded message (mirrors the mergedItems interleave). They are
+            // always the user's own outgoing content.
+            trailingPending != null &&
+                (lastMsg == null || trailingPending.sentAt > lastMsg.userDate) ->
+                trailingPending.id to true
+            lastMsg != null ->
+                lastMsg.id to (myOdinId != null && lastMsg.sender == myOdinId)
+            else -> null to false
+        }
+    })
     LaunchedEffect(listState, conversation.conversation.id) {
         var previousTotal = 0
         var wasAtBottom = false
+        var previousBottomKey: Uuid? = null
         snapshotFlow {
-            listState.layoutInfo.totalItemsCount to listState.canScrollForward
-        }.collect { (total, canScrollForward) ->
-            if (total > previousTotal && previousTotal > 0 && wasAtBottom &&
+            val info = listState.layoutInfo
+            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, lastVisibleIndex) ->
+            val (bottomKey, bottomMine) = bottomItem.value
+            val grew = total > previousTotal && previousTotal > 0
+            // Own-send: the bottom item is the user's AND it just changed (a new
+            // message/placeholder landed at the end), so follow it down even when
+            // the user had scrolled up into history.
+            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
+            if (grew && (wasAtBottom || myNewBottom) &&
                 !hasNewerForAutoFollow.value
             ) {
                 listState.animateScrollToItem(total - 1)
             }
-            // canScrollForward == false means the user is at the absolute end
-            // of the list. Record this BEFORE the next snapshot so a subsequent
-            // growth sees the pre-growth scroll state.
-            wasAtBottom = total > 0 && !canScrollForward
+            previousBottomKey = bottomKey
+            // "At the bottom" = the last item is currently visible. This mirrors
+            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
+            // unlike canScrollForward, does NOT require scrolling the final pixels
+            // into the 24.dp bottom content padding — so a fully-visible last
+            // message already counts as "at the bottom" and a newly-arrived
+            // message auto-follows. Recorded BEFORE the next snapshot so a
+            // subsequent growth sees the pre-growth scroll state (at the moment
+            // the new item lands, lastVisibleIndex still points at the old last
+            // item, which is why we read it from the prior emission here).
+            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
             previousTotal = total
         }
+    }
+
+    // One-time own-send follow for sends that route through the full-screen
+    // attachment editor (image/video/file). Closing that overlay remounts this
+    // composable with the pending placeholder already in the list, so the
+    // layout-growth auto-follow above starts at previousTotal = 0 and never sees
+    // growth. The ViewModel sets scrollToLatestRequest in the same update that
+    // adds the placeholder and clears the overlay; we wait for the freshly
+    // mounted list to lay out, follow it to the bottom, then consume the token.
+    // Skipped (but still consumed) when paged into history — jumpToLatestAfterOwnSend
+    // handles that case with a ScrollToLatest reload once the send completes.
+    LaunchedEffect(uiState.scrollToLatestRequest) {
+        if (uiState.scrollToLatestRequest == null) return@LaunchedEffect
+        if (!uiState.hasNewerMessages) {
+            val total = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+            listState.animateScrollToItem(total - 1)
+        }
+        onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
     }
 
     // Add this state to track keyboard height
     var keyboardHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
+    val imeState = rememberImeOffsetState()
 
     val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
 
@@ -466,7 +537,12 @@ fun ConversationContent(
         computeBattleChainCap(conversation.conversation.participants.size)
     }
 
-    @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+    @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+        if (uiState.isSearchActive) {
+            onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
+            searchTextState.clearText()
+            return@BackHandler
+        }
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
@@ -755,7 +831,7 @@ fun ConversationContent(
                                 onUiAction(
                                     ConversationListUiAction.MarkAsRead(
                                         conversation.conversation.id,
-                                        messageIds = null,
+                                        messages = null,
                                     )
                                 )
                             },
@@ -783,13 +859,11 @@ fun ConversationContent(
                 modifier = Modifier.fillMaxSize()
                     .offset {
                         val imeHeight = imeInsets.getBottom(this)
+                        val pureImeHeight = imeState.pureImeBottomPx
                         val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
                         val sheetOffset = when {
-                            // Emoji search: keyboard + emoji sheet both visible
-                            showEmojiSheet && imeHeight > 0 -> imeHeight + sheetHeight
-                            // Regular keyboard only
-                            imeHeight > 0 -> imeHeight
-                            // Sheet only (no keyboard)
+                            showEmojiSheet && imeHeight > 0 -> pureImeHeight + sheetHeight
+                            imeHeight > 0 -> pureImeHeight
                             showEmojiSheet || showAttachmentSheet -> sheetHeight
                             else -> 0
                         }
@@ -1209,7 +1283,7 @@ fun ConversationContent(
                     }
                 }
 
-                Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                Surface(tonalElevation = 0.dp) {
                     if (conversation.conversation.conversationState == ConversationState.Left) {
                         Box(
                             modifier = Modifier.fillMaxWidth()
@@ -1521,6 +1595,9 @@ fun ConversationContent(
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true
+                    }, onGroodleClick = {
+                        showAttachmentSheet = false
+                        showGroodleComposer = true
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
@@ -1535,6 +1612,14 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showEventComposer = false },
             onSent = { showEventComposer = false },
+        )
+    }
+
+    if (showGroodleComposer) {
+        GroodleComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showGroodleComposer = false },
+            onSent = { showGroodleComposer = false },
         )
     }
 

@@ -167,6 +167,17 @@ sealed interface BackendEvent {
 
     sealed interface PayloadBundlingEvent : BackendEvent {
 
+        /**
+         * Emitted right after the sender has written a placeholder row to the
+         * local DB but before thumbnail generation / encryption start. Lets
+         * the UI show an indeterminate "Preparing…" overlay on the new tile
+         * until a later event (video phase progress, ItemEnqueued, etc.)
+         * supersedes it.
+         */
+        data class Preparing(
+            val uniqueId: Uuid,
+        ) : PayloadBundlingEvent
+
         /* ---------- VIDEO ---------- */
 
         sealed interface Video : PayloadBundlingEvent {
@@ -211,6 +222,17 @@ sealed interface BackendEvent {
     data object Connecting : BackendEvent
     data object ConnectionOnline : BackendEvent
     data object ConnectionOffline : BackendEvent
+
+    /**
+     * Emitted once when the user logs out (authState → Unauthenticated), AFTER the
+     * WebSocket and DriveSync have been torn down so no producer can re-populate
+     * afterwards. Stateful singletons (ConversationStream, ChatMessageStream, the
+     * contact/connection/moments/vault services, …) listen for this and clear their
+     * own in-memory per-identity caches, mirroring the SQL DB wipe in
+     * [id.homebase.api.youauth.YouAuthFlowManager.logout]. Decentralised by design:
+     * each service owns its teardown instead of logout() reaching into all of them.
+     */
+    data object SessionEnded : BackendEvent
 
     // A drive subscription was rejected by the server (non-fatal — other drives still sync)
     data class DriveAuthorizationFailed(val message: String) : BackendEvent

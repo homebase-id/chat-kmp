@@ -91,8 +91,7 @@ import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
-import id.homebase.core.ui.screens.moments.MomentDetailPane
-import id.homebase.core.ui.screens.moments.MomentDetailViewModel
+import id.homebase.core.ui.screens.moments.MomentDetailPager
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
@@ -128,7 +127,6 @@ import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import androidx.navigation.toRoute
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -313,10 +311,8 @@ fun AppNavHost(
                     // ConversationListViewModel via the PendingNotificationTap
                     // singleton (TTL-retried until drive sync lands the
                     // conversation) — here we only manage the back stack.
-                    val stack = navController.currentBackStack.first { stack ->
-                        stack.any {
-                            it.destination.hasRoute(Route.ChatList::class)
-                        }
+                    val stack = navController.currentBackStack.firstContaining {
+                        it.destination.hasRoute(Route.ChatList::class)
                     }
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
@@ -921,18 +917,20 @@ fun AppNavHost(
 
                         composable<Route.MomentDetail> { backStackEntry ->
                             if (isAuthenticated) {
-                                // Detail VM no longer reads SavedStateHandle —
-                                // extract route args here and pass them
-                                // through koin parameters. The wide-desktop
-                                // moments screen instantiates the same VM the
-                                // same way for its embedded pane.
+                                // Full-screen detail uses an Instagram-Reels-
+                                // style vertical pager over the in-memory
+                                // feed; the route's momentId picks the
+                                // initial page. Per-page VMs are allocated
+                                // inside [MomentDetailPager] via Koin. The
+                                // wide-desktop moments screen still embeds
+                                // MomentDetailPane directly for its side
+                                // pane (no vertical paging there).
                                 val route = backStackEntry.toRoute<Route.MomentDetail>()
                                 val momentId = Uuid.parse(route.momentId)
-                                val detailVm: MomentDetailViewModel = koinViewModel(
-                                    key = "moment-detail-route-${route.momentId}",
-                                ) { parametersOf(momentId, route.initialPayloadKey) }
-                                MomentDetailPane(
-                                    viewModel = detailVm,
+                                MomentDetailPager(
+                                    initialMomentId = momentId,
+                                    initialPayloadKey = route.initialPayloadKey,
+                                    openCommentsInitially = route.openComments,
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }

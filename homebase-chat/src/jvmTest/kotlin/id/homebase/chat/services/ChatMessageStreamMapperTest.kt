@@ -172,4 +172,56 @@ class ChatMessageStreamMapperTest {
         assertTrue(result.isDeleted)
         assertEquals(expectedOwnReactions, result.ownReactions.toList())
     }
+
+    // region isFailedSendTag → Failed bubble (OutboxItemDropped surface)
+
+    @Test
+    fun mapToMessageData_pendingTagOnly_isPendingSendTrue() = runTest {
+        val cm = createTestCredentialsManager()
+        val header = buildChatMessageHeader(
+            localAppDataJson = """{"tags": ["${ChatProtocol.isPendingSendTag}"]}"""
+        )
+
+        val result = mapToMessageData(header, cm)
+
+        assertNotNull(result)
+        assertTrue(result.isPendingSend, "pending tag → spinner")
+    }
+
+    @Test
+    fun mapToMessageData_failedTag_isPendingSendFalseAndDeliveryFailed() = runTest {
+        val cm = createTestCredentialsManager()
+        val header = buildChatMessageHeader(
+            localAppDataJson = """{"tags": ["${ChatProtocol.isFailedSendTag}"]}"""
+        )
+
+        val result = mapToMessageData(header, cm)
+
+        assertNotNull(result)
+        assertEquals(false, result.isPendingSend, "failed send must not show the spinner")
+        assertEquals(
+            ChatDeliveryStatus.Failed.value,
+            result.messageAppData.deliveryStatus,
+            "failed send must map to the Failed delivery icon (not the default Sent)",
+        )
+    }
+
+    @Test
+    fun mapToMessageData_bothTags_failedWins() = runTest {
+        // The drop handler swaps pending→failed, but if both linger (or a race),
+        // failed must win so the bubble can't get stuck spinning.
+        val cm = createTestCredentialsManager()
+        val header = buildChatMessageHeader(
+            localAppDataJson =
+                """{"tags": ["${ChatProtocol.isPendingSendTag}", "${ChatProtocol.isFailedSendTag}"]}"""
+        )
+
+        val result = mapToMessageData(header, cm)
+
+        assertNotNull(result)
+        assertEquals(false, result.isPendingSend, "failed wins over pending")
+        assertEquals(ChatDeliveryStatus.Failed.value, result.messageAppData.deliveryStatus)
+    }
+
+    // endregion
 }

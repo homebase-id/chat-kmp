@@ -20,7 +20,9 @@ object AesGcm {
      * Encrypt data with AES-GCM using the provided key and IV (nonce)
      *
      * @param data The plaintext data to encrypt
-     * @param key The AES encryption key (16, 24, or 32 bytes for AES-128, AES-192, or AES-256)
+     * @param key The AES encryption key (16 or 32 bytes for AES-128 or AES-256). AES-192 is
+     *            deliberately not portable across our targets (Web Crypto on browsers
+     *            omits it) and is unused in this codebase.
      * @param iv The initialization vector/nonce (typically 12 bytes for GCM)
      * @return The ciphertext with authentication tag appended
      */
@@ -32,7 +34,7 @@ object AesGcm {
      * Encrypt data with AES-GCM using the provided key and IV (nonce)
      *
      * @param data The plaintext data to encrypt
-     * @param key The AES encryption key (16, 24, or 32 bytes)
+     * @param key The AES encryption key (16 or 32 bytes; see overload above for AES-192 note)
      * @param iv The initialization vector/nonce (typically 12 bytes for GCM)
      * @return The ciphertext with authentication tag appended
      */

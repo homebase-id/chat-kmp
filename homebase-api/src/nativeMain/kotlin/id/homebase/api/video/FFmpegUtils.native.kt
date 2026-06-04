@@ -2,6 +2,9 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import kotlin.coroutines.resume
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.cinterop.*
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +66,15 @@ actual object FFmpegUtils {
         return "${fileName}_${fileSize}".hashCode().toString()
     }
 
-    actual suspend fun grabThumbnail(inputPath: String): String? =
+    /**
+     * Platform-internal ffmpeg poster-frame helper for the iOS fallback decoder
+     * ([FFmpegKitVideoDecoder]). NOT part of the [FFmpegUtils] `expect` contract — the
+     * cross-platform seam for poster frames is [VideoThumbnailService.extractPosterFrame]. It
+     * survives only on the JVM/native actuals because those are the two platforms whose
+     * thumbnail decoder is ffmpeg-backed. ffmpeg low-level must never call back up into the
+     * `VideoSomething` services.
+     */
+    suspend fun grabThumbnail(inputPath: String): String? =
             withContext(Dispatchers.IO) {
                 val fileManager = NSFileManager.defaultManager
 
@@ -116,12 +127,91 @@ actual object FFmpegUtils {
                 }
             }
 
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!NSFileManager.defaultManager.fileExistsAtPath(inputPath)) return@withContext null
+        val p = probeVideoNative(inputPath) ?: return@withContext null
+        VideoTrackInfo(p.codec, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
+
+    private data class NativeVideoProbe(
+        val codec: String?,
+        val widthPx: Int,
+        val heightPx: Int,
+        val rotation: Int,
+        val bitDepth: Int,
+        val isHdr: Boolean,
+    )
+
+    /**
+     * Unified video probe. Prefers FFmpegKit's ffprobe (rich: pix_fmt / bit-depth / HDR),
+     * but falls back to AVFoundation when ffprobe yields no usable video stream.
+     *
+     * FFmpegKit's `getMediaInformation` returns nil for modern iPhone captures (4K HEVC +
+     * `apac` spatial audio + `mebx` metadata tracks): verified that `-v verbose` logs fine
+     * but the JSON show-streams output is empty, so the planner was fed width=0 /
+     * no-rotation — a degenerate command that crashed h264_videotoolbox in ffmpeg's
+     * print_report. AVFoundation reads these files natively (it already backs
+     * [getDurationMs] and poster extraction), mirroring how the Android actual probes via
+     * MediaExtractor / MediaMetadataRetriever rather than ffprobe.
+     */
+    private fun probeVideoNative(inputPath: String): NativeVideoProbe? {
+        val v = bridge.getMediaInformation(inputPath)?.streams?.firstOrNull { it.type == "video" }
+        if (v != null && (v.width ?: 0) > 0 && (v.height ?: 0) > 0) {
+            val pixFmt = v.pixelFormat?.lowercase().orEmpty()
+            val transfer = v.colorTransfer?.lowercase().orEmpty()
+            val primaries = v.colorPrimaries?.lowercase().orEmpty()
+            return NativeVideoProbe(
+                codec = v.codec,
+                widthPx = v.width ?: 0,
+                heightPx = v.height ?: 0,
+                rotation = v.rotation ?: 0,
+                bitDepth = bitDepthFromPixFmt(pixFmt),
+                isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
+                    primaries.startsWith("bt2020"),
+            )
+        }
+        return avProbeVideoTrack(inputPath)
+    }
+
+    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
+        pixFmt.isBlank() -> 8
+        "12" in pixFmt -> 12
+        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
+        else -> 8
+    }
+
+    /** AVFoundation track probe — native iOS metadata for files ffprobe can't read. */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun avProbeVideoTrack(inputPath: String): NativeVideoProbe? {
+        val url = avUrl(inputPath) ?: return null
+        val asset = AVURLAsset.URLAssetWithURL(url, options = null)
+        val track = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack
+            ?: return null
+        val (w, h) = track.naturalSize.useContents { width.toInt() to height.toInt() }
+        if (w <= 0 || h <= 0) return null
+        val rotation = track.preferredTransform.useContents {
+            val deg = (atan2(b, a) * 180.0 / PI).roundToInt()
+            ((deg % 360) + 360) % 360
+        }
+        // codec=null on the AVFoundation path: these files are re-encoded regardless
+        // (HEVC -> H.264), so the already-optimal short-circuit must stay off, and the
+        // real output codec is filled in post-encode. bitDepth/HDR default to 8-bit SDR
+        // (the planner's safe yuv420p pin); 10-bit/HDR detection here is a follow-up.
+        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = 8, isHdr = false)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun avUrl(inputPath: String): NSURL? =
+        if (inputPath.startsWith("file://")) NSURL.URLWithString(inputPath)
+        else NSURL.fileURLWithPath(inputPath)
+
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?,
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
@@ -138,12 +228,17 @@ actual object FFmpegUtils {
             fileManager.removeItemAtPath(outputPath, null)
         }
 
-        // Probe via the Swift FFmpegKit bridge.
-        val mediaInfo = bridge.getMediaInformation(inputPath)
-        val videoStream = mediaInfo?.streams?.firstOrNull { it.type == "video" }
-        val widthPx = videoStream?.width ?: 0
-        val heightPx = videoStream?.height ?: 0
-        val codecMime = videoStream?.codec  // ffprobe short form, e.g. "h264"
+        // Probe metadata: prefer FFmpegKit's ffprobe (rich: pix_fmt/bit-depth/HDR), fall
+        // back to AVFoundation when ffprobe can't read the file (modern iPhone captures).
+        // See probeVideoNative. Raw container dims + rotation feed the planner so portrait
+        // captures aren't squished; bit depth/HDR drive the 8-bit-output pin.
+        val probe = probeVideoNative(inputPath)
+        val widthPx = probe?.widthPx ?: 0
+        val heightPx = probe?.heightPx ?: 0
+        val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
+        val rotation = probe?.rotation ?: 0
+        val bitDepth = probe?.bitDepth ?: 8
+        val isHdr = probe?.isHdr ?: false
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
@@ -152,7 +247,25 @@ actual object FFmpegUtils {
         // Try hardware encoder first; fall back to libx264 if it fails. The
         // planner takes the encoder name and emits libx264-only flags
         // (-preset veryfast) only when appropriate.
-        for ((index, encoder) in listOf("h264_videotoolbox", "libx264").withIndex()) {
+        //
+        // When emitting 10-bit (allowTenBit + >8-bit source), skip
+        // h264_videotoolbox entirely: Apple's H.264 hardware encoder cannot
+        // produce 10-bit (High 10) output, so only libx264 can honour the
+        // yuv420p10le pin.
+        //
+        // Also skip the hardware encoder when dimensions are unknown (probe == null
+        // → widthPx/heightPx == 0). That only happens when BOTH ffprobe and the
+        // AVFoundation fallback fail to read the file (audio-only, DRM, or a container
+        // neither can open). With no dims the planner emits no `-vf scale` filter, and
+        // h264_videotoolbox SIGSEGVs in print_report on that degenerate command — the
+        // original iPhone .mov-send crash. libx264 handles the same scale-less command
+        // safely (re-encodes at native resolution, or fails cleanly to null on a truly
+        // unreadable file), so the hardware encoder is never handed a degenerate command.
+        val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
+        val encoders =
+            if ((allowTenBit && bitDepth > 8) || dimensionsUnknown) listOf("libx264")
+            else listOf("h264_videotoolbox", "libx264")
+        for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
                 inputPath = inputPath,
                 outputPath = outputPath,
@@ -164,7 +277,11 @@ actual object FFmpegUtils {
                 probedCodecMime = codecMime,
                 inputDurationMs = durationMs,
                 inputBytes = inputBytes,
+                rotationDegrees = rotation,
                 encoder = encoder,
+                probedBitDepth = bitDepth,
+                probedIsHdr = isHdr,
+                allowTenBit = allowTenBit,
             )
 
             if (plan.skipReason != null) {
@@ -193,10 +310,10 @@ actual object FFmpegUtils {
             if (result.isSuccess) {
                 return@withContext outputPath
             }
-            if (index == 0) {
-                println("Docs: Hardware encoder $encoder failed, trying next: ${result.failStackTrace}")
+            if (index < encoders.lastIndex) {
+                println("Docs: Encoder $encoder failed, trying next: ${result.failStackTrace}")
             } else {
-                println("Docs: Software encoder $encoder also failed: ${result.failStackTrace}")
+                println("Docs: Encoder $encoder (last) also failed: ${result.failStackTrace}")
             }
         }
 
@@ -253,16 +370,19 @@ actual object FFmpegUtils {
     /**
      * Bridges the Swift async ffmpeg API to a suspending coroutine and converts
      * ffmpeg-kit's elapsed media time (ms) into a 0..1 progress fraction via
-     * [progressFraction]. Cancellation calls the bridge-wide cancel — fine for
-     * the current single-job flow (see [FFmpegKitBridge.cancelAllFFmpegSessions]
-     * docs for the per-session follow-up).
+     * [progressFraction]. Cancellation tears down ONLY this job's session via
+     * [FFmpegKitBridge.cancelFFmpegSession] — not the engine-wide
+     * [FFmpegKitBridge.cancelAllFFmpegSessions], which would also kill any
+     * concurrent FFmpegKit work (e.g. a thumbnail-strip extraction, or another
+     * compress/segment job). Mirrors the per-session fix the thumbnail decoder
+     * already uses in [FFmpegKitVideoDecoder.extractThumbnailStrip].
      */
     private suspend fun executeFfmpegWithProgress(
         command: String,
         durationMs: Long,
         onProgress: ((Float) -> Unit)?,
     ): FFmpegResult = suspendCancellableCoroutine { cont ->
-        bridge.executeFFmpegAsync(
+        val sessionId = bridge.executeFFmpegAsync(
             command = command,
             onProgress = { timeMs ->
                 onProgress?.invoke(progressFraction(timeMs, durationMs))
@@ -272,7 +392,9 @@ actual object FFmpegUtils {
             },
         )
         cont.invokeOnCancellation {
-            try { bridge.cancelAllFFmpegSessions() } catch (_: Exception) {}
+            if (sessionId >= 0) {
+                try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
+            }
         }
     }
 

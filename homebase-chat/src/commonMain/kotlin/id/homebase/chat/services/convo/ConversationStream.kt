@@ -29,6 +29,8 @@ import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +49,12 @@ import kotlin.uuid.Uuid
 private val ORPHAN_SWEEP_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0101")
 private const val ORPHAN_AT_REST_SWEEP_VERSION = 1
 private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
+
+// Debounce for coalesced unread-count enrichment: a sync burst of triggers collapses into a
+// single run after this quiet window. Unread counts aren't latency-critical, so a generous
+// window is fine — it just has to settle a sync storm into one full-DB pass. See the
+// coalesced-enrichment region in ConversationStream.
+private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -169,6 +177,25 @@ class ConversationStream(
     }
     // endregion
 
+    // region Coalesced unread enrichment
+    //
+    // A sync burst used to fire one enrichAllConversationsWithUnreadCounts per WebSocket
+    // batch / DriveSync-Stopped, each a full-DB GROUP BY + single-writer mirror upsert. With
+    // no guard, N triggers spawned N concurrent runs that piled onto the read lane and the
+    // writer — measured at 47–131s under heavy sync. Funnel the recurring triggers through a
+    // [CoalescingTrigger]: rapid requests collapse to the latest, a short debounce batches a
+    // burst, and its single collector runs them one at a time. [enrichMutex] additionally
+    // guards against overlap with the ColdLoad direct call in start().
+    private val enrichMutex = Mutex()
+    private val unreadEnrichTrigger = CoalescingTrigger<String>(scope, UNREAD_ENRICH_DEBOUNCE_MS) {
+        enrichAllConversationsWithUnreadCounts(it)
+    }
+
+    private fun requestUnreadEnrichment(trigger: String) {
+        unreadEnrichTrigger.request(trigger)
+    }
+    // endregion
+
 
     // Two paths converge on _conversations:
     //
@@ -197,6 +224,11 @@ class ConversationStream(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop the previous identity's conversation list so it
+                    // doesn't linger on the login screen or bleed into the next
+                    // session. The DB is wiped concurrently by logout(); this clears
+                    // the in-memory mirror. start() reloads cold on the next login.
+                    is BackendEvent.SessionEnded -> reset()
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
@@ -220,18 +252,43 @@ class ConversationStream(
                         // First three steps unconditional (DriveSync may have
                         // changed conversation files, last-messages, or admin
                         // membership without dirtying lastRead). The unread-count
-                        // recount is the ~500ms full-DB pass and is gated on
-                        // [hasDirtyUnread] — it only materially changes the result
-                        // when a conversation file's lastRead actually advanced
-                        // during the round (peer-device mark-as-read echo).
+                        // recount goes through [shouldRunUnreadRecountOnStopped]:
+                        // pre-fix the gate was `hasDirtyUnread()` alone, which
+                        // missed the common case of "BG sync wrote message rows
+                        // via QueryBatch" because the dirty bit is only set by
+                        // the WS-push code path (BatchReceived ->
+                        // processConversationBatchIncrementally). The widened
+                        // gate adds `chatDrive && totalCount > 0`, so any
+                        // DriveSync round that landed chat rows triggers a
+                        // recount — the original asymmetric-badge bug
+                        // (homebase.log 2026-06-01 Session 5: warm-swipe +
+                        // FCM Frodo + WS-push Sam; Sam bumped via WS, Frodo's
+                        // QB-delivered rows never tripped the gate).
+                        // Cost: one selectAllUnreadCount (~121-163ms covering-
+                        // index pass measured live) per chat-drive Stopped
+                        // that carried rows. Cheap; trades a small recurrent
+                        // cost for badge correctness.
                         if (event.totalCount > 0) {
+                            val isDirty = hasDirtyUnread()
+                            val shouldRecount = shouldRunUnreadRecountOnStopped(
+                                isChatDrive = true, // filtered above at line 233
+                                totalCount = event.totalCount,
+                                hasDirtyUnread = isDirty,
+                            )
+                            Logger.i(tag = "UnreadDiag") {
+                                "Stopped recount-gate driveId=${event.driveId} " +
+                                    "totalCount=${event.totalCount} " +
+                                    "result=${event.result::class.simpleName} " +
+                                    "hasDirtyUnread=$isDirty " +
+                                    "decision=${if (shouldRecount) "RECOUNT" else "SKIP"}"
+                            }
                             scope.launch {
                                 try {
                                     loadBasicConversations()
                                     enrichWithLastMessages()
                                     enrichWithAdmins()
-                                    if (hasDirtyUnread()) {
-                                        enrichAllConversationsWithUnreadCounts(trigger = "DriveSyncStopped")
+                                    if (shouldRecount) {
+                                        requestUnreadEnrichment("DriveSyncStopped")
                                     }
                                 } catch (e: Exception) {
                                     Logger.e(e) {
@@ -538,6 +595,24 @@ class ConversationStream(
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
+
+        // Diagnostic for the asymmetric-badge investigation (plan
+        // snazzy-frolicking-crown). End-of-batch snapshot of every
+        // conversation touched by this batch, so a later enrichUnreadLocked
+        // overwrite that drops the badge can be correlated against the
+        // value the in-memory bump actually landed on. The existing
+        // `unread++` log at line 620 only fires when the count rose; this
+        // covers the no-bump-but-touched case (e.g. suppressed by
+        // `sqlUserDate <= existing.latestMessageTimestamp`).
+        val touchedIds = incoming.map { it.second.conversationId }.distinct()
+        for (id in touchedIds) {
+            val c = sortedList.firstOrNull { it.id == id } ?: continue
+            Logger.d(tag = "UnreadDiag") {
+                "batchDone convo=$id unreadCount=${c.unreadCount} " +
+                    "latestMessageMs=${c.latestMessageTimestamp.toEpochMilliseconds()} " +
+                    "lastReadMs=${c.lastRead.toEpochMilliseconds()}"
+            }
+        }
     }
 
     /**
@@ -667,15 +742,7 @@ class ConversationStream(
         // There's no Started/Stopped envelope to defer to — this batch IS the
         // whole event. If anything dirtied an unread count, run enrichAll now.
         if (hasDirtyUnread()) {
-            scope.launch {
-                try {
-                    enrichAllConversationsWithUnreadCounts(trigger = "WebSocketBatch")
-                } catch (e: Exception) {
-                    Logger.e(e) {
-                        "ConversationStream: WebSocket-batch enrich failed: ${e.message}"
-                    }
-                }
-            }
+            requestUnreadEnrichment("WebSocketBatch")
         }
     }
 
@@ -691,79 +758,26 @@ class ConversationStream(
         existing: ConversationUiModel,
         incoming: ConversationUiModel
     ) {
-        // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
-        // which may not preserve localAppData tags. RejoinPending is the one exception: it means
-        // the server shows us back in participants while we still have the Left tag locally.
-        val resolvedState = if (existing.conversationState == ConversationState.Left
-            && incoming.conversationState != ConversationState.Left
-            && incoming.conversationState != ConversationState.RejoinPending
-        ) {
-            ConversationState.Left
-        } else {
-            incoming.conversationState
-        }
+        // All value reconciliation (state stickiness, exitedAt, lastRead/dirty,
+        // structural-vs-preview field ownership) lives in the pure
+        // [mergeConversationFileUpdate]; this method keeps only the side effects.
+        val result = mergeConversationFileUpdate(
+            existing = existing,
+            incoming = incoming,
+            now = UnixTimeUtc().toInstant(),
+        )
 
-        // Stamp lastExitedAt in localAppData the first time we detect a Removed transition.
-        // The mapper reads it back from localAppData on subsequent loads (cold start, reconnect).
-        val isNewlyRemoved = resolvedState == ConversationState.Removed
-                && existing.conversationState != ConversationState.Removed
-                && existing.conversationState != ConversationState.Left
-        if (isNewlyRemoved) {
+        // Stamp lastExitedAt in localAppData the first time we detect a Removed
+        // transition. The mapper reads it back from localAppData on subsequent
+        // loads (cold start, reconnect).
+        if (result.isNewlyRemoved) {
             optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
                 ?.let { outboxSync.tryEnqueue(it) }
         }
 
-        // Clear exitedAt when active again; preserve on Left/Removed (first stamp wins).
-        val resolvedExitedAt = when {
-            resolvedState == ConversationState.Active
-                    || resolvedState == ConversationState.RejoinPending -> null
-
-            isNewlyRemoved -> UnixTimeUtc().toInstant()
-            else -> existing.exitedAt ?: incoming.exitedAt
-        }
-
-        // Carries the conversation file's localAppData.lastReadTime forward — a
-        // peer device's mark-as-read (or our own pushed advance echoing back)
-        // advances it and syncs it. lastRead = max keeps it monotonic against a
-        // stale echo; dirty (we still owe a server push) is retired once the
-        // remote read reaches our local value — see reconciledWithRemoteLastRead.
-        // Must override dirty explicitly: the existing.copy base would otherwise
-        // preserve a now-stale flag.
-        val reconciled = existing.reconciledWithRemoteLastRead(incoming.lastRead)
-
-        // Structural fields (membership, identity) always come from the conversation file,
-        // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
-        // is almost always newer than metadata.created, so a timestamp guard would silently
-        // drop participant/admin/name changes distributed by peers (e.g. leave, add member).
-        // Message-preview fields are only applied when the file is genuinely newer.
-        val updatedConvo = existing.copy(
-            name = incoming.name,
-            isGroup = incoming.isGroup,
-            isLegacyGroup = incoming.isLegacyGroup,
-            admins = incoming.admins,
-            avatarModel = incoming.avatarModel,
-            avatarTiny = incoming.avatarTiny,
-            avatarUrl = incoming.avatarUrl,
-            avatarInitials = incoming.avatarInitials,
-            participants = incoming.participants,
-            isPinned = incoming.isPinned,
-            conversationState = resolvedState,
-            exitedAt = resolvedExitedAt,
-            fileUpdated = incoming.fileUpdated,
-            lastRead = reconciled.lastRead,
-            dirty = reconciled.dirty,
-            // Message preview — only overwrite if the file carries a newer last-message snapshot
-            latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
-            lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
-            lastMessageDeliveryStatus = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
-            lastMessageIsDeleted = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
-            lastMessageFirstPayload = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
-            lastMessageHasMultiplePayloads = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
-            lastMessageIsFromActiveUser = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
-        )
         // We should optimize later to not map the full list
         _conversations.value = _conversations.value.copy(
-            items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it }
+            items = _conversations.value.items.map { if (it.id == existing.id) result.merged else it }
         )
     }
 
@@ -1008,7 +1022,7 @@ class ConversationStream(
     }
 
     /** Reads the persisted orphaned-at-rest sweep version (0 when never run). */
-    private fun readOrphanSweepVersion(): Int {
+    private suspend fun readOrphanSweepVersion(): Int {
         val bytes = runCatching { dbm.keyValue.selectByKey(ORPHAN_SWEEP_KEY)?.data_ }.getOrNull() ?: return 0
         if (bytes.size != 4) return 0
         return (bytes[0].toInt() and 0xFF shl 24) or
@@ -1150,7 +1164,13 @@ class ConversationStream(
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) {
+    // Serialized entry point: [enrichMutex] ensures the ColdLoad direct call (start()) and the
+    // channel-driven reruns (init collector) never overlap — each is a full-DB read + mirror
+    // write, and concurrent runs were the 47–131s pileup.
+    suspend fun enrichAllConversationsWithUnreadCounts(trigger: String) =
+        enrichMutex.withLock { enrichUnreadLocked(trigger) }
+
+    private suspend fun enrichUnreadLocked(trigger: String) {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         // Take ownership of the current dirty set as we begin work. New
         // bits set during this call's lifetime persist for the next
@@ -1188,6 +1208,25 @@ class ConversationStream(
         val current = _conversations.value
         val updated = current.items.map { convo ->
             val newCount = unreadMap[convo.id] ?: 0
+            // Diagnostic for the asymmetric-badge investigation (plan
+            // snazzy-frolicking-crown). Fires only when an in-memory unread
+            // count is about to be erased to zero — the exact "badge
+            // disappeared" symptom the user reported. We distinguish the
+            // two hypotheses by whether the convo appears in unreadMap:
+            //   - absent  ⇒ H2: the SQL filter excluded the row entirely
+            //                   (originalAuthor IS NULL / fileState / dataType).
+            //   - present ⇒ H1: the row is counted but lastReadTime is
+            //                   saturated past the message.
+            if (convo.unreadCount > 0 && newCount == 0) {
+                val rowAbsent = !unreadMap.containsKey(convo.id)
+                Logger.w(tag = "UnreadDiag") {
+                    "badge-disappeared convo=${convo.id} oldCount=${convo.unreadCount} " +
+                        "newCount=0 rowAbsentFromSqlMap=$rowAbsent " +
+                        "lastReadMs=${convo.lastRead.toEpochMilliseconds()} " +
+                        "latestMessageMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
+                        "dirty=${convo.dirty} trigger=$trigger"
+                }
+            }
             if (newCount != convo.unreadCount) {
                 changed++
                 Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")

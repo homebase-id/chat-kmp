@@ -152,12 +152,18 @@ actual class RichNotificationDisplayer actual constructor() {
             .setGroup(data.conversationId)
             .setGroupSummary(true)
             .setAutoCancel(true)
+            // Route a summary tap through the same conversation-tap path as a
+            // per-message tap, so tapping the group clears only this conversation.
+            .setContentIntent(buildContentIntent(context, data))
         if (data.silent) {
             summaryBuilder.setSilent(true)
         }
         val summary = summaryBuilder.build()
 
-        val summaryId = SUMMARY_ID_OFFSET + (data.conversationId?.hashCode()?.and(0x7FFFFFFF) ?: 0)
+        // Shares conversationNotificationIds()'s summary-id formula so display and
+        // cancellation always target the same id.
+        val summaryId = data.conversationId?.let { conversationNotificationIds(it).second }
+            ?: SUMMARY_ID_OFFSET
         nm.notify(summaryId, summary)
     }
 
@@ -216,9 +222,6 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 
     companion object {
-        /** Reserved offset so summary IDs don't collide with per-message notification IDs. */
-        private const val SUMMARY_ID_OFFSET = 100_000
-
         const val ACTION_REPLY = "id.homebase.feed.NOTIFICATION_REPLY"
         const val ACTION_MARK_READ = "id.homebase.feed.NOTIFICATION_MARK_READ"
         const val EXTRA_CONVERSATION_ID = "conversation_id"

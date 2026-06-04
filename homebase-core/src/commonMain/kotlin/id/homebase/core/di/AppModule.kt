@@ -61,6 +61,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
@@ -83,6 +84,7 @@ import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.moments.services.MomentsRecipientMruStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -155,6 +157,7 @@ val appModule = module {
     }
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
+    singleOf(::MomentsVideoSession)
     singleOf(::MomentCommentsService)
     singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
@@ -189,6 +192,28 @@ val appModule = module {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
             mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
+            // Per-drive fresh-sync policy (sync-back window + custom initial queries) is
+            // wired and tested, but no drive opts in yet — chat behaves like every other
+            // drive (sync everything). Part 2 re-enables the chat policy below together
+            // with the "load older messages when scrolling to the top" feature; until
+            // then a fresh login would only see the last N days, which is confusing
+            // without that scroll-to-load path. Diagnostics confirmed the window itself
+            // is correct (cursor: zero duplicates / no floor breaches at 7/30/60 days).
+            //
+            // To re-enable, add the imports
+            //   id.homebase.api.client.drives.SystemDriveConstants
+            //   id.homebase.api.client.drives.query.FileQueryParams
+            //   id.homebase.api.sync.DriveSyncPolicy
+            //   kotlin.time.Duration.Companion.days
+            // and pass:
+            // driveSyncPolicies = mapOf(
+            //     SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
+            //         fullSyncWindow = 30.days,
+            //         initialQueries = listOf(
+            //             FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+            //         ),
+            //     ),
+            // ),
         )
     }
 
@@ -207,6 +232,7 @@ val appModule = module {
     // YouAuthFlowManager.logout() invokes immediately before this hook.
     single {
         val imageLoader: ImageLoader = get()
+        val homebaseImageLoader: HomebaseImageLoader = get()
         val fileOps: FileOperationsProvider = get()
         val pendingUpgradeManager: PendingUpgradeManager = get()
         YouAuthFlowManager(
@@ -233,6 +259,14 @@ val appModule = module {
                             "coil memory cache clear failed on logout"
                         }
                     }
+                // Decrypted full-payload bytes must not survive the outgoing
+                // identity either — same rationale as the Coil clear above.
+                runCatching { homebaseImageLoader.clearMemoryCacheAsync() }
+                    .onFailure {
+                        Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                            "full-payload cache clear failed on logout"
+                        }
+                    }
                 pendingUpgradeManager.reset()
             },
         )
@@ -248,6 +282,10 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             driveRegistry = get(),
+            // Start headless only where the OS can cold-wake us in the background
+            // (Android/iOS). Desktop/Web report false → start in foreground mode so
+            // a missing promoteToForeground() can't hang the app on "syncing".
+            startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
@@ -294,7 +332,17 @@ val appModule = module {
             }
         )
     }
-    singleOf(::BackgroundSyncOrchestrator)
+    single {
+        BackgroundSyncOrchestrator(
+            credentialsManager = get(),
+            driveSyncManager = get(),
+            driveFileHttpProvider = get(),
+            authConnectionCoordinator = get(),
+            // Narrow seam — pass the StateFlow, not the whole YouAuthFlowManager.
+            // See BackgroundSyncOrchestrator's class kdoc.
+            authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+        )
+    }
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
@@ -350,7 +398,22 @@ val appModule = module {
     // and the CoroutineScope, which are intentionally Kotlin-default args.
     // Use the explicit lambda form so the defaults take effect.
     single { PendingNotificationTap() }
-    singleOf(::NotificationService)
+    // Explicit `single` (not `singleOf`) because the ctor takes a
+    // `StateFlow<YouAuthState>` seam that Koin can't resolve reflectively.
+    // Same narrow-seam pattern as BackgroundSyncOrchestrator above.
+    single {
+        NotificationService(
+            api = get(),
+            scope = get(),
+            profileProvider = get(),
+            userPreferences = get(),
+            credentialsManager = get(),
+            pendingNotificationTap = get(),
+            notificationBackend = get(),
+            eventBus = get(),
+            authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+        )
+    }
     singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
@@ -502,6 +565,7 @@ val appModule = module {
             contactService = get(),
             driveFileProvider = get(),
             fileOperationsProvider = get(),
+            recipientLookup = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

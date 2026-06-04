@@ -2,7 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.VideoThumbnailExtractor
+import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.core.audio.AudioFileInfo
@@ -16,14 +16,9 @@ import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
 import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_message_audio_recording_help
-import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.cacheDir
-import io.github.vinceglb.filekit.delete
-import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.write
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -69,13 +64,13 @@ internal class AttachmentHandler(
 
     internal fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
         val deferred = scope.async {
-            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
+            runCatching { VideoThumbnailService.extractPosterFrame(videoPath) }.getOrNull()
         }
         pendingThumbnails[attachmentId] = deferred
         // Duration is needed by the trim screen and is cheap to read; kick it off in
         // parallel with the poster extraction.
         val durationDeferred = scope.async {
-            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
+            runCatching { id.homebase.api.video.VideoCompressionService.getDurationMs(videoPath) }
                 .getOrNull()
         }
         scope.launch {
@@ -100,6 +95,11 @@ internal class AttachmentHandler(
                         a.copy(
                             thumbnailBytes = bytes ?: a.thumbnailBytes,
                             durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
+                            // videoPath is the okio-readable path the extractor was handed
+                            // (web = materialized okio path, native = file.toString()). Storing
+                            // it here guarantees playablePath is set whenever durationMs is — the
+                            // editor's duration-gated filmstrip/player both depend on it.
+                            playablePath = videoPath,
                         )
                     } else a
                 }
@@ -165,7 +165,11 @@ internal class AttachmentHandler(
                 // patch the pending FileVideo entries when they complete.
                 newFiles.forEach { f ->
                     if (f is AttachmentPendingFile.FileVideo) {
-                        extractThumbnailAsync(f.attachmentId, f.file.toString())
+                        // Hand the extractor/editor a cheap playable handle: a blob: object URL on
+                        // web (O(1), no whole-file read, no base64) or the real path on native.
+                        // The okio materialization for upload happens later at send time
+                        // (MessageActionsHandler.toUploadPath), not here.
+                        extractThumbnailAsync(f.attachmentId, f.file.toPlayableUrl())
                     }
                 }
             } catch (e: Exception) {
@@ -221,11 +225,12 @@ internal class AttachmentHandler(
                     )
                 }
 
-                // Editor visible — kick off thumbnail extraction in parallel, using
-                // the gallery URI directly (no resolveToFilePath copy).
+                // Editor visible — kick off thumbnail extraction in parallel.
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
                     if (pending is AttachmentPendingFile.FileVideo) {
-                        extractThumbnailAsync(pending.attachmentId, gallery.file.toString())
+                        // Cheap playable handle (blob: URL on web, real path on native); see
+                        // handleAttachPlatformFile. Send-time materialization is separate.
+                        extractThumbnailAsync(pending.attachmentId, gallery.file.toPlayableUrl())
                     }
                 }
             } catch (e: Exception) {
@@ -256,6 +261,10 @@ internal class AttachmentHandler(
                         fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
                     )
                 }
+                // Release the removed video's playable handle (web blob: URL; no-op on native).
+                fullScreenOverlay.attachments
+                    .filter { it.attachmentId == action.id }
+                    .forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
             } catch (e: Exception) {
                 Logger.e("Failed to unattach file", e)
                 sendEvent(
@@ -472,9 +481,8 @@ internal class AttachmentHandler(
     fun handleStartRecording(action: ConversationListUiAction.StartRecording) {
         scope.launch {
             try {
-                val file = PlatformFile(
-                    base = FileKit.filesDir,
-                    child = "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
+                val file = newRecordingFile(
+                    "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
                 )
                 audioRecorder.startRecording(file.toString())
                 messagesUiState.update {
@@ -512,11 +520,10 @@ internal class AttachmentHandler(
                             1000,
                             200
                         )
-                        waveFormImageFile = PlatformFile(
-                            FileKit.cacheDir,
+                        waveFormImageFile = newWaveformCacheFile(
                             "waveform-${Uuid.generateV4()}.png"
                         )
-                        waveFormImageFile.write(waveFormImageBytes)
+                        waveFormImageFile.writeBytesCompat(waveFormImageBytes)
                     } catch (e: Exception) {
                         Logger.e("Failed to generate waveform", e)
                     }
@@ -547,7 +554,7 @@ internal class AttachmentHandler(
         scope.launch {
             try {
                 audioRecorder.stopRecording()
-                messagesUiState.value.recordingData?.file?.delete(mustExist = false)
+                messagesUiState.value.recordingData?.file?.deleteCompat(mustExist = false)
             } catch (_: Exception) {
                 // ignore
             }

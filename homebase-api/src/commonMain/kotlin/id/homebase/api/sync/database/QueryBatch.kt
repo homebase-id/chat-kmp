@@ -2,7 +2,6 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import co.touchlab.kermit.Logger
-import id.homebase.api.common.IntRange
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
 import id.homebase.api.client.drives.FileState
@@ -200,8 +199,6 @@ class QueryBatch(
         val timeField: String
         val listWhereAnd = mutableListOf<String>()
 
-
-
         timeField = when (sortField) {
             QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId -> "created"
             QueryBatchSortField.UserDate -> "userDate"
@@ -247,9 +244,27 @@ class QueryBatch(
 
         val orderString = "$timeField $direction, driveMainIndex.rowId $direction"
 
+        // Force the per-conversation index for the chat-message-fetch shape (groupId filter +
+        // userDate ordering). Without this hint and without ANALYZE statistics, SQLite picks
+        // the global userDate index (Idx2) and walks the whole timeline filtering groupId per
+        // row — fine for recent-anchored opens, but tens-of-ms-to-seconds for old/quiet
+        // conversations whose few rows sit deep in the timeline (the "spinner" symptom). The
+        // groupId-leading index seeks straight to the conversation regardless of how many
+        // other rows exist. fileState handling is unaffected: when filtered (note-to-self) it
+        // becomes a cheap per-row check on the few rows the groupId seek already narrowed to.
+        //
+        // Moments / feed / contacts queries also ORDER BY userDate but do NOT pass groupIdAnyOf,
+        // so this branch doesn't fire for them — they continue to use Idx2 (which is exactly
+        // right for global newest-first scans).
+        val from = if (sortField == QueryBatchSortField.UserDate && !groupIdAnyOf.isNullOrEmpty()) {
+            "driveMainIndex INDEXED BY idx_chatmessage_convid_userDate"
+        } else {
+            "driveMainIndex"
+        }
+
         // Read +1 more than requested to see if we're at the end of the dataset
         val sqlStatement =
-            "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM driveMainIndex $leftJoin WHERE ${
+            "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM $from $leftJoin WHERE ${
                 listWhereAnd.joinToString(" AND ")
             } ORDER BY $orderString LIMIT ${actualNoOfItems + 1}"
 
@@ -281,25 +296,53 @@ class QueryBatch(
                 val hasMoreRows = !cursorDepleted && sqlCursor.next().value
 
                 if (count > 0) {
+                    // Carry the last-returned row's `rowId` through into the
+                    // next cursor instead of hardcoding 0L. Without this, the
+                    // next fetch's WHERE `(time, rowId) > (lastTime, 0L)`
+                    // re-matches every row at `lastTime` (because rowId is
+                    // always > 0). When the boundary userDate isn't unique
+                    // (e.g. the chat-message "no version → authorSpecificDate"
+                    // fallback produces clusters of identical userDates), the
+                    // cursor effectively doesn't advance and pagination
+                    // re-returns the same page forever — see
+                    // `QueryBatchCursorAdvanceTest`. The local `rowId` here
+                    // captures the *last* SqlCursor.getLong(0) in the loop
+                    // above; it's the boundary we want the next fetch to skip.
+                    val boundaryRowId = rowId ?: 0L
                     if (sortField === QueryBatchSortField.UserDate)
+                        // Use `sqlUserDateMs()` — the *exact same* projection
+                        // `MainIndexMeta.kt:127-128` writes into the SQL
+                        // `userDate` column: `appData.userDate ?: created.ms`.
+                        // The earlier `appData.userDate ?: 0L` here disagreed
+                        // with the SQL column for any row whose
+                        // `appData.userDate` is null (the chat "no version,
+                        // not edited" branch). That mismatch produced cursors
+                        // of shape `(0L, lastRowId)` while the SQL had real
+                        // ms timestamps in the userDate column, so the next
+                        // fetch's `WHERE (userDate, rowId) > (0L, lastRowId)`
+                        // matched the *entire timeline* from epoch and
+                        // ORDER BY ASC returned the oldest rows — already in
+                        // the window. Window stayed the same size, hasMore
+                        // stayed true, infinity-spinner on the bottom. See
+                        // QueryBatchCursorUserDateSourceTest.
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
-                                UnixTimeUtc(header.fileMetadata.appData.userDate ?: 0L),
-                                0L
+                                UnixTimeUtc(header.sqlUserDateMs()),
+                                boundaryRowId
                             )
                         )
                     else if (sortField === QueryBatchSortField.AnyChangeDate || sortField === QueryBatchSortField.OnlyModifiedDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
                                 header.fileMetadata.updated,
-                                0L
+                                boundaryRowId
                             )
                         )
                     else if (sortField === QueryBatchSortField.FileId || sortField === QueryBatchSortField.CreatedDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
                                 header.fileMetadata.created,
-                                0L
+                                boundaryRowId
                             )
                         )
                     else
@@ -312,130 +355,6 @@ class QueryBatch(
         ) { }
 
         return result.value;
-    }
-
-    /**
-     * Smart cursor variant with automatic boundary management for NewestFirst queries
-     */
-    suspend fun queryBatchSmartCursorAsync(
-        dbm: DatabaseManager,
-        driveId: Uuid,
-        noOfItems: Int,
-        cursor: QueryBatchCursor? = null,
-        sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
-        sortField: QueryBatchSortField = QueryBatchSortField.CreatedDate,
-        fileSystemType: Int? = null,
-        fileState: FileStateFilter = FileStateFilter.Active,
-        requiredSecurityGroup: IntRange? = null,
-        globalTransitIdAnyOf: List<Uuid>? = null,
-        filetypesAnyOf: List<Int>? = null,
-        datatypesAnyOf: List<Int>? = null,
-        senderIdAnyOf: List<String>? = null,
-        groupIdAnyOf: List<Uuid>? = null,
-        uniqueIdAnyOf: List<Uuid>? = null,
-        archivalStatusAnyOf: List<Int>? = null,
-        userDateSpan: UnixTimeUtcRange? = null,
-        aclAnyOf: List<Uuid>? = null,
-        tagsAnyOf: List<Uuid>? = null,
-        tagsAllOf: List<Uuid>? = null,
-        localTagsAnyOf: List<Uuid>? = null,
-        localTagsAllOf: List<Uuid>? = null
-    ): QueryBatchResult {
-
-        val pagingCursorWasNull = cursor?.paging == null
-
-        val (result, moreRows, refCursor) = queryBatchAsync(
-            dbm,
-            driveId, noOfItems, cursor, sortOrder, sortField,
-            fileSystemType, fileState,
-            globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
-            senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
-            userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf,
-            localTagsAnyOf, localTagsAllOf
-        )
-
-        if (sortOrder == QueryBatchSortOrder.OldestFirst) {
-            return QueryBatchResult(result, moreRows, refCursor)
-        }
-
-        if (result.isNotEmpty()) {
-            // Set nextBoundaryCursor for first set when pagingCursor was null
-            if (pagingCursorWasNull) {
-                val nextBoundaryCursor = when (sortField) {
-                    QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId ->
-                        TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.created.milliseconds), 0L)
-
-                    QueryBatchSortField.AnyChangeDate ->
-                        TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.updated.milliseconds), 0L)
-
-                    QueryBatchSortField.UserDate ->
-                        TimeRowCursor(
-                            UnixTimeUtc(result[0].fileMetadata.appData.userDate ?: 0L),
-                            0L
-                        )
-
-                    QueryBatchSortField.OnlyModifiedDate ->
-                        TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.updated.milliseconds), 0L)
-                }
-                return QueryBatchResult(result, moreRows, refCursor.copy(next = nextBoundaryCursor))
-            }
-
-            if (result.size < noOfItems) {
-                if (!moreRows) {
-                    // Advance cursor boundary
-                    val updatedCursor = if (refCursor.next != null) {
-                        refCursor.copy(
-                            stop = refCursor.next,
-                            next = null,
-                            paging = null
-                        )
-                    } else {
-                        refCursor.copy(next = null, paging = null)
-                    }
-
-                    // Recursive call to check for more items
-                    val (r2, moreRows2, refCursor2) = queryBatchSmartCursorAsync(
-                        dbm,
-                        driveId, noOfItems - result.size, updatedCursor,
-                        sortOrder, sortField, fileSystemType, fileState,
-                        requiredSecurityGroup, globalTransitIdAnyOf, filetypesAnyOf,
-                        datatypesAnyOf, senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf,
-                        archivalStatusAnyOf, userDateSpan, aclAnyOf, tagsAnyOf,
-                        tagsAllOf, localTagsAnyOf, localTagsAllOf
-                    )
-
-                    if (r2.isNotEmpty()) {
-                        // Combine results - r2 should be newer than result
-                        val combinedResult = (r2 + result)
-                        return QueryBatchResult(combinedResult, moreRows2, refCursor2)
-                    }
-                }
-            }
-        } else {
-            if (refCursor.next != null) {
-                val updatedCursor = refCursor.copy(
-                    stop = refCursor.next,
-                    next = null,
-                    paging = null
-                )
-                return queryBatchSmartCursorAsync(
-                    dbm,
-                    driveId, noOfItems, updatedCursor, sortOrder, sortField,
-                    fileSystemType, fileState, requiredSecurityGroup,
-                    globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
-                    senderIdAnyOf, groupIdAnyOf, uniqueIdAnyOf, archivalStatusAnyOf,
-                    userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf, localTagsAnyOf, localTagsAllOf
-                )
-            } else {
-                return QueryBatchResult(
-                    result,
-                    moreRows,
-                    refCursor.copy(next = null, paging = null)
-                )
-            }
-        }
-
-        return QueryBatchResult(result, moreRows, refCursor)
     }
 
     // Helper functions

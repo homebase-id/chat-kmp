@@ -57,7 +57,11 @@ val apiModule = module {
     // this creates the HttpClient
     single { HttpClientProvider.create() }
 
-    singleOf(::VideoPayloadProcessor)
+    // Constructed via the lambda DSL (not singleOf) so Kotlin's default values for
+    // the compressor/probe params are honored — Koin's constructor DSL would instead
+    // try to resolve VideoCompressor/VideoProber from the graph (they aren't bound)
+    // and fail at first video send.
+    single { VideoPayloadProcessor(get()) }
     singleOf(::VideoPreloader)
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)

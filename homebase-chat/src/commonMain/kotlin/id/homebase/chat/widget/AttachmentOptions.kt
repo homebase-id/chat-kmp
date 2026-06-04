@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
@@ -66,6 +67,7 @@ import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
 import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
+import id.homebase.resources.chat_groodle_share
 import id.homebase.resources.chat_location_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
@@ -154,7 +156,14 @@ fun AttachmentGallery(
                             ) {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = galleryImage.file.toString(),
+                                    // Prefer the platform thumbnail URI (content://… on Android,
+                                    // ph://… on iOS) over the PlatformFile itself so videos in
+                                    // the gallery grid render their poster via the system
+                                    // thumbnail path (ContentResolver / PHImageManager) instead
+                                    // of routing through PlatformFileFetcher, which would
+                                    // readBytes() the whole video and paint a black frame.
+                                    // Mirrors FullScreenAttachmentEditor.kt:266,439.
+                                    model = galleryImage.thumbnailUri ?: galleryImage.file,
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
                                         .size(160.dp)
@@ -246,6 +255,7 @@ fun AttachmentOptions(
     onContactClick: () -> Unit,
     onLocationClick: () -> Unit,
     onEventClick: () -> Unit,
+    onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
 ) {
     Column(
@@ -290,6 +300,14 @@ fun AttachmentOptions(
                     icon = Icons.Default.Event,
                     label = stringResource(MR.string.chat_event_share),
                     onClick = onEventClick,
+                )
+            }
+            item {
+                AttachmentOption(
+                    modifier = Modifier.testTag("attachment_groodle"),
+                    icon = Icons.Default.CalendarMonth,
+                    label = stringResource(MR.string.chat_groodle_share),
+                    onClick = onGroodleClick,
                 )
             }
             item {

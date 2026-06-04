@@ -22,4 +22,6 @@ class JvmPlatformInfo: PlatformInfo {
             0
         }
 
+    // Desktop has no OS background-wake — the process only runs when launched.
+    override val supportsBackgroundWake: Boolean = false
 }

@@ -259,6 +259,56 @@ class CompressVideoAndroidInstrumentedTest {
         }
     }
 
+    // -----------------------------------------------------------------
+    // Re-entry regression — ffmpeg-kit C11.1 (homebase-id/ffmpeg-kit 33f2ffb).
+    //
+    // print_report()'s first-tick gate statics (first_report / last_time)
+    // weren't reset between ffmpeg_execute() calls, so the 2nd+ encode in one
+    // process fired print_report before the muxer dumped output and SIGSEGV'd.
+    // A back-to-back multi-compress test used to live here (see the note near
+    // the baseline tests above) and was removed because it crashed the
+    // emulator under the ffmpeg-kit re-entry limitation. C11.1 re-arms the
+    // gate; this restores the coverage on the h264_mediacodec HW path, whose
+    // first-output latency reliably widens the crash window.
+    //
+    // Pre-C11.1: the 2nd/3rd encode aborts the process. Post-C11.1: all pass.
+    // -----------------------------------------------------------------
+
+    @Test
+    fun compressVideo_hwEncoderReentry_doesNotCrash() = runTest {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val cleanup = mutableListOf(fixture)
+        try {
+            repeat(3) { i ->
+                val outFile = File(ctx.cacheDir, "reentry_$i.mp4").also { it.delete() }
+                cleanup += outFile
+                val args = arrayOf(
+                    "-y",
+                    "-i", fixture.absolutePath,
+                    "-t", "2",
+                    "-c:v", "h264_mediacodec",
+                    "-b:v", "2M",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    outFile.absolutePath,
+                )
+                val session = executeFfmpegArgs(args)
+                assertTrue(
+                    ReturnCode.isSuccess(session.returnCode),
+                    "mediacodec re-entry encode #$i failed (rc=${session.returnCode}). A SIGSEGV " +
+                        "here on the 2nd/3rd run means ffmpeg-kit C11.1 (print_report first-tick " +
+                        "gate reset, commit 33f2ffb) is missing from the bundled AAR. " +
+                        "fail=${session.failStackTrace}",
+                )
+                assertTrue(outFile.length() > 0L, "re-entry encode #$i produced empty output")
+            }
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
     /** Minimal coroutine wrapper around FFmpegKit.executeWithArgumentsAsync —
      *  mirrors FFmpegUtils.android.kt::executeFfmpegAsync but lives here so
      *  the test doesn't depend on a private internal helper. */

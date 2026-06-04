@@ -10,6 +10,7 @@ import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.sync.database.JvmDatabaseSizeProbe
 import id.homebase.chat.dice.JvmShakeDetector
 import id.homebase.chat.dice.ShakeDetector
+import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -19,6 +20,7 @@ import id.homebase.core.audio.JvmWaveFormGenerator
 import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.JvmGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
+import id.homebase.core.image.HeicDecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
@@ -67,6 +69,8 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(PlatformFileFetcher.Factory())
+                    add(HeicDecoder.Factory())
                 }
                 .diskCache(null)
                 .build()

@@ -10,6 +10,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
 import id.homebase.chat.dice.AndroidShakeDetector
 import id.homebase.chat.dice.ShakeDetector
+import id.homebase.chat.image.PlatformFileFetcher
+import id.homebase.chat.widget.video.ExoPlayerPool
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.core.audio.AndroidAudioPlayer
 import id.homebase.core.audio.AndroidAudioRecorder
@@ -67,6 +69,10 @@ actual fun platformModule(): Module = module {
     single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
     single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
     single<ShakeDetector> { AndroidShakeDetector(androidContext()) }
+    // Warm pool of ExoPlayer instances reused across moments inline-video
+    // tile plays. Avoids the ~100–200ms ExoPlayer.Builder init on every play
+    // tap. Only used by VideoPlayerSurface.android.kt — see ExoPlayerPool.kt.
+    single { ExoPlayerPool(androidContext()) }
     single<NotificationBackend> { KMPNotifierBackend() }
     single(createdAtStart = true) {
         ImageLoader.Builder(androidContext())
@@ -74,6 +80,7 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(PlatformFileFetcher.Factory())
                     add(VideoFrameDecoder.Factory())
                 }
             .memoryCache {

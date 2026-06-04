@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.readImageMetadata
-import id.homebase.api.video.FFmpegUtils
-import id.homebase.api.video.VideoThumbnailExtractor
+import id.homebase.api.video.VideoCompressionService
+import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.core.clipboard.platformFileFromPath
@@ -327,10 +327,10 @@ class MomentComposeViewModel(
 
     private fun extractVideoMetadata(attachmentId: Uuid, videoPath: String) {
         val deferredBytes = viewModelScope.async {
-            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
+            runCatching { VideoThumbnailService.extractPosterFrame(videoPath) }.getOrNull()
         }
         val deferredDuration = viewModelScope.async {
-            runCatching { FFmpegUtils.getDurationMs(videoPath) }.getOrNull()
+            runCatching { VideoCompressionService.getDurationMs(videoPath) }.getOrNull()
         }
         viewModelScope.launch {
             val bytes = runCatching { deferredBytes.await() }.getOrNull()

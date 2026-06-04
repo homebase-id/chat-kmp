@@ -83,6 +83,7 @@ internal class MessageActionsHandler(
     private val shareContentProcessor: ShareContentProcessor,
     private val userPreferences: UserPreferences,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
+    private val dispatch: (ConversationListUiAction) -> Unit,
     private val ensureThumbnail: suspend (AttachmentPendingFile.FileVideo) -> AttachmentPendingFile.FileVideo,
 ) {
 
@@ -314,12 +315,12 @@ internal class MessageActionsHandler(
     fun handleMarkAsRead(action: ConversationListUiAction.MarkAsRead) {
         scope.launch {
             try {
-                if (action.messageIds == null) {
+                if (action.messages == null) {
                     chatMessageActionService.markAllAsRead(action.conversationId)
                 } else {
                     chatMessageActionService.markAsReadByFiles(
                         action.conversationId,
-                        action.messageIds
+                        action.messages
                     )
                 }
             } catch (e: Exception) {
@@ -625,7 +626,7 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.File -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
+                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
@@ -636,7 +637,7 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
-                        var filePath = attachment.file.toString()
+                        var filePath = attachment.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.file.name,
                             platformMimeType = attachment.file.mimeType()?.toString(),
@@ -665,7 +666,7 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.FileVideo -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
+                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
@@ -673,12 +674,16 @@ internal class MessageActionsHandler(
                                 displayName = attachment.file.name,
                                 trimStartMs = attachment.trimStartMs,
                                 trimEndMs = attachment.trimEndMs,
+                                // Web: the blob: URL becomes the ffmpeg compress INPUT (read in JS,
+                                // no Kotlin copy / base64). Null on native. Not revoked here — it
+                                // also backs the sent bubble's local preview; freed on logout/reload.
+                                inputBlobUrl = attachment.playablePath,
                             )
                         )
                     }
 
                     is AttachmentPendingFile.Gallery -> {
-                        var filePath = attachment.image.file.toString()
+                        var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.image.fileName,
                         )
@@ -706,13 +711,13 @@ internal class MessageActionsHandler(
                     is AttachmentPendingFile.Audio -> {
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.audioFile.toString(),
+                                filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
                                     fileName = attachment.audioFile.name,
                                     platformMimeType = attachment.audioFile.mimeType()?.toString(),
                                 ),
                                 displayName = attachment.audioFile.name,
-                                waveformFile = attachment.waveformFile?.toString(),
+                                waveformFile = attachment.waveformFile?.toUploadPath(fileOperationsProvider),
                                 audioLengthSeconds = attachment.lengthSeconds,
                             )
                         )
@@ -745,7 +750,12 @@ internal class MessageActionsHandler(
                             }.getOrNull()
                             LocalAttachmentContext.Video(
                                 thumbnailBytes = bytes,
-                                localFilePath = file.file.toString(),
+                                // On web file.file.toString() is a bare filename (no "://"), which
+                                // the web fileExists() heuristic rejects → the store drops the
+                                // context → the bubble degrades to a generic "1 attachment" with no
+                                // thumb/progress. playablePath is the blob: URL (contains "://") and
+                                // is a real local-preview source there. Native: == file.toString().
+                                localFilePath = file.playablePath ?: file.file.toString(),
                                 aspectRatio = aspect,
                                 trimStartMs = file.trimStartMs,
                                 trimEndMs = file.trimEndMs,
@@ -817,8 +827,16 @@ internal class MessageActionsHandler(
                     fullScreenOverlay = null,
                     isSendingMessage = false,
                     replyToMessage = if (replyTo != null) null else state.replyToMessage,
+                    // Closing fullScreenOverlay remounts ConversationContent with the
+                    // placeholder already present, so its layout-growth auto-follow can't
+                    // see growth. This token tells the freshly-mounted list to follow our
+                    // own send down to the bottom. See MessageListUiState.scrollToLatestRequest.
+                    scrollToLatestRequest = newMessageId,
                 )
             }
+            // NOTE: do NOT revoke the videos' blob: URLs here — they're now the ffmpeg compress
+            // INPUT and are consumed by the async upload (revoked in writeFileFromUrl once written
+            // into MEMFS). Unattach/dismiss still revoke for never-sent attachments.
             messageInputTextState.clear()
 
             scope.launch {
@@ -859,7 +877,13 @@ internal class MessageActionsHandler(
                                 .toPersistentList(),
                         )
                     }
-                } catch (e: Exception) {
+                    jumpToLatestAfterOwnSend(conversationId)
+                } catch (e: Throwable) {
+                    // Throwable, not Exception: a missing platform impl throws kotlin.NotImplementedError
+                    // (an Error, not an Exception). Catching only Exception let that escape, killing the
+                    // coroutine and leaving the bubble stuck on "Preparing" forever. Re-throw
+                    // CancellationException so structured-concurrency cancellation still propagates.
+                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
                     Logger.e(
                         throwable = e,
                         tag = TAG
@@ -966,6 +990,28 @@ internal class MessageActionsHandler(
         }
     }
 
+    /**
+     * After the user sends their own message, jump to the latest page if the
+     * loaded window is paged up in history ([MessageListUiState.hasNewerMessages]
+     * == true — they scrolled up, or the window was trimmed past MAX_WINDOW_SIZE).
+     *
+     * In that state the optimistic message was gated out of the window by
+     * ChatMessageStream's `hasNewerMessages` guard, so it isn't visible. Reusing
+     * the [ConversationListUiAction.ScrollToLatest] arm reloads the newest page
+     * (which now contains the just-written optimistic message) and lands on it at
+     * the bottom — matching Signal/WhatsApp, where typing while scrolled up moves
+     * you down to your message. A no-op when already at the latest (the normal
+     * auto-follow in ConversationContent handles that case).
+     *
+     * Call only after the send's suspend call returns, so the optimistic DB write
+     * the reload re-reads has completed.
+     */
+    private fun jumpToLatestAfterOwnSend(conversationId: Uuid) {
+        if (messagesUiState.value.hasNewerMessages) {
+            dispatch(ConversationListUiAction.ScrollToLatest(conversationId))
+        }
+    }
+
     private fun addMessage(
         conversationId: Uuid,
         content: String,
@@ -988,6 +1034,7 @@ internal class MessageActionsHandler(
                     dataType = payloadRenderers.toMessageDataType(),
                 )
                 messageInputTextState.clear()
+                jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
                 Logger.e(
@@ -1035,6 +1082,7 @@ internal class MessageActionsHandler(
                 )
                 messageInputTextState.clear()
                 messagesUiState.update { it.copy(replyToMessage = null) }
+                jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
                 Logger.e(

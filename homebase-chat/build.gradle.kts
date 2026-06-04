@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -14,16 +16,21 @@ kotlin {
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
+        // Enable the Android resource pipeline so PlayerView's XML layout in
+        // src/androidMain/res/layout/ is picked up and an R class is
+        // generated for this module's namespace. Matches homebase-common /
+        // homebase-api / image-editor-ui.
+        androidResources.enable = true
         withHostTest {}
     }
 
     jvm()
 
-//    @OptIn(ExperimentalWasmDsl::class)
-//    wasmJs {
-//        browser()
-//        binaries.executable()
-//    }
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        binaries.executable()
+    }
 
     listOf(
         iosArm64(),
@@ -92,9 +99,9 @@ kotlin {
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).
-//        wasmJsMain.dependencies {
-//            implementation(libs.ktor.client.js)
-//        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.jetbrains.compose.ui.test)

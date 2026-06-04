@@ -169,6 +169,8 @@ class VaultStream(
     private suspend fun observeEvents() {
         eventBus.events.collect { event ->
             when (event) {
+                // Logout: drop the previous identity's vault sections/entries.
+                is BackendEvent.SessionEnded -> reset()
                 is BackendEvent.DataEvent.BatchReceived -> {
                     if (event.driveId != driveId) return@collect
                     // Every BatchReceived is a live WS-push event (DriveSync is

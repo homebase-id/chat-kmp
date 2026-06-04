@@ -3,8 +3,6 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this
 repository.
 
-**_NOTE:_**  At the end of every task, Codex will review your work
-
 ## Discussions
 
 If I push back and you still think you're right, hold the position and
@@ -61,6 +59,22 @@ with Koin DI.
 
 # Web (currently disabled in settings.gradle.kts)
 ./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
+```
+
+### Per-module compile checks (type-check one KMP library across targets)
+
+To verify a change in a library module (e.g. `homebase-api`) compiles on each target
+without building the whole app, use the **target-named** Kotlin compile tasks. KMP library
+modules do NOT have the AGP app-style `assembleDebug` / `compileDebugKotlinAndroid` tasks —
+those exist only on the application modules (`androidApp`). Using them on a library fails with
+"task not found".
+
+```bash
+./gradlew :homebase-api:compileKotlinJvm        # JVM/Desktop
+./gradlew :homebase-api:compileAndroidMain      # Android (NOT compileDebugKotlinAndroid)
+./gradlew :homebase-api:compileKotlinWasmJs     # Web/wasmJs
+./gradlew :homebase-api:compileKotlinIosSimulatorArm64   # iOS (only on a macOS host)
+# test sources: :homebase-api:compileTestKotlinJvm, etc.
 ```
 
 ## Testing

@@ -10,8 +10,12 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -114,5 +118,37 @@ fun HomebaseFile.toVaultEntry(): VaultEntry? {
         payloadDescriptors = payloads,
         notes = vaultFileContent.notes,
         pdfPageCount = vaultFileContent.pdfPageCount,
+    )
+}
+
+/**
+ * Builds the [HomebaseImageData] for one of this entry's image payloads, or
+ * null if [descriptor] has no decodable IV (e.g. not yet uploaded).
+ *
+ * Single source of truth for the IV decode + [KeyHeader] assembly, so the grid
+ * thumbnail, the press-time prefetch, and the fullscreen viewer all address the
+ * same Coil / byte-cache entry (the key derives from drive/file/payload/
+ * lastModified) and cannot silently drift apart.
+ */
+@OptIn(ExperimentalEncodingApi::class)
+fun VaultEntry.imageDataFor(
+    descriptor: PayloadDescriptor,
+    loadFullPayload: Boolean,
+    previewThumbnail: EmbeddedThumb? = null,
+    requestedSize: ImageSize? = null,
+): HomebaseImageData? {
+    val ivBytes = descriptor.iv?.let {
+        try { Base64.decode(it) } catch (_: Exception) { null }
+    } ?: return null
+    return HomebaseImageData(
+        driveId = driveId,
+        fileId = fileId,
+        payloadKey = descriptor.key,
+        previewThumbnail = previewThumbnail,
+        requestedSize = requestedSize,
+        loadFullPayload = loadFullPayload,
+        isEncrypted = isEncrypted,
+        lastModified = descriptor.lastModified,
+        keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
     )
 }

@@ -86,10 +86,16 @@ abstract class OdinApiProviderBase(
     ): ApiResponse {
         val response = block()
         val rawBody = response.body<String>()
-        val isEncrypted = response.headers["X-SSE"] == "1"
 
+        // Decrypt when the server flags it (X-SSE) OR the body is unmistakably the shared-secret
+        // envelope. The header is the fast path used on native; but browsers strip non-safelisted
+        // response headers from cross-origin (CORS) responses unless the server sends
+        // `Access-Control-Expose-Headers: X-SSE`, so on web we fall back to detecting the
+        // {"iv","data"} envelope by shape and decrypt it anyway.
         val body =
-            if (isEncrypted && secret != null) {
+            if (secret != null &&
+                (response.headers["X-SSE"] == "1" || looksLikeEncryptedEnvelope(rawBody))
+            ) {
                 CryptoHelper.decryptContentAsString(rawBody, secret.unsafeBytes)
             } else {
                 rawBody
@@ -100,6 +106,22 @@ abstract class OdinApiProviderBase(
             headers = response.headers,
             body = body
         )
+    }
+
+    /**
+     * True when [body] is unmistakably a [SharedSecretEncryptedPayload] envelope — a JSON object
+     * with non-blank `iv` and `data` (both required). Lets [request] decide to decrypt when the
+     * `X-SSE` response header isn't visible to JS (cross-origin/CORS responses on web strip it).
+     * Success payloads (PagedResult, ServerFile, …) lack these fields, so they parse-fail here and
+     * are left untouched.
+     */
+    private fun looksLikeEncryptedEnvelope(body: String): Boolean {
+        return try {
+            val payload = OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(body)
+            payload.iv.isNotBlank() && payload.data.isNotBlank()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     protected suspend fun requestBytes(

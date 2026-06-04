@@ -17,7 +17,14 @@ class DriveMainIndexWrapper(
 ) {
     private val delegate = DriveMainIndexQueries(driver, driveMainIndexAdapter)
 
-    fun <T : Any> selectByIdentityAndDriveAndFile(
+    // All reads below run on DatabaseManager's read lane (readValue → readDispatcher), NOT
+    // on the caller's thread. This is the single-row counterpart to PR #600's list-read
+    // routing: a synchronous SQLite read here on the Main thread (e.g. a header lookup from
+    // a viewModelScope/Main.immediate coroutine) would block in
+    // SQLiteConnectionPool.waitForConnection behind a long cold-load read and wedge the UI —
+    // the proven cold-boot "tap does nothing until green" cause. Row→model deserialization is
+    // done OUTSIDE readValue so the lane's slot (and SlowDbRead sql= timing) cover only SQL.
+    suspend fun <T : Any> selectByIdentityAndDriveAndFile(
         identityId: Uuid,
         driveId: Uuid,
         fileId: Uuid,
@@ -42,24 +49,28 @@ class DriveMainIndexWrapper(
             fileSystemType: Long,
             jsonHeader: String,
         ) -> T,
-    ): T? = delegate.selectByIdentityAndDriveAndFile(identityId, driveId, fileId, mapper)
-        .executeAsOneOrNull()
+    ): T? = databaseManager.readValue("selectByIdentityAndDriveAndFile(mapper)") {
+        delegate.selectByIdentityAndDriveAndFile(identityId, driveId, fileId, mapper)
+            .executeAsOneOrNull()
+    }
 
-    fun selectByIdentityAndDriveAndFile(
+    suspend fun selectByIdentityAndDriveAndFile(
         identityId: Uuid,
         driveId: Uuid,
         fileId: Uuid,
-    ): DriveMainIndex? =
+    ): DriveMainIndex? = databaseManager.readValue("selectByIdentityAndDriveAndFile") {
         delegate.selectByIdentityAndDriveAndFile(identityId, driveId, fileId).executeAsOneOrNull()
+    }
 
-    fun selectByIdentityAndDriveAndUnique(
+    suspend fun selectByIdentityAndDriveAndUnique(
         identityId: Uuid,
         driveId: Uuid,
         uniqueId: Uuid,
-    ): DriveMainIndex? = delegate.selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId)
-        .executeAsOneOrNull()
+    ): DriveMainIndex? = databaseManager.readValue("selectByIdentityAndDriveAndUnique") {
+        delegate.selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId).executeAsOneOrNull()
+    }
 
-    fun selectHomebaseFileByUnique(
+    suspend fun selectHomebaseFileByUnique(
         identityId: Uuid,
         driveId: Uuid,
         uniqueId: Uuid,
@@ -68,17 +79,19 @@ class DriveMainIndexWrapper(
         return OdinSystemSerializer.deserialize<HomebaseFile>(row.jsonHeader)
     }
 
-    fun selectByIdentityAndDriveAndUniqueIds(
+    suspend fun selectByIdentityAndDriveAndUniqueIds(
         identityId: Uuid,
         driveId: Uuid,
         uniqueIds: Collection<Uuid>,
     ): List<DriveMainIndex> {
         if (uniqueIds.isEmpty()) return emptyList()
-        return delegate.selectByIdentityAndDriveAndUniqueIds(identityId, driveId, uniqueIds)
-            .executeAsList()
+        return databaseManager.readValue("selectByIdentityAndDriveAndUniqueIds") {
+            delegate.selectByIdentityAndDriveAndUniqueIds(identityId, driveId, uniqueIds)
+                .executeAsList()
+        }
     }
 
-    fun selectHomebaseFilesByUniqueIds(
+    suspend fun selectHomebaseFilesByUniqueIds(
         identityId: Uuid,
         driveId: Uuid,
         uniqueIds: Collection<Uuid>,
@@ -92,16 +105,17 @@ class DriveMainIndexWrapper(
         return result
     }
 
-    fun selectByIdentityAndDriveAndGlobal(
+    suspend fun selectByIdentityAndDriveAndGlobal(
         identityId: Uuid,
         driveId: Uuid,
         globalTransitId: Uuid,
-    ): DriveMainIndex? =
+    ): DriveMainIndex? = databaseManager.readValue("selectByIdentityAndDriveAndGlobal") {
         delegate.selectByIdentityAndDriveAndGlobal(identityId, driveId, globalTransitId)
             .executeAsOneOrNull()
+    }
 
 
-    fun <T : Any> selectAll(
+    suspend fun <T : Any> selectAll(
         mapper: (
             rowId: Long,
             identityId: Uuid,
@@ -123,14 +137,20 @@ class DriveMainIndexWrapper(
             fileSystemType: Long,
             jsonHeader: String,
         ) -> T,
-    ): List<T> = delegate.selectAll(mapper).executeAsList()
+    ): List<T> = databaseManager.readValue("selectAll(mapper)") {
+        delegate.selectAll(mapper).executeAsList()
+    }
 
-    fun selectAll(): List<DriveMainIndex> = delegate.selectAll().executeAsList()
+    suspend fun selectAll(): List<DriveMainIndex> =
+        databaseManager.readValue("selectAll") { delegate.selectAll().executeAsList() }
 
-    fun countAll(): Long = delegate.countAll().executeAsOne()
+    suspend fun countAll(): Long =
+        databaseManager.readValue("countAll") { delegate.countAll().executeAsOne() }
 
-    fun countByIdentityAndDrive(identityId: Uuid, driveId: Uuid): Long =
-        delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
+    suspend fun countByIdentityAndDrive(identityId: Uuid, driveId: Uuid): Long =
+        databaseManager.readValue("countByIdentityAndDrive") {
+            delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
+        }
 
     /**
      * Row shape for the Defragmenter's streaming scan — carries enough to

@@ -78,6 +78,8 @@ class MomentsFeedService(
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
+                    // Logout: drop the previous identity's moments feed.
+                    is BackendEvent.SessionEnded -> reset()
                     is BackendEvent.DataEvent.BatchReceived -> {
                         if (event.driveId != drive) return@collect
                         processIncrementalBatch(event.batchData)
@@ -229,6 +231,16 @@ class MomentsFeedService(
     private fun emitSorted() {
         _feed.value = byId.values.sortedByDescending { it.userDateMs }
     }
+
+    /**
+     * Logout: drop the previous identity's moments. `started` is intentionally
+     * left set — the app-scoped eventBus collector stays alive and repopulates
+     * from the next session's moments-drive sync (DriveEvent.Stopped).
+     */
+    fun reset() {
+        byId.clear()
+        _feed.value = emptyList()
+    }
 }
 
 /**
@@ -245,6 +257,13 @@ data class MomentFeedItem(
     val payloads: List<PayloadDescriptor>,
     val description: String,
     val userDateMs: Long,
+    /**
+     * Server-side creation timestamp from the file metadata — i.e. when the
+     * post was published. Distinct from [userDateMs], which falls back to the
+     * EXIF "captured at" time when available. Drives the Timeline sort order
+     * (newest *posted* first), versus the Album sort which uses userDate.
+     */
+    val createdMs: Long,
     val previewThumbnail: EmbeddedThumb?,
     /**
      * Embedded reaction summary on the moment file. Drives the per-emoji
@@ -262,6 +281,15 @@ data class MomentFeedItem(
      */
     val senderOdinId: OdinId?,
     /**
+     * Identity that authored the post. Unlike [senderOdinId] this is populated
+     * on the author's *own* drive copy too (the optimistic writer stamps self,
+     * and the server preserves it across transfer), so it is the reliable
+     * signal of "whose face to show" for the feed avatar — for the user's own
+     * moments [senderOdinId] comes back null after sync but [originalAuthor]
+     * still resolves to self. Null only on legacy posts that pre-date the field.
+     */
+    val originalAuthor: OdinId?,
+    /**
      * Audience the post was originally addressed to — surfaced on the detail
      * screen's "Shared with" row. Null on legacy moments that pre-date the
      * source field, on local-only posts, or when the header fails to
@@ -277,6 +305,34 @@ data class MomentFeedItem(
      * list"), but the detail screen still needs something to render.
      */
     val recipients: List<OdinId>,
+    /**
+     * Author's choice to allow commenting on this moment. Defaults to true for
+     * legacy posts whose `MomentPostContent` pre-dates the field. The detail
+     * screen hides the entire comments section (header, list, composer) when
+     * this is false.
+     */
+    val commentsEnabled: Boolean,
+    /**
+     * Current header version tag, needed to submit an in-place edit (e.g. a
+     * description edit via [MomentsPostSenderService.updateMoment], which
+     * guards against a stale write by rejecting a mismatched tag). Null on a
+     * still-optimistic local write that hasn't been assigned a tag yet.
+     */
+    val versionTag: Uuid?,
+    /**
+     * Emojis the current user has already reacted with on this moment. Read
+     * from `fileMetadata.localAppData.localReactions` (the per-user mirror
+     * the [id.homebase.chat.services.outbox.OptimisticWriter] maintains) and
+     * decoded to bare emoji glyphs.
+     *
+     * Drives:
+     *  - "I've reacted" indication on the detail screen's heart / flame
+     *    action buttons (filled vs outlined).
+     *  - The feed card's double / triple-tap reaction overlay so it can
+     *    play a *remove* animation when the toggle takes the reaction away
+     *    instead of adding it.
+     */
+    val ownReactions: List<String>,
 )
 
 private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
@@ -287,6 +343,25 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
             OdinSystemSerializer.deserialize<MomentPostContent>(raw)
         }.getOrNull()
     }
+    // localReactions stores the per-user reaction JSON strings the
+    // OptimisticWriter maintains. Decode each to a bare emoji so the UI can
+    // do `emoji in ownReactions` checks without re-deserialising.
+    val ownReactions = fileMetadata.localAppData?.localReactions
+        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        .orEmpty()
+    // Diagnostic for the missing-avatar investigation: senderOdinId is expected
+    // to be null on the author's own drive copy (server strips it), but should
+    // be present on inbound transfers. Log the null case alongside originalAuthor
+    // so we can tell an expected own-post null apart from an inbound moment that
+    // unexpectedly arrived without a sender. Drop once the data is understood.
+    val senderOdinId = fileMetadata.senderOdinId
+    if (senderOdinId == null) {
+        Logger.d(tag = "MomentsFeedService") {
+            "toFeedItem: null senderOdinId uniqueId=$uniqueId " +
+                "originalAuthor=${fileMetadata.originalAuthor} " +
+                "recipients=${content?.recipients?.size ?: 0} source=${content?.source}"
+        }
+    }
     return MomentFeedItem(
         id = uniqueId,
         fileId = fileId,
@@ -295,10 +370,24 @@ private fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         payloads = fileMetadata.payloads.orEmpty(),
         description = content?.description.orEmpty(),
         userDateMs = sqlUserDateMs(),
+        createdMs = fileMetadata.created.milliseconds,
         previewThumbnail = appData.previewThumbnail,
         reactionPreview = fileMetadata.reactionPreview,
-        senderOdinId = fileMetadata.senderOdinId,
+        senderOdinId = senderOdinId,
+        originalAuthor = fileMetadata.originalAuthor,
         source = content?.source,
         recipients = content?.recipients.orEmpty(),
+        // Default true when content failed to parse OR when an older post
+        // didn't include the field — matches the @Serializable default and
+        // keeps legacy moments commentable.
+        commentsEnabled = content?.commentsEnabled ?: true,
+        versionTag = fileMetadata.versionTag,
+        ownReactions = ownReactions,
     )
 }
+
+private fun decodeOwnReactionEmoji(reactionContent: String): String? = runCatching {
+    OdinSystemSerializer
+        .deserialize<id.homebase.api.client.drives.files.reactions.ReactionContent>(reactionContent)
+        .emoji
+}.getOrNull()

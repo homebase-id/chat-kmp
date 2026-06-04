@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -87,7 +88,23 @@ actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
     onProgress: (Float) -> Unit,
+    muted: Boolean,
+    @Suppress("UNUSED_PARAMETER") useNativeControls: Boolean,
+    @Suppress("UNUSED_PARAMETER") useInlineOptimizations: Boolean,
+    @Suppress("UNUSED_PARAMETER") startPositionMs: Long,
+    @Suppress("UNUSED_PARAMETER") onPositionUpdate: (Long) -> Unit,
+    onFirstFrame: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") useZoomFill: Boolean,
+    onEnded: () -> Unit,
+    replayToken: Int,
+    // Press-and-hold pause is driven from the compact-timeline inline tile,
+    // which the desktop never shows (it uses the wide split layout), so the
+    // flag is accepted to satisfy the expect signature but not wired here.
+    @Suppress("UNUSED_PARAMETER") paused: Boolean,
 ) {
+    // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
+    // built-in transport UI of its own (host renders controls). Param is
+    // accepted for API parity with the mobile actuals.
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
@@ -221,7 +238,13 @@ actual fun VideoPlayerSurface(
             is VpsState.Playing -> VlcjPlayer(
                 videoPath = s.videoPath,
                 modifier = Modifier.fillMaxSize(),
-                onFirstFrameRendered = { onProgress(1f) },
+                onFirstFrameRendered = {
+                    onProgress(1f)
+                    onFirstFrame()
+                },
+                muted = muted,
+                onEnded = onEnded,
+                replayToken = replayToken,
             )
         }
     }
@@ -238,6 +261,9 @@ internal fun VlcjPlayer(
     externalIsPlaying: Boolean? = null,
     seekRequestMs: Long? = null,
     onPositionMs: ((Long) -> Unit)? = null,
+    muted: Boolean = false,
+    onEnded: () -> Unit = {},
+    replayToken: Int = 0,
 ) {
     val vlcFound = remember { NativeDiscovery().discover() }
 
@@ -303,6 +329,9 @@ internal fun VlcjPlayer(
                     mediaPlayer.controls().setTime(0)
                     position = 0f
                     isPlaying = false
+                    // End-of-clip: let the host raise its "Watch again"
+                    // affordance instead of looping.
+                    onEnded()
                 }
             } else {
                 isPlaying = mediaPlayer.status().isPlaying
@@ -317,6 +346,25 @@ internal fun VlcjPlayer(
         LaunchedEffect(externalIsPlaying) {
             if (externalIsPlaying) mediaPlayer.controls().play()
             else mediaPlayer.controls().setPause(true)
+        }
+    }
+
+    // Latest mute state for the VLC event thread's playing() callback to read,
+    // since the listener is created once per videoPath and would otherwise close
+    // over a stale value.
+    val mutedState = rememberUpdatedState(muted)
+
+    LaunchedEffect(muted) {
+        mediaPlayer.audio().isMute = muted
+    }
+
+    // Replay-in-place when the host's "Watch again" bumps replayToken. Guard on
+    // > 0 so the initial composition doesn't restart before first play.
+    LaunchedEffect(replayToken) {
+        if (replayToken > 0) {
+            mediaPlayer.controls().setTime(0)
+            mediaPlayer.controls().play()
+            isPlaying = true
         }
     }
 
@@ -364,6 +412,14 @@ internal fun VlcjPlayer(
             true,
         )
         val eventListener = object : MediaPlayerEventAdapter() {
+            override fun playing(mp: uk.co.caprica.vlcj.player.base.MediaPlayer) {
+                // VLC creates its native audio output lazily — isMute set before the
+                // media is actually playing is silently ignored, which is why an
+                // autoplaying (muted) moment still emitted sound. Re-apply mute here,
+                // once the audio output exists. Read the current Compose state so a
+                // toggle that landed during the async start is honoured too.
+                mp.audio().isMute = mutedState.value
+            }
             override fun timeChanged(mp: uk.co.caprica.vlcj.player.base.MediaPlayer, newTime: Long) {
                 atomicPositionMs.set(newTime)
             }
@@ -392,6 +448,8 @@ internal fun VlcjPlayer(
         } else {
             mediaPlayer.media().play(videoPath)
         }
+        // Mute is applied in the playing() event above — VLC ignores isMute set
+        // before its native audio output exists, so setting it here would be a no-op.
 
         onDispose {
             mediaPlayer.events().removeMediaPlayerEventListener(eventListener)

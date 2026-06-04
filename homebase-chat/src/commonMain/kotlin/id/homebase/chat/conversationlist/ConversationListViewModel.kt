@@ -77,6 +77,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -132,6 +133,11 @@ class ConversationListViewModel(
 
     companion object {
         private const val TAG = "ConversationListViewModel"
+
+        // How long the chat-details loading spinner may stay up for one conversation
+        // before the watchdog logs it as stuck. Generous so a slow-but-legitimate DB
+        // read isn't flagged; the point is to catch a load that never completes/fails.
+        private const val SPINNER_WATCHDOG_MS = 8_000L
     }
 
     private val enricher = ConversationEnricher()
@@ -160,6 +166,13 @@ class ConversationListViewModel(
     // message-emission collect block below). Per-conversation so rapid
     // conversation switches can't cross-fire a scroll.
     private val pendingScrollToLatest = mutableSetOf<Uuid>()
+
+    // Unread boundary (lastRead snapshot) frozen at the moment a conversation is
+    // opened with unread messages. Keeps the "New messages" separator pinned in
+    // place while viewing, even after mark-as-read advances the live lastRead and
+    // zeroes unreadCount. Cleared on leave so re-entry recomputes. Keyed per
+    // conversation like pendingScrollToLatest.
+    private val frozenUnreadBoundary = mutableMapOf<Uuid, Instant>()
 
     private val mediaDownloadHandler = MediaDownloadHandler(
         scope = viewModelScope,
@@ -193,6 +206,7 @@ class ConversationListViewModel(
         shareContentProcessor = shareContentProcessor,
         userPreferences = userPreferences,
         sendEvent = ::sendEvent,
+        dispatch = ::onAction,
         ensureThumbnail = { f -> attachmentHandler.ensureThumbnail(f) },
     )
 
@@ -282,6 +296,9 @@ class ConversationListViewModel(
 
         viewModelScope.launch {
             val vmInitMark = TimeSource.Monotonic.markNow()
+            Logger.i(tag = "ConvListPerf") {
+                "main list pipeline: launch body entered at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+            }
             contactService.start()
             conversationStream.start()
             connectionService.start()
@@ -328,6 +345,11 @@ class ConversationListViewModel(
                 }
             }
 
+            Logger.i(tag = "ConvListPerf") {
+                "main list pipeline: reaching combine.collect setup at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+            }
+            var firstCombineEval = true
+            val listDebounce = ConversationListDebounce()
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
@@ -342,6 +364,14 @@ class ConversationListViewModel(
                 // before OwnerSessionRepository.load() has run — the enricher
                 // never has to deal with a null session.
                 val effectiveSession = synthesizeOwnerSession(ownerSession, credentials)
+                if (firstCombineEval) {
+                    firstCombineEval = false
+                    Logger.i(tag = "ConvListPerf") {
+                        "main list pipeline: combine first eval at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit " +
+                            "ownerSession=${ownerSession != null} credentials=${credentials != null} " +
+                            "effectiveSession=${effectiveSession != null} dataReady=${conversationState.dataReady} items=${conversationState.items.size}"
+                    }
+                }
                 if (effectiveSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
@@ -357,7 +387,18 @@ class ConversationListViewModel(
                         connectionStatusKnown = connectionCtx.statusKnown,
                     )
                 })
-            }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+            }.debounce { (dataReady, _) ->
+                // Leading-edge debounce: render the FIRST ready list immediately, then
+                // coalesce the burst that follows. The cached conversations + a
+                // credentials-synthesized session make a complete list available within
+                // a few ms of vmInit, but the combine's sources (ownerSession,
+                // connectionStatusFlow) keep re-emitting all through the auth/connect
+                // lifecycle. A flat debounce(50) never sees 50ms of quiet during that
+                // storm, so it withheld the ready list for ~half a second until the
+                // connection settled ("blocked until it goes green"). See
+                // [ConversationListDebounce] / ConversationListDebounceTest.
+                listDebounce.timeoutMillisFor(dataReady)
+            }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 Logger.i(tag = "ConversationListViewModel") {
                     "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
                 }
@@ -541,19 +582,32 @@ class ConversationListViewModel(
         // CLVM is created (returning user, instant cold-load), selectConversation
         // fires during VM init. That's intentional — it's the right behavior —
         // but worth knowing when reading a stack trace.
+        // Monotonic mark stamped the moment a notification tap is first observed (by
+        // whichever of the two collectors below sees it first), so every NotifTap log can
+        // report elapsed-since-tap — pinning where a notification-tap delay lives:
+        // resolution (convo not in items yet), fast-path DB load, message fetch, or
+        // detail-pane render. Both collectors run on viewModelScope (Main), so a plain var
+        // is safe.
+        var notifTapMark: kotlin.time.TimeMark? = null
+
         viewModelScope.launch {
             combine(
                 pendingNotificationTap.state,
                 conversationStream.conversations,
             ) { tap, convos -> tap to convos }
                 .collect { (tap, convosState) ->
+                    if (tap != null && notifTapMark == null) {
+                        notifTapMark = TimeSource.Monotonic.markNow()
+                    }
                     val resolved = resolveNotificationTap(
                         tap = tap,
                         conversationIds = convosState.items.map { it.id }.toSet(),
                     ) ?: return@collect
-                    Logger.i(tag = "ConversationListViewModel") {
-                        "pendingNotificationTap resolved convo=${resolved.conversationId} msg=${resolved.messageId}"
+                    Logger.i(tag = "NotifTap") {
+                        "resolved convo=${resolved.conversationId} msg=${resolved.messageId} " +
+                            "sinceTap=${notifTapMark?.elapsedNow()?.inWholeMilliseconds ?: -1}ms itemsAtResolve=${convosState.items.size}"
                     }
+                    notifTapMark = null
                     selectConversation(
                         conversationId = resolved.conversationId,
                         messageId = resolved.messageId,
@@ -581,12 +635,23 @@ class ConversationListViewModel(
         viewModelScope.launch {
             pendingNotificationTap.state.collect { tap ->
                 if (tap == null) return@collect
+                if (notifTapMark == null) notifTapMark = TimeSource.Monotonic.markNow()
                 val convoId = tap.conversationId
                 val alreadyLoaded = conversationStream.conversations.value.items
                     .any { it.id == convoId }
+                Logger.i(tag = "NotifTap") {
+                    "fast-path: tap convo=$convoId msg=${tap.messageId} alreadyInItems=$alreadyLoaded " +
+                        "sinceTap=${notifTapMark?.elapsedNow()?.inWholeMilliseconds ?: -1}ms"
+                }
                 if (alreadyLoaded) return@collect
                 launch(ioDispatcher) {
+                    val mark = TimeSource.Monotonic.markNow()
                     conversationStream.loadConversation(convoId)
+                    val nowInItems = conversationStream.conversations.value.items.any { it.id == convoId }
+                    Logger.i(tag = "NotifTap") {
+                        "fast-path: loadConversation($convoId) took=${mark.elapsedNow().inWholeMilliseconds}ms " +
+                            "nowInItems=$nowInItems"
+                    }
                 }
             }
         }
@@ -698,6 +763,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.ClearSelection -> {
                 ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
+                // Drop the frozen unread boundary so re-entering recomputes it from
+                // the (now advanced) lastRead — a fully-read conversation then shows
+                // no separator on the next open.
+                _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
                     it.copy(
@@ -796,6 +865,10 @@ class ConversationListViewModel(
                 // listState parked at its stale history index.
                 pendingScrollToLatest.add(action.conversationId)
                 viewModelScope.launch { chatMessageStream.loadConversation(action.conversationId) }
+            }
+
+            is ConversationListUiAction.ConsumeScrollToLatestRequest -> {
+                _messagesUiState.update { it.copy(scrollToLatestRequest = null) }
             }
 
             is ConversationListUiAction.ClearHighlightedMessage -> messageActionsHandler.handleClearHighlightedMessage()
@@ -1053,6 +1126,25 @@ class ConversationListViewModel(
             "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages trigger=$trigger"
         }
 
+        // Freeze the unread boundary on a genuine open (selection transition), so
+        // the "New messages" separator stays pinned in place while viewing — even
+        // after mark-as-read advances lastRead and zeroes unreadCount. Reloads of
+        // the already-open conversation must NOT re-capture, or the boundary would
+        // reset to the (now advanced) lastRead and the separator would vanish.
+        // Runs before selectedConversationId is flipped below, so the comparison
+        // still sees the previous selection.
+        val isNewSelection = _uiState.value.selectedConversationId != conversationId
+        if (isNewSelection) {
+            // Only one conversation is viewed at a time; drop any stale boundaries.
+            frozenUnreadBoundary.clear()
+            val convo = _uiState.value.activeConversations
+                .find { it.conversation.id == conversationId }
+                ?.conversation
+            if (convo != null && convo.unreadCount > 0) {
+                frozenUnreadBoundary[conversationId] = convo.lastRead
+            }
+        }
+
         // Always mark loading here, even when hasCachedMessages == true.
         //
         // Previously this short-circuited to `isLoadingMessages = !hasCachedMessages`
@@ -1099,6 +1191,23 @@ class ConversationListViewModel(
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
         currentConversationJob = viewModelScope.launch {
+            // Spinner watchdog: if the detail pane is still loading THIS conversation
+            // after a generous threshold, log it (with elapsed) so a stuck/hung load is
+            // visible in homebase.log even when it neither completed nor threw — the
+            // signature of a real "infinity spinner" report. Diagnostic only; a
+            // genuinely slow DB read is still allowed to finish.
+            val watchdog = launch {
+                delay(SPINNER_WATCHDOG_MS)
+                if (_uiState.value.selectedConversationId == conversationId &&
+                    _messagesUiState.value.isLoadingMessages
+                ) {
+                    Logger.w(tag = "ConversationListViewModel") {
+                        "chat-details still loading after ${SPINNER_WATCHDOG_MS}ms id=$conversationId " +
+                            "trigger=$trigger sinceSelected=${loadStart.elapsedNow()} — " +
+                            "load has not completed or failed"
+                    }
+                }
+            }
             try {
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
@@ -1201,17 +1310,18 @@ class ConversationListViewModel(
                                 models
                             }
 
-                            // Insert "New Messages" separator before the first unread message
-                            val convoModel = _uiState.value.activeConversations
-                                .find { it.conversation.id == conversationId }
-                                ?.conversation
-                            val lastRead = convoModel?.lastRead
+                            // Insert "New Messages" separator before the first unread message.
+                            // Position it from the boundary frozen at open time (see
+                            // loadMessagesForConversation top), NOT the live lastRead/unreadCount —
+                            // so it stays pinned while viewing instead of vanishing once
+                            // mark-as-read advances lastRead and zeroes unreadCount.
+                            val frozenBoundary = frozenUnreadBoundary[conversationId]
                             val currentOdinId = _uiState.value.ownerSession?.odinId
-                            if (lastRead != null && convoModel.unreadCount > 0) {
+                            if (frozenBoundary != null) {
                                 val firstUnreadIdx = messagesModels.indexOfFirst {
                                     it is MessageListContentModel.Message &&
                                         it.message.sender != currentOdinId &&
-                                        it.message.userDate > lastRead
+                                        it.message.userDate > frozenBoundary
                                 }
                                 if (firstUnreadIdx > 0) {
                                     messagesModels.add(firstUnreadIdx, MessageListContentModel.UnreadSeparator)
@@ -1262,6 +1372,25 @@ class ConversationListViewModel(
                                         firstVisibleItemIndex = indexOfMessageForScroll,
                                         triggerScroll = true
                                     )
+                                }
+
+                                // New-messages landing: on the initial open of a
+                                // conversation that has unread messages, land with the
+                                // "New messages" separator at the top of the viewport so
+                                // the new messages are visible instead of hidden below the
+                                // fold. Pre-init (triggerScroll = false), same as the
+                                // saved-anchor path below — no scroll flash, and a real
+                                // bounded index (not the Int.MAX_VALUE sentinel). Takes
+                                // priority over the saved anchor: surfacing new messages is
+                                // the point. An explicit jump to a specific message
+                                // (indexOfMessageForScroll, above) still wins.
+                                setInitialScroll && !scrollToBottom &&
+                                    messagesModels.any { it is MessageListContentModel.UnreadSeparator } -> {
+                                    val separatorIndex = messagesModels.indexOfFirst {
+                                        it is MessageListContentModel.UnreadSeparator
+                                    }
+                                    Logger.i("Landing on new-messages separator at index $separatorIndex")
+                                    ScrollPosition(firstVisibleItemIndex = separatorIndex)
                                 }
 
                                 setInitialScroll && !scrollToBottom -> {
@@ -1330,9 +1459,38 @@ class ConversationListViewModel(
                     }
                 }
             } catch (_: CancellationException) {
-                // ignore
+                // ignore — a new selection cancels this job; the new job owns the
+                // loading state for the conversation being switched to.
             } catch (e: Exception) {
+                // Previously snackbar-only (invisible in homebase.log) AND the spinner
+                // was never cleared — a failed load (DB error, deserialization, …) left
+                // the detail pane spinning forever (the reported "infinity spinner").
+                Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                    "loadMessagesForConversation failed id=$conversationId trigger=$trigger: ${e.message}"
+                }
                 sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
+            } finally {
+                watchdog.cancel()
+                // Backstop so the detail pane can never spin forever: the success path
+                // clears isLoadingMessages inside the collect; this covers an error or an
+                // unexpected end (cancellation/scope teardown) while still on this
+                // conversation. Guarded (see [shouldClearLoadingSpinnerOnLoadEnd]) so a
+                // cancellation from switching conversations — which already set
+                // isLoadingMessages=true for the NEW conversation — can't wipe its
+                // spinner. Reaching here with loading still true is abnormal (the success
+                // path should have cleared it), so log it loudly.
+                if (shouldClearLoadingSpinnerOnLoadEnd(
+                        selectedConversationId = _uiState.value.selectedConversationId,
+                        conversationId = conversationId,
+                        stillLoading = _messagesUiState.value.isLoadingMessages,
+                    )
+                ) {
+                    Logger.w(tag = TAG) {
+                        "chat-details spinner backstop fired id=$conversationId trigger=$trigger " +
+                            "sinceSelected=${loadStart.elapsedNow()} — clearing a spinner the load left set"
+                    }
+                    _messagesUiState.update { it.copy(isLoadingMessages = false) }
+                }
             }
         }
     }
@@ -1367,13 +1525,55 @@ class ConversationListViewModel(
 }
 
 /**
- * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the
- * fully-resolved [live] session, fall back to a minimal one synthesized
- * from [credentials] when the async profile load hasn't arrived yet.
+ * Leading-edge debounce policy for the conversation-list combine. The list's sources
+ * (ownerSession, connectionStatusFlow) re-emit continuously through the auth/connect
+ * lifecycle; a flat debounce would withhold the already-ready cached list until that storm
+ * settled (~when the connection goes online — the "blocked until green" bug).
  *
- * Returns null only when neither source is available (pre-login state).
- * The preference order is load-bearing — inverting it would replace a
- * resolved display name / profile image with a bare odinId.
+ * The first ready snapshot is granted the leading edge (0ms) so the cached list renders
+ * immediately; everything after is coalesced at 50ms so the storm is a few re-sorts, not
+ * one per source emission.
+ *
+ * Stateful (remembers whether the first ready snapshot has been granted) — use one instance
+ * per collect, on a single coroutine. Owning the flag here keeps it out of the ViewModel
+ * and lets ConversationListDebounceTest exercise the real policy instead of a mirror.
+ */
+internal class ConversationListDebounce {
+    private var firstReadyEmitted = false
+
+    /** Debounce timeout (ms) for a combine emission with the given [dataReady]. */
+    fun timeoutMillisFor(dataReady: Boolean): Long {
+        val timeout = if (dataReady && !firstReadyEmitted) 0L else 50L
+        if (timeout == 0L) firstReadyEmitted = true
+        return timeout
+    }
+}
+
+/**
+ * Whether the message-load backstop should clear the chat-details loading spinner when a
+ * load coroutine ends. The success path clears it inside the observeMessages collect; this
+ * guards the `finally` backstop that catches an error / unexpected cancellation / hung load
+ * that left the spinner set (the reported "infinity spinner").
+ *
+ * Clears only when (a) THIS conversation is still the selected one — so a cancellation from
+ * switching conversations, which already armed the spinner for the NEW conversation, can't
+ * wipe it — and (b) the spinner is actually still up (reaching the backstop with it already
+ * cleared is the normal success case, nothing to do).
+ *
+ * Pure so SpinnerBackstopGuardTest can pin the rule without a ViewModel.
+ */
+internal fun shouldClearLoadingSpinnerOnLoadEnd(
+    selectedConversationId: Uuid?,
+    conversationId: Uuid,
+    stillLoading: Boolean,
+): Boolean = stillLoading && selectedConversationId == conversationId
+
+/**
+ * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the fully-resolved
+ * [live] session, fall back to a minimal one synthesized from [credentials] when the async
+ * profile load hasn't arrived yet. Returns null only when neither source is available
+ * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
+ * display name / profile image with a bare odinId.
  */
 internal fun synthesizeOwnerSession(
     live: OwnerSession?,

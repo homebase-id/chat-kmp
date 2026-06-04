@@ -218,8 +218,15 @@ suspend fun performEcdhKeyAgreement(
     // Decrypt local private key
     val privateKeyDer = decryptPrivateKey(keyPair.privateKey, password)
 
-    // Perform ECDH
-    val sharedSecret = performPlatformEcdhKeyAgreement(privateKeyDer, remotePublicKey.publicKeyDer.unsafeBytes)
+    // Perform ECDH. Curves are taken from the key metadata (both P-384 in the YouAuth flow)
+    // rather than probed — probing by trial-decode breaks on WebCrypto, which rejects a
+    // curve-mismatched importKey as a kotlin.Throwable that `catch (Exception)` won't catch.
+    val sharedSecret = performPlatformEcdhKeyAgreement(
+        privateKeyDer = privateKeyDer,
+        privateKeySize = keyPair.publicKey.keySize,
+        publicKeyDer = remotePublicKey.publicKeyDer.unsafeBytes,
+        publicKeySize = remotePublicKey.keySize,
+    )
 
     // Apply HKDF to derive symmetric key
     val derivedKey = HashUtil.hkdf(sharedSecret, salt, 16)
@@ -319,26 +326,22 @@ private suspend fun generatePlatformEccKeyPair(keySize: EccKeySize): Pair<ByteAr
  * Perform ECDH key agreement using platform crypto
  * Returns the raw shared secret (before HKDF)
  */
-private suspend fun performPlatformEcdhKeyAgreement(privateKeyDer: ByteArray, publicKeyDer: ByteArray): ByteArray {
+private suspend fun performPlatformEcdhKeyAgreement(
+    privateKeyDer: ByteArray,
+    privateKeySize: EccKeySize,
+    publicKeyDer: ByteArray,
+    publicKeySize: EccKeySize,
+): ByteArray {
     val crypto = CryptographyProvider.Default
     val ecdh = crypto.get(ECDH)
 
-    // Detect curve from public key
-    val curve = try {
-        ecdh.publicKeyDecoder(EC.Curve.P256).decodeFromByteArray(EC.PublicKey.Format.DER, publicKeyDer)
-        EC.Curve.P256
-    } catch (e: Exception) {
-        try {
-            ecdh.publicKeyDecoder(EC.Curve.P384).decodeFromByteArray(EC.PublicKey.Format.DER, publicKeyDer)
-            EC.Curve.P384
-        } catch (e: Exception) {
-            throw IllegalArgumentException("Unsupported ECC curve")
-        }
-    }
+    fun curveOf(size: EccKeySize) = if (size == EccKeySize.P384) EC.Curve.P384 else EC.Curve.P256
 
-    // Decode keys
-    val privateKey = ecdh.privateKeyDecoder(curve).decodeFromByteArray(EC.PrivateKey.Format.DER.Generic, privateKeyDer)
-    val publicKey = ecdh.publicKeyDecoder(curve).decodeFromByteArray(EC.PublicKey.Format.DER, publicKeyDer)
+    // Decode keys with their known curves (ECDH requires both on the same curve).
+    val privateKey = ecdh.privateKeyDecoder(curveOf(privateKeySize))
+        .decodeFromByteArray(EC.PrivateKey.Format.DER.Generic, privateKeyDer)
+    val publicKey = ecdh.publicKeyDecoder(curveOf(publicKeySize))
+        .decodeFromByteArray(EC.PublicKey.Format.DER, publicKeyDer)
 
     // Perform ECDH
     val sharedSecretGenerator = privateKey.sharedSecretGenerator()

@@ -168,6 +168,7 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_haptic_feedback">Haptic Feedback</string>
     <string name="settings_connections">Connections</string>
     <string name="connections_already_sent_title">Request already sent</string>
     <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
@@ -334,8 +335,21 @@
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
+    <string name="moments_view_menu">Change view</string>
+    <string name="moments_view_timeline">Timeline</string>
+    <string name="moments_view_album">Album</string>
+    <string name="moments_view_reels">Reels</string>
+    <string name="moments_album_zoom_day">Day</string>
+    <string name="moments_album_zoom_month">Month</string>
+    <string name="moments_album_zoom_year">Year</string>
+    <string name="moments_album_zoom_label">Zoom level</string>
+    <string name="moments_album_text_only_label">Text moment</string>
+    <string name="moments_album_extra_count">+%1$d</string>
     <string name="moments_reaction_like">Like</string>
     <string name="moments_detail_no_description">No description added</string>
+    <string name="moments_detail_edit_description">Edit description</string>
+    <string name="moments_detail_description_hint">Add a description</string>
+    <string name="moments_detail_description_save">Save</string>
     <string name="moments_detail_metadata_captured">Captured</string>
     <string name="moments_detail_metadata_device">Device</string>
     <string name="moments_detail_comments_section">Comments</string>
@@ -348,6 +362,15 @@
     <string name="moments_detail_comment_cancel">Cancel</string>
     <string name="moments_detail_menu_more">More options</string>
     <string name="moments_detail_menu_delete">Delete</string>
+    <string name="moments_detail_menu_save_current">Save current</string>
+    <string name="moments_detail_menu_info">Info</string>
+    <string name="moments_detail_menu_add_people">Add people</string>
+    <string name="moments_add_people_title">Add people</string>
+    <string name="moments_add_people_confirm">Add</string>
+    <string name="moments_add_people_already_shared">Already shared</string>
+    <string name="moments_add_people_added">Shared with %1$d more</string>
+    <string name="moments_add_people_failed">Couldn\'t add people. Please try again.</string>
+    <string name="moments_add_people_still_posting">Moment is still being posted — try again in a moment.</string>
     <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
     <string name="moments_detail_comment_delete">Delete</string>
     <string name="moments_detail_delete_comment_dialog_title">Delete this comment?</string>
@@ -358,6 +381,9 @@
     <string name="moments_detail_shared_with_hide">Hide recipients</string>
     <string name="moments_detail_shared_with_private">Private</string>
     <string name="moments_detail_shared_with_just_you">Just you</string>
+    <string name="moments_detail_reactions_see_who">See who reacted</string>
+    <string name="moments_detail_reactions_sheet_empty">No reactions yet</string>
+    <string name="moments_detail_reactions_filter_all">All %1$d</string>
     <string name="moments_feed_indicator_private">Private moment</string>
     <string name="moments_create_title">Send to</string>
     <string name="moments_create_search_hint">Search contacts and groups</string>
@@ -385,6 +411,7 @@
     <string name="moments_chip_use_photo_date">Use photo date</string>
     <string name="cd_moment_date_chip">Moment date</string>
     <string name="moments_audience_title">Send to</string>
+    <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
     <string name="moments_audience_section_contacts">Contacts</string>
@@ -633,6 +660,7 @@
     <string name="chat_location_permission_denied">Location permission denied. Enable it in Settings to share your location.</string>
     <string name="chat_location_unavailable">Couldn't get your location. Try again outdoors or check that Location is enabled.</string>
     <string name="chat_location_map_preview_unavailable">Map preview unavailable — sending coordinates only.</string>
+    <string name="chat_image_unavailable">Image could not be loaded</string>
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
@@ -711,6 +739,42 @@
     <string name="chat_dice_battle_and">and</string>
     <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
     <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
+
+    <!-- Groodle (group-scheduling poll) -->
+    <string name="chat_groodle_share">Groodle</string>
+    <string name="chat_groodle_composer_title">New Groodle</string>
+    <string name="chat_groodle_unparseable">Unable to display this Groodle. Please update the app.</string>
+    <string name="chat_groodle_field_title">Title</string>
+    <string name="chat_groodle_field_description">Description (optional)</string>
+    <string name="chat_groodle_field_timezone">Time zone</string>
+    <string name="chat_groodle_allow_maybe">Allow \"Maybe\"</string>
+    <string name="chat_groodle_deadline">Voting deadline</string>
+    <string name="chat_groodle_deadline_24h">24 hours</string>
+    <string name="chat_groodle_deadline_48h">48 hours</string>
+    <string name="chat_groodle_deadline_week">1 week</string>
+    <string name="chat_groodle_deadline_none">No deadline</string>
+    <string name="chat_groodle_add_time">Add a time</string>
+    <string name="chat_groodle_set_time">Set time</string>
+    <string name="chat_groodle_duration">Duration</string>
+    <string name="chat_groodle_duration_minutes">%1$d min</string>
+    <string name="chat_groodle_remove_option">Remove option</string>
+    <string name="chat_groodle_option_count">%1$d options</string>
+    <string name="chat_groodle_option_count_one">1 option</string>
+    <string name="chat_groodle_max_options">Up to %1$d options.</string>
+    <string name="chat_groodle_closes_in">Voting closes %1$s</string>
+    <string name="chat_groodle_closed">Voting closed</string>
+    <string name="chat_groodle_you_voted">You've voted</string>
+    <string name="chat_groodle_tap_to_vote">Tap to vote</string>
+    <string name="chat_groodle_vote_yes">Yes</string>
+    <string name="chat_groodle_vote_no">No</string>
+    <string name="chat_groodle_vote_maybe">Maybe</string>
+    <string name="chat_groodle_winner">Leading</string>
+    <string name="chat_groodle_tally">%1$d yes · %2$d maybe · %3$d no</string>
+    <string name="chat_groodle_scheduled_in_zone">Scheduled: %1$s %2$s</string>
+    <string name="chat_groodle_err_times_missing">Set a time for every option.</string>
+    <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
+    <string name="chat_groodle_send">Send Groodle</string>
+
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
@@ -727,6 +791,12 @@
     <string name="chat_message_image_attachment">Image attachment</string>
     <string name="chat_message_video_thumbnail">Video thumbnail</string>
     <string name="chat_message_play_video">Play video</string>
+    <string name="moment_video_mute">Mute video</string>
+    <string name="moment_video_unmute">Unmute video</string>
+    <string name="moment_video_pause">Pause video</string>
+    <string name="moment_video_watch_again">Watch again</string>
+    <string name="moment_video_fill_screen">Fill screen</string>
+    <string name="moment_video_fit_screen">Fit to screen</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>
@@ -954,6 +1024,7 @@
     <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
+    <string name="video_web_large_playback_unsupported">Large videos can\'t be played in the browser yet</string>
 
     <!-- Settings section headers -->
     <string name="settings_section_general">General</string>
@@ -975,9 +1046,38 @@
     <string name="dev_menu_section_sync">Sync &amp; Connection</string>
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
+    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
+    <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
+    <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
+    <string name="dev_menu_section_crashlytics">Crashlytics</string>
+    <string name="dev_menu_trigger_test_crash">Trigger test crash</string>
+    <string name="dev_menu_trigger_test_crash_description">Intentionally crashes the app right now to verify crash reporting. The app will close immediately — reopen it afterward to let the crash report upload to Crashlytics.</string>
+    <string name="dev_menu_crash_confirm_title">Crash the app?</string>
+    <string name="dev_menu_crash_confirm_message">This will intentionally crash the app immediately to test Crashlytics. You'll need to reopen the app afterward.</string>
+    <string name="dev_menu_crash_confirm_action">Crash now</string>
+
+    <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
+    <string name="video_info_title">Video info</string>
+    <string name="video_info_container">Container: %1$s</string>
+    <string name="video_info_codec">Codec: %1$s</string>
+    <string name="video_info_resolution">Resolution: %1$s</string>
+    <string name="video_info_bit_depth">Bit depth: %1$s</string>
+    <string name="video_info_hdr">HDR: %1$s</string>
+    <string name="video_info_bitrate">Bitrate: %1$s</string>
+    <string name="video_info_duration">Duration: %1$s</string>
+    <string name="video_info_size">Size: %1$s</string>
+    <string name="video_info_unknown">—</string>
+    <string name="video_info_yes">Yes</string>
+    <string name="video_info_no">No</string>
+
+    <!-- Image info overlay (shown from the moment overflow "Info" menu item) -->
+    <string name="image_info_title">Image info</string>
+    <string name="image_info_type">Type: %1$s</string>
+    <string name="image_info_dimensions">Dimensions: %1$s (approx.)</string>
+    <string name="image_info_date">Date: %1$s</string>
 
     <!-- Defragmenter issue labels -->
     <string name="defragmenter_issue_legacy_user_date">Legacy userDate=0</string>
@@ -998,6 +1098,7 @@
     <!-- File save snackbar -->
     <string name="file_saved_to">Saved to %1$s</string>
     <string name="file_save_failed">Failed to save: %1$s</string>
+    <string name="file_share_failed">Failed to share: %1$s</string>
     <string name="error_unknown">Unknown error</string>
 
 </resources>

@@ -13,7 +13,25 @@ import kotlin.uuid.Uuid
  */
 interface MessageLookup {
     suspend fun getMessage(messageId: Uuid): MessageUiModel?
-    suspend fun getMessages(messageIds: List<Uuid>): BatchResult<MessageUiModel>
+
+    /**
+     * Batch lookup of messages by uniqueId, scoped to a known conversation.
+     *
+     * Why [conversationId] is mandatory: without it, the underlying QueryBatch
+     * SQL becomes `uniqueId IN (?)` ordered by `CreatedDate` with no group
+     * filter, and the planner falls back to a global timeline scan (the same
+     * stat-less pathology that #606 cured for the per-conversation chat fetch).
+     * Passing the conversation lets QueryBatch's chat-shape branch fire and
+     * pin `idx_chatmessage_convid_userDate` via INDEXED BY — the lookup
+     * becomes a tight per-conversation seek regardless of how many other
+     * conversations exist. The cost is one extra parameter at the call site;
+     * the benefit is that no caller can accidentally re-introduce the
+     * full-timeline scan.
+     */
+    suspend fun getMessages(
+        messageIds: List<Uuid>,
+        conversationId: Uuid,
+    ): BatchResult<MessageUiModel>
     /** Server-side header file for a message. Used by edit/reply paths to
      *  resolve the underlying [HomebaseFile] when we need its versionTag. */
     suspend fun getMessageFile(messageId: Uuid): HomebaseFile?

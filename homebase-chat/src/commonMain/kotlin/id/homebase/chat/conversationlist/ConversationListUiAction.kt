@@ -165,7 +165,24 @@ sealed interface ConversationListUiAction {
     data class TogglePinConversation(val conversationId: Uuid) : ConversationListUiAction
     data class AcceptRejoin(val conversationId: Uuid) : ConversationListUiAction
     data class DeclineRejoin(val conversationId: Uuid) : ConversationListUiAction
-    data class MarkAsRead(val conversationId: Uuid, val messageIds: List<Uuid>? = null) : ConversationListUiAction
+    /**
+     * Mark messages in [conversationId] as read.
+     *
+     * - `messages = null` means "mark everything in the conversation read"
+     *   (the bulk-menu path). The handler routes this to
+     *   [id.homebase.chat.services.ChatMessageActionService.markAllAsRead],
+     *   which works off conversation-level state and never needs the
+     *   individual rows.
+     * - `messages = listOf(...)` (non-null) is the per-message / scroll-visibility
+     *   path. We pass the actual [MessageUiModel]s the user just saw, so the
+     *   handler doesn't have to round-trip the DB to look them back up — every
+     *   field it needs (`localReadTimestamp`, `isDeleted`, `isPendingSend`,
+     *   `fileId`, `userDate`, `isAuthoredBy(domain)`) is already on the model.
+     */
+    data class MarkAsRead(
+        val conversationId: Uuid,
+        val messages: List<MessageUiModel>? = null,
+    ) : ConversationListUiAction
     data class ToggleReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
 
@@ -198,6 +215,13 @@ sealed interface ConversationListUiAction {
      * land at the bottom of the loaded window, not the latest message.
      */
     data class ScrollToLatest(val conversationId: Uuid) : ConversationListUiAction
+
+    /**
+     * Clears [MessageListUiState.scrollToLatestRequest] after ConversationContent
+     * has consumed it (animated to the latest item). Makes the scroll-follow a
+     * one-time event so a later unrelated remount doesn't re-scroll.
+     */
+    data object ConsumeScrollToLatestRequest : ConversationListUiAction
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
     data object StopRecording : ConversationListUiAction

@@ -1128,8 +1128,9 @@ private fun FileExistsStatusIcon(
  *
  * - **All present signals OK** (transfer Delivered, peer-exists
  *   PresentAuthoredByMe) → green check.
- * - **Any signal still resolving** (transfer history null entry, peer-exists
- *   Loading) → spinner.
+ * - **Any signal still resolving** (peer-exists Loading) → spinner. A null
+ *   transfer-history entry is NOT "resolving" — the map loads atomically, so a
+ *   missing peer entry means that peer was never a recipient of that file.
  * - **Anything else** (Problem, Missing, PresentAuthoredByOther, Error) →
  *   red-dashed cloud (`Icons.Default.CloudOff`), tinted with the error color.
  *
@@ -1156,10 +1157,15 @@ private fun GroupParticipantSummaryIcon(
     val size = 16.dp
 
     // Loading wins over OK/problem so we don't flash a red cloud while the
-    // peer-exists check is still in flight.
+    // peer-exists check is still in flight. The only genuine in-flight signal
+    // is the peer-exists Loading enum: the transfer-history map loads
+    // atomically (null → fully populated in one update), so once its column is
+    // shown a missing peer entry means "this peer was never a recipient of
+    // that file" — a permanent state, not loading. Treating a null transfer
+    // entry as loading left peers who never received a file (e.g. the admin
+    // file) spinning forever instead of showing the red cloud their Missing
+    // peer-exists already implies.
     val anyLoading =
-        (showMainColumn && mainStatus == null) ||
-        (showAdminColumn && adminStatus == null) ||
         (showMainPeerExistsColumn && mainPeerExists is MemberFileExistsStatus.Loading) ||
         (showAdminPeerExistsColumn && adminPeerExists is MemberFileExistsStatus.Loading)
 

@@ -97,9 +97,12 @@ suspend fun mapToMessageData(
     val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
     val hasMore =
         metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
+    val localTags = metadata.localAppData?.tags
+    // A permanently-dropped send (isFailedSendTag) wins over pending: the bubble must
+    // show the Failed icon, not keep spinning. See ChatProtocol.isFailedSendTag.
+    val isFailedSend = localTags?.contains(ChatProtocol.isFailedSendTag) ?: false
     val isPendingSend =
-        metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
-            ?: false
+        (localTags?.contains(ChatProtocol.isPendingSendTag) ?: false) && !isFailedSend
 
     val localReadTimestamp = metadata.localAppData?.readTime
     // localReactions on the wire are JSON-encoded ReactionContent objects
@@ -157,7 +160,8 @@ suspend fun mapToMessageData(
         require(appData.uniqueId != null)
         require(appData.groupId != null)
 
-        val delivery = getDeliveryStatus(header).value
+        val delivery =
+            if (isFailedSend) ChatDeliveryStatus.Failed.value else getDeliveryStatus(header).value
 
         val messageAppData: MessageAppData
         // Try the typed-content parser first. Returns non-null when

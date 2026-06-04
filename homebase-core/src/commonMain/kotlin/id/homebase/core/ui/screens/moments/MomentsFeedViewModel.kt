@@ -10,13 +10,19 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.moments.MomentsAlbumZoom
+import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.MomentsViewMode
+import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.moments.services.MomentsPostSenderService
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,7 +41,10 @@ class MomentsFeedViewModel(
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
+    postSender: MomentsPostSenderService,
     private val optimisticWriter: OptimisticWriter,
+    private val actionService: MomentActionService,
+    private val momentsPreferences: MomentsPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MomentsFeedUiState())
@@ -74,6 +83,26 @@ class MomentsFeedViewModel(
      * `OptimisticRollback` it emits is what `MomentsFeedService` is now
      * subscribed to for removing from the in-memory feed.
      */
+    /**
+     * Fire-and-forget reaction toggle from the feed (double/triple-tap
+     * gestures on a moment card). Uses the same toggle semantics as the
+     * detail screen — tap-to-add, tap-again-to-remove — so the visual
+     * pulse in [id.homebase.core.ui.screens.moments.MomentsScreen] is the
+     * user's confirmation that their tap registered, not a strict "added"
+     * signal.
+     */
+    fun addReaction(momentId: Uuid, emoji: String) {
+        viewModelScope.launch {
+            try {
+                actionService.toggleReactionOnMoment(momentId, emoji)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "addReaction failed for moment=$momentId emoji=$emoji: ${t.message}"
+                }
+            }
+        }
+    }
+
     fun deleteFailedMoment(momentId: Uuid) {
         viewModelScope.launch {
             try {
@@ -89,24 +118,50 @@ class MomentsFeedViewModel(
         }
     }
 
+    fun setViewMode(mode: MomentsViewMode) {
+        viewModelScope.launch {
+            momentsPreferences.setViewMode(mode)
+        }
+    }
+
+    /**
+     * Update the album-view zoom level. Session-only — see [MomentsAlbumZoom]
+     * for why this isn't routed through [MomentsPreferences].
+     */
+    fun setAlbumZoom(zoom: MomentsAlbumZoom) {
+        _uiState.update { it.copy(albumZoom = zoom) }
+    }
+
     init {
+        // The service emits in its own canonical order (by userDate). The view
+        // mode preference picks between Timeline (sort by post creation) and
+        // Album (sort by userDate) — applying the sort here keeps the service
+        // ignorant of UI preferences.
         viewModelScope.launch {
             var lastSize = -1
             var lastNewestId: String? = null
-            feedService.feed.collect { list ->
-                _uiState.update { it.copy(moments = list) }
+            combine(feedService.feed, momentsPreferences.viewMode) { list, mode ->
+                list to mode
+            }.collect { (list, mode) ->
+                val sorted = when (mode) {
+                    // Reels mirrors Timeline ordering — newest posted first.
+                    MomentsViewMode.Timeline,
+                    MomentsViewMode.Reels -> list.sortedByDescending { it.createdMs }
+                    MomentsViewMode.Album -> list.sortedByDescending { it.userDateMs }
+                }
+                _uiState.update { it.copy(moments = sorted, viewMode = mode) }
                 // Diagnostic: log every size/head change so we can confirm the
                 // feed VM is propagating service updates into uiState. Pairs
                 // with MomentsFeedService.processIncrementalBatch logs to
                 // triangulate a "remote moment didn't appear" report.
-                val newest = list.firstOrNull()
+                val newest = sorted.firstOrNull()
                 val newestId = newest?.id?.toString()
-                if (list.size != lastSize || newestId != lastNewestId) {
+                if (sorted.size != lastSize || newestId != lastNewestId) {
                     Logger.d(tag = TAG) {
-                        "uiState moments updated: count=${list.size} " +
+                        "uiState moments updated: count=${sorted.size} mode=$mode " +
                             "newest=$newestId sender=${newest?.senderOdinId?.domainName ?: "self"}"
                     }
-                    lastSize = list.size
+                    lastSize = sorted.size
                     lastNewestId = newestId
                 }
             }
@@ -144,6 +199,34 @@ class MomentsFeedViewModel(
                         }
 
                         else -> Unit
+                    }
+                }
+        }
+
+        // Mirror the post sender's transient source-image cache into UiState
+        // so the tile renderer can show the user's selected photo immediately
+        // during the "Preparing…" window (placeholder row has no payloads /
+        // embedded thumbnail yet). The cache empties as soon as the real
+        // optimistic update lands the embedded thumbnail on the row.
+        viewModelScope.launch {
+            postSender.pendingLocalPreviews.collect { previews ->
+                _uiState.update { it.copy(pendingLocalPreviews = previews) }
+            }
+        }
+
+        // Initial Preparing state for a freshly posted moment. The placeholder
+        // write fires BatchReceived (tile appears) and then we get this event,
+        // which puts the overlay in UploadStatus.Preparing until ItemEnqueued
+        // promotes it to Sending. Without this collector the placeholder tile
+        // would have no overlay until the outbox got round to enqueueing.
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Preparing }
+                .collect { event ->
+                    event as BackendEvent.PayloadBundlingEvent.Preparing
+                    _uiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Preparing)).toPersistentMap()
+                        )
                     }
                 }
         }

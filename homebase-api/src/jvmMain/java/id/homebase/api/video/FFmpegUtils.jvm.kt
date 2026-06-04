@@ -48,7 +48,15 @@ actual object FFmpegUtils {
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
-    actual suspend fun grabThumbnail(inputPath: String): String? =
+    /**
+     * Platform-internal ffmpeg poster-frame helper for the JVM fallback decoder
+     * ([FFmpegSubprocessVideoDecoder]) and its backend coverage test. NOT part of the
+     * [FFmpegUtils] `expect` contract — the cross-platform seam for poster frames is
+     * [VideoThumbnailService.extractPosterFrame]. It survives only on the JVM/native actuals
+     * because those are the two platforms whose thumbnail decoder is ffmpeg-backed. ffmpeg
+     * low-level must never call back up into the `VideoSomething` services.
+     */
+    suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
                 println("FFmpeg binaries not available for this platform")
@@ -109,6 +117,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
@@ -123,6 +132,10 @@ actual object FFmpegUtils {
         val sourceDurationMs = getDurationMs(inputPath)
         val inputBytes = inputFile.length()
         val probe = probeVideoTrackViaFfprobe(inputPath)
+        // ffprobe reports raw container dims; rotation rides on the side-data
+        // displaymatrix. Planner needs both so portrait phone captures don't
+        // get a landscape scale filter and end up squished.
+        val rotation = getRotationFromFile(inputPath)
         val effectiveDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
             (effectiveTrimEnd - effectiveTrimStart).coerceAtLeast(1L)
         } else {
@@ -141,6 +154,10 @@ actual object FFmpegUtils {
             probedCodecMime = probe.codec,
             inputDurationMs = sourceDurationMs,
             inputBytes = inputBytes,
+            rotationDegrees = rotation,
+            probedBitDepth = probe.bitDepth,
+            probedIsHdr = probe.isHdr,
+            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -179,26 +196,67 @@ actual object FFmpegUtils {
      * to "no -vf scale" and the already-optimal predicate fails through to a
      * real transcode.
      */
-    private data class FfprobeResult(val codec: String?, val widthPx: Int, val heightPx: Int)
+    private data class FfprobeResult(
+        val codec: String?,
+        val widthPx: Int,
+        val heightPx: Int,
+        val bitDepth: Int = 8,
+        val isHdr: Boolean = false,
+    )
+
+    actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
+        if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+        if (!File(inputPath).exists()) return@withContext null
+        val p = probeVideoTrackViaFfprobe(inputPath)
+        if (p.codec == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
+        VideoTrackInfo(p.codec, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+    }
 
     private suspend fun probeVideoTrackViaFfprobe(inputPath: String): FfprobeResult {
         val probeCommand = listOf(
             FFmpegBinaryManager.ffprobePath(),
             "-v", "quiet",
             "-select_streams", "v:0",
-            "-show_entries", "stream=codec_name,width,height",
+            // Field order here == column order in the csv output below.
+            "-show_entries", "stream=codec_name,width,height,pix_fmt,color_transfer,color_primaries",
             "-of", "csv=p=0",
             inputPath,
         )
         val output = runProcessWithOutput(probeCommand).trim()
         val parts = output.split(",")
         if (parts.size < 3) return FfprobeResult(null, 0, 0)
+        val pixFmt = parts.getOrNull(3)?.trim()?.lowercase().orEmpty()
+        val colorTransfer = parts.getOrNull(4)?.trim()?.lowercase().orEmpty()
+        val colorPrimaries = parts.getOrNull(5)?.trim()?.lowercase().orEmpty()
         return FfprobeResult(
             codec = parts[0].lowercase().ifBlank { null },
             widthPx = parts[1].toIntOrNull() ?: 0,
             heightPx = parts[2].toIntOrNull() ?: 0,
+            bitDepth = bitDepthFromPixFmt(pixFmt),
+            isHdr = isHdrFromColorTags(colorTransfer, colorPrimaries),
         )
     }
+
+    /**
+     * Luma bit depth inferred from ffprobe's `pix_fmt` token. ffmpeg names
+     * 10/12-bit formats with a `10`/`12` infix (e.g. `yuv420p10le`, `p010le`).
+     * Defaults to 8 for any 8-bit or unrecognised format.
+     */
+    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
+        pixFmt.isBlank() -> 8
+        "12" in pixFmt -> 12
+        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
+        else -> 8
+    }
+
+    /**
+     * HDR detection from ffprobe colour tags: a PQ (`smpte2084`) or HLG
+     * (`arib-std-b67`) transfer, or BT.2020 primaries.
+     */
+    private fun isHdrFromColorTags(colorTransfer: String, colorPrimaries: String): Boolean =
+        colorTransfer == "smpte2084" ||
+            colorTransfer == "arib-std-b67" ||
+            colorPrimaries.startsWith("bt2020")
 
     private fun formatSeconds(ms: Long): String {
         // Locale-safe (avoid comma decimal separator in some default locales).

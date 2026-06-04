@@ -538,7 +538,7 @@ fun ConversationLisContentItem(
                         onUiAction(
                             ConversationListUiAction.MarkAsRead(
                                 listItem.conversation.conversation.id,
-                                messageIds = null,
+                                messages = null,
                             )
                         )
                     },

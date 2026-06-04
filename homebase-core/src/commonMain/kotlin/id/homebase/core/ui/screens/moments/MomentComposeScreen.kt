@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,7 +36,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +57,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.moments_compose_continue
 import id.homebase.resources.moments_compose_empty_hero
 import id.homebase.resources.moments_compose_title
+import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.mimeType
@@ -109,17 +113,20 @@ fun MomentComposeScreen(
         }
     }
 
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
-            val ct = it.mimeType()?.toString().orEmpty()
-            val pending = when {
-                ct.startsWith("video/") ->
-                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
-
-                else -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+    val galleryLauncher = rememberFilePickerLauncher(
+        type = FileKitType.ImageAndVideo,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
+        val pending = files.map { f ->
+            val ct = f.mimeType()?.toString().orEmpty()
+            if (ct.startsWith("video/")) {
+                AttachmentPendingFile.FileVideo(Uuid.generateV7(), f, thumbnailBytes = null)
+            } else {
+                AttachmentPendingFile.FileImage(Uuid.generateV7(), f)
             }
-            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
         }
+        viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(pending))
     }
 
     val fileLauncher = rememberFilePickerLauncher { file ->
@@ -145,6 +152,12 @@ fun MomentComposeScreen(
     }
 
     Scaffold(
+        // Lift the whole compose screen (topBar + content + Continue bar) above
+        // the keyboard. Putting imePadding on the description field alone
+        // leaves the Continue bottomBar pinned to the bottom, and the IME ends
+        // up covering the field by exactly the bottomBar's height. Matches
+        // AddGroupMembersScreen / CreateConversationGroupScreen's pattern.
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.moments_compose_title)) },
@@ -247,6 +260,10 @@ private fun EmptyComposeState(
     // user can pre-write a description before picking media — its state
     // survives the empty → populated transition because it lives in the
     // screen, not in either branch.
+    // Mirrors MomentFullScreenEditor: collapse the secondary chrome (add
+    // strip + the reserved edit-tools spacer) while the description field is
+    // focused so the keyboard doesn't push the field off-screen.
+    var descriptionFocused by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -284,47 +301,53 @@ private fun EmptyComposeState(
 
         // Strip row: camera + add. Same look as the populated editor's
         // trailing controls so the layout doesn't shift on first attach.
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onCameraClick,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
+        // Collapsed while the description is focused (see [descriptionFocused]).
+        AnimatedVisibility(visible = !descriptionFocused) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoCamera,
-                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
-                )
-            }
-            IconButton(
-                onClick = onAddImage,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
-                )
+                IconButton(
+                    onClick = onCameraClick,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                    )
+                }
+                IconButton(
+                    onClick = onAddImage,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.chat_message_add_gallery_image),
+                    )
+                }
             }
         }
 
         // Reserve the vertical space the edit-tools row occupies in the
         // populated editor so the composer doesn't jump up when the first
-        // attachment lands. Empty visually, but keeps layout stable.
-        Spacer(modifier = Modifier.height(48.dp))
+        // attachment lands. Empty visually, but keeps layout stable. Collapsed
+        // with the strip while typing.
+        AnimatedVisibility(visible = !descriptionFocused) {
+            Spacer(modifier = Modifier.height(48.dp))
+        }
 
         MomentDescriptionField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
-                .imePadding(),
+                .padding(16.dp),
             state = textFieldState,
+            onFocusChanged = { descriptionFocused = it },
         )
     }
 }

@@ -22,11 +22,13 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
 import id.homebase.feed.share.ShareShortcutPublisher
@@ -45,10 +47,22 @@ class MainActivity : AppCompatActivity() {
     private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
+    private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // The gap from MainApplication's "onCreate end" to here is process-idle /
+        // background→foreground (a background-woken process sits here until the user
+        // opens it). The gap from here to "App() first composition" is the real
+        // user-perceived cold start. See StartupLogger.
+        StartupLogger.checkpoint("activity onCreate start")
+
+        // Promote AuthCC out of headless mode — this is the first reliable signal
+        // that the user is looking at the UI (FCM-cold-wake doesn't reach here).
+        // Idempotent; safe across Activity recreation. See AuthCC.promoteToForeground.
+        authConnectionCoordinator.promoteToForeground()
+
         handleIntent(intent)
 
         ActivityProvider.initialize(this)
@@ -63,6 +77,9 @@ class MainActivity : AppCompatActivity() {
         FileKit.manualFileKitCoreInitialization(this)
         FileKit.init(this)
 
+        // Marked here (not inside the composable body, which re-fires per recomposition):
+        // setContent → "App() first composition" is the first-frame / composition cost.
+        StartupLogger.checkpoint("setContent")
         setContent {
             val userPreferences = koinInject<UserPreferences>()
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
