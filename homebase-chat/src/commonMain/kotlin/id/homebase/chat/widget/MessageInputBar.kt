@@ -78,7 +78,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -91,7 +90,6 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -112,6 +110,8 @@ import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -177,6 +177,7 @@ fun MessageInputBar(
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     var showExpanded by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
 
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
@@ -247,6 +248,7 @@ fun MessageInputBar(
         // send because they're not LinkPreviewRenderer.
         val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
         if (!isSendingMessage && (hasText || hasUserInitiatedAttachment)) {
+            haptics.perform(HapticEvent.Confirm)
             onSendMessage(textFieldState.toMarkdown(), payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
@@ -526,7 +528,7 @@ fun MessageTextFieldCompact(
     var isRecordingActive by remember { mutableStateOf(false) }
     var recordingSeconds by remember { mutableStateOf(0) }
     var dragOffset by remember { mutableStateOf(0f) }
-    val hapticFeedback = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
@@ -574,7 +576,7 @@ fun MessageTextFieldCompact(
     // is released (isMicrophonePressed → false) before the delay elapses.
     LaunchedEffect(isMicrophonePressed) {
         if (isMicrophonePressed) {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptics.perform(HapticEvent.LongPress)
             delay(300)
 
             if (!recordAudioPermissionState.hasPermission) {

@@ -10,12 +10,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 
+      // Configure Firebase FIRST — before any heavy init. FirebaseApp.configure()
+      // is what arms Crashlytics' signal/Mach/NSException handlers; until it runs,
+      // nothing is captured. initializeApp() below starts Koin, file logging, and a
+      // runBlocking database open/migration, any of which can crash on launch for
+      // some users. Configuring first means those launch crashes get reported
+      // instead of vanishing. (Android gets this ordering for free via Firebase's
+      // auto-init ContentProvider, which runs before Application.onCreate; iOS has
+      // no such hook, so the order here is load-bearing.)
+      FirebaseApp.configure()
+
       // Run Koin, logging, and database init before any UI framework setup.
       // This keeps the main-thread run-loop free between heavy init and the
       // first Compose frame, preventing the iOS text-rendering race condition.
       MainViewControllerKt.initializeApp()
-
-      FirebaseApp.configure() //important
 
       //By default showPushNotification value is true.
       //When set showPushNotification to false foreground push  notification will not be shown.
