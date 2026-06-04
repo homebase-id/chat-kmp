@@ -10,10 +10,13 @@ import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
+import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import org.jetbrains.skia.Graphics
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
+import org.w3c.dom.events.Event
 
 @OptIn(ExperimentalComposeUiApi::class)
 @ExperimentalBrowserHistoryApi
@@ -33,5 +36,40 @@ fun main() {
         ComposeViewport("ComposeApp") {
             App(onNavHostReady = { it.bindToBrowserNavigation() })
         }
+        installTextRecoveryHook()
     }
 }
+
+/**
+ * INVESTIGATION HOOK (blank-text / stale glyph atlas) — see the iOS+web text-rendering notes.
+ *
+ * Symptom: already-drawn text is blank while freshly-drawn glyphs (e.g. characters you type)
+ * render fine — the signature of a Skia GPU glyph atlas whose contents are gone but whose
+ * residency bookkeeping still claims them present. A plain redraw (a window "resize") does NOT
+ * recover it, because Skia keeps serving the dead atlas entries. The hypothesis: a *purge* of
+ * Skia's caches is the missing step — it forces re-rasterization, after which a redraw re-uploads
+ * the glyphs.
+ *
+ * This wires a manual trigger so we can confirm that on the live deploy without a UI. On the blank
+ * screen, open the browser console and run:
+ *
+ *     window.dispatchEvent(new Event('homebase:recover-text'))
+ *
+ * If the text snaps back, purge-then-redraw is the fix and we generalize it (TextRenderingHelper +
+ * iOS). If it does not, the atlas is dead at a deeper level than the global caches reach.
+ */
+private fun installTextRecoveryHook() {
+    val handler: (Event) -> Unit = {
+        val before = Graphics.fontCacheUsed
+        Graphics.purgeAllCaches() // purgeFontCache + purgeResourceCache + all private Skia caches
+        consoleLog("[recover-text] purged Skia caches (fontCacheUsed " + before + " -> " + Graphics.fontCacheUsed + "); forcing full redraw")
+        // Skiko redraws the whole scene on a window resize; with the caches purged the glyphs are
+        // re-rasterized and re-uploaded to a fresh atlas.
+        window.dispatchEvent(Event("resize"))
+    }
+    window.addEventListener("homebase:recover-text", handler)
+    consoleLog("[recover-text] hook ready — run: window.dispatchEvent(new Event('homebase:recover-text'))")
+}
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun consoleLog(message: String): Unit = js("console.log(message)")
