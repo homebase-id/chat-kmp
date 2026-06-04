@@ -78,11 +78,17 @@ actual object FFmpegUtils {
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
-    // No `grabThumbnail` actual: Android's thumbnail decoder is MediaMetadataRetriever-backed
-    // (platformFfmpegDecoder() == null), so nothing on this platform needs the ffmpeg poster
-    // helper. Poster frames go through VideoThumbnailService.extractPosterFrame. grabThumbnail
-    // is no longer in the FFmpegUtils expect — it survives only as a JVM/native-internal helper
-    // for the two platforms whose thumbnail decoder is ffmpeg-backed.
+    // No `grabThumbnail` actual: Android's thumbnail decoder is *currently*
+    // MediaMetadataRetriever-backed (platformFfmpegDecoder() == null), so nothing on this
+    // platform calls the ffmpeg poster helper today, and grabThumbnail is no longer in the
+    // FFmpegUtils expect. Poster frames go through VideoThumbnailService.extractPosterFrame.
+    //
+    // An Android ffmpeg fallback is still possible: add a VideoDecoder that drives FFmpegKit
+    // (directly, as the compressVideo path below already does, or via a re-added Android-internal
+    // grabThumbnail mirroring the JVM/native helpers) and return it from platformFfmpegDecoder().
+    // If you do, that decoder MUST serialize its ffmpeg_execute against compress/segment: Android's
+    // FFmpegKit is the same non-reentrant engine that SIGSEGV'd on iOS when two sessions overlapped
+    // (PR #644). Today the MediaMetadataRetriever path is the only reason Android can't hit that.
 
     actual suspend fun getRotationFromFile(filePath: String): Int =
         withContext(Dispatchers.IO) {
