@@ -19,6 +19,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -62,6 +63,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -458,6 +460,14 @@ fun MomentDetailPane(
      * `openComments = true`) so the user lands directly in the thread.
      */
     openCommentsInitially: Boolean = false,
+    /**
+     * Desktop wide-split only. When true the comments thread renders as a
+     * persistent right-hand rail next to the (width-capped) media instead of a
+     * pop-up [ModalBottomSheet], and tapping the media opens the full-screen
+     * lightbox rather than the sheet. Defaults to false so the mobile/compact
+     * pager and iOS keep the bottom-sheet behaviour untouched.
+     */
+    commentsDocked: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fileSystemHandler = getUriHandler()
@@ -541,6 +551,7 @@ fun MomentDetailPane(
                     animatedVisibilityScope = this@AnimatedContent,
                     isActivePage = isActivePage,
                     openCommentsInitially = openCommentsInitially,
+                    commentsDocked = commentsDocked,
                 )
 
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
@@ -607,6 +618,7 @@ private fun DetailContent(
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
     openCommentsInitially: Boolean = false,
+    commentsDocked: Boolean = false,
 ) {
     // Local sheet toggle — pure UI state. The reactor-roster sheet
     // (uiState.showReactionsSheet) is still VM-driven below because it loads
@@ -633,192 +645,67 @@ private fun DetailContent(
         }
     }
 
-    // The carousel payload currently on screen, reported up from the inner
-    // pager in [MomentDetailContent] so the overflow "Save current" acts on
-    // exactly the photo/video the user is looking at. Null for description-only
-    // moments (nothing to save → the menu item hides).
-    var visiblePayloadKey by remember { mutableStateOf<String?>(null) }
+    val moment = uiState.moment
 
-    // Toggled by the overflow "Info" item — shows a technical-info panel over
-    // the media for the payload currently on screen (video → codec panel,
-    // image → image-info panel). Replaces the old long-press-the-badge debug
-    // affordance that used to live on the MP4/HLS tag.
-    var showCurrentInfo by remember { mutableStateOf(false) }
-
-    Scaffold(
-        // Black so the letterbox bars around a Fit-scaled image or video
-        // read as part of the cinematic surface rather than the surface
-        // colour of the rest of the app.
-        containerColor = Color.Black,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                // No screen title in the full-screen view — the post itself
-                // is the title. Keep the bar transparent so it floats over
-                // the media. The only title-slot content is the author avatar:
-                // the reel's equivalent of the feed card's top-left badge,
-                // placed here (right of the back arrow) so it can't collide
-                // with the nav icon or the overflow menu. Same author
-                // resolution as the feed — prefer originalAuthor (which
-                // survives the server stripping senderOdinId on the author's
-                // own copy), then senderOdinId, then self.
-                title = {
-                    val moment = uiState.moment
-                    if (moment != null) {
-                        val avatarOdinId = moment.originalAuthor
-                            ?: moment.senderOdinId
-                            ?: uiState.selfOdinId
-                        if (avatarOdinId != null) {
-                            SenderAvatarBadge(odinId = avatarOdinId)
-                        }
-                    }
-                },
-                navigationIcon = {
-                    // Embedded (desktop wide) pane: no nav target, so suppress
-                    // the back arrow rather than offering a tap that does
-                    // nothing meaningful.
-                    if (onNavigateBack != null) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(MR.string.menu_back),
-                                tint = Color.White,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    // Show overflow only once the moment has loaded — there's
-                    // nothing actionable until then, and the menu would race
-                    // with the loading spinner.
-                    if (uiState.moment != null) {
-                        MomentOverflowMenu(
-                            isDeleting = uiState.isDeleting,
-                            isSaving = uiState.isSavingMedia,
-                            // Hidden on description-only moments — nothing on
-                            // screen to save.
-                            showSave = visiblePayloadKey != null,
-                            onSaveClick = {
-                                visiblePayloadKey?.let {
-                                    onAction(MomentDetailUiAction.SaveMedia(it))
-                                }
-                            },
-                            // Same condition as Save — there's an on-screen
-                            // payload to describe. Opens the info overlay below.
-                            showInfo = visiblePayloadKey != null,
-                            onInfoClick = { showCurrentInfo = true },
-                            // Author-only: only the original author can widen
-                            // the audience of a moment.
-                            showAddPeople = uiState.isMine,
-                            onAddPeopleClick = {
-                                onAction(MomentDetailUiAction.RequestAddRecipients)
-                            },
-                            onDeleteClick = {
-                                onAction(MomentDetailUiAction.RequestDeleteMoment)
-                            },
-                            iconTint = Color.White,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
+    if (commentsDocked) {
+        // Desktop wide split: width-capped immersive media on the left, a
+        // persistent comments rail on the right. The thread is always visible,
+        // so there is no bottom sheet — tapping the media opens the full-screen
+        // lightbox instead (routed inside MomentMediaScaffold). Both surfaces
+        // share the same uiState/onAction, so the rail and the mobile sheet
+        // show an identical thread via CommentsPanelContent.
+        Row(modifier = Modifier.fillMaxSize()) {
+            MomentMediaScaffold(
+                uiState = uiState,
+                onAction = onAction,
+                onNavigateBack = onNavigateBack,
+                snackbarHostState = snackbarHostState,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                isActivePage = isActivePage,
+                // Docked: never shrink the media for comments — the rail beside
+                // it already bounds the width.
+                commentsOpen = false,
+                commentsDocked = true,
+                onOpenComments = { showCommentsSheet = true },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
-        },
-    ) { innerPadding ->
-        // Immersive layout — the TopAppBar above is transparent and meant to
-        // float over the media (back arrow / overflow menu sit directly on
-        // the photo or video). Zero out the top inset so the content extends
-        // *behind* the bar instead of being pushed below it; keep the
-        // horizontal + bottom insets so the bottom-overlay description and
-        // page dots clear the system nav bar.
-        val layoutDirection = LocalLayoutDirection.current
-        // The bottom system-nav inset is deliberately NOT applied to the content
-        // box — the media and the bottom metadata scrim run to the true bottom
-        // edge of the screen (fully immersive, like the zeroed top inset above).
-        // The inset is instead handed to MomentDetailContent, which lifts only
-        // the metadata *text* above the nav bar while its gradient still paints
-        // down to the bottom. (Previously the inset pushed the whole overlay up,
-        // so the scrim floated above the bottom and read as a hard line.)
-        val bottomInset = innerPadding.calculateBottomPadding()
-        val contentPadding = PaddingValues(
-            start = innerPadding.calculateStartPadding(layoutDirection),
-            end = innerPadding.calculateEndPadding(layoutDirection),
-            top = 0.dp,
-            bottom = 0.dp,
-        )
-        val moment = uiState.moment
-        if (moment == null) {
-            Box(
+            VerticalDivider()
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding),
-                contentAlignment = Alignment.Center,
+                    .width(CommentsRailWidth)
+                    .fillMaxHeight(),
             ) {
-                if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding),
-            ) {
-                MomentDetailContent(
-                    uiState = uiState,
-                    moment = moment,
-                    initialPayloadKey = uiState.initialPayloadKey,
-                    onAction = onAction,
-                    onOpenComments = { showCommentsSheet = true },
-                    onVisiblePayloadChanged = { visiblePayloadKey = it },
-                    commentsOpen = commentsShrinkActive,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    isActivePage = isActivePage,
-                    bottomContentInset = bottomInset,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                // Technical-info overlay for the on-screen payload, opened from
-                // the overflow "Info" item. Looks up the current payload by the
-                // key the inner pager reports up, then routes to the video codec
-                // panel or the image-info panel. Tap anywhere to dismiss.
-                val infoPayload = remember(showCurrentInfo, visiblePayloadKey, moment.payloads) {
-                    if (!showCurrentInfo) null
-                    else visiblePayloadKey?.let { key ->
-                        moment.payloads.firstOrNull { it.keyEquals(key) }
-                    }
-                }
-                if (infoPayload != null) {
-                    val dismissModifier = Modifier
-                        .matchParentSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { showCurrentInfo = false },
-                                onLongPress = { showCurrentInfo = false },
-                            )
-                        }
-                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
-                        infoPayload.contentType == "application/vnd.apple.mpegurl"
-                    if (isVideo) {
-                        val videoDescriptor =
-                            infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
-                        VideoInfoOverlay(
-                            descriptor = videoDescriptor,
-                            isHls = videoDescriptor?.isSegmented == true,
-                            modifier = dismissModifier,
-                        )
-                    } else {
-                        ImageInfoOverlay(
-                            payload = infoPayload,
-                            modifier = dismissModifier,
-                        )
-                    }
+                if (moment != null) {
+                    CommentsPanelContent(
+                        uiState = uiState,
+                        commentsEnabled = moment.commentsEnabled,
+                        onAction = onAction,
+                        fillHeight = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
+    } else {
+        MomentMediaScaffold(
+            uiState = uiState,
+            onAction = onAction,
+            onNavigateBack = onNavigateBack,
+            snackbarHostState = snackbarHostState,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            isActivePage = isActivePage,
+            commentsOpen = commentsShrinkActive,
+            commentsDocked = false,
+            onOpenComments = { showCommentsSheet = true },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 
-    val moment = uiState.moment
-    if (showCommentsSheet && moment != null) {
+    if (!commentsDocked && showCommentsSheet && moment != null) {
         CommentsSheet(
             uiState = uiState,
             commentsEnabled = moment.commentsEnabled,
@@ -1214,6 +1101,251 @@ private fun ReactionDetailRow(
     }
 }
 
+/**
+ * The immersive media side of the detail view: the transparent floating top bar
+ * (author avatar, overflow menu), the black media stage, and the technical-info
+ * overlay. Factored out of [DetailContent] so the desktop docked layout can put
+ * it in a [Row] beside the comments rail while the mobile layout keeps it
+ * full-bleed under a bottom sheet.
+ *
+ * When [commentsDocked] is true the media is width-capped (see [MediaMaxWidth])
+ * and centred so it doesn't feel overwhelming in a wide desktop pane.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun MomentMediaScaffold(
+    uiState: MomentDetailUiState,
+    onAction: (MomentDetailUiAction) -> Unit,
+    onNavigateBack: (() -> Unit)?,
+    snackbarHostState: SnackbarHostState,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    isActivePage: Boolean,
+    commentsOpen: Boolean,
+    commentsDocked: Boolean,
+    onOpenComments: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // The carousel payload currently on screen, reported up from the inner
+    // pager in [MomentDetailContent] so the overflow "Save current" acts on
+    // exactly the photo/video the user is looking at. Null for description-only
+    // moments (nothing to save → the menu item hides).
+    var visiblePayloadKey by remember { mutableStateOf<String?>(null) }
+
+    // Toggled by the overflow "Info" item — shows a technical-info panel over
+    // the media for the payload currently on screen (video → codec panel,
+    // image → image-info panel). Replaces the old long-press-the-badge debug
+    // affordance that used to live on the MP4/HLS tag.
+    var showCurrentInfo by remember { mutableStateOf(false) }
+
+    Scaffold(
+        modifier = modifier,
+        // Black so the letterbox bars around a Fit-scaled image or video
+        // read as part of the cinematic surface rather than the surface
+        // colour of the rest of the app.
+        containerColor = Color.Black,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                // No screen title in the full-screen view — the post itself
+                // is the title. Keep the bar transparent so it floats over
+                // the media. The only title-slot content is the author avatar:
+                // the reel's equivalent of the feed card's top-left badge,
+                // placed here (right of the back arrow) so it can't collide
+                // with the nav icon or the overflow menu. Same author
+                // resolution as the feed — prefer originalAuthor (which
+                // survives the server stripping senderOdinId on the author's
+                // own copy), then senderOdinId, then self.
+                title = {
+                    val moment = uiState.moment
+                    if (moment != null) {
+                        val avatarOdinId = moment.originalAuthor
+                            ?: moment.senderOdinId
+                            ?: uiState.selfOdinId
+                        if (avatarOdinId != null) {
+                            SenderAvatarBadge(odinId = avatarOdinId)
+                        }
+                    }
+                },
+                navigationIcon = {
+                    // Embedded (desktop wide) pane: no nav target, so suppress
+                    // the back arrow rather than offering a tap that does
+                    // nothing meaningful.
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                                tint = Color.White,
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    // Show overflow only once the moment has loaded — there's
+                    // nothing actionable until then, and the menu would race
+                    // with the loading spinner.
+                    if (uiState.moment != null) {
+                        MomentOverflowMenu(
+                            isDeleting = uiState.isDeleting,
+                            isSaving = uiState.isSavingMedia,
+                            // Hidden on description-only moments — nothing on
+                            // screen to save.
+                            showSave = visiblePayloadKey != null,
+                            onSaveClick = {
+                                visiblePayloadKey?.let {
+                                    onAction(MomentDetailUiAction.SaveMedia(it))
+                                }
+                            },
+                            // Same condition as Save — there's an on-screen
+                            // payload to describe. Opens the info overlay below.
+                            showInfo = visiblePayloadKey != null,
+                            onInfoClick = { showCurrentInfo = true },
+                            // Author-only: only the original author can widen
+                            // the audience of a moment.
+                            showAddPeople = uiState.isMine,
+                            onAddPeopleClick = {
+                                onAction(MomentDetailUiAction.RequestAddRecipients)
+                            },
+                            onDeleteClick = {
+                                onAction(MomentDetailUiAction.RequestDeleteMoment)
+                            },
+                            iconTint = Color.White,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
+            )
+        },
+    ) { innerPadding ->
+        // Immersive layout — the TopAppBar above is transparent and meant to
+        // float over the media (back arrow / overflow menu sit directly on
+        // the photo or video). Zero out the top inset so the content extends
+        // *behind* the bar instead of being pushed below it; keep the
+        // horizontal + bottom insets so the bottom-overlay description and
+        // page dots clear the system nav bar.
+        val layoutDirection = LocalLayoutDirection.current
+        // The bottom system-nav inset is deliberately NOT applied to the content
+        // box — the media and the bottom metadata scrim run to the true bottom
+        // edge of the screen (fully immersive, like the zeroed top inset above).
+        // The inset is instead handed to MomentDetailContent, which lifts only
+        // the metadata *text* above the nav bar while its gradient still paints
+        // down to the bottom. (Previously the inset pushed the whole overlay up,
+        // so the scrim floated above the bottom and read as a hard line.)
+        val bottomInset = innerPadding.calculateBottomPadding()
+        val contentPadding = PaddingValues(
+            start = innerPadding.calculateStartPadding(layoutDirection),
+            end = innerPadding.calculateEndPadding(layoutDirection),
+            top = 0.dp,
+            bottom = 0.dp,
+        )
+        val moment = uiState.moment
+        if (moment == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (uiState.isLoading) CircularProgressIndicator(color = Color.White)
+            }
+        } else {
+            // The media stage + its technical-info overlay. Shared by both the
+            // full-bleed (mobile) and width-capped (docked desktop) hosts below.
+            val mediaStage: @Composable BoxScope.() -> Unit = {
+                MomentDetailContent(
+                    uiState = uiState,
+                    moment = moment,
+                    initialPayloadKey = uiState.initialPayloadKey,
+                    onAction = onAction,
+                    onOpenComments = onOpenComments,
+                    onVisiblePayloadChanged = { visiblePayloadKey = it },
+                    commentsOpen = commentsOpen,
+                    commentsDocked = commentsDocked,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    isActivePage = isActivePage,
+                    bottomContentInset = bottomInset,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // Technical-info overlay for the on-screen payload, opened from
+                // the overflow "Info" item. Looks up the current payload by the
+                // key the inner pager reports up, then routes to the video codec
+                // panel or the image-info panel. Tap anywhere to dismiss.
+                val infoPayload = remember(showCurrentInfo, visiblePayloadKey, moment.payloads) {
+                    if (!showCurrentInfo) null
+                    else visiblePayloadKey?.let { key ->
+                        moment.payloads.firstOrNull { it.keyEquals(key) }
+                    }
+                }
+                if (infoPayload != null) {
+                    val dismissModifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { showCurrentInfo = false },
+                                onLongPress = { showCurrentInfo = false },
+                            )
+                        }
+                    val isVideo = infoPayload.contentType?.startsWith("video/") == true ||
+                        infoPayload.contentType == "application/vnd.apple.mpegurl"
+                    if (isVideo) {
+                        val videoDescriptor =
+                            infoPayload.descriptorInfo() as? DescriptorContent.VideoFile
+                        VideoInfoOverlay(
+                            descriptor = videoDescriptor,
+                            isHls = videoDescriptor?.isSegmented == true,
+                            modifier = dismissModifier,
+                        )
+                    } else {
+                        ImageInfoOverlay(
+                            payload = infoPayload,
+                            modifier = dismissModifier,
+                        )
+                    }
+                }
+            }
+
+            if (commentsDocked) {
+                // Wide desktop split: cap the media at MediaMaxWidth (or
+                // MediaWidthFraction of the pane, whichever is smaller) and
+                // centre it, so a big right pane doesn't blow the image up to an
+                // overwhelming size — the black Scaffold fills the gutters as
+                // cinematic letterbox. BoxWithConstraints is only paid for here,
+                // not on the hot mobile reels path below.
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding),
+                ) {
+                    val mediaWidth = if (maxWidth >= MediaWideBreakpoint) {
+                        (maxWidth * MediaWidthFraction).coerceAtMost(MediaMaxWidth)
+                    } else {
+                        maxWidth
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .width(mediaWidth)
+                            .fillMaxHeight(),
+                        content = mediaStage,
+                    )
+                }
+            } else {
+                // Mobile / reels: full-bleed media, no SubcomposeLayout.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding),
+                    content = mediaStage,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun MomentDetailContent(
     uiState: MomentDetailUiState,
@@ -1228,6 +1360,11 @@ private fun MomentDetailContent(
      */
     onVisiblePayloadChanged: (String?) -> Unit = {},
     commentsOpen: Boolean,
+    // Desktop docked layout: comments live in a persistent rail, so a media tap
+    // opens the full-screen lightbox instead of the comments sheet, the bottom
+    // overlay drops its description/date (the rail shows them), and the action
+    // column hides its redundant comments button.
+    commentsDocked: Boolean = false,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
@@ -1431,20 +1568,27 @@ private fun MomentDetailContent(
                 val isVideo = contentType.startsWith("video/") ||
                     contentType == "application/vnd.apple.mpegurl"
 
-                // Single tap anywhere on the media opens the detail panel
-                // (comments + description + edit). The reaction column, mute
+                // Single tap anywhere on the media: on mobile it opens the
+                // comments sheet; on the desktop docked layout (comments already
+                // visible in the rail) it opens the full-screen lightbox for the
+                // payload under the tap instead. The reaction column, mute
                 // button and the video's centred play/pause affordance are
                 // children drawn over this surface, so they intercept their
                 // own taps first; everything else falls through to here.
                 // `clickable` doesn't consume horizontal drags, so the parent
                 // HorizontalPager still swipes between carousel items cleanly.
+                val onMediaTap: () -> Unit = if (commentsDocked) {
+                    { onAction(MomentDetailUiAction.MediaClicked(payload.key)) }
+                } else {
+                    onOpenComments
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onOpenComments,
+                            onClick = onMediaTap,
                         ),
                 ) {
                     if (isVideo) {
@@ -1563,6 +1707,10 @@ private fun MomentDetailContent(
                     onAction(MomentDetailUiAction.OpenReactionsSheet)
                 },
                 onOpenComments = onOpenComments,
+                // Comments live in the always-visible rail on the docked desktop
+                // layout, so the overlay comment button there would be a no-op —
+                // hide it. Heart/flame stay (still the only way to react).
+                showCommentsButton = !commentsDocked,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .padding(start = 12.dp),
@@ -1583,6 +1731,10 @@ private fun MomentDetailContent(
                 pageCount = if (moment.payloads.size > 1) moment.payloads.size else 0,
                 currentPage = pagerState.currentPage,
                 bottomInset = bottomContentInset,
+                // Docked desktop: the rail already shows the description and
+                // capture date, so the media overlay keeps only the page dots
+                // to avoid showing them twice.
+                showTextMeta = !commentsDocked,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
@@ -1621,6 +1773,9 @@ private fun DetailActionColumn(
     onToggleFlame: () -> Unit,
     onShowReactors: () -> Unit,
     onOpenComments: () -> Unit,
+    // Hidden on the docked desktop layout where comments are always visible in
+    // the side rail (the overlay button would just be a no-op there).
+    showCommentsButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1642,7 +1797,7 @@ private fun DetailActionColumn(
             onClick = onToggleFlame,
             onLongPress = onShowReactors,
         )
-        if (commentsEnabled) {
+        if (commentsEnabled && showCommentsButton) {
             OverlayActionButton(
                 icon = Icons.AutoMirrored.Filled.Chat,
                 contentDescription = stringResource(MR.string.moments_detail_comments_section),
@@ -1757,6 +1912,10 @@ private fun DetailBottomOverlay(
     pageCount: Int,
     currentPage: Int,
     bottomInset: Dp,
+    // When false (docked desktop layout) the overlay keeps only the page dots —
+    // the description and capture date are shown in the side comments rail, so
+    // repeating them on the media would be redundant.
+    showTextMeta: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1790,16 +1949,18 @@ private fun DetailBottomOverlay(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
-        if (description.isNotBlank()) {
-            Text(
-                text = description,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
+        if (showTextMeta) {
+            if (description.isNotBlank()) {
+                Text(
+                    text = description,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            MomentDatePill(
+                timestamp = kotlin.time.Instant.fromEpochMilliseconds(userDateMs),
             )
         }
-        MomentDatePill(
-            timestamp = kotlin.time.Instant.fromEpochMilliseconds(userDateMs),
-        )
     }
 }
 
@@ -1855,7 +2016,14 @@ private fun CommentsSheet(
         sheetState = sheetState,
         scrimColor = scrimColor ?: BottomSheetDefaults.ScrimColor,
     ) {
-        Column(
+        CommentsPanelContent(
+            uiState = uiState,
+            commentsEnabled = commentsEnabled,
+            onAction = onAction,
+            // Fill the middle on a fixed-height sheet (composer pinned at the
+            // bottom); on a content-sized sheet, wrap so the sheet only grows
+            // as tall as the content needs.
+            fillHeight = heightFraction != null,
             modifier = Modifier
                 .fillMaxWidth()
                 .nestedScroll(swallowDownwardDrag)
@@ -1863,102 +2031,120 @@ private fun CommentsSheet(
                     if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
                     else Modifier,
                 ),
+        )
+    }
+}
+
+/**
+ * The description + metadata + comments thread + composer, factored out of
+ * [CommentsSheet] so both the mobile bottom sheet and the desktop docked rail
+ * (see [DetailContent]'s `commentsDocked` branch) render an identical thread
+ * from one place. The caller supplies the surface (a [ModalBottomSheet] body or
+ * a side [Surface]) via [modifier].
+ */
+@Composable
+private fun CommentsPanelContent(
+    uiState: MomentDetailUiState,
+    commentsEnabled: Boolean,
+    onAction: (MomentDetailUiAction) -> Unit,
+    // True when the host gives this panel a bounded height (a fixed-height sheet
+    // or the full-height rail) so the thread fills the middle and the composer
+    // pins to the bottom; false lets a content-sized sheet wrap to its content.
+    fillHeight: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        // Single scroll container for the whole panel body: the description,
+        // the (expandable) "Shared with" metadata, and the comments thread all
+        // live inside one LazyColumn. Expanding the recipient list then grows
+        // the scroll content instead of overflowing a static header — the
+        // earlier layout pinned those sections above the comments LazyColumn,
+        // so expansion pushed content off-screen with no way to scroll it back.
+        // Only the composer below stays pinned.
+        LazyColumn(
+            modifier = Modifier.weight(1f, fill = fillHeight),
         ) {
-            // Single scroll container for the whole sheet body: the description,
-            // the (expandable) "Shared with" metadata, and the comments thread all
-            // live inside one LazyColumn. Expanding the recipient list then grows
-            // the scroll content instead of overflowing a static header — the
-            // earlier layout pinned those sections above the comments LazyColumn,
-            // so expansion pushed content off-screen with no way to scroll it back.
-            // Only the composer below stays pinned.
-            LazyColumn(
-                // Fill the middle on a fixed-height sheet (composer pinned at the
-                // bottom); on the content-sized detail sheet, wrap so the sheet
-                // only grows as tall as the content needs.
-                modifier = Modifier.weight(1f, fill = heightFraction != null),
-            ) {
-                item(key = "description") {
-                    MomentDescriptionSection(
-                        description = uiState.moment?.description.orEmpty(),
-                        isMine = uiState.isMine,
-                        isEditing = uiState.isEditingDescription,
-                        draft = uiState.descriptionDraft,
-                        isSaving = uiState.isSavingDescription,
-                        onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
-                        onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
-                        onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
-                        onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+            item(key = "description") {
+                MomentDescriptionSection(
+                    description = uiState.moment?.description.orEmpty(),
+                    isMine = uiState.isMine,
+                    isEditing = uiState.isEditingDescription,
+                    draft = uiState.descriptionDraft,
+                    isSaving = uiState.isSavingDescription,
+                    onStartEdit = { onAction(MomentDetailUiAction.StartEditDescription) },
+                    onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
+                    onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
+                    onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+            // Capture time + "Shared with" recipients. Lives here (the info/
+            // comments panel) because the immersive media view has no room for
+            // an expandable, network-backed recipient list. Expanding the
+            // "Shared with" row lazily fetches transfer history via the VM.
+            item(key = "metadata") {
+                MetadataSection(
+                    capturedAtMs = uiState.moment?.userDateMs ?: 0L,
+                    sharedWith = uiState.sharedWith,
+                    sharedWithExpanded = uiState.sharedWithExpanded,
+                    onToggleSharedWith = {
+                        onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
+                    },
+                    isMine = uiState.isMine,
+                    isTransferHistoryLoading = uiState.isTransferHistoryLoading,
+                    recipientDeliveries = uiState.recipientDeliveries,
+                    recipientAvatars = uiState.recipientAvatars,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            item(key = "divider") { HorizontalDivider() }
+            item(key = "comments-header") {
+                CommentsHeader(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            if (uiState.comments.isEmpty()) {
+                item(key = "comments-empty") {
+                    CommentsEmpty(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 16.dp, vertical = 24.dp),
                     )
                 }
-                // Capture time + "Shared with" recipients. Lives here (the info/
-                // comments sheet) because the immersive media view has no room for
-                // an expandable, network-backed recipient list. Expanding the
-                // "Shared with" row lazily fetches transfer history via the VM.
-                item(key = "metadata") {
-                    MetadataSection(
-                        capturedAtMs = uiState.moment?.userDateMs ?: 0L,
-                        sharedWith = uiState.sharedWith,
-                        sharedWithExpanded = uiState.sharedWithExpanded,
-                        onToggleSharedWith = {
-                            onAction(MomentDetailUiAction.ToggleSharedWithExpansion(it))
-                        },
-                        isMine = uiState.isMine,
-                        isTransferHistoryLoading = uiState.isTransferHistoryLoading,
-                        recipientDeliveries = uiState.recipientDeliveries,
-                        recipientAvatars = uiState.recipientAvatars,
+            } else {
+                // Service emits newest-first; reverse for chat-style
+                // chronological ordering (oldest at top, newest just
+                // above the composer).
+                items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
+                    CommentRowFromState(
+                        uiState = uiState,
+                        comment = comment,
+                        onAction = onAction,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                     )
-                }
-                item(key = "divider") { HorizontalDivider() }
-                item(key = "comments-header") {
-                    CommentsHeader(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-                if (uiState.comments.isEmpty()) {
-                    item(key = "comments-empty") {
-                        CommentsEmpty(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 24.dp),
-                        )
-                    }
-                } else {
-                    // Service emits newest-first; reverse for chat-style
-                    // chronological ordering (oldest at top, newest just
-                    // above the composer).
-                    items(uiState.comments.asReversed(), key = { it.id.toString() }) { comment ->
-                        CommentRowFromState(
-                            uiState = uiState,
-                            comment = comment,
-                            onAction = onAction,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
                 }
             }
-            if (commentsEnabled) {
-                Surface(tonalElevation = 3.dp) {
-                    AddCommentRow(
-                        draft = uiState.commentDraft,
-                        isPosting = uiState.isPostingComment,
-                        onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
-                        onSend = { onAction(MomentDetailUiAction.PostComment) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .imePadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
+        }
+        if (commentsEnabled) {
+            Surface(tonalElevation = 3.dp) {
+                AddCommentRow(
+                    draft = uiState.commentDraft,
+                    isPosting = uiState.isPostingComment,
+                    onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                    onSend = { onAction(MomentDetailUiAction.PostComment) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .imePadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
             }
         }
     }
@@ -2068,6 +2254,12 @@ internal fun MomentCommentsSheet(
 private val MediaWideBreakpoint = 600.dp
 private const val MediaWidthFraction = 0.6f
 private val MediaMaxWidth = 560.dp
+
+// Width of the persistent comments rail on the desktop wide split (the
+// `commentsDocked` branch in DetailContent). Fixed rather than a fraction —
+// comment text doesn't get more readable past a column width, and a fixed rail
+// keeps the media stage stable as the window resizes.
+private val CommentsRailWidth = 400.dp
 
 @Composable
 private fun PagerDots(
