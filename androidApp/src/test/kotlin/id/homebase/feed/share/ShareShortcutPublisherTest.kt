@@ -7,6 +7,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.IconCompat
 import androidx.test.core.app.ApplicationProvider
 import id.homebase.core.share.ShareableConversation
+import id.homebase.feed.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -111,6 +112,42 @@ class ShareShortcutPublisherTest {
                 "AppNavHost falls into the NotificationTap branch (which expects a " +
                 "PendingNotificationTap singleton) and navigation dead-ends — " +
                 "see homebase.log: popBackStack(ChatList)=false at 13:04:34.",
+        )
+    }
+
+    @Test
+    fun `launcher tap opens the conversation, not the empty share receiver`() = runTest {
+        // Reproduces: long-press the app icon, tap a recent contact. The app opens the
+        // conversation but ALSO flashes a "nothing to share" toast.
+        //
+        // Root cause: ShortcutInfoCompat.setIntents(Intent[]) follows startActivities()
+        // back-stack semantics — the LAST intent is the activity launched on top, the
+        // rest sit beneath it. A launcher long-press tap launches that top intent. If it
+        // is the ACTION_SEND intent into ShareReceiverActivity, there is no shared content
+        // (the user came from the launcher, not a share sheet), so the receiver shows
+        // "nothing to share" and finishes — while MainActivity beneath it reveals the
+        // conversation. Direct Share is routed by <share-target> + EXTRA_SHORTCUT_ID and
+        // does NOT use setIntents, so the share intent here is pure harm.
+        val publisher = newPublisher()
+        ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+
+        publisher.updateShortcuts(
+            listOf(convo(id = "11111111-1111-1111-1111-111111111111", displayName = "Alice"))
+        )
+
+        val shortcut = ShortcutManagerCompat.getDynamicShortcuts(context).single()
+        val launched = shortcut.intents.last()
+        assertEquals(
+            Intent.ACTION_VIEW,
+            launched.action,
+            "Launcher tap launches the last intent; it must open the conversation " +
+                "(ACTION_VIEW), not trigger the share receiver (ACTION_SEND).",
+        )
+        assertEquals(
+            MainActivity::class.java.name,
+            launched.component?.className,
+            "Launcher tap must land in MainActivity (conversation), never in " +
+                "ShareReceiverActivity — which would show \"nothing to share\".",
         )
     }
 
