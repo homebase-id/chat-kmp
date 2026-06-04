@@ -333,6 +333,34 @@ fun AppNavHost(
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
+
+                is NotificationNavigationEvent.OpenMoment -> {
+                    val momentId = Uuid.parseOrNull(event.momentId)
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMoment received: id=$momentId openComments=${event.openComments} " +
+                                "activated=${momentsPreferences.activated.value}"
+                    }
+                    // Only route when Moments is activated (receiving a moment push
+                    // implies the moments drive is subscribed, so this normally holds).
+                    // Push Moments first so back-press from the reels detail lands on
+                    // the feed, then open the detail pager on the tapped moment. The
+                    // pager resolves the moment from MomentsFeedService's live feed,
+                    // which is already syncing post-auth (and waits for it to arrive).
+                    if (momentId != null && momentsPreferences.activated.value) {
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(
+                            Route.MomentDetail(
+                                momentId = momentId.toString(),
+                                openComments = event.openComments,
+                            )
+                        )
+                    }
+                    TextRenderingHelper.nudge()
+                }
             }
         }
     }
