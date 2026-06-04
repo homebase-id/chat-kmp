@@ -48,7 +48,15 @@ actual object FFmpegUtils {
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
     }
 
-    actual suspend fun grabThumbnail(inputPath: String): String? =
+    /**
+     * Platform-internal ffmpeg poster-frame helper for the JVM fallback decoder
+     * ([FFmpegSubprocessVideoDecoder]) and its backend coverage test. NOT part of the
+     * [FFmpegUtils] `expect` contract — the cross-platform seam for poster frames is
+     * [VideoThumbnailService.extractPosterFrame]. It survives only on the JVM/native actuals
+     * because those are the two platforms whose thumbnail decoder is ffmpeg-backed. ffmpeg
+     * low-level must never call back up into the `VideoSomething` services.
+     */
+    suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
                 println("FFmpeg binaries not available for this platform")
