@@ -21,8 +21,6 @@ data class VideoTrackInfo(
 expect object FFmpegUtils {
     fun getUniqueId(filePath: String): String
 
-    suspend fun grabThumbnail(inputPath: String): String?
-
     suspend fun getRotationFromFile(filePath: String): Int
 
     /**

@@ -26,13 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reply
@@ -61,7 +61,7 @@ fun SwipeableMessageWrapper(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     val animatable = remember { Animatable(0f) }
-    val haptic = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     var hapticFired by remember { mutableStateOf(false) }
 
     // The displayed offset: drag value while dragging, animated value while springing back
@@ -175,7 +175,7 @@ fun SwipeableMessageWrapper(
                             // Fire haptic at threshold
                             if (!hapticFired && newValue.absoluteValue >= thresholdPx) {
                                 hapticFired = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptics.perform(HapticEvent.LongPress)
                             } else if (hapticFired && newValue.absoluteValue < thresholdPx) {
                                 hapticFired = false
                             }

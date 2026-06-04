@@ -12,8 +12,8 @@ package id.homebase.api.video
  * Calling [FFmpegUtils] directly is reserved for:
  * - the seam implementations themselves ([FFmpegVideoCompressor], [FFmpegVideoProber],
  *   and the thumbnail decoders) that delegate to it;
- * - the small set of helpers with no seam equivalent (`grabThumbnail`,
- *   `getRotationFromFile`, `getUniqueId`, `generateHlsKeyInfoFile`);
+ * - the small set of helpers with no seam equivalent (`getRotationFromFile`,
+ *   `getUniqueId`, `generateHlsKeyInfoFile`);
  * - backend integration tests that deliberately exercise the real ffmpeg per platform.
  *
  * Each such site opts in explicitly with `@OptIn(LowLevelFfmpegApi::class)`, so any *new,

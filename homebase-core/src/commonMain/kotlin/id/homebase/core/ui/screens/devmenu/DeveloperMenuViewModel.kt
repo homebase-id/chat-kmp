@@ -47,6 +47,10 @@ class DeveloperMenuViewModel(
                 clearAllData()
             }
 
+            is DeveloperMenuUiAction.TriggerTestCrash -> {
+                triggerTestCrash()
+            }
+
             is DeveloperMenuUiAction.ToggleAllowTenBitVideo -> {
                 val isEnabled = !userPreferences.allowTenBitVideo
                 userPreferences.allowTenBitVideo = isEnabled
@@ -117,6 +121,19 @@ class DeveloperMenuViewModel(
         }
     }
 
+    /**
+     * Intentionally crash the app to verify crash reporting end-to-end. Throws
+     * an uncaught exception on the calling (main) thread so it propagates through
+     * the platform crash handlers we install at startup — Firebase's native
+     * uncaught handler on Android, and the Kotlin/Native unhandled-exception hook
+     * on iOS ([id.homebase.core.logging.setupIOSCrashHandler], which records it to
+     * Crashlytics). The report uploads on the next launch.
+     */
+    private fun triggerTestCrash() {
+        Logger.w(tag = "DeveloperMenu") { "Triggering intentional test crash for Crashlytics verification" }
+        throw RuntimeException("Test crash triggered from the developer menu (Crashlytics verification)")
+    }
+
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
@@ -143,6 +160,7 @@ sealed interface DeveloperMenuUiAction {
     data object TestRichNotification : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
+    data object TriggerTestCrash : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction
     data object ToggleAllowTenBitVideo : DeveloperMenuUiAction
 }
