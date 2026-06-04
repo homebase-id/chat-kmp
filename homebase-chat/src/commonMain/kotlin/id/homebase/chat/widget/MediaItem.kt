@@ -60,6 +60,7 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -263,6 +264,7 @@ fun MediaItem(
                 )
             } else {
                 // Render image via HomebaseImage
+                val prefetchImage = rememberFullScreenImagePrefetch()
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
@@ -287,7 +289,14 @@ fun MediaItem(
                         modifier = finalModifier,
                         contentScale = imageContentScale,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onClick = onClick,
+                        onClick = onClick?.let { click ->
+                            {
+                                // Warm the fullscreen bitmap on tap so the viewer
+                                // opens instantly (mirrors the Vault grid).
+                                prefetchImage(imageData.copy(loadFullPayload = true))
+                                click()
+                            }
+                        },
                         onLongPress = onLongPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,

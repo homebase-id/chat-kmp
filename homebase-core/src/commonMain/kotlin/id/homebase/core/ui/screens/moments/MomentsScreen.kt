@@ -523,6 +523,11 @@ private fun WideMomentsLayout(
                 MomentDetailPane(
                     viewModel = detailVm,
                     onNavigateBack = null,
+                    // Desktop wide split: dock the comments as a persistent
+                    // right-hand rail next to the width-capped media instead of
+                    // a bottom sheet — uses the horizontal space the big detail
+                    // pane otherwise wastes on an oversized image.
+                    commentsDocked = true,
                 )
             } else if (moments.isEmpty()) {
                 EmptyMomentsState(modifier = Modifier.fillMaxSize())
