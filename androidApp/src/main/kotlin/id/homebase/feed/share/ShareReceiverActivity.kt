@@ -146,8 +146,11 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         // Check for direct share target (user tapped a conversation shortcut in the share sheet).
         // Try multiple detection mechanisms since Android behavior varies by version:
-        // 1. intent.data URI (set via shortcut's setIntents)
-        // 2. EXTRA_SHORTCUT_ID (set by ChooserActivity on API 29+)
+        // 1. intent.data URI — defensive fallback for any send intent that carries the
+        //    homebase-fchat://conversation/{id} URI directly.
+        // 2. EXTRA_SHORTCUT_ID (set by ChooserActivity on API 29+) — the primary Direct
+        //    Share mechanism; the conversation shortcut no longer launches this activity
+        //    itself (it opens MainActivity), so Direct Share relies on this.
         val directShareConvoId = extractDirectShareConversationId()
         Logger.d(tag = COLD_TAG) { "initShareFlow: directShareConvoId=$directShareConvoId" }
         if (directShareConvoId != null) {

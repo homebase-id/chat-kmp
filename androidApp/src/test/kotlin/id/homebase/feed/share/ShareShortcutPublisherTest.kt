@@ -149,6 +149,11 @@ class ShareShortcutPublisherTest {
             "Launcher tap must land in MainActivity (conversation), never in " +
                 "ShareReceiverActivity — which would show \"nothing to share\".",
         )
+        assertTrue(
+            shortcut.intents.none { it.action == Intent.ACTION_SEND },
+            "The shortcut must carry NO ACTION_SEND intent — re-adding one (even beneath " +
+                "the launch intent in the back stack) reintroduces the \"nothing to share\" bug.",
+        )
     }
 
     @Test
