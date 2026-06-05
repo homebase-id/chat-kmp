@@ -55,6 +55,7 @@ import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
@@ -87,6 +88,9 @@ fun FullScreenMediaViewer(
     isDownloading: Boolean = false,
     onShare: (messageId: Uuid, payloadKey: String) -> Unit,
     onSave: (messageId: Uuid, payloadKey: String) -> Unit,
+    // Save a viewed sticker into the user's library. Default no-op for non-chat hosts
+    // (Moments) that have no sticker library; the chat pane passes a real handler.
+    onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
     onDelete: (messageId: Uuid) -> Unit,
     onDismiss: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
@@ -253,6 +257,13 @@ fun FullScreenMediaViewer(
                                 contentDescription = stringResource(MR.string.chat_options)
                             )
                         }
+                        // Offer "Save sticker" only when the current payload is a real
+                        // transparent sticker (descriptor ImageFile(isSticker = true)),
+                        // never on an ordinary photo.
+                        val currentIsSticker = data.payloads
+                            .firstOrNull { it.key == currentPayloadKey }
+                            ?.descriptorInfo()
+                            ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
                         FullScreenMediaMenu(
                             showMenu = showMenu,
                             dismissMenu = { showMenu = false },
@@ -260,6 +271,12 @@ fun FullScreenMediaViewer(
                                 showMenu = false
                                 onSave(data.messageId, currentPayloadKey)
                             },
+                            onSaveSticker = if (currentIsSticker) {
+                                {
+                                    showMenu = false
+                                    onSaveSticker(data.messageId, currentPayloadKey)
+                                }
+                            } else null,
                             onDelete = {
                                 showMenu = false
                                 onDelete(data.messageId)

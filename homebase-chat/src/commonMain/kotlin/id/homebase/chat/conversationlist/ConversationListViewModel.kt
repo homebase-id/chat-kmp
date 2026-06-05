@@ -129,6 +129,8 @@ class ConversationListViewModel(
     private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
     private val drawResultBus: id.homebase.imageeditor.ui.DrawResultBus,
     private val postCreateIntroductionPreflightBus: id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus,
+    private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
+    private val stickerService: id.homebase.chat.services.sticker.StickerService,
 ) : ViewModel() {
 
     companion object {
@@ -235,6 +237,19 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
     )
+
+    private val stickerHandler = StickerHandler(
+        scope = viewModelScope,
+        messagesUiState = _messagesUiState,
+        stickerService = stickerService,
+        chatMessageActionService = chatMessageActionService,
+        sendEvent = ::sendEvent,
+        addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+    )
+
+    /** Saved stickers for the composer's sticker tray (mirror of VaultStream). */
+    val savedStickers: StateFlow<List<id.homebase.chat.services.sticker.SavedSticker>> =
+        stickerStream.stickers
 
     init {
         viewModelScope.launch {
@@ -989,6 +1004,17 @@ class ConversationListViewModel(
             is ConversationListUiAction.BlockUser -> conversationLifecycleHandler.handleBlockUser(action)
 
             is ConversationListUiAction.ReportContent -> conversationLifecycleHandler.handleReportContent()
+
+            /* Stickers */
+            is ConversationListUiAction.EnsureStickerDriveMounted -> stickerHandler.handleEnsureStickerDriveMounted()
+
+            is ConversationListUiAction.SendSavedSticker -> stickerHandler.handleSendSavedSticker(action)
+
+            is ConversationListUiAction.SaveStickerFromMessage -> stickerHandler.handleSaveStickerFromMessage(action)
+
+            is ConversationListUiAction.ImportSticker -> stickerHandler.handleImportSticker(action)
+
+            is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }
     }
 

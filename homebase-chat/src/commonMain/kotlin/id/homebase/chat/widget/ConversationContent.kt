@@ -247,6 +247,7 @@ fun ConversationContent(
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
+    var showStickerTray by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -1601,6 +1602,9 @@ fun ConversationContent(
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
+                    }, onStickersClick = {
+                        showAttachmentSheet = false
+                        showStickerTray = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
@@ -1628,6 +1632,14 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showDiceRollComposer = false },
             onSent = { showDiceRollComposer = false },
+        )
+    }
+
+    if (showStickerTray) {
+        StickerTraySheet(
+            conversationId = conversation.conversation.id,
+            onUiAction = onUiAction,
+            onDismiss = { showStickerTray = false },
         )
     }
 

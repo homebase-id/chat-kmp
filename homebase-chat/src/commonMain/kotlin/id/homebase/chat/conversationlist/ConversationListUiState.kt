@@ -286,6 +286,12 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         val file: PlatformFile,
         val metadata: ImageMetadata? = null,
         val includeLocation: Boolean = false,
+        /**
+         * Force this image to be sent as a sticker (transparent cut-out render),
+         * bypassing the automatic alpha probe. Set when re-staging a saved sticker
+         * from the tray; threaded into [AttachmentInput.forceSticker] at send time.
+         */
+        val forceSticker: Boolean = false,
     ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,

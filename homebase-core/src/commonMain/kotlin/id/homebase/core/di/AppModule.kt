@@ -329,6 +329,8 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Hydrate the saved-stickers tray for the new identity (mirror Vault).
+                get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
             }
         )
     }
@@ -428,6 +430,12 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+
+    // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
+    // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
+    // is NOT in mandatorySyncDrives.
+    singleOf(::id.homebase.chat.services.sticker.StickerStream)
+    singleOf(::id.homebase.chat.services.sticker.StickerService)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -529,6 +537,8 @@ val appModule = module {
             cropResultBus = get(),
             drawResultBus = get(),
             postCreateIntroductionPreflightBus = get(),
+            stickerStream = get(),
+            stickerService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)

@@ -96,6 +96,23 @@ val vaultLabeledDrive = LabeledDrive(
     label = "Vault",
 )
 
+// Placeholder Stickers drive — modeled exactly on [vaultLabeledDrive]. The user's
+// saved "My Stickers" tray is one HomebaseFile per sticker on this dedicated, synced
+// drive, so the library follows the user across devices via the existing sync engine.
+//
+// TODO: replace with the server-provisioned Stickers drive type GUID. Until the
+// server provisions this drive type, mounting + uploading to it will fail (same
+// open item the Vault placeholder GUID has). The alias below is a stable random
+// GUID; the TYPE must match a drive type the identity's server actually supports.
+val stickerLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e"),
+        // TODO: replace with the server-provisioned Stickers drive type GUID
+        type = Uuid.parse("5e4d3c2b-1a0f-4c8e-9b6a-7d5e3f1c2b0a"),
+    ),
+    label = "Stickers",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -271,5 +288,29 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = vaultTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl
+    )
+}
+
+// Stickers-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Vault/Moments optional-drive permission shape; the Stickers drive is
+// mounted on demand (not in [mandatorySyncDrives]) the first time the user opens the
+// sticker tray or saves a sticker.
+val stickerTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = stickerLabeledDrive.drive.alias.toString(),
+        type = stickerLabeledDrive.drive.type.toString(),
+        name = stickerLabeledDrive.label,
+        description = "Drive to store your saved stickers",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = stickerTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
     )
 }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
@@ -395,6 +396,7 @@ fun AttachmentOptions(
     onEventClick: () -> Unit,
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
+    onStickersClick: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -454,6 +456,14 @@ fun AttachmentOptions(
                     icon = Icons.Default.Casino,
                     label = stringResource(MR.string.chat_dice_share),
                     onClick = onDicesClick,
+                )
+            }
+            item {
+                AttachmentOption(
+                    modifier = Modifier.testTag("attachment_stickers"),
+                    icon = Icons.Default.EmojiEmotions,
+                    label = stringResource(MR.string.chat_sticker_share),
+                    onClick = onStickersClick,
                 )
             }
         }
