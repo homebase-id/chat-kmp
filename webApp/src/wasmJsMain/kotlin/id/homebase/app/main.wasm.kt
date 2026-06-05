@@ -1,5 +1,7 @@
 package id.homebase.app
 
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import androidx.navigation.ExperimentalBrowserHistoryApi
@@ -12,11 +14,20 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.skia.Graphics
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.w3c.dom.events.Event
+
+/**
+ * Re-keying the whole UI on this value disposes and re-composes the entire tree, forcing every
+ * [androidx.compose.material3.Text] to re-shape and re-issue its glyph draws. That's the piece a
+ * plain redraw can't do (a redraw reuses the existing text blobs, which still point at stale glyph
+ * atlas slots). Bumped by [recoverTextRendering]. See [purgeSkiaGlyphCaches] for the why.
+ */
+private val recoveryEpoch = mutableStateOf(0)
 
 @OptIn(ExperimentalComposeUiApi::class)
 @ExperimentalBrowserHistoryApi
@@ -34,42 +45,77 @@ fun main() {
         // (Android) and MainViewController() (iOS). Idempotent.
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         ComposeViewport("ComposeApp") {
-            App(onNavHostReady = { it.bindToBrowserNavigation() })
+            key(recoveryEpoch.value) {
+                App(onNavHostReady = { it.bindToBrowserNavigation() })
+            }
         }
         installTextRecoveryHook()
+        scheduleGlyphAtlasRecovery()
     }
 }
 
 /**
- * INVESTIGATION HOOK (blank-text / stale glyph atlas) — see the iOS+web text-rendering notes.
+ * THE SKIA FIX — isolated so it can be reused and mirrored on iOS (via TextRenderingHelper).
  *
- * Symptom: already-drawn text is blank while freshly-drawn glyphs (e.g. characters you type)
- * render fine — the signature of a Skia GPU glyph atlas whose contents are gone but whose
- * residency bookkeeping still claims them present. A plain redraw (a window "resize") does NOT
- * recover it, because Skia keeps serving the dead atlas entries. The hypothesis: a *purge* of
- * Skia's caches is the missing step — it forces re-rasterization, after which a redraw re-uploads
- * the glyphs.
+ * Blank-text root cause: on cold start the first frames can rasterize text into the GPU glyph
+ * atlas before the (WebGL on web / Metal on iOS) surface is fully ready — worse under the
+ * production runtime, where backend/sync work contends with the first paint. The glyphs get
+ * recorded as "resident" in the atlas but their pixels never land, so already-drawn text is blank
+ * while freshly-drawn glyphs (e.g. characters you type) render fine. Frames survive because they
+ * don't sample the atlas.
  *
- * This wires a manual trigger so we can confirm that on the live deploy without a UI. On the blank
- * screen, open the browser console and run:
- *
- *     window.dispatchEvent(new Event('homebase:recover-text'))
- *
- * If the text snaps back, purge-then-redraw is the fix and we generalize it (TextRenderingHelper +
- * iOS). If it does not, the atlas is dead at a deeper level than the global caches reach.
+ * [Graphics.purgeAllCaches] drops Skia's CPU strike cache **and** its GPU resource cache —
+ * including the glyph-atlas pages. Freeing the atlas pages is the essential part: afterwards the
+ * next draw finds the glyphs non-resident and re-rasterizes + re-uploads them to a clean atlas on
+ * the now-ready surface. A purge alone isn't enough, though — the on-screen text blobs must also
+ * be re-issued (see [recoverTextRendering]); a redraw of the existing blobs would just point back
+ * at the freed slots.
+ */
+private fun purgeSkiaGlyphCaches() {
+    Graphics.purgeAllCaches()
+}
+
+/**
+ * Recover blank text: purge Skia's glyph/atlas caches, then force a full re-composition so every
+ * Text re-issues its glyph draws against the clean atlas, and nudge a repaint.
+ */
+private fun recoverTextRendering() {
+    purgeSkiaGlyphCaches()
+    recoveryEpoch.value = recoveryEpoch.value + 1
+    forceRepaint()
+}
+
+/**
+ * Fire the recovery a couple of times as startup settles — the first attempt right after the
+ * initial paint, a second once the backend connect/sync churn has died down (that contention is
+ * what makes the first-frame race lose on the live deploy but not on a quiet localhost).
+ */
+private fun scheduleGlyphAtlasRecovery() {
+    MainScope().launch {
+        delay(1500)
+        recoverTextRendering()
+        delay(2500)
+        recoverTextRendering()
+    }
+}
+
+/**
+ * Manual trigger kept for debugging: run
+ * `window.dispatchEvent(new Event('homebase:recover-text'))` in the browser console to fire the
+ * same recovery on demand.
  */
 private fun installTextRecoveryHook() {
     val handler: (Event) -> Unit = {
         val before = Graphics.fontCacheUsed
-        Graphics.purgeAllCaches() // purgeFontCache + purgeResourceCache + all private Skia caches
-        consoleLog("[recover-text] purged Skia caches (fontCacheUsed " + before + " -> " + Graphics.fontCacheUsed + "); forcing full redraw")
-        // Skiko redraws the whole scene on a window resize; with the caches purged the glyphs are
-        // re-rasterized and re-uploaded to a fresh atlas.
-        window.dispatchEvent(Event("resize"))
+        recoverTextRendering()
+        consoleLog("[recover-text] purge + full re-composition (fontCacheUsed " + before + " -> " + Graphics.fontCacheUsed + ")")
     }
     window.addEventListener("homebase:recover-text", handler)
     consoleLog("[recover-text] hook ready — run: window.dispatchEvent(new Event('homebase:recover-text'))")
 }
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun forceRepaint(): Unit = js("window.dispatchEvent(new Event('resize'))")
 
 @OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 private fun consoleLog(message: String): Unit = js("console.log(message)")
