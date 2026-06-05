@@ -15,4 +15,11 @@ data class AttachmentInput(
      * compress INPUT so the original is read in JS (no Kotlin copy / base64). Null on native.
      */
     val inputBlobUrl: String? = null,
+    /**
+     * Image-only: force this attachment to be sent as a sticker (transparent cut-out
+     * render), skipping the automatic alpha probe. v1 leaves this `false` and relies on
+     * auto-detection; the future manual "Send as sticker" toggle flips this without any
+     * further change to the attachment builder.
+     */
+    val forceSticker: Boolean = false,
 )

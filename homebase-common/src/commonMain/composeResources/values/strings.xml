@@ -324,6 +324,7 @@
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>
+    <string name="moments_home_subtitle">Photos, clips and notes worth keeping</string>
     <string name="moments_onboarding_title">Moments worth remembering</string>
     <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
     <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
@@ -479,6 +480,8 @@
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
+    <string name="chat_gallery_selection_index">%1$d</string>
+    <string name="chat_gallery_send_count">Send (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>

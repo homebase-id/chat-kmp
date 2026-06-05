@@ -1568,12 +1568,12 @@ fun ConversationContent(
                     // applies — desktop can host a virtual keyboard, so the floor stays.
                     if (isMobile()) {
                         AttachmentGallery(
-                            onImageSelected = {
+                            onImagesSelected = { images ->
                                 showAttachmentSheet = false
                                 onUiAction(
                                     ConversationListUiAction.AttachGalleryItem(
                                         conversationId = conversation.conversation.id,
-                                        files = listOf(it)
+                                        files = images
                                     )
                                 )
                             },
