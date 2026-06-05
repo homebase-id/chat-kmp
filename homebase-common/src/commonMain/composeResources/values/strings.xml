@@ -781,6 +781,8 @@
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
+    <string name="chat_message_attachment_paste">Paste</string>
+    <string name="cd_paste_clipboard_image">Paste image from clipboard</string>
     <string name="chat_message_attachment_contact">Contact</string>
     <string name="chat_message_attachment_location">Location</string>
     <string name="chat_message_needs_gallery_permission">Homebase Chat needs permission to show your photos and videos</string>

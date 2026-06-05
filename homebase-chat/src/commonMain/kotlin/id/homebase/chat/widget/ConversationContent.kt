@@ -109,6 +109,8 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.isIos
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.api.client.location.LocationPreviewProvider
@@ -1601,7 +1603,28 @@ fun ConversationContent(
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
-                    })
+                    },
+                        // iOS has no Ctrl/Cmd+V interception and Compose's contentReceiver
+                        // paste modifier is Android-only, so iOS needs an explicit Paste
+                        // affordance. Desktop also gets one as a discoverable alternative to
+                        // Cmd+V. Android captures paste via the keyboard contentReceiver, and
+                        // web's getImageFromClipboard() is a no-op (async clipboard API), so
+                        // neither shows the option.
+                        onPasteClick = if (isIos() || isDesktop()) {
+                            {
+                                showAttachmentSheet = false
+                                val imageBytes = getImageFromClipboard()
+                                if (imageBytes != null) {
+                                    onUiAction(
+                                        ConversationListUiAction.AttachClipboardImage(
+                                            conversationId = conversation.conversation.id,
+                                            imageBytes = imageBytes,
+                                        )
+                                    )
+                                }
+                            }
+                        } else null,
+                    )
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
