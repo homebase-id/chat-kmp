@@ -345,13 +345,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 Toast.makeText(this@ShareReceiverActivity, countLabel, Toast.LENGTH_SHORT).show()
 
                 // Open the first conversation in the main app
-                val firstId = conversationIds.first()
-                val mainIntent =
-                    Intent(this@ShareReceiverActivity, MainActivity::class.java).apply {
-                        data = "homebase-fchat://conversation/${firstId}".toUri()
-                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    }
-                startActivity(mainIntent)
+                startActivity(openConversationIntent(conversationIds.first()))
                 finish()
             } catch (e: Exception) {
                 Logger.e(tag = "ShareReceiver") { "Failed to send: ${e.message}" }
@@ -392,12 +386,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 Toast.makeText(this@ShareReceiverActivity, getString(R.string.share_sent), Toast.LENGTH_SHORT).show()
 
                 // Open conversation in main app
-                val mainIntent =
-                    Intent(this@ShareReceiverActivity, MainActivity::class.java).apply {
-                        data = "homebase-fchat://conversation/${conversationId}".toUri()
-                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    }
-                startActivity(mainIntent)
+                startActivity(openConversationIntent(conversationId))
                 finish()
             } catch (e: Exception) {
                 Logger.e(tag = "ShareReceiver") { "Failed to send: ${e.message}" }
@@ -442,6 +431,25 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private fun cleanupTempFiles() {
         safeDeleteRecursively(cacheDir.absolutePath, "share_temp")
     }
+
+    /**
+     * Builds the Intent that re-opens [MainActivity] on the just-shared-to conversation.
+     *
+     * The [ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT] extra is what makes
+     * MainActivity.handleIntent() classify this deep link as
+     * `OpenConversation.Source.ShareIntent` instead of `Source.NotificationTap`. The
+     * ShareIntent source routes through AppNavHost's `selectConversationOnChatList`, which
+     * actually opens the conversation; the NotificationTap source resolves via a
+     * PendingNotificationTap that needs a messageId a share never has, so without the extra
+     * the deep link dead-ends and the conversation never opens. Centralized here so all
+     * three send paths (text-only single, text-only multi, edited files) stay in sync.
+     */
+    internal fun openConversationIntent(conversationId: Uuid): Intent =
+        Intent(this, MainActivity::class.java).apply {
+            data = "homebase-fchat://conversation/$conversationId".toUri()
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, true)
+        }
 
     private fun extractDirectShareConversationId(): String? {
         // Method 1: Check intent data URI (homebase-fchat://conversation/{uuid})
@@ -552,12 +560,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
                 // Navigate immediately — don't wait for sends to complete
                 val firstId = conversationIds.first()
-                val mainIntent = Intent(this@ShareReceiverActivity, MainActivity::class.java).apply {
-                    data = "homebase-fchat://conversation/${firstId}".toUri()
-                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                }
                 Logger.d(tag = COLD_TAG) { "sendEditedFiles: launching MainActivity for convo=$firstId then finish()" }
-                startActivity(mainIntent)
+                startActivity(openConversationIntent(firstId))
 
                 // Fire sends in background scope that survives the activity finish.
                 // Safe because MainActivity starts before finish(), keeping the process alive.
