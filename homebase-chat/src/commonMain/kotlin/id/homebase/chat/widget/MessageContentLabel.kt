@@ -6,9 +6,11 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.resources.MR
@@ -20,6 +22,7 @@ import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_location
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
+import id.homebase.resources.chat_preview_sticker
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -62,6 +65,15 @@ fun messageContentLabel(
 
     if (firstPayload != null) {
         return when {
+            // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
+            // hasMultiplePayloads is already false here, so this is the single-payload case the
+            // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
+            firstPayload.contentType?.startsWith("image/") == true &&
+                (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true ->
+                ContentLabel(
+                    text = stringResource(MR.string.chat_preview_sticker),
+                    icon = Icons.AutoMirrored.Filled.StickyNote2
+                )
             firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image

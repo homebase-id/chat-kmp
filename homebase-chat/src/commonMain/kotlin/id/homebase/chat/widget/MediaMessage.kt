@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.video.VideoProcessingPhase
@@ -85,10 +87,25 @@ fun MediaMessage(
 ) {
     if (payloads.isEmpty()) return
 
+    // A sticker is always a solo, transparent image. Multi-image bundles keep the
+    // opaque letterbox fill (a transparent image inside a grid still letterboxes).
+    // Remembered on the payload list so the descriptor parse runs once per change
+    // rather than on every recomposition.
+    val isSticker = remember(payloads) {
+        payloads.size == 1 &&
+            (payloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
+
     Box(modifier = Modifier.animateContentSize()) {
         when (payloads.size) {
             1 -> {
-                val widthModifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                // Stickers drop the opaque surface fill so transparent pixels show the
+                // chat surface through; ordinary photos keep it as a loading/letterbox backdrop.
+                val widthModifier = if (isSticker) {
+                    modifier
+                } else {
+                    modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                }
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -103,6 +120,7 @@ fun MediaMessage(
                     ),
                     imageSize = ImageSize.THUMB_MEDIUM,
                     preserveAspectRatio = preserveAspectRatio,
+                    isSticker = isSticker,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
                     onRequestDecryptedFile = if (onRequestDecryptedFile != null) {

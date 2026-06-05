@@ -126,15 +126,17 @@ class PayloadDescriptorVideoTest {
 
     @Test
     fun nonVideoDescriptor_isUnaffected() {
-        // Make sure the new VideoFile branch only fires when contentType matches.
-        val imageDescriptor = PayloadDescriptor(
+        // Make sure the typed branches (video/image/audio) only fire when
+        // contentType matches — a generic file content type falls through to
+        // DescriptorContent.File carrying the download filename.
+        val fileDescriptor = PayloadDescriptor(
             key = "chat_web0",
-            contentType = "image/jpeg",
-            descriptorContent = "filename.jpg",
+            contentType = "application/pdf",
+            descriptorContent = "filename.pdf",
         )
 
-        val info = imageDescriptor.descriptorInfo()
+        val info = fileDescriptor.descriptorInfo()
         assertTrue(info is DescriptorContent.File)
-        assertEquals("filename.jpg", info.name)
+        assertEquals("filename.pdf", info.name)
     }
 }
