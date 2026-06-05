@@ -995,6 +995,8 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="chat_remove_background">Remove background</string>
+    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>

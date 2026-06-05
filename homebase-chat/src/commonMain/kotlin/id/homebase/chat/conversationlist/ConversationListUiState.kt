@@ -280,12 +280,19 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
      * @param includeLocation Per-image opt-in for embedding GPS coordinates in the
      *   eventual post. Date / camera / dimensions always travel when known —
      *   only the privacy-sensitive bit is gated. Defaults false.
+     * @param forceSticker Per-image opt-in to send as a sticker (transparent
+     *   cut-out render), threaded into [id.homebase.chat.services.builder.AttachmentInput.forceSticker]
+     *   at send time so it skips the auto alpha probe. Set true by the
+     *   background-remover tool so intent survives a re-encode that flattens
+     *   fringe alpha; also the carrier for the manual "Send as sticker" toggle.
+     *   Defaults false.
      */
     data class FileImage(
         val id: Uuid,
         val file: PlatformFile,
         val metadata: ImageMetadata? = null,
         val includeLocation: Boolean = false,
+        val forceSticker: Boolean = false,
     ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,
@@ -300,7 +307,12 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         val playablePath: String? = null,
     ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
-    data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
+    data class Gallery(
+        val id: Uuid,
+        val image: GalleryImage,
+        /** See [FileImage.forceSticker]. */
+        val forceSticker: Boolean = false,
+    ) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
 }
 

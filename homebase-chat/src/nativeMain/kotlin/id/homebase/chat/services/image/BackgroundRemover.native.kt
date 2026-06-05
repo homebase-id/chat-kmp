@@ -1,0 +1,132 @@
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+
+package id.homebase.chat.services.image
+
+import co.touchlab.kermit.Logger
+import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import platform.CoreImage.CIContext
+import platform.CoreImage.CIImage
+import platform.CoreImage.createCGImage
+import platform.Foundation.NSData
+import platform.Foundation.NSError
+import platform.Foundation.create
+import platform.UIKit.UIImage
+import platform.UIKit.UIImagePNGRepresentation
+import platform.Vision.VNGenerateForegroundInstanceMaskRequest
+import platform.Vision.VNImageRequestHandler
+import platform.Vision.VNInstanceMaskObservation
+import platform.posix.memcpy
+
+private const val TAG = "BackgroundRemover"
+
+/**
+ * iOS implementation: Vision `VNGenerateForegroundInstanceMaskRequest` (iOS 17+,
+ * class-agnostic foreground instance mask; the app targets iOS 18.2 so the
+ * availability is fully covered).
+ *
+ * Pipeline: bytes → UIImage → CGImage → VNImageRequestHandler →
+ * VNInstanceMaskObservation.generateMaskedImageOfInstances → CVPixelBuffer →
+ * CIImage → CGImage → UIImage → PNG (alpha preserved).
+ *
+ * HARD CAVEAT: the foreground-instance segmenter runs on the Neural Engine and is
+ * a no-op on the Simulator / CPU-only devices — it surfaces here as an empty
+ * observation list, which we map to null. Requires physical-device testing.
+ *
+ * Returns null (soft fail) when the source can't be decoded, the request errors,
+ * or no confident subject instance is found.
+ */
+actual suspend fun removeBackground(srcBytes: ByteArray): ByteArray? = withContext(Dispatchers.Default) {
+    if (srcBytes.isEmpty()) return@withContext null
+
+    val nsData: NSData = srcBytes.usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = srcBytes.size.toULong())
+    }
+    val uiImage = UIImage.imageWithData(nsData) ?: run {
+        Logger.w(tag = TAG) { "iOS: could not decode source bytes" }
+        return@withContext null
+    }
+    val cgImage = uiImage.CGImage ?: run {
+        Logger.w(tag = TAG) { "iOS: UIImage has no CGImage backing" }
+        return@withContext null
+    }
+
+    try {
+        val request = VNGenerateForegroundInstanceMaskRequest()
+        val handler = VNImageRequestHandler(cGImage = cgImage, options = emptyMap<Any?, Any?>())
+
+        val performed = memScoped {
+            val errVar = alloc<kotlinx.cinterop.ObjCObjectVar<NSError?>>()
+            val ok = handler.performRequests(listOf(request), errVar.ptr)
+            if (!ok) {
+                Logger.w(tag = TAG) { "iOS: performRequests failed: ${errVar.value?.localizedDescription}" }
+            }
+            ok
+        }
+        if (!performed) return@withContext null
+
+        val observation = (request.results?.firstOrNull() as? VNInstanceMaskObservation) ?: run {
+            // Empty on Simulator / no confident subject.
+            Logger.d(tag = TAG) { "iOS: no foreground instance mask observation" }
+            return@withContext null
+        }
+
+        val maskedPixelBuffer = memScoped {
+            val errVar = alloc<kotlinx.cinterop.ObjCObjectVar<NSError?>>()
+            val buffer = observation.generateMaskedImageOfInstances(
+                instances = observation.allInstances,
+                fromRequestHandler = handler,
+                croppedToInstancesExtent = false,
+                error = errVar.ptr,
+            )
+            if (buffer == null) {
+                Logger.w(tag = TAG) { "iOS: generateMaskedImageOfInstances failed: ${errVar.value?.localizedDescription}" }
+            }
+            buffer
+        } ?: return@withContext null
+
+        // CVPixelBuffer (BGRA with alpha) → CIImage → CGImage → UIImage → PNG.
+        val ciImage = CIImage.imageWithCVPixelBuffer(maskedPixelBuffer)
+        val ciContext = CIContext.context()
+        val outCgImage = ciContext.createCGImage(ciImage, fromRect = ciImage.extent)
+            ?: run {
+                Logger.w(tag = TAG) { "iOS: could not rasterize masked CIImage" }
+                return@withContext null
+            }
+        val outImage = UIImage.imageWithCGImage(outCgImage)
+        val png = UIImagePNGRepresentation(outImage) ?: run {
+            Logger.w(tag = TAG) { "iOS: PNG encode of cut-out failed" }
+            return@withContext null
+        }
+        png.toByteArray()
+    } catch (e: Exception) {
+        Logger.w(tag = TAG) { "iOS: background removal threw: ${e.message}" }
+        null
+    }
+}
+
+/**
+ * Capability probe. The Vision foreground-instance segmenter exists from iOS 17+
+ * (the app targets 18.2, so the class is always linkable) but only produces a
+ * result on the Neural Engine — it yields nothing on the Simulator. We report
+ * `true` here (the API is present); a device without a confident result still
+ * degrades to a null from [removeBackground].
+ */
+actual fun isBackgroundRemovalSupported(): Boolean = true
+
+@OptIn(ExperimentalForeignApi::class)
+private fun NSData.toByteArray(): ByteArray {
+    val size = length.toInt()
+    if (size == 0) return ByteArray(0)
+    val out = ByteArray(size)
+    out.usePinned { pinned -> memcpy(pinned.addressOf(0), this.bytes, length) }
+    return out
+}

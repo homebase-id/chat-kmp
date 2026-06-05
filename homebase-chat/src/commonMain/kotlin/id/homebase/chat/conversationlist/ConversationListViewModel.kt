@@ -976,6 +976,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyDrawResult -> attachmentHandler.handleApplyDrawResult(action)
 
+            is ConversationListUiAction.RemoveBackgroundAttachment -> attachmentHandler.handleRemoveBackground(action)
+
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
             is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()

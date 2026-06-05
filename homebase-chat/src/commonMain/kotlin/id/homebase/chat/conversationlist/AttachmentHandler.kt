@@ -11,11 +11,13 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.chat.services.image.removeBackground
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
 import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_message_audio_recording_help
+import id.homebase.resources.chat_remove_background_failed
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
@@ -450,6 +452,70 @@ internal class AttachmentHandler(
             } catch (e: Exception) {
                 Logger.e("ApplyDrawResult failed", e)
                 sendEvent(ShowErrorMessage("Failed to apply drawing: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * Remove the background from the current image attachment via on-device
+     * segmentation, then swap it for a transparent-PNG cut-out tagged as a sticker.
+     *
+     * Same swap shape as [handleApplyCropResult] but the bytes come from
+     * [removeBackground] (run off the main thread by the platform actual) instead
+     * of an editor result bus. The result is written as a `.png` temp so the
+     * alpha survives, and `forceSticker = true` is carried on the swapped image so
+     * the send path tags it a sticker even if a downstream re-encode flattens
+     * fringe alpha. On a null result (unsupported platform, no subject, or model
+     * unavailable) the original attachment is left untouched and a soft error is
+     * surfaced.
+     */
+    fun handleRemoveBackground(action: ConversationListUiAction.RemoveBackgroundAttachment) {
+        scope.launch {
+            try {
+                val overlay = messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                val attachment = overlay?.attachments?.firstOrNull {
+                    it.attachmentId == action.attachmentId
+                }
+                val sourcePath = when (attachment) {
+                    is AttachmentPendingFile.FileImage -> attachment.file.toString()
+                    is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
+                    else -> null
+                }
+                if (sourcePath == null) {
+                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    return@launch
+                }
+
+                val srcBytes = fileOperationsProvider.readFileBytes(sourcePath)
+                val cutOutBytes = removeBackground(srcBytes)
+                if (cutOutBytes == null) {
+                    // Soft fail: no confident subject, model not available, or
+                    // unsupported platform. Leave the original image in place.
+                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    return@launch
+                }
+
+                val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                    cutOutBytes,
+                    "cutout_image",
+                    ".png",
+                )
+                val newFile = AttachmentPendingFile.FileImage(
+                    id = action.attachmentId,
+                    file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
+                    forceSticker = true,
+                )
+                val current = messagesUiState.value.fullScreenOverlay
+                if (current !is FullScreenOverlay.AttachmentData) return@launch
+                val newAttachments = current.attachments.map { existing ->
+                    if (existing.attachmentId == action.attachmentId) newFile else existing
+                }
+                messagesUiState.update {
+                    it.copy(fullScreenOverlay = current.copy(attachments = newAttachments))
+                }
+            } catch (e: Exception) {
+                Logger.e("RemoveBackground failed", e)
+                sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
             }
         }
     }
