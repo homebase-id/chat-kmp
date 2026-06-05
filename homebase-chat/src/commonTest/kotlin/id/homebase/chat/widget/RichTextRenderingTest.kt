@@ -97,4 +97,73 @@ class RichTextRenderingTest {
         }
         onNodeWithText("Title").assertExists()
     }
+
+    /**
+     * Regression guard for the Desktop runtime crash on PR #665:
+     * `NoClassDefFoundError com/mikepenz/markdown/annotator/AnnotatorSettingsKt`.
+     *
+     * The mikepenz CORE module hosts `annotatorSettings` /
+     * `buildMarkdownAnnotatedString`; [ChatMarkdown] imports both. The block path
+     * here drives `annotatorSettings` (inline spans inside the heading/quote/list/
+     * code blocks all flow through the annotator) PLUS the full block renderer. If
+     * the core artifact is ever dropped from a consumer's classpath again, this
+     * body throws on first render and the test fails.
+     *
+     * NOTE (honest scope): this test resolves homebase-chat's deps NORMALLY, so the
+     * core is on its classpath transitively via m3 even without the explicit
+     * dependency — it therefore passes both before and after the build fix and does
+     * NOT reproduce the Desktop-distributable stripping (which is a property of
+     * desktopApp's per-platform-JAR packaging, not of homebase-chat's own
+     * classpath). It guards the renderer's *use* of the annotator API; the
+     * packaging fix is validated by the Desktop app build itself.
+     */
+    @Test
+    fun chatMarkdownRendersFullAnnotatorBlockSurface() = runComposeUiTest {
+        val body = buildString {
+            append("# Heading\n\n")
+            append("**bold** _italic_ `inline code` [link](https://x)\n\n")
+            append("- item one\n- item two\n\n")
+            append("> a quote\n\n")
+            append("```\ncode block\n```")
+        }
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = body)
+            }
+        }
+        // Reaching idle means the block renderer + annotatorSettings +
+        // buildMarkdownAnnotatedString all loaded and laid out without throwing.
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Heading").fetchSemanticsNodes().isNotEmpty()
+        }
+        waitForIdle()
+        onNodeWithTag("md").assertExists()
+        onNodeWithText("Heading").assertExists()
+    }
+
+    /**
+     * Inline-only body (no block elements) → the single-Text inline path, which
+     * also calls `buildMarkdownAnnotatedString` + `annotatorSettings` directly (the
+     * other site that touches the mikepenz core annotator class). This is the path
+     * that threw the Desktop `NoClassDefFoundError` first, because it runs the
+     * annotator outside the block `Markdown()` composable. Must compose + lay out
+     * without throwing.
+     *
+     * Asserted structurally (tag still present after idle) rather than on an exact
+     * concatenated string: the goal is "the annotator path renders without an
+     * exception", and the visible-text shape of inline-code + a bare link is an
+     * implementation detail of the renderer that shouldn't make this guard brittle.
+     */
+    @Test
+    fun chatMarkdownRendersInlineAnnotatorSurface() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "**hi** `x` [l](https://e.test)")
+            }
+        }
+        // If the annotator core class were missing, composition would throw here and
+        // the test would error out before reaching idle.
+        waitForIdle()
+        onNodeWithTag("md").assertExists()
+    }
 }
