@@ -446,6 +446,7 @@
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
 
     <string name="chat_message_image">Billede</string>
+    <string name="chat_preview_sticker">Klistermærke</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
