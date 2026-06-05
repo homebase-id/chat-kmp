@@ -995,6 +995,8 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="send_as_sticker">Send as sticker</string>
+    <string name="cd_send_as_sticker">Toggle send as sticker</string>
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>

@@ -536,6 +536,8 @@
 
     <string name="crop">Beskær</string>
     <string name="draw">Tegn</string>
+    <string name="send_as_sticker">Send som klistermærke</string>
+    <string name="cd_send_as_sticker">Skift send som klistermærke</string>
     <string name="trim_start_handle">Beskær start</string>
     <string name="trim_end_handle">Beskær slut</string>
     <string name="trim_position">Afspilningsposition</string>
