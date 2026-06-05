@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -98,6 +99,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -192,6 +199,7 @@ import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
 import kotlin.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format.MonthNames
@@ -199,6 +207,14 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * How long [MomentDetailPager] waits for a notification-tapped / deep-linked
+ * moment to sync into the feed before falling back to whatever's loaded. Long
+ * enough to cover a cold-start drive sync, short enough not to strand the user
+ * on a spinner if the moment was deleted or never arrives.
+ */
+private const val MOMENT_DEEPLINK_SYNC_TIMEOUT_MS = 8_000L
 
 /**
  * Page 2 — Post Detail View.
@@ -268,11 +284,27 @@ fun MomentDetailPager(
         }
     }
 
-    if (orderedFeed.isEmpty()) {
-        // Cold-load may still be in flight (deep-link / process restart).
-        // Black background to match the detail screen's container colour
-        // so the transition into a loaded page doesn't flash a different
-        // surface colour underneath.
+    // The moment we were asked to open (notification tap / deep link) may not have
+    // synced into the feed yet on a cold start. MomentsFeedService is already
+    // syncing post-auth; wait for the moment to land so we open the *right* one
+    // instead of locking the pager onto page 0 (its initial-index lookup falls back
+    // to 0 when the id isn't found). Bounded so a deleted / never-arriving moment
+    // can't spin forever — after the timeout we open whatever the feed holds.
+    val targetPresent = remember(orderedFeed, initialMomentId) {
+        orderedFeed.any { it.id == initialMomentId }
+    }
+    var syncWaitElapsed by remember(initialMomentId) { mutableStateOf(false) }
+    LaunchedEffect(initialMomentId) {
+        syncWaitElapsed = false
+        delay(MOMENT_DEEPLINK_SYNC_TIMEOUT_MS)
+        syncWaitElapsed = true
+    }
+
+    val ready = targetPresent || (syncWaitElapsed && orderedFeed.isNotEmpty())
+    if (!ready) {
+        // Cold-load / sync still in flight. Black background to match the detail
+        // screen's container colour so the transition into a loaded page doesn't
+        // flash a different surface colour underneath.
         Box(
             modifier = Modifier.fillMaxSize().background(Color.Black),
             contentAlignment = Alignment.Center,
@@ -2053,6 +2085,17 @@ private fun CommentsPanelContent(
     fillHeight: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    // Land on the newest comment (bottom of the thread) when the panel opens and
+    // whenever the count grows — comments read oldest→newest with the latest just
+    // above the composer, so a notification/deep-link into comments should show
+    // the message that prompted it. Int.MAX_VALUE is the scroll-to-end idiom;
+    // LazyColumn clamps it to the last item, so this stays correct regardless of
+    // how many header items precede the comments.
+    val commentCount = uiState.comments.size
+    LaunchedEffect(commentCount) {
+        if (commentCount > 0) listState.scrollToItem(Int.MAX_VALUE)
+    }
     Column(modifier = modifier) {
         // Single scroll container for the whole panel body: the description,
         // the (expandable) "Shared with" metadata, and the comments thread all
@@ -2062,6 +2105,7 @@ private fun CommentsPanelContent(
         // so expansion pushed content off-screen with no way to scroll it back.
         // Only the composer below stays pinned.
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f, fill = fillHeight),
         ) {
             item(key = "description") {
@@ -2972,7 +3016,24 @@ private fun AddCommentRow(
             value = draft,
             onValueChange = onDraftChanged,
             placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                // Enter sends (primarily for desktop's hardware keyboard);
+                // Shift+Enter is left for the platform so it isn't hijacked.
+                // We consume every plain Enter so it never inserts into the
+                // field, and only post when there's a non-blank, non-in-flight
+                // draft.
+                .onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown &&
+                        (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
+                        !e.isShiftPressed
+                    ) {
+                        if (canSend) onSend()
+                        true
+                    } else {
+                        false
+                    }
+                },
             singleLine = true,
             enabled = !isPosting,
         )

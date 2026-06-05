@@ -516,9 +516,13 @@ class NotificationService(
     /** Extracts conversation ID for chat notifications. */
     private fun resolveConversationId(notification: PushNotification): String? {
         val appId = notification.options.appId
-        return if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
-            notification.options.typeId
-        } else null
+        if (appId != Uuid.parse(AppConfig.APP_ID).toString()) return null
+        // Moments posts/comments ride on the chat appId (this is the chat app) but
+        // are not conversations. Excluding them keeps moment pushes from being
+        // suppressed while the user is on the chat list, counted into a chat
+        // conversation's summary, or cancelled as chat notifications.
+        if (isMomentsTap(notification.options.typeId, notification.options.tagId)) return null
+        return notification.options.typeId
     }
 
     /** Logs and queues a navigation event onto the buffered nav Channel. */
@@ -539,7 +543,35 @@ class NotificationService(
             val appId = notification.options.appId
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
+            // Instrumentation: capture exactly what the backend delivered so we can
+            // confirm whether a moments-comment push arrives with its sentinel tagId
+            // intact, or whether the server rewrote/validated tagId in transit.
+            Logger.i(tag = "NotificationService") {
+                "tap payload: appId=$appId typeId=$typeId tagId=$tagId sender=${notification.senderId}"
+            }
+            val momentsTap = if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
+                resolveMomentsTap(typeId, tagId)
+            } else null
             when {
+                // Moments posts/comments ride on the chat appId but are routed to the
+                // moments detail (reels) screen, not ChatList. A post carries
+                // typeId == tagId; a comment carries the sentinel tagId (and opens with
+                // comments expanded). A chat message has distinct conversationId/
+                // messageId, so this can't shadow a real chat tap. Checked first since
+                // it's a stricter chat-appId case.
+                momentsTap != null -> {
+                    Logger.i(tag = "NotificationService") {
+                        "Moments tap — opening moment=${momentsTap.momentId} " +
+                                "openComments=${momentsTap.openComments}"
+                    }
+                    emitNavigationEvent(
+                        NotificationNavigationEvent.OpenMoment(
+                            momentId = momentsTap.momentId,
+                            openComments = momentsTap.openComments,
+                        )
+                    )
+                }
+
                 appId == Uuid.parse(AppConfig.APP_ID).toString() -> {
                     // Only set the pending tap when BOTH conversationId and
                     // messageId are present — a messageId-less payload is
@@ -808,6 +840,51 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
         ?: return null
     return convoUuid to msgUuid
 }
+
+/**
+ * Well-known sentinel `tagId` that marks a Moments *comment* push, distinguishing
+ * it from a moment-*post* push. Both kinds keep `typeId == momentId` (so the moment
+ * to open is always recoverable from `typeId`, and notifications coalesce per moment
+ * via `typeId.hashCode()`); the post sets `tagId == typeId == momentId` while the
+ * comment sets `tagId` to this sentinel. A chat message's `tagId` is a random
+ * messageId, so collision with this fixed value is effectively impossible.
+ *
+ * Shared with the send path ([id.homebase.core.moments.services.MomentsPostSenderService]).
+ */
+const val MOMENT_COMMENT_TAG_SENTINEL = "00000000-0000-4000-8000-0000c0117e57"
+
+/** What a tapped Moments push resolves to: which moment to open, and whether to expand comments. */
+internal data class MomentsTapTarget(val momentId: String, val openComments: Boolean)
+
+/**
+ * Resolves a chat-appId push to a Moments tap target, or null when it's an ordinary
+ * chat message. Moments must keep the chat appId (the backend rejects a push whose
+ * appId isn't the registered app — this *is* the chat app), so they're told apart by
+ * their id shape:
+ *  - comment → `tagId == `[MOMENT_COMMENT_TAG_SENTINEL]; open the moment (`typeId`)
+ *    with the comments sheet expanded.
+ *  - post    → `typeId == tagId` (== momentId); open the moment.
+ *  - chat    → distinct conversationId (`typeId`) / messageId (`tagId`), neither the
+ *    sentinel → null.
+ *
+ * Used both to route the tap and to keep moments out of chat suppression/counting.
+ */
+internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget? {
+    if (typeId.isBlank()) return null
+    // Compare the sentinel as a parsed Uuid so a backend round-trip that re-cases or
+    // re-formats the GUID still matches. typeId == tagId is a same-payload string
+    // compare, so it needs no such normalisation.
+    val sentinel = Uuid.parseOrNull(MOMENT_COMMENT_TAG_SENTINEL)
+    return when {
+        Uuid.parseOrNull(tagId) == sentinel -> MomentsTapTarget(typeId, openComments = true)
+        typeId == tagId -> MomentsTapTarget(typeId, openComments = false)
+        else -> null
+    }
+}
+
+/** Convenience predicate over [resolveMomentsTap]. */
+internal fun isMomentsTap(typeId: String, tagId: String): Boolean =
+    resolveMomentsTap(typeId, tagId) != null
 
 /**
  * Reserved offset so a conversation's group-summary id never collides with a
