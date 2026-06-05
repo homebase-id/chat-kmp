@@ -1003,6 +1003,13 @@ fun InlineReplyPreview(
     )
     val showContentIcon = shouldShowContentIcon(hasThumb, contentLabel?.text)
 
+    // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
+    // is already capped at 80 codepoints on the header (payload-free), so this is
+    // a pure presentational choice. Desktop has the horizontal room for a second
+    // line; on mobile we keep a single line to stay compact. The author name stays
+    // single-line on every platform.
+    val replyPreviewMaxLines = if (isDesktop()) 2 else 1
+
     Row(
         modifier = Modifier
             .height(IntrinsicSize.Min)
@@ -1054,7 +1061,7 @@ fun InlineReplyPreview(
                             text = displayMessage,
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f),
-                            maxLines = 1,
+                            maxLines = replyPreviewMaxLines,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
