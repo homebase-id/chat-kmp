@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -293,9 +295,19 @@ fun MessageBubbleRaw(
         }
     }
 
+    // A media-only sticker message must float directly on the chat wallpaper, so its
+    // transparent pixels show the background — not the bubble fill. Detect it the same
+    // way MediaMessage does (solo, transparent image payload) and, when true, drop the
+    // outer Surface fill/shape/elevation entirely. Non-sticker bubbles are unaffected.
+    val isSticker = remember(filteredPayloads) {
+        filteredPayloads?.size == 1 &&
+            (filteredPayloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
+    val isStickerBubble = isSticker && mediaOnly
+
     Surface(
         modifier = modifier
-            .clip(shape)
+            .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(
                     onClick = {},
@@ -308,8 +320,8 @@ fun MessageBubbleRaw(
                 scaleX = scaleAnim.value
                 scaleY = scaleAnim.value
             },
-        shape = shape,
-        color = backgroundColor,
+        shape = if (isStickerBubble) RectangleShape else shape,
+        color = if (isStickerBubble) Color.Transparent else backgroundColor,
     ) {
         Box {
             // Overlay Box that captures all long clicks
