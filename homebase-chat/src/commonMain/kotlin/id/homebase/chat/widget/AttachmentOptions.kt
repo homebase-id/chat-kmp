@@ -159,6 +159,10 @@ fun AttachmentGallery(
                 }
             }
         } else {
+            // Gallery strip and confirm control stacked in a Column so the Send-(N)
+            // pill sits in its own row BELOW the 160dp thumbnail strip and never
+            // overlaps (occludes) the leading thumbnails.
+            Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -318,16 +322,20 @@ fun AttachmentGallery(
                         }
                     }
                 }
-                // Confirm control: while in multi-select with a non-empty ordered selection,
-                // resolve selectedIds to items (associate by id, ordered by selectedIds) and
-                // hand the batch to the existing send path, then reset.
-                if (multiSelect && selectedIds.isNotEmpty()) {
-                    val byId = galleryItems.associateBy { it.id }
-                    val sendCount = selectedIds.size
+            }
+            // Confirm control: while in multi-select with a non-empty ordered selection,
+            // resolve selectedIds to items (associate by id, ordered by selectedIds) and
+            // hand the batch to the existing send path, then reset. Anchored in its own
+            // row BELOW the 160dp strip so it never covers the thumbnails.
+            if (multiSelect && selectedIds.isNotEmpty()) {
+                val byId = galleryItems.associateBy { it.id }
+                val sendCount = selectedIds.size
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
                     ElevatedButton(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(16.dp),
                         onClick = {
                             val ordered = selectedIds.mapNotNull { byId[it] }
                             resetSelection()
@@ -339,6 +347,7 @@ fun AttachmentGallery(
                         Text(stringResource(MR.string.chat_gallery_send_count, sendCount))
                     }
                 }
+            }
             }
         }
     }
