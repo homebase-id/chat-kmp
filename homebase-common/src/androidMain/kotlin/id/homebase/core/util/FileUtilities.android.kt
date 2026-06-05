@@ -69,7 +69,10 @@ actual fun getUriHandler(): FileSystemHandler {
                 TODO("Not yet implemented")
             }
 
-            override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
+            override fun shareFile(file: Path, onError: (Throwable) -> Unit) =
+                shareFile(file, text = null, onError = onError)
+
+            override fun shareFile(file: Path, text: String?, onError: (Throwable) -> Unit) {
                 try {
                     val javaFile = File(file.toString())
                     val authority = "${context.packageName}.fileprovider"
@@ -79,6 +82,10 @@ actual fun getUriHandler(): FileSystemHandler {
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = mimeType
                         putExtra(Intent.EXTRA_STREAM, uri)
+                        // Caption travels as EXTRA_TEXT. Many gallery/social
+                        // targets drop it on image shares, but messaging/email
+                        // targets honor it — best-effort by design.
+                        if (!text.isNullOrBlank()) putExtra(Intent.EXTRA_TEXT, text)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }

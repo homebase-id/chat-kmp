@@ -68,7 +68,11 @@ actual fun getUriHandler(): FileSystemHandler {
         }
 
         @OptIn(ExperimentalForeignApi::class)
-        override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
+        override fun shareFile(file: Path, onError: (Throwable) -> Unit) =
+            shareFile(file, text = null, onError = onError)
+
+        @OptIn(ExperimentalForeignApi::class)
+        override fun shareFile(file: Path, text: String?, onError: (Throwable) -> Unit) {
             try {
                 val filePath = file.toString()
                 if (!NSFileManager.defaultManager.fileExistsAtPath(filePath)) {
@@ -76,8 +80,16 @@ actual fun getUriHandler(): FileSystemHandler {
                     return
                 }
                 val fileUrl = NSURL.fileURLWithPath(filePath)
+                // The caption rides as a second activity item; each share target
+                // decides whether to use it. Photos/Messages combine file + text
+                // cleanly; others may ignore the string.
+                val activityItems = if (!text.isNullOrBlank()) {
+                    listOf(fileUrl, text)
+                } else {
+                    listOf(fileUrl)
+                }
                 val activityVC = UIActivityViewController(
-                    activityItems = listOf(fileUrl), applicationActivities = null
+                    activityItems = activityItems, applicationActivities = null
                 )
                 activityVC.completionWithItemsHandler =
                     { _, _, _, error ->
