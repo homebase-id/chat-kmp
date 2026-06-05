@@ -1095,6 +1095,23 @@
     <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
     <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil's default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
 
+    <!-- Contact info / chat overview -->
+    <string name="contact_info_messages_count">%1$d messages</string>
+    <string name="contact_info_messages_count_truncated">%1$d+ messages</string>
+    <string name="contact_info_chatting_since">Chatting since %1$s</string>
+    <string name="contact_info_recent_media">Recent media</string>
+    <string name="contact_info_summary_recent_note">Counts reflect recent messages</string>
+    <string name="contact_info_stat_photos">Photos</string>
+    <string name="contact_info_stat_stickers">Stickers</string>
+    <string name="contact_info_stat_videos">Videos</string>
+    <string name="contact_info_stat_audio">Audio</string>
+    <string name="contact_info_stat_files">Files</string>
+    <string name="contact_info_stat_links">Links</string>
+    <string name="contact_info_stat_locations">Locations</string>
+    <string name="contact_info_stat_dice">Dice rolls</string>
+    <string name="contact_info_stat_events">Events</string>
+    <string name="contact_info_stat_polls">Polls</string>
+
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>
     <string name="error_no_contact_loaded">No contact could be loaded</string>
