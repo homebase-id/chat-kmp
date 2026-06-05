@@ -16,7 +16,8 @@ object MessageThumbnailGenerator {
 
         return ThumbnailResult(
             preview = tinyThumb,
-            thumbnails = thumbnails
+            thumbnails = thumbnails,
+            sourceBytes = bytes
         )
     }
 }
