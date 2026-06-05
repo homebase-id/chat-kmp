@@ -49,9 +49,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -63,12 +60,8 @@ import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.ui.theme.LightColors
-import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
@@ -106,7 +99,6 @@ import kotlin.uuid.Uuid
  * @param sharedTransitionScope The shared transition scope for animations.
  * @param animatedVisibilityScope The animated visibility scope for animations.
  */
-@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun MessageBubbleRaw(
     modifier: Modifier = Modifier,
@@ -246,30 +238,11 @@ fun MessageBubbleRaw(
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
-    val textState =
-        remember(message.isDeleted, message.content) {
-            RichTextState()
-                .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-                .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
-        }
-    // When a search query is active we render a plain AnnotatedString instead of RichText,
-    // so that the string the highlight offsets are computed against is exactly the string
-    // being drawn. RichTextState can reassemble its annotatedString to a different length
-    // at layout time (markdown tokens), which would leave stale SpanStyle ranges and crash
-    // String.subSequence during draw.
-    val highlightedText: AnnotatedString? =
-        remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
-            if (message.isDeleted) return@remember null
-            val highlightColor = if (isCurrentSearchResult)
-                Color(0xFFFF8C00).copy(alpha = 0.6f)
-            else
-                Color(0xFFFFEB3B).copy(alpha = 0.5f)
-            buildSearchHighlightedText(
-                plain = message.content,
-                searchQuery = searchQuery,
-                highlightColor = highlightColor,
-            )
-        }
+    // Body markdown rendered (and search-highlighted) by the single ChatMarkdown
+    // renderer below — no RichTextState round-trip, no separate highlight fork.
+    val bodyText = if (message.isDeleted) deletedText else message.content
+    // A search query never applies to the system "deleted" placeholder.
+    val effectiveSearchQuery = if (message.isDeleted) "" else searchQuery
 
     val big = Dimens.Message.cornerRadius
     val small = Dimens.Message.cornerCollapseRadius
@@ -473,19 +446,14 @@ fun MessageBubbleRaw(
                                         style = MaterialTheme.typography.displaySmall,
                                         color = contentColor
                                     )
-                                } else if (highlightedText != null) {
-                                    Text(
-                                        text = highlightedText,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = contentColor
-                                    )
                                 } else {
-                                    RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
+                                    ChatMarkdown(
+                                        content = bodyText,
+                                        color = contentColor,
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = contentColor
+                                        searchQuery = effectiveSearchQuery,
+                                        isCurrentSearchResult = isCurrentSearchResult,
+                                        onTextLayout = { textLayoutResult = it },
                                     )
                                 }
                             }

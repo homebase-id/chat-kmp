@@ -76,6 +76,11 @@ kotlin {
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network)
             implementation(libs.richeditor.compose)
+            // mikepenz read-only markdown renderer (m3 styling + in-markdown
+            // images via the existing Coil3 loader). m3/coil3 ship commonMain +
+            // android/jvm/ios/wasmJs, so no per-target block is needed.
+            implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.coil3)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }

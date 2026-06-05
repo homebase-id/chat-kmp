@@ -54,6 +54,18 @@ fun RichTextState.applyDefaultStyling(
     }
 }
 
+/**
+ * Loads existing markdown INTO a richeditor [RichTextState] (the WYSIWYG editor).
+ *
+ * Read-only display no longer goes through here — chat bubbles, captions, the
+ * conversation-list preview and the search row now render with the mikepenz
+ * CommonMark renderer (`ChatMarkdown`), which does not need this try/catch +
+ * [fixProblematicMarkdownText] safety net. The one remaining caller is the
+ * editor-load path: seeding the composer / the Vault note editor with a
+ * previously-saved markdown body, where richeditor's `setMarkdown` still has the
+ * documented "space after a blank line" fragility. Keep this wrapper for that
+ * path; it is not dead code.
+ */
 fun RichTextState.applyMarkDownContent(
     content: String,
 ): RichTextState {

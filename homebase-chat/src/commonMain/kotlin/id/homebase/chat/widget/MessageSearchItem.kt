@@ -17,22 +17,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
-import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import kotlin.time.Instant
 
-@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun MessageSearchItem(
     memberName: String,
@@ -41,10 +37,21 @@ fun MessageSearchItem(
     timestamp: Instant,
     onClick: () -> Unit,
     onContactClick: (odinId: OdinId) -> Unit,
+    searchQuery: String = "",
 ) {
-    // See ConversationItem.kt ConversationMessagePreview for why remember is required here
-    val textState = remember(message) {
-        RichTextState().applyDefaultStyling().applyMarkDownContent(message)
+    // Search rows are a single line, so strip the markdown to plain text (the
+    // shared AST walk, same grammar the renderer uses) and fold the search
+    // highlight into that plain string. Both styling worlds share one
+    // AnnotatedString, so the highlight offsets are computed against exactly the
+    // string being drawn — the stale-offset crash class cannot occur.
+    val highlightColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
+    val previewText = remember(message, searchQuery, highlightColor) {
+        val plain = markdownToPlainPreview(message, maxCodePoints = 200)
+        buildSearchHighlightedText(
+            plain = plain,
+            searchQuery = searchQuery,
+            highlightColor = highlightColor,
+        ) ?: AnnotatedString(plain)
     }
     Row(
         modifier = Modifier
@@ -108,8 +115,8 @@ fun MessageSearchItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RichText(
-                    state = textState,
+                Text(
+                    text = previewText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

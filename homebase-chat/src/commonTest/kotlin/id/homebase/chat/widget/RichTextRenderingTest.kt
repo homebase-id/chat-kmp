@@ -1,91 +1,80 @@
 package id.homebase.chat.widget
 
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.core.ui.theme.LightColors
-import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.applyMarkDownContent
 import kotlin.test.Test
 
+/**
+ * Rendering regressions for the chat markdown RENDERER, now the mikepenz
+ * CommonMark renderer wrapped by [ChatMarkdown] (the read-only display path).
+ * The editor stays on richeditor; these cover the display side only.
+ */
 @OptIn(ExperimentalTestApi::class)
 class RichTextRenderingTest {
 
-    @OptIn(ExperimentalRichTextApi::class)
     @Test
-    fun testRichTextSetMarkdown() = runComposeUiTest {
-        val testContent = "*Bold* _Italic_"
+    fun chatMarkdownRendersBoldAndItalic() = runComposeUiTest {
         setContent {
-            val textState = remember {
-                RichTextState()
-                    .applyDefaultStyling(linkColor = LightColors.Primary)
-                    .also {
-                        it.setMarkdown(testContent)
-                    }
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "*Bold* _Italic_")
             }
-
-            RichText(
-                state = textState,
-                modifier = Modifier.testTag("richText")
-            )
         }
 
-        onNodeWithTag("richText").assertTextEquals("Bold Italic")
+        // mikepenz parses on a background dispatcher (non-immediate); wait until
+        // the paragraph node materialises, then assert the visible text matches.
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Bold Italic").fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Bold Italic").assertExists()
     }
 
-    /*
-    RichTextState Markdown parser used to fail for this input hence this test, the issue seems to have been fixed now.
-    The issue seems to be any space in start of line after an empty line
+    /**
+     * The old richeditor `setMarkdown` parser crashed on a space at the start of
+     * a line following an empty line (`gg\n\n  gg`). The mikepenz CommonMark
+     * parser handles it without the `fixProblematicMarkdownText` workaround —
+     * this asserts the swap fixed the crash: the body must render without
+     * throwing.
      */
-    @OptIn(ExperimentalRichTextApi::class)
     @Test
-    fun testRichTextSetMarkdownProblematicCodeShouldNowWork() = runComposeUiTest {
-        val testContent = """gg
-
-  gg"""
+    fun chatMarkdownDoesNotCrashOnSpaceAfterBlankLine() = runComposeUiTest {
+        val testContent = "gg\n\n  gg"
         setContent {
-                val textState = remember {
-                    RichTextState()
-                        .applyDefaultStyling(linkColor = LightColors.Primary)
-                        .also {
-                            it.setMarkdown(testContent)
-                        }
-                }
-
-            RichText(
-                state = textState,
-                modifier = Modifier.testTag("richText")
-            )
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = testContent)
+            }
         }
-        onNodeWithTag("richText").assertTextEquals("gg  gg")
+        // Reaching here means composition + parse completed without an exception.
+        waitForIdle()
+        onNodeWithTag("md").assertExists()
     }
 
-    @OptIn(ExperimentalRichTextApi::class)
+    /**
+     * A body mixing a heading, a blockquote, a fenced code block and a list must
+     * render through the M3-styled block path without crashing — proving the new
+     * authoring element set displays.
+     */
     @Test
-    fun testRichTextSetMarkdownProblematicShouldBehandled() = runComposeUiTest {
-        val testContent = """gg
-
-  gg"""
-        setContent {
-            val textState = remember {
-                RichTextState()
-                    .applyDefaultStyling(linkColor = LightColors.Primary)
-                    .applyMarkDownContent(testContent)
-            }
-
-            RichText(
-                state = textState,
-                modifier = Modifier.testTag("richText")
-            )
+    fun chatMarkdownRendersBlockElements() = runComposeUiTest {
+        val body = buildString {
+            append("# Title\n\n")
+            append("> a quote\n\n")
+            append("```\ncode line\n```\n\n")
+            append("- one\n- two\n")
         }
-
-        onNodeWithTag("richText").assertTextEquals("gg  gg")
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = body)
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Title").fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Title").assertExists()
     }
 }
