@@ -135,6 +135,11 @@ fun ConversationListScreen(
         viewModel = extendPermissionViewModel,
         onCancel = { viewModel.onAction(ConversationListUiAction.ClearSelection) },
     )
+    // Optional Stickers-drive extend-permissions dialog. Driven lazily — it only
+    // surfaces once the user enters the sticker feature (opens the tray or saves/imports
+    // a sticker), which calls recheckPermissions() on this VM. Mirrors how Moments
+    // renders ExtendPermissionDialog for its on-demand drive.
+    ExtendPermissionDialog(viewModel = viewModel.stickerExtendPermissionViewModel)
     LaunchedEffect(Unit) {
         extendPermissionViewModel.navigateAwayRequest.collect {
             viewModel.onAction(ConversationListUiAction.ClearSelection)

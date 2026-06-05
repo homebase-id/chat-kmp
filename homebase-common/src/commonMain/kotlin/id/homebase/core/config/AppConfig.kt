@@ -96,19 +96,19 @@ val vaultLabeledDrive = LabeledDrive(
     label = "Vault",
 )
 
-// Placeholder Stickers drive — modeled exactly on [vaultLabeledDrive]. The user's
-// saved "My Stickers" tray is one HomebaseFile per sticker on this dedicated, synced
-// drive, so the library follows the user across devices via the existing sync engine.
+// Stickers drive — modeled exactly on [vaultLabeledDrive] (alias + distinct type
+// GUID). The user's saved "My Stickers" tray is one HomebaseFile per sticker on this
+// dedicated, synced drive, so the library follows the user across devices via the
+// existing sync engine. Like Vault/Moments this is an optional drive (not in
+// [mandatorySyncDrives]); it is requested via the extend-permissions flow and mounted
+// on demand the first time the user opens the sticker tray or saves a sticker.
 //
-// TODO: replace with the server-provisioned Stickers drive type GUID. Until the
-// server provisions this drive type, mounting + uploading to it will fail (same
-// open item the Vault placeholder GUID has). The alias below is a stable random
-// GUID; the TYPE must match a drive type the identity's server actually supports.
+// The alias is a stable random GUID; the type is the server-provisioned Stickers
+// drive type GUID (matches the slot Vault uses for its drive type).
 val stickerLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e"),
-        // TODO: replace with the server-provisioned Stickers drive type GUID
-        type = Uuid.parse("5e4d3c2b-1a0f-4c8e-9b6a-7d5e3f1c2b0a"),
+        type = Uuid.parse("a8c64b10-7434-494b-8b8c-a2284bd643c8"),
     ),
     label = "Stickers",
 )

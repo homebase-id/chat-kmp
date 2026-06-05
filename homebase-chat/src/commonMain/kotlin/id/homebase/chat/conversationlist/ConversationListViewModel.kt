@@ -43,6 +43,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -131,6 +132,7 @@ class ConversationListViewModel(
     private val postCreateIntroductionPreflightBus: id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus,
     private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
+    private val stickerPermissionViewModel: ExtendPermissionViewModel,
 ) : ViewModel() {
 
     companion object {
@@ -251,7 +253,34 @@ class ConversationListViewModel(
     val savedStickers: StateFlow<List<id.homebase.chat.services.sticker.SavedSticker>> =
         stickerStream.stickers
 
+    /**
+     * Extend-permissions VM for the optional Stickers drive. Exposed so the host
+     * ([ConversationListScreen]) can render the shared [ExtendPermissionDialog] for it,
+     * exactly like Moments exposes [MomentsViewModel.momentsExtendPermissionViewModel].
+     * The drive is requested via this gate (ask-permission / extend-permissions flow)
+     * rather than silently mounted, so a not-yet-granted Stickers drive surfaces the
+     * owner-console permission prompt instead of failing.
+     */
+    val stickerExtendPermissionViewModel: ExtendPermissionViewModel
+        get() = stickerPermissionViewModel
+
     init {
+        // Mirror MomentsViewModel: once the Stickers drive is authorized (the user
+        // completed the extend-permissions flow, or it was already granted), hot-mount
+        // it so the sync engine begins pulling saved stickers. Mounting is idempotent in
+        // AuthConnectionCoordinator, so a repeated grant is a no-op.
+        viewModelScope.launch {
+            stickerPermissionViewModel.permissionsGranted
+                .filter { it }
+                .collect {
+                    runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
+                        .onFailure { e ->
+                            Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
+                        }
+                    stickerStream.start()
+                }
+        }
+
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
@@ -1006,13 +1035,30 @@ class ConversationListViewModel(
             is ConversationListUiAction.ReportContent -> conversationLifecycleHandler.handleReportContent()
 
             /* Stickers */
-            is ConversationListUiAction.EnsureStickerDriveMounted -> stickerHandler.handleEnsureStickerDriveMounted()
+            // Entry point into the sticker feature (tray open / save / import): run the
+            // extend-permissions gate. If the optional Stickers drive isn't granted yet,
+            // ExtendPermissionViewModel flips to ShowDialog and the host renders the shared
+            // ExtendPermissionDialog (ask-permission flow, mirroring Moments). If it is
+            // already granted, permissionsGranted emits true and the init observer
+            // hot-mounts the drive. Either way no silent mount of an ungranted drive.
+            is ConversationListUiAction.EnsureStickerDriveMounted ->
+                stickerPermissionViewModel.recheckPermissions()
 
             is ConversationListUiAction.SendSavedSticker -> stickerHandler.handleSendSavedSticker(action)
 
-            is ConversationListUiAction.SaveStickerFromMessage -> stickerHandler.handleSaveStickerFromMessage(action)
+            // Saving/importing a sticker also needs the Stickers drive granted+mounted so
+            // the new sticker syncs back to the tray. Kick the same extend-permissions gate
+            // (it surfaces the dialog when not yet granted; no-op once granted) alongside
+            // the save — the upload itself is outbox-driven and proceeds regardless.
+            is ConversationListUiAction.SaveStickerFromMessage -> {
+                stickerPermissionViewModel.recheckPermissions()
+                stickerHandler.handleSaveStickerFromMessage(action)
+            }
 
-            is ConversationListUiAction.ImportSticker -> stickerHandler.handleImportSticker(action)
+            is ConversationListUiAction.ImportSticker -> {
+                stickerPermissionViewModel.recheckPermissions()
+                stickerHandler.handleImportSticker(action)
+            }
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }

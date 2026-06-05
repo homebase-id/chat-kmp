@@ -44,12 +44,6 @@ internal class StickerHandler(
     private val addMessageWithFiles: (conversationId: Uuid, content: String, files: List<AttachmentPendingFile>) -> Unit,
 ) {
 
-    fun handleEnsureStickerDriveMounted() {
-        scope.launch {
-            runCatching { stickerService.ensureDriveMounted() }
-        }
-    }
-
     fun handleSendSavedSticker(action: ConversationListUiAction.SendSavedSticker) {
         scope.launch {
             try {
