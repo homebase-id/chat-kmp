@@ -38,19 +38,36 @@ fun main() {
         initWebSqlJs()
         DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
         startKoin { modules(allModules) }
-        // Promote AuthConnectionCoordinator out of headless mode. Like desktop,
-        // the web app has no FCM cold-wake — loading the page IS the foreground
-        // signal — so without this the Authenticated branch defers connect()
-        // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
-        // (Android) and MainViewController() (iOS). Idempotent.
-        GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         ComposeViewport("ComposeApp") {
             key(recoveryEpoch.value) {
                 App(onNavHostReady = { it.bindToBrowserNavigation() })
             }
         }
         installTextRecoveryHook()
-        scheduleGlyphAtlasRecovery()
+        promoteToForegroundAfterFirstPaint()
+    }
+}
+
+/**
+ * THE FIX — prevent the blank-text race instead of trying to recover from it.
+ *
+ * The deployed bytes render fine on a quiet localhost and only blank under the live runtime, where
+ * promoting AuthConnectionCoordinator out of headless mode immediately fires WebSocket connect +
+ * drive sync. That background work contends with the very first paint, so glyphs get rasterized
+ * into the GPU atlas before the WebGL surface is ready — recorded as resident but never drawn,
+ * which a purge can't undo (the atlas lives in the per-context GPU cache). By letting the first
+ * frames paint into a clean, ready surface *before* kicking off that work, the glyphs land
+ * correctly the first time.
+ *
+ * promoteToForeground is still called (the Authenticated branch needs it or sync hangs on
+ * "syncing") — just a few seconds later. Login is pre-auth, so this only delays sync start.
+ * Same root cause as the intermittent iOS cold-start blank text (heavy startup work racing the
+ * first Metal paint); the analogous fix there is to defer that work past the first frame.
+ */
+private fun promoteToForegroundAfterFirstPaint() {
+    MainScope().launch {
+        delay(3000)
+        GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
     }
 }
 
@@ -83,20 +100,6 @@ private fun recoverTextRendering() {
     purgeSkiaGlyphCaches()
     recoveryEpoch.value = recoveryEpoch.value + 1
     forceRepaint()
-}
-
-/**
- * Fire the recovery a couple of times as startup settles — the first attempt right after the
- * initial paint, a second once the backend connect/sync churn has died down (that contention is
- * what makes the first-frame race lose on the live deploy but not on a quiet localhost).
- */
-private fun scheduleGlyphAtlasRecovery() {
-    MainScope().launch {
-        delay(1500)
-        recoverTextRendering()
-        delay(2500)
-        recoverTextRendering()
-    }
 }
 
 /**
