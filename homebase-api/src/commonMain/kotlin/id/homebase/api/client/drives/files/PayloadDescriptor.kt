@@ -79,9 +79,15 @@ data class PayloadDescriptor(
                 // or corrupt descriptor never throws at render and never strips a photo's
                 // backdrop (opaque is the safe default). Mirrors the audio/video
                 // parse-failure contract above.
-                if (descriptorContent.isBlank()) {
-                    DescriptorContent.ImageFile(isSticker = false)
-                } else {
+                //
+                // Single-payload link-preview (chat_links) and location-preview (chat_loc)
+                // bubbles ALSO carry an image/* contentType but store a JSON *array* in
+                // descriptorContent — not an {"isSticker":...} object. Only attempt the
+                // ImageFile deserialize when the content actually looks like a JSON object,
+                // so the expected blank/array case is silent (no redundant parse, no warning
+                // log on the recomposition hot path) while genuine "looks like an object but
+                // failed to parse" corruption is still logged.
+                if (descriptorContent.trimStart().startsWith("{")) {
                     try {
                         OdinSystemSerializer.deserialize<DescriptorContent.ImageFile>(
                             descriptorContent
@@ -90,6 +96,8 @@ data class PayloadDescriptor(
                         Logger.w("PayloadFile.descriptorInfo", e)
                         DescriptorContent.ImageFile(isSticker = false)
                     }
+                } else {
+                    DescriptorContent.ImageFile(isSticker = false)
                 }
             }
 

@@ -64,6 +64,24 @@ class PayloadDescriptorImageTest {
     }
 
     @Test
+    fun jsonArrayDescriptor_isNonSticker_noThrow() {
+        // Single-payload link-preview (chat_links) and location-preview (chat_loc) bubbles
+        // share the image/* contentType but store a JSON *array* (not an {"isSticker":...}
+        // object) in descriptorContent. That must parse to a non-sticker ImageFile WITHOUT
+        // attempting the object deserialize and WITHOUT logging a warning, since the array
+        // shape is expected — not corruption. (Smoke test: the array shape doesn't throw.)
+        val info = imageDescriptor("""[{"url":"https://example.com","title":"Hi"}]""")
+            .descriptorInfo()
+        assertTrue(info is DescriptorContent.ImageFile, "Expected ImageFile, got $info")
+        assertFalse(info.isSticker)
+
+        // Leading whitespace before the array bracket is still treated as a non-object.
+        val padded = imageDescriptor("""   [{"url":"https://example.com"}]""").descriptorInfo()
+        assertTrue(padded is DescriptorContent.ImageFile, "Expected ImageFile, got $padded")
+        assertFalse(padded.isSticker)
+    }
+
+    @Test
     fun unknownKeysInDescriptor_areIgnored() {
         // Forward-compat: a future client might add fields; ignoreUnknownKeys keeps us parsing.
         val info = imageDescriptor("""{"isSticker":true,"futureField":42}""").descriptorInfo()

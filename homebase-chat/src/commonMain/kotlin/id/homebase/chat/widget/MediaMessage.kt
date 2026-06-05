@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -88,8 +89,12 @@ fun MediaMessage(
 
     // A sticker is always a solo, transparent image. Multi-image bundles keep the
     // opaque letterbox fill (a transparent image inside a grid still letterboxes).
-    val isSticker = payloads.size == 1 &&
-        (payloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    // Remembered on the payload list so the descriptor parse runs once per change
+    // rather than on every recomposition.
+    val isSticker = remember(payloads) {
+        payloads.size == 1 &&
+            (payloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
 
     Box(modifier = Modifier.animateContentSize()) {
         when (payloads.size) {
