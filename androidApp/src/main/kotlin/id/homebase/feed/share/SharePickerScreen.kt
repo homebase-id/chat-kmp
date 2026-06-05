@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -94,12 +95,17 @@ fun SharePickerScreen(
     var selectedIds by remember { mutableStateOf(emptySet<Uuid>()) }
     val enricher = remember { ConversationEnricher() }
 
-    // Enrich conversations with contact names — same pattern as ConversationListViewModel
+    // Enrich conversations with contact names — same pattern as ConversationListViewModel.
+    // Archived conversations are excluded from the share picker so the user can't share
+    // into a chat they have deliberately tucked away. recents/contacts/groups/search all
+    // derive from this list, so this single filter covers the whole screen.
     val enrichedConversations by remember {
         derivedStateOf {
             val session = ownerSession ?: return@derivedStateOf emptyList()
             val contactMap = contactsState.associateBy { it.odinId }
-            conversationsData.items.map { enricher.enrich(it, contactMap, session) }
+            conversationsData.items
+                .filter { it.conversationState != ConversationState.Archived }
+                .map { enricher.enrich(it, contactMap, session) }
         }
     }
 

@@ -1430,38 +1430,24 @@ class ConversationStream(
         try {
             val activeDomain = credentialsManager.getActiveDomain() ?: return
             val domain = activeDomain.domainName
-            val contactMap = contacts.associateBy { it.odinId }
 
-            val shareable = conversations.map { convo ->
-                val otherParticipant = convo.participants
-                    .firstOrNull { it != activeDomain }
-
-                val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
-                    "https://${otherParticipant.domainName}/pub/image"
-                } else null
-
-                // Resolve contact name using the same contact map pattern as ConversationEnricher
-                val displayName = if (!convo.isGroupConversation && otherParticipant != null) {
-                    contactMap[otherParticipant]?.name ?: convo.getDisplayName()
-                } else {
-                    convo.getDisplayName()
-                }
-
-                ShareableConversation(
-                    id = convo.id.toString(),
-                    displayName = displayName,
-                    avatarInitials = convo.avatarInitials,
-                    isGroup = convo.isGroupConversation,
-                    participantCount = convo.participants.size,
-                    lastMessageTimestamp = convo.latestMessageTimestamp.toEpochMilliseconds(),
-                    avatarUrl = avatarUrl,
-                )
+            // Exclude archived conversations from every share surface (iOS share
+            // extension picker + Android Direct Share shortcuts both read this cache).
+            // The user has deliberately tucked these away, so they shouldn't appear as
+            // share targets. Compute the non-archived list once and reuse it for both
+            // the cache and the avatar pre-cache loop, so we don't needlessly decrypt
+            // archived group avatars. Only Archived is excluded here — this mirrors the
+            // narrow intent of the share surfaces, not the main list's full whitelist.
+            val nonArchived = conversations.filter {
+                it.conversationState != ConversationState.Archived
             }
+
+            val shareable = buildShareableConversations(nonArchived, contacts, activeDomain)
             _shareableConversations.value = shareable
             shareCacheWriter.updateCache(shareable, domain)
 
             // Pre-cache group avatar images for the iOS share extension
-            for (convo in conversations) {
+            for (convo in nonArchived) {
                 if (convo.avatarModel.type == ConversationAvatarModel.Type.ConversationImage) {
                     val imageData = convo.avatarModel.imageData ?: continue
                     try {
@@ -1479,6 +1465,47 @@ class ConversationStream(
         } catch (e: Exception) {
             Logger.e(tag = "ConversationStream") { "Failed to update share cache: ${e.message}" }
         }
+    }
+}
+
+/**
+ * Maps already-filtered conversations to the lightweight [ShareableConversation]
+ * model used by the share surfaces, resolving 1:1 display names + avatar URLs from
+ * [contacts]. Callers are responsible for excluding states that should not appear
+ * as share targets (e.g. [ConversationState.Archived]) before calling this — this
+ * function maps exactly what it's given. Extracted as a pure function so the share
+ * cache contents can be unit-tested without standing up the full stream.
+ */
+internal fun buildShareableConversations(
+    conversations: List<ConversationUiModel>,
+    contacts: List<id.homebase.chat.data.ContactUiModel>,
+    activeDomain: OdinId,
+): List<ShareableConversation> {
+    val contactMap = contacts.associateBy { it.odinId }
+    return conversations.map { convo ->
+        val otherParticipant = convo.participants
+            .firstOrNull { it != activeDomain }
+
+        val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
+            "https://${otherParticipant.domainName}/pub/image"
+        } else null
+
+        // Resolve contact name using the same contact map pattern as ConversationEnricher
+        val displayName = if (!convo.isGroupConversation && otherParticipant != null) {
+            contactMap[otherParticipant]?.name ?: convo.getDisplayName()
+        } else {
+            convo.getDisplayName()
+        }
+
+        ShareableConversation(
+            id = convo.id.toString(),
+            displayName = displayName,
+            avatarInitials = convo.avatarInitials,
+            isGroup = convo.isGroupConversation,
+            participantCount = convo.participants.size,
+            lastMessageTimestamp = convo.latestMessageTimestamp.toEpochMilliseconds(),
+            avatarUrl = avatarUrl,
+        )
     }
 }
 
