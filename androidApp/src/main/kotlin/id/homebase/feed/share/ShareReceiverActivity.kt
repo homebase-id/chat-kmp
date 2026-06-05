@@ -189,6 +189,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "initShareFlow: reached setContent (picker path)" }
         setContent {
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
+            val momentsActivated by momentsPreferences.activated.collectAsStateWithLifecycle()
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 
@@ -228,7 +229,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             // Moments need media — only offer "New Moment" when the
                             // share carries files and the feature is activated.
                             showNewMomentOption = sharedContent.hasFiles &&
-                                momentsPreferences.activated.value,
+                                momentsActivated,
                             onTargetSelected = { target ->
                                 when (target) {
                                     is ShareTarget.Conversations ->
