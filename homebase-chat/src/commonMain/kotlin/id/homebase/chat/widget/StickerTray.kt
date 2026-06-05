@@ -41,6 +41,10 @@ import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.services.sticker.toImageData
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
+import id.homebase.resources.cd_import_sticker
+import id.homebase.resources.cd_sticker_thumbnail
+import id.homebase.resources.chat_sticker_tray_title
+import id.homebase.resources.chat_stickers_empty
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name

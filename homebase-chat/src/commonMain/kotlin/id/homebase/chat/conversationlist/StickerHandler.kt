@@ -11,6 +11,10 @@ import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.resources.MR
+import id.homebase.resources.chat_sticker_import_not_transparent
+import id.homebase.resources.chat_sticker_removed
+import id.homebase.resources.chat_sticker_save_failed
+import id.homebase.resources.chat_sticker_saved
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch

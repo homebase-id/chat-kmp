@@ -79,6 +79,7 @@ import id.homebase.resources.chat_dice_battle_action
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
+import id.homebase.resources.chat_save_sticker
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin

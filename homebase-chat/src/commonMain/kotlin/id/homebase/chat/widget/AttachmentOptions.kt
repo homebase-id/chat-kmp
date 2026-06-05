@@ -74,6 +74,7 @@ import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_groodle_share
 import id.homebase.resources.chat_location_share
+import id.homebase.resources.chat_sticker_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
 import id.homebase.resources.chat_no_gallery_items
