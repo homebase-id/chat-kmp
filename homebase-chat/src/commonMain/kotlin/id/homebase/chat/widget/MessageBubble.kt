@@ -1045,7 +1045,11 @@ fun InlineReplyPreview(
                 )
                 if (displayMessage.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Top-align: with the 2-line desktop body the leading
+                    // content icon must sit against the first text line, not
+                    // center against the whole block. Single-line mobile is
+                    // unaffected (Top == Center for one line).
+                    Row(verticalAlignment = Alignment.Top) {
                         if (showContentIcon) {
                             contentLabel?.icon?.let { icon ->
                                 Icon(
