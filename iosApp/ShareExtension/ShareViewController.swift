@@ -26,13 +26,21 @@ class ShareViewController: UIViewController {
         }
 
         // 3. Load conversation cache from App Group
-        let (conversations, _) = ShareConversationCacheReader.load()
+        let (conversations, _, momentsActivated) = ShareConversationCacheReader.load()
+
+        // "New Moment" needs media and an activated Moments feature — mirror the
+        // Android picker's gating.
+        let hasMedia = extensionContext.map { SharedContentSaver.hasMedia(in: $0) } ?? false
 
         // 4. Present SwiftUI picker
         let pickerView = SharePickerView(
             conversations: conversations,
+            showMomentOption: momentsActivated && hasMedia,
             onSelect: { [weak self] conversationIds in
                 self?.handleSelection(conversationIds: conversationIds)
+            },
+            onSelectMoment: { [weak self] in
+                self?.handleMomentSelection()
             },
             onCancel: { [weak self] in
                 self?.cancelExtension()
@@ -87,6 +95,40 @@ class ShareViewController: UIViewController {
                 )
             }
         }
+    }
+
+    /// Stage the shared media for a new moment, then hand off to the main app's
+    /// moments composer. Unlike the conversation path there's no target to pick —
+    /// the composer (audience, trim, description) lives in the main app.
+    private func handleMomentSelection() {
+        guard let extensionContext = extensionContext else {
+            cancelExtension()
+            return
+        }
+
+        SharedContentSaver.save(
+            extensionContext: extensionContext,
+            conversationId: SharedContentSaver.momentTargetId
+        ) { [weak self] success in
+            if success {
+                self?.openMainAppForMoment()
+            } else {
+                self?.showError(
+                    title: "Error",
+                    message: "Failed to prepare shared content."
+                )
+            }
+        }
+    }
+
+    /// Open the main app's moments composer via URL scheme.
+    private func openMainAppForMoment() {
+        guard let url = URL(string: "homebase-share://moment") else {
+            cancelExtension()
+            return
+        }
+        openURL(url)
+        extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 
     /// Open the main app via URL scheme to complete the send.
