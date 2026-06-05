@@ -6,6 +6,7 @@ import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 
 /**
@@ -158,3 +159,70 @@ private val whitespaceRunForPlain = Regex("\\s+")
 
 private fun String.collapseWhitespace(): String =
     replace(whitespaceRunForPlain, " ").trim()
+
+/**
+ * Top-level node types that are safe to render as a single inline [androidx.compose.ui.text.Text]
+ * node — i.e. they do NOT make the body a multi-block layout. A pure inline
+ * message (bold/italic/strike/inline-code/links, no headings/lists/quotes/etc.)
+ * parses to a single [MarkdownElementTypes.PARAGRAPH] under the root, surrounded
+ * only by whitespace/EOL leaf tokens.
+ *
+ * Everything else at the top level (ATX/Setext headings, ordered/unordered
+ * lists, fenced or indented code blocks, block quotes, GFM tables, thematic
+ * breaks, HTML blocks) is a real block element and must go through the block
+ * renderer.
+ */
+private val inlineSafeTopLevelTypes: Set<IElementType> = setOf(
+    MarkdownElementTypes.PARAGRAPH,
+    MarkdownTokenTypes.EOL,
+    MarkdownTokenTypes.WHITE_SPACE,
+)
+
+/**
+ * Returns true when [content] contains any markdown BLOCK element beyond a single
+ * paragraph / inline run.
+ *
+ * Parses with the SAME engine the chat block renderer (mikepenz) sits on — its
+ * default flavour is GFM, so tables and strikethrough are recognised here exactly
+ * as the renderer would. The result drives the renderer's inline-vs-block
+ * decision in `ChatMarkdown`: an inline-only body renders as a single stable
+ * [androidx.compose.ui.text.Text] node (compatible with the bubble's custom
+ * timestamp-tucking Layout), while a body with block elements renders through the
+ * multi-node block `Markdown()` Column (kept OUT of that Layout's
+ * textLayoutResult coupling).
+ *
+ * Block elements detected: ATX/Setext headings, ordered/unordered lists, fenced
+ * or indented code blocks, block quotes, GFM tables, thematic breaks, HTML
+ * blocks — any top-level node that is not a single PARAGRAPH or surrounding
+ * whitespace.
+ *
+ * Defensive: an unparseable body is treated as inline (returns false) so the
+ * decision never crashes the renderer; a malformed body that the parser cannot
+ * structure is no worse than a plain paragraph for the inline path.
+ */
+fun markdownHasBlockElements(content: String): Boolean {
+    if (content.isEmpty()) return false
+
+    val tree = try {
+        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+    } catch (_: Throwable) {
+        return false
+    }
+
+    // The root is MARKDOWN_FILE; its direct children are the block-level nodes.
+    // A pure inline message yields a single PARAGRAPH plus whitespace/EOL tokens.
+    // Any other top-level child (a second paragraph, or any heading/list/quote/
+    // code/table/rule/html block) means we must use the block renderer.
+    var paragraphCount = 0
+    for (child in tree.children) {
+        val type = child.type
+        if (type !in inlineSafeTopLevelTypes) return true
+        if (type == MarkdownElementTypes.PARAGRAPH) {
+            paragraphCount++
+            // Two separate paragraphs (a blank line in between) is multi-block:
+            // the single inline Text path cannot reproduce the paragraph gap.
+            if (paragraphCount > 1) return true
+        }
+    }
+    return false
+}

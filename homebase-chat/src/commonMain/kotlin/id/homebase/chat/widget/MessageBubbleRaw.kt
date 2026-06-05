@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -244,6 +245,24 @@ fun MessageBubbleRaw(
     // A search query never applies to the system "deleted" placeholder.
     val effectiveSearchQuery = if (message.isDeleted) "" else searchQuery
 
+    // When the body contains markdown BLOCK elements (headings, lists, quotes,
+    // code blocks, tables, rules), ChatMarkdown renders the multi-node mikepenz
+    // block Column. That Column re-fires layout on Desktop hover (links/hover),
+    // and the timestamp-tucking custom Layout below reads a freshly-written
+    // textLayoutResult during its own measure pass and force-remeasures children —
+    // re-measuring the block Column from inside that pass throws
+    // "layout state is not idle before measure starts". So a block body is routed
+    // to a plain Column (timestamp placed below as a normal element) instead of
+    // the custom Layout. Emoji-only, search, and the "deleted" placeholder always
+    // render as a single stable Text, so they keep the custom Layout's last-line
+    // timestamp tuck.
+    val bodyIsBlock = remember(bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
+        !message.isDeleted &&
+            !emojiOnly &&
+            effectiveSearchQuery.isEmpty() &&
+            markdownHasBlockElements(bodyText)
+    }
+
     val big = Dimens.Message.cornerRadius
     val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
@@ -378,6 +397,119 @@ fun MessageBubbleRaw(
                     layout(width, replyPlaceable.height + mediaPlaceable.height) {
                         replyPlaceable.placeRelative(0, 0)
                         mediaPlaceable.placeRelative(0, replyPlaceable.height)
+                    }
+                }
+            } else if (bodyIsBlock) {
+                // BLOCK body path: the multi-node mikepenz block Markdown() Column
+                // is interactive (links/hover) and re-fires layout on Desktop
+                // hover. It must NOT be a child of the timestamp-tucking custom
+                // Layout (which reads textLayoutResult mid-measure and
+                // force-remeasures siblings) — that combination throws
+                // "layout state is not idle before measure starts". So we stack
+                // the same children in a plain Column and place the timestamp
+                // below as a normal element. ChatMarkdown's block path reports no
+                // textLayoutResult, so there is no last-line tuck to lose here:
+                // this is exactly the below-placement the custom Layout already
+                // falls back to when textLayoutResult is null.
+                Column(modifier = Modifier.wrapContentWidth()) {
+                    authorName?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = authorColor ?: contentColor,
+                            modifier = Modifier.padding(
+                                start = 12.dp,
+                                top = 8.dp,
+                                end = 12.dp,
+                                bottom = 4.dp,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                    message.messageAppData.replyPreview?.let { reply ->
+                        InlineReplyPreview(
+                            replyPreview = reply,
+                            sentByYou = sentByYou,
+                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            replyMessage = replyMessages[reply.replyUniqueId],
+                            driveId = chatTargetDrive.alias,
+                        )
+                    }
+                    if (hasMedia) {
+                        MediaMessage(
+                            payloads = filteredPayloads.toPersistentList(),
+                            decryptedFiles = decryptedFiles,
+                            fileId = message.fileId,
+                            driveId = chatTargetDrive.alias,
+                            previewThumbnail = message.previewThumbnail,
+                            onMediaClick = onMediaClick,
+                            keyHeader = message.keyHeader,
+                            shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
+                                topStart = Dimens.Message.cornerRadius,
+                                topEnd = Dimens.Message.cornerRadius
+                            ) else RoundedCornerShape(0.dp),
+                            onMediaLongPress = { _, _ -> handleLongClick() },
+                            onRequestDecryptedFile = onRequestDecryptedFile,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            messageId = message.id,
+                            downloadingFiles = downloadingFiles,
+                            uploadStatus = uploadStatus,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    ) {
+                        // No onTextLayout: the block renderer reports none, and the
+                        // timestamp is placed below as its own row (next).
+                        ChatMarkdown(
+                            content = bodyText,
+                            color = contentColor,
+                            style = MaterialTheme.typography.bodyLarge,
+                            searchQuery = effectiveSearchQuery,
+                            isCurrentSearchResult = isCurrentSearchResult,
+                        )
+                    }
+                    if (message.hasMore && onShowMoreClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onShowMoreClick)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.show_more),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = contentColor,
+                                modifier = Modifier.padding(
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                    top = 4.dp,
+                                    bottom = 6.dp,
+                                ),
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Text(
+                            text = messageInfoText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                        if (sentByYou && !message.isDeleted) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            DeliveryStatus(
+                                isPendingSend = isPendingSend,
+                                deliveryStatus = message.messageAppData.deliveryStatus,
+                                contentColor = contentColor.copy(alpha = 0.7f),
+                                pendingSince = message.userDate,
+                            )
+                        }
                     }
                 }
             } else {

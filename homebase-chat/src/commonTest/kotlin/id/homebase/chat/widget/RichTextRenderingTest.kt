@@ -59,6 +59,26 @@ class RichTextRenderingTest {
      * render through the M3-styled block path without crashing — proving the new
      * authoring element set displays.
      */
+    /**
+     * An inline-only body (emphasis + a link, no block elements) must render
+     * through the single-Text inline path. The link label text is visible and the
+     * URL syntax is gone — the link rides as a native Compose LinkAnnotation in
+     * the annotated string, which a plain Text handles without a custom
+     * pointerInput. This is the path the bubble's last-line timestamp tuck wraps.
+     */
+    @Test
+    fun chatMarkdownRendersInlineLink() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "see **this** [link](https://example.test) now")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("see this link now").fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("see this link now").assertExists()
+    }
+
     @Test
     fun chatMarkdownRendersBlockElements() = runComposeUiTest {
         val body = buildString {
