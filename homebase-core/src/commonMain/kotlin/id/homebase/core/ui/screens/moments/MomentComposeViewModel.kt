@@ -47,6 +47,27 @@ class MomentComposeViewModel(
     private val _events = MutableSharedFlow<MomentComposeUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<MomentComposeUiEvent> = _events.asSharedFlow()
 
+    init {
+        // Attachments restored from a draft can arrive without the metadata the
+        // gallery-pick path extracts via AttachmentsAdded — notably the
+        // share-into-"New Moment" hand-off, whose attachments are built bare by
+        // the share flow's convertToAttachmentFiles. Backfill EXIF (capture
+        // date, camera, GPS) and video poster/duration so the photo-info chip,
+        // the derived moment date, and the trim scrubber behave the same as a
+        // normally-composed moment. The null guards make this a no-op for
+        // back-nav drafts that already carry their metadata.
+        _uiState.value.attachments.forEach { f ->
+            when (f) {
+                is AttachmentPendingFile.FileImage ->
+                    if (f.metadata == null) extractImageMetadata(f.attachmentId, f.file.toString())
+                is AttachmentPendingFile.FileVideo ->
+                    if (f.thumbnailBytes == null || f.durationMs == null)
+                        extractVideoMetadata(f.attachmentId, f.file.toString())
+                else -> Unit
+            }
+        }
+    }
+
     /**
      * Rebuild the compose state from any draft left behind by a previous
      * Continue → Audience hop, so back-nav from the audience picker lands the

@@ -28,6 +28,16 @@ data class HomebaseImageData(
     val lastModified: Long? = null,
     /** Local pending file (for images being uploaded/sent) */
     val pendingFileUri: String? = null,
+    /**
+     * Content type of the actual payload (e.g. "image/gif"), as declared on the
+     * file/payload descriptor. This is distinct from [contentTypeHint], which
+     * reflects the embedded preview thumbnail's content type — and that is
+     * always "image/webp" even for GIFs (the sender ships a tiny WebP preview,
+     * never a GIF thumbnail). The loader needs the real payload type to
+     * recognise thumbless formats (GIF) and load the animated original instead
+     * of requesting a server thumbnail that was never generated.
+     */
+    val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
 ) {
@@ -52,6 +62,17 @@ data class HomebaseImageData(
     /** Content type hint from preview thumbnail */
     val contentTypeHint: String?
         get() = previewThumbnail?.contentType
+
+    /**
+     * Best-known content type of the underlying payload, used to decide how to
+     * load the image (thumbnail vs. full animated original). Prefers the real
+     * [payloadContentType] from the descriptor and falls back to the preview
+     * thumbnail's type. Callers that only have a preview thumbnail keep their
+     * existing behaviour; callers that know the payload type (e.g. an inline
+     * GIF in a chat bubble) get the correct thumbless treatment.
+     */
+    val effectiveContentType: String?
+        get() = payloadContentType ?: contentTypeHint
 }
 
 /** Represents image dimensions */
