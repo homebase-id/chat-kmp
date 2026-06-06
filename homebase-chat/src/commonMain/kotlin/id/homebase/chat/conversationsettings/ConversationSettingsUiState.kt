@@ -9,10 +9,12 @@ data class ConversationSettingsUiState(
     val isLoading: Boolean = true,
     val conversation: ConversationUiModel? = null,
     val ownerSession: OwnerSession? = null,
+    val isSummaryLoading: Boolean = true,
+    val summary: ChatSummaryUiModel? = null,
     val uiEvent: ConversationSettingsUiEvent? = null,
 )
 
 sealed interface ConversationSettingsUiEvent {
     data object Back : ConversationSettingsUiEvent
-    data class ShowContactInfo(val odinId: String, val conversationId: String) : ConversationSettingsUiEvent
+    data class ShowContactInfo(val odinId: String) : ConversationSettingsUiEvent
 }

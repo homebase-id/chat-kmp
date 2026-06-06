@@ -7,8 +7,6 @@ import id.homebase.chat.data.ContactUiModel
 data class ContactInfoUiState(
     val isLoading: Boolean = true,
     val contact: ContactUiModel? = null,
-    val isSummaryLoading: Boolean = true,
-    val summary: ChatSummaryUiModel? = null,
     val uiEvent: ContactInfoUiEvent? = null,
 )
 

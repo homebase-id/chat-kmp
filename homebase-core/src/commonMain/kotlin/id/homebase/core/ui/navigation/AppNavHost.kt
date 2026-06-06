@@ -849,8 +849,8 @@ fun AppNavHost(
                                 ConversationSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = { odinId, conversationId ->
-                                        navController.navigate(Route.ContactInfo(odinId, conversationId))
+                                    onShowContactInfo = {
+                                        navController.navigate(Route.ContactInfo(it))
                                     },
                                 )
                             }

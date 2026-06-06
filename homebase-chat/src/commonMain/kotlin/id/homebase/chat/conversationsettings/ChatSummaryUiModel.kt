@@ -1,4 +1,4 @@
-package id.homebase.chat.contactinfo
+package id.homebase.chat.conversationsettings
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
@@ -10,11 +10,11 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
- * Aggregated overview of the 1:1 conversation with a contact, surfaced on the
- * [ContactInfoScreen]. Counts and recent media are computed over the most
- * recent [ContactInfoViewModel.SUMMARY_MESSAGE_CAP] messages; when
- * [isTruncated] is true the conversation has more messages than the cap and the
- * counts reflect recent activity rather than the lifetime total.
+ * Aggregated overview of a conversation, surfaced on the
+ * [ConversationSettingsScreen]. Counts and recent media are computed over the
+ * most recent [ConversationSettingsViewModel.SUMMARY_MESSAGE_CAP] messages;
+ * when [isTruncated] is true the conversation has more messages than the cap
+ * and the counts reflect recent activity rather than the lifetime total.
  */
 @Immutable
 data class ChatSummaryUiModel(
