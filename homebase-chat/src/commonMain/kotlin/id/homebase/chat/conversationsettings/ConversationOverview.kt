@@ -17,8 +17,9 @@ import kotlin.uuid.Uuid
 
 /**
  * Everything shared in a conversation, bucketed by kind. Computed over the most
- * recent [ConversationSettingsViewModel.SUMMARY_MESSAGE_CAP] messages; when
- * [isTruncated] is true there are older messages beyond the scan window.
+ * recent [ConversationSettingsViewModel.SUMMARY_MESSAGE_CAP] messages **present
+ * on this device** — deliberately no total-message count or "since" date, since
+ * neither can be made accurate from a possibly-incompletely-synced local index.
  *
  * [media] are images + videos (the visual grid); [files] documents; [audio]
  * voice/audio; [diceRolls] header-only dice messages; [locations] shared map
@@ -27,9 +28,6 @@ import kotlin.uuid.Uuid
  */
 @Immutable
 data class ConversationOverview(
-    val totalMessages: Int,
-    val isTruncated: Boolean,
-    val firstMessageDate: Instant?,
     val media: ImmutableList<SharedMediaItem> = persistentListOf(),
     val files: ImmutableList<SharedMediaItem> = persistentListOf(),
     val audio: ImmutableList<SharedMediaItem> = persistentListOf(),
@@ -73,7 +71,6 @@ data class GroupInCommonItem(
  */
 fun collectConversationOverview(
     batch: BatchResult<MessageUiModel>,
-    firstMessageDate: Instant?,
 ): ConversationOverview {
     val media = mutableListOf<SharedMediaItem>()
     val files = mutableListOf<SharedMediaItem>()
@@ -121,9 +118,6 @@ fun collectConversationOverview(
     }
 
     return ConversationOverview(
-        totalMessages = batch.records.size,
-        isTruncated = batch.hasMoreRows,
-        firstMessageDate = firstMessageDate,
         media = media.toImmutableList(),
         files = files.toImmutableList(),
         audio = audio.toImmutableList(),

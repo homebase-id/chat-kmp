@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -441,7 +442,13 @@ fun AppNavHost(
                                     contentDescription = stringResource(topLevelRoute.labelRes)
                                 )
                             },
-                            label = { Text(stringResource(topLevelRoute.labelRes)) },
+                            label = {
+                                Text(
+                                    stringResource(topLevelRoute.labelRes),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,

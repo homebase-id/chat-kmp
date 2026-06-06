@@ -37,7 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.AvatarNameDisplay
@@ -49,13 +48,8 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
-import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.MR
-import id.homebase.resources.contact_info_chatting_since
-import id.homebase.resources.contact_info_messages_count
-import id.homebase.resources.contact_info_messages_count_truncated
 import id.homebase.resources.contact_info_recent_media
-import id.homebase.resources.contact_info_summary_recent_note
 import id.homebase.resources.conversation_groups_in_common
 import id.homebase.resources.conversation_media_see_all
 import id.homebase.resources.error_no_group_loaded
@@ -153,7 +147,6 @@ fun ConversationSettingsUi(
                     uiState.overview?.let { overview ->
                         OverviewSection(
                             overview = overview,
-                            conversationTitle = conversation.name,
                             onMediaClick = { fullScreenItem = it },
                             onSeeAll = { onSeeAllMedia(conversationId) },
                         )
@@ -184,40 +177,14 @@ fun ConversationSettingsUi(
 @Composable
 private fun OverviewSection(
     overview: ConversationOverview,
-    conversationTitle: String,
     onMediaClick: (SharedMediaItem) -> Unit,
     onSeeAll: () -> Unit,
 ) {
-    // Facts
-    val messagesText =
-        if (overview.isTruncated) {
-            stringResource(MR.string.contact_info_messages_count_truncated, overview.totalMessages)
-        } else {
-            stringResource(MR.string.contact_info_messages_count, overview.totalMessages)
-        }
-    Text(
-        text = messagesText,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        textAlign = TextAlign.Center,
-    )
-    overview.firstMessageDate?.let { date ->
-        Text(
-            text = stringResource(MR.string.contact_info_chatting_since, formatMediumDate(date)),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            textAlign = TextAlign.Center,
-        )
-    }
-
     val hasAnything = overview.media.isNotEmpty() || overview.files.isNotEmpty() ||
             overview.audio.isNotEmpty() || overview.diceRolls.isNotEmpty() ||
             overview.locations.isNotEmpty()
 
     if (hasAnything) {
-        Spacer(modifier = Modifier.height(20.dp))
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -258,17 +225,6 @@ private fun OverviewSection(
                 )
             }
         }
-    }
-
-    if (overview.isTruncated) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = stringResource(MR.string.contact_info_summary_recent_note),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            textAlign = TextAlign.Center,
-        )
     }
 }
 

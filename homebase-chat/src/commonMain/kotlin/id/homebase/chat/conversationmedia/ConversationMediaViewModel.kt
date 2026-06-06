@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.collectConversationOverview
 import id.homebase.chat.services.ChatMessageStream
@@ -52,18 +51,8 @@ class ConversationMediaViewModel(
                     conversationId = conversationId,
                     limit = ALBUM_MESSAGE_CAP,
                 )
-                val firstMessageDate =
-                    if (batch.hasMoreRows) {
-                        chatMessageStream.fetchMessages(
-                            conversationId = conversationId,
-                            limit = 1,
-                            sortOrder = QueryBatchSortOrder.OldestFirst,
-                        ).records.firstOrNull()?.userDate
-                    } else {
-                        batch.records.lastOrNull()?.userDate
-                    }
                 val overview = withContext(Dispatchers.Default) {
-                    collectConversationOverview(batch, firstMessageDate)
+                    collectConversationOverview(batch)
                 }
                 _uiState.update { it.copy(overview = overview, isLoading = false) }
             } catch (e: Exception) {

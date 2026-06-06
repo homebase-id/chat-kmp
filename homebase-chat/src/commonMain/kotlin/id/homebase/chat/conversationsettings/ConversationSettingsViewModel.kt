@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
@@ -123,24 +122,8 @@ class ConversationSettingsViewModel(
                     conversationId = conversationId,
                     limit = SUMMARY_MESSAGE_CAP,
                 )
-
-                // When the window is truncated, its oldest row isn't the real
-                // first message — fetch that separately (cheap, limit = 1) so
-                // "chatting since" stays accurate regardless of the cap.
-                val firstMessageDate =
-                    if (batch.hasMoreRows) {
-                        chatMessageStream.fetchMessages(
-                            conversationId = conversationId,
-                            limit = 1,
-                            sortOrder = QueryBatchSortOrder.OldestFirst,
-                        ).records.firstOrNull()?.userDate
-                    } else {
-                        // newest-first → the last row is the oldest message
-                        batch.records.lastOrNull()?.userDate
-                    }
-
                 val overview = withContext(Dispatchers.Default) {
-                    collectConversationOverview(batch, firstMessageDate)
+                    collectConversationOverview(batch)
                 }
                 _uiState.update { it.copy(overview = overview, isOverviewLoading = false) }
             } catch (e: Exception) {
