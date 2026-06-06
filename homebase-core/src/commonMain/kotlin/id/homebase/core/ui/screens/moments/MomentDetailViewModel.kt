@@ -104,6 +104,7 @@ class MomentDetailViewModel(
         val showDeleteDialog: Boolean = false,
         val isDeletingMoment: Boolean = false,
         val isSavingMedia: Boolean = false,
+        val isSharingMedia: Boolean = false,
         val deletingCommentIds: Set<Uuid> = emptySet(),
         val deleteCommentDialogTarget: Uuid? = null,
         val sharedWithExpanded: Boolean = false,
@@ -222,6 +223,7 @@ class MomentDetailViewModel(
             showDeleteDialog = local.showDeleteDialog,
             isDeleting = local.isDeletingMoment,
             isSavingMedia = local.isSavingMedia,
+            isSharingMedia = local.isSharingMedia,
             deletingCommentIds = local.deletingCommentIds,
             deleteCommentDialogTarget = local.deleteCommentDialogTarget,
             sharedWith = momentBundle.sharedWith,
@@ -657,14 +659,21 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the selected payload and write a cleartext copy into the
-     * share_outbound sweep dir, then surface the path so the screen can hand
-     * it to the platform share sheet. Mirrors `MediaDownloadHandler.handleShareMedia`
-     * on the chat side — same KeyHeader assembly and same sequestered temp
-     * dir so the cleartext copy is reaped by the cold-start + foreground sweepers.
+     * Decrypt the selected payload to a cleartext file and surface it (with the
+     * moment's caption) so the screen can hand it to the platform share sheet.
+     *
+     * Images / progressive video stream into the share_outbound sweep dir, so
+     * the cold-start + foreground sweepers reap the cleartext copy. A segmented
+     * HLS video is first remuxed to a playable MP4 (a raw .ts segment shared
+     * as-is won't open in the target app) — the same path `saveMedia` takes;
+     * that MP4 lands in the cache dir and is reaped by the cache sweeper.
+     *
+     * [isSharingMedia] gates the overflow-menu spinner over the decrypt/remux,
+     * which is the slow part (videos especially) before the sheet opens.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun shareMedia(payloadKey: String) {
+        if (_screenLocal.value.isSharingMedia) return
         val moment = uiState.value.moment ?: return
         val payload = moment.payloads.firstOrNull { it.key == payloadKey } ?: return
         val ivString = payload.iv ?: run {
@@ -672,31 +681,59 @@ class MomentDetailViewModel(
             _events.tryEmit(MomentDetailUiEvent.ShareFailed("Payload missing key header"))
             return
         }
+        val keyHeader = KeyHeader(Base64.decode(ivString), moment.keyHeader.aesKey)
+        val caption = moment.description.takeIf { it.isNotBlank() }
+
+        _screenLocal.update { it.copy(isSharingMedia = true) }
         viewModelScope.launch {
             try {
-                val payloadIv = Base64.decode(ivString)
-                val response = driveFileProvider.getPayloadBytesDecrypted(
+                val hlsMetadata = resolveHlsVideoMetadata(
+                    descriptorContent = payload.descriptorContent,
                     driveId = moment.driveId,
                     fileId = moment.fileId,
-                    key = payloadKey,
-                    keyHeader = KeyHeader(payloadIv, moment.keyHeader.aesKey),
+                    keyHeader = keyHeader,
                 )
-                val bytes = response?.bytes
-                if (bytes == null) {
-                    _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
-                    return@launch
+                val sharePath = if (hlsMetadata != null) {
+                    val remuxed = withContext(ioDispatcher) {
+                        downloadAndRemuxHlsToMp4(
+                            driveId = moment.driveId,
+                            fileId = moment.fileId,
+                            payloadKey = payloadKey,
+                            keyHeader = keyHeader,
+                            metadata = hlsMetadata,
+                            suggestedBaseName = payload.filename(),
+                        )
+                    }
+                    if (remuxed == null) {
+                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not convert video"))
+                        return@launch
+                    }
+                    remuxed.first
+                } else {
+                    val bytes = driveFileProvider.getPayloadBytesDecrypted(
+                        driveId = moment.driveId,
+                        fileId = moment.fileId,
+                        key = payloadKey,
+                        keyHeader = keyHeader,
+                    )?.bytes
+                    if (bytes == null) {
+                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
+                        return@launch
+                    }
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
+                    fileOperationsProvider.writeBytesToShareOutboundFile(
+                        bytes = bytes,
+                        suffix = ".$extension",
+                    )
                 }
-                val extension = payload.contentType?.let { extensionForMimeType(it) }
-                    ?: payload.contentType?.substringAfter("/")
-                    ?: "bin"
-                val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
-                    bytes = bytes,
-                    suffix = ".$extension",
-                )
-                _events.tryEmit(MomentDetailUiEvent.ShareFileReady(tempPath))
+                _events.tryEmit(MomentDetailUiEvent.ShareFileReady(sharePath, caption))
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "shareMedia failed: ${t.message}" }
                 _events.tryEmit(MomentDetailUiEvent.ShareFailed(t.message))
+            } finally {
+                _screenLocal.update { it.copy(isSharingMedia = false) }
             }
         }
     }
