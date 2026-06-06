@@ -79,9 +79,7 @@ import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
-import id.homebase.resources.chat_message_read_less
 import id.homebase.resources.chat_message_read_more
-import id.homebase.resources.show_more
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
@@ -561,52 +559,31 @@ fun MessageBubbleRaw(
                                     )
                                 }
                             }
-                            // Single custom-Layout slot shared by two affordances so the
-                            // child count (and the textIndex/showMoreIndex/infoIndex math
-                            // below) stays UNCHANGED. The payload-spill "show more"
-                            // (hasMore, downloads the rest of the body) takes precedence;
-                            // otherwise the Task F inline body "Read more/less" expander
-                            // shows when the capped body overflowed or is expanded.
-                            val payloadMoreClick = onShowMoreClick?.takeIf { message.hasMore }
-                            val showPayloadMore = payloadMoreClick != null
-                            val showBodyExpander = !showPayloadMore && (isBodyTruncated || bodyExpanded)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        // Whole-slot tap for the payload-spill affordance,
-                                        // preserving the pre-existing behaviour.
-                                        if (payloadMoreClick != null)
-                                            Modifier.clickable(onClick = payloadMoreClick)
-                                        else Modifier
-                                    )
-                            ) {
-                                if (showPayloadMore) {
+                            // Single custom-Layout slot for the one-way "Read more"
+                            // affordance, kept as exactly ONE child so the
+                            // textIndex/showMoreIndex/infoIndex math below stays UNCHANGED.
+                            // Unifies the former "Show more" (payload spill) and "Read more"
+                            // (inline line-cap) into one control: it shows whenever the body
+                            // is incomplete (hasMore — a spilled DefaultPayload, ANY platform)
+                            // OR clipped by the mobile line cap. Tapping downloads the spilled
+                            // payload when present AND expands, in a single action — there is
+                            // no collapse-back ("Read more" only).
+                            val showReadMore = !bodyExpanded && (message.hasMore || isBodyTruncated)
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                if (showReadMore) {
                                     Text(
-                                        text = stringResource(MR.string.show_more),
+                                        text = stringResource(MR.string.chat_message_read_more),
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                                         color = contentColor,
+                                        // The chip owns the tap: it fetches the spilled body
+                                        // (when hasMore) and expands, and consumes the gesture
+                                        // so it does NOT bubble up to the bubble's
+                                        // combinedClickable / long-press overlay.
                                         modifier = Modifier
-                                            .padding(
-                                                start = 12.dp,
-                                                end = 12.dp,
-                                                top = 4.dp,
-                                                bottom = 6.dp
-                                            )
-                                    )
-                                } else if (showBodyExpander) {
-                                    Text(
-                                        text = stringResource(
-                                            if (bodyExpanded) MR.string.chat_message_read_less
-                                            else MR.string.chat_message_read_more
-                                        ),
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                        color = contentColor,
-                                        // The chip owns the tap: clicking it toggles the body
-                                        // and consumes the gesture so it does NOT bubble up to
-                                        // the bubble's combinedClickable / long-press overlay.
-                                        modifier = Modifier
-                                            .clickable { bodyExpanded = !bodyExpanded }
+                                            .clickable {
+                                                if (message.hasMore) onShowMoreClick?.invoke()
+                                                bodyExpanded = true
+                                            }
                                             .padding(
                                                 start = 12.dp,
                                                 end = 12.dp,
