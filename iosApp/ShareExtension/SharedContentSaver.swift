@@ -9,6 +9,28 @@ struct SharedContentSaver {
     static let sharedContentFile = "shared_content.json"
     static let sharedFilesDir = "shared_files"
 
+    /// Sentinel `targetConversationId` for a "New Moment" share. The main app's
+    /// moment hand-off ignores the target (the `homebase-share://moment` URL is
+    /// what disambiguates), but the descriptor field is non-optional, so we
+    /// stamp this rather than a real conversation id.
+    static let momentTargetId = "__moment__"
+
+    /// Synchronously reports whether the share carries at least one image or
+    /// video. Used to gate the "New Moment" option, which requires media.
+    static func hasMedia(in extensionContext: NSExtensionContext) -> Bool {
+        guard let inputItems = extensionContext.inputItems as? [NSExtensionItem] else { return false }
+        for item in inputItems {
+            guard let attachments = item.attachments else { continue }
+            for provider in attachments {
+                if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) ||
+                   provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     /// Content descriptor mirroring KMP SharedContentDescriptor.
     struct ContentDescriptor: Codable {
         let contentType: String

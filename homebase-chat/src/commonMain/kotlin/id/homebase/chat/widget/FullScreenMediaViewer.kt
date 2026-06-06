@@ -114,6 +114,11 @@ fun FullScreenMediaViewer(
     }
 
     BoxWithConstraints(
+        // Deliberate divergence from the chat bubble: the bubble renders stickers
+        // transparently (no backdrop), but the full-screen viewer keeps a solid
+        // surface backdrop for all media — including stickers — so a maximised
+        // cut-out image sits on a clean, predictable surface rather than whatever
+        // is behind the viewer.
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)

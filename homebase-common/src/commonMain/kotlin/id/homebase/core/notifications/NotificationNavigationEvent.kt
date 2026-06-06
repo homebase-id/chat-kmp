@@ -24,4 +24,12 @@ sealed class NotificationNavigationEvent {
         val momentId: String,
         val openComments: Boolean = false,
     ) : NotificationNavigationEvent()
+
+    /**
+     * Open the moments composer (`Route.MomentCompose`). Emitted when the user
+     * shares media into "New Moment" from the OS share sheet: the share flow
+     * has already seeded [MomentCreateFlowState] with the chosen attachments, so
+     * this event only steers the back stack into the composer.
+     */
+    data object OpenMomentCompose : NotificationNavigationEvent()
 }

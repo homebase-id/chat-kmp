@@ -336,6 +336,8 @@
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
+    <string name="moments_push_new_post">A moment has been shared with you...</string>
+    <string name="moments_push_new_comment">Commented on a moment you\'re in</string>
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
@@ -364,6 +366,7 @@
     <string name="moments_detail_menu_more">More options</string>
     <string name="moments_detail_menu_delete">Delete</string>
     <string name="moments_detail_menu_save_current">Save current</string>
+    <string name="moments_detail_menu_share">Share</string>
     <string name="moments_detail_menu_info">Info</string>
     <string name="moments_detail_menu_add_people">Add people</string>
     <string name="moments_add_people_title">Add people</string>
@@ -646,11 +649,14 @@
     <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_moment">New Moment</string>
+    <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
     <string name="chat_message_deleted">🚫 This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
+    <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>

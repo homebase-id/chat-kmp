@@ -446,6 +446,7 @@
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
 
     <string name="chat_message_image">Billede</string>
+    <string name="chat_preview_sticker">Klistermærke</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
@@ -632,5 +633,9 @@
     <string name="feed_error_title">Kunne ikke indlæse feed</string>
     <string name="feed_error_retry">Prøv igen</string>
     <string name="feed_loading">Indlæser feed…</string>
+
+    <!-- Moments push notifications -->
+    <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
+    <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
 
 </resources>
