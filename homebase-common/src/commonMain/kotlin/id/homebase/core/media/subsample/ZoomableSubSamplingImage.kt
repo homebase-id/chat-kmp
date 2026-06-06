@@ -5,18 +5,24 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
@@ -42,6 +48,16 @@ fun ZoomableSubSamplingImage(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     sharedContentStateKey: String? = null,
+    /**
+     * Opt-in (Vault): the photo's true aspect ratio (w/h). When supplied, the
+     * shared element is a centered aspect-box drawn [ContentScale.Crop] instead
+     * of the full-screen container, so a square grid tile (also Crop) uncrops
+     * into the whole photo in one continuous motion on BOTH open and close.
+     * Chat/Moments leave this null and keep the original container-level
+     * sharedBounds path — their source bubble is already aspect-correct (Fit),
+     * so they never crop/uncrop and need no hero. See [VaultZoomableImage].
+     */
+    heroContentAspect: Float? = null,
 ) {
     val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
@@ -93,27 +109,17 @@ fun ZoomableSubSamplingImage(
     )
     val contentAlpha = if (source is SubSamplingImageSource.Remote) sharpAlpha else 1f
 
-    // Shared-element bounds go on the container (not the inner image) so the
-    // placeholder animates with the open/close transition instead of popping in
-    // full-screen behind the still-animating image.
-    var containerModifier: Modifier = modifier.fillMaxSize()
-    if (sharedContentStateKey != null && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            containerModifier = containerModifier.sharedBounds(
-                rememberSharedContentState(key = sharedContentStateKey),
-                animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform = { _, _ ->
-                    tween(
-                        durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                        easing = FastOutSlowInEasing,
-                    )
-                },
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-            )
-        }
-    }
+    val heroAspect = heroContentAspect?.takeIf { it.isFinite() && it > 0f }
+    val hasTransition = sharedContentStateKey != null &&
+        sharedTransitionScope != null && animatedVisibilityScope != null
+    // Vault opts in with the photo's true aspect; chat/Moments leave it null.
+    val useAspectHero = hasTransition && heroAspect != null
 
-    Box(modifier = containerModifier) {
+    // The placeholder bridge + the zoomable, drawn into whatever container the
+    // chosen path supplies. [contentScale] is Crop in the Vault aspect-box (a
+    // Crop box already at the photo's aspect shows the WHOLE photo) and Fit in
+    // the full-screen chat container.
+    val viewerLayers: @Composable (ContentScale) -> Unit = { contentScale ->
         // While the full-resolution payload downloads, show a thumbnail
         // (loadFullPayload = false) as the bridge under the cross-fade.
         // HomebaseImage paints the already-decoded list/grid tile for this image
@@ -131,7 +137,7 @@ fun ZoomableSubSamplingImage(
             HomebaseImage(
                 imageData = thumbnailData,
                 contentDescription = null,
-                contentScale = ContentScale.Fit,
+                contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -140,11 +146,98 @@ fun ZoomableSubSamplingImage(
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
             modifier = Modifier.fillMaxSize().alpha(contentAlpha),
-            contentScale = ContentScale.Fit,
+            contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
             onSuccess = { imageLoaded = true },
             onTap = onTap?.let { callback -> { _: Offset -> callback() } },
+        )
+    }
+
+    // The shared element must BE the resting viewer (the bounds go on the
+    // container that holds the placeholder + zoomable), so the whole viewer flies
+    // as ONE piece. Putting the bounds on a separate node would leave the resting
+    // copy to fade in full-size behind the flying one — a ghost / re-expand.
+    //
+    // Both paths emit the SAME outer-Box -> inner-Box -> viewerLayers structure
+    // from a single set of call sites; only the modifiers and contentScale differ.
+    // This keeps the zoomable's composition identity (the CoilZoomAsyncImage node,
+    // its in-flight decode, the placeholder bridge, the imageLoaded flag, the
+    // user's pinch) stable even if [useAspectHero] flips while the viewer is open
+    // — e.g. a just-uploaded Vault photo whose aspect resolves only once its
+    // server thumbnail dimensions arrive. A two-call-site if/else would tear the
+    // zoomable subtree down on that flip (a flash + zoom reset).
+    //  - Vault (hero aspect): a centered aspect-box (== the photo's Fit rect)
+    //    drawn ContentScale.Crop. A Crop box already at the photo's aspect shows
+    //    the WHOLE photo, and the square grid source tile is also Crop, so
+    //    RemeasureToBounds uncrops the tile into the full photo in one continuous
+    //    motion — symmetric on open AND close, cropped grid look preserved. The
+    //    outer full-screen box keeps tap-to-toggle working on the letterbox
+    //    margins (the inner aspect-box only covers the photo).
+    //  - chat/Moments (no hero aspect): a full-screen container drawn
+    //    ContentScale.Fit — the source bubble is already aspect-correct, so the
+    //    photo simply grows (Fit -> Fit). Unchanged from before.
+    val currentOnTap by rememberUpdatedState(onTap)
+    val outerModifier = if (useAspectHero) {
+        // Keyed on Unit so the tap detector launches once; the latest onTap is
+        // read through rememberUpdatedState (callers may pass a fresh lambda each
+        // recomposition, which would otherwise restart the detector mid-gesture).
+        modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures { currentOnTap?.invoke() }
+            }
+    } else {
+        modifier.fillMaxSize()
+    }
+    val innerSizing = if (useAspectHero) {
+        Modifier
+            .fillMaxSize()
+            .wrapContentSize(Alignment.Center)
+            .aspectRatio(heroAspect)
+    } else {
+        Modifier.fillMaxSize()
+    }
+    // Applied at a single call site so rememberSharedContentState stays stable
+    // across a useAspectHero flip (innerSizing carries no remembered state).
+    val innerModifier = innerSizing.fullScreenImageSharedBounds(
+        sharedContentStateKey, sharedTransitionScope, animatedVisibilityScope,
+    )
+    val imageContentScale = if (useAspectHero) ContentScale.Crop else ContentScale.Fit
+
+    Box(modifier = outerModifier) {
+        Box(modifier = innerModifier) {
+            viewerLayers(imageContentScale)
+        }
+    }
+}
+
+/**
+ * Applies the full-screen image hero [SharedTransitionScope.sharedBounds] with
+ * the canonical key/transform shared by the chat ([id.homebase.chat.widget])
+ * and Vault destinations, so a node pairs up with the matching grid/bubble
+ * source. No-op when the key or either scope is absent.
+ */
+@Composable
+private fun Modifier.fullScreenImageSharedBounds(
+    sharedContentStateKey: String?,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+): Modifier {
+    if (sharedContentStateKey == null || sharedTransitionScope == null || animatedVisibilityScope == null) {
+        return this
+    }
+    return with(sharedTransitionScope) {
+        this@fullScreenImageSharedBounds.sharedBounds(
+            rememberSharedContentState(key = sharedContentStateKey),
+            animatedVisibilityScope = animatedVisibilityScope,
+            boundsTransform = { _, _ ->
+                tween(
+                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                    easing = FastOutSlowInEasing,
+                )
+            },
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
         )
     }
 }

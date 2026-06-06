@@ -43,6 +43,20 @@ fun VaultZoomableImage(
         descriptor.previewThumbnail?.toEmbeddedThumb() ?: file.previewThumbnail
     }
 
+    // The photo's true aspect ratio for the destination's aspect-box hero, so
+    // the square grid tile uncrops into the whole photo with no snap on open or
+    // close. Prefer the locally-captured aspect; else the server thumbnail's
+    // pixel dimensions (the same source chat uses in MediaItem.kt).
+    val heroAspect = remember(localImage, descriptor) {
+        (localImage as? LocalAttachmentContext.Image)?.aspectRatio?.takeIf { it.isFinite() && it > 0f }
+            ?: run {
+                val thumb = descriptor.thumbnails?.lastOrNull() ?: descriptor.previewThumbnail
+                val w = thumb?.pixelWidth
+                val h = thumb?.pixelHeight
+                if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+            }
+    }
+
     val isPending = descriptor.iv == null
 
     if (localFilePath != null) {
@@ -58,6 +72,7 @@ fun VaultZoomableImage(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
+                heroContentAspect = heroAspect,
             )
             if (isPending) {
                 MediaPendingOverlay(onTap = onToggleUI)
@@ -84,6 +99,7 @@ fun VaultZoomableImage(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
+                heroContentAspect = heroAspect,
             )
         } else {
             MediaUnavailablePlaceholder(
