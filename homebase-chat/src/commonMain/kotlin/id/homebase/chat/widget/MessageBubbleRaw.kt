@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -260,12 +262,26 @@ fun MessageBubbleRaw(
     val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
     val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
     val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
+
+    // A media-only sticker message must float directly on the chat wallpaper, so its
+    // transparent pixels show the background — not the bubble fill. Detect it the same
+    // way MediaMessage does (solo, transparent image payload) and, when true, drop the
+    // outer Surface fill/shape/elevation entirely and render it like an emoji-only
+    // message (see StickerMessage). Non-sticker bubbles are unaffected.
+    val isSticker = remember(filteredPayloads) {
+        filteredPayloads?.size == 1 &&
+            (filteredPayloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
+    val isStickerBubble = isSticker && mediaOnly
+
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
         else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
         else MaterialTheme.colorScheme.surfaceContainerHigh
+    // Stickers float on the wallpaper like emoji-only, so their tucked timestamp uses the
+    // same wallpaper-readable onSurface color rather than a sent-bubble tint.
     val contentColor =
-        if (emojiOnly) MaterialTheme.colorScheme.onSurface
+        if (emojiOnly || isStickerBubble) MaterialTheme.colorScheme.onSurface
         else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
         else MaterialTheme.colorScheme.onSurface
 
@@ -319,7 +335,7 @@ fun MessageBubbleRaw(
 
     Surface(
         modifier = modifier
-            .clip(shape)
+            .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(
                     onClick = {},
@@ -332,8 +348,8 @@ fun MessageBubbleRaw(
                 scaleX = scaleAnim.value
                 scaleY = scaleAnim.value
             },
-        shape = shape,
-        color = backgroundColor,
+        shape = if (isStickerBubble) RectangleShape else shape,
+        color = if (isStickerBubble) Color.Transparent else backgroundColor,
     ) {
         Box {
             // Overlay Box that captures all long clicks
@@ -349,7 +365,35 @@ fun MessageBubbleRaw(
                 )
             }
 
-            if (mediaOnly && !message.isDeleted) {
+            if (isStickerBubble && !message.isDeleted) {
+                // Stickers render exactly like emoji-only messages: a bare image floating
+                // on the wallpaper with a tucked, scrim-free timestamp. This deliberately
+                // bypasses MediaMessage's media chrome and MediaTimestampOverlay's gray
+                // scrim — see StickerMessage. Non-sticker media-only messages fall through
+                // to the unchanged path below.
+                StickerMessage(
+                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                    decryptedFiles = decryptedFiles,
+                    keyHeader = message.keyHeader,
+                    driveId = chatTargetDrive.alias,
+                    fileId = message.fileId,
+                    messageId = message.id,
+                    previewThumbnail = message.previewThumbnail,
+                    messageInfoText = messageInfoText,
+                    sentByYou = sentByYou,
+                    isPendingSend = isPendingSend,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
+                    contentColor = contentColor,
+                    pendingSince = message.userDate,
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = { handleLongClick() },
+                    onRequestDecryptedFile = onRequestDecryptedFile,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    downloadingFiles = downloadingFiles,
+                    uploadStatus = uploadStatus,
+                )
+            } else if (mediaOnly && !message.isDeleted) {
                 Box(modifier = Modifier.wrapContentWidth()) {
                     MediaMessage(
                         payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),

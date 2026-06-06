@@ -645,6 +645,11 @@ class NotificationService(
         )
     }
 
+    /** Navigate to the moments composer (used for the "New Moment" share deep link). */
+    fun navigateToMomentCompose() {
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
+    }
+
     /** Displays a rich notification using platform-specific APIs. */
     private fun showRichNotification(data: RichNotificationData) {
         try {

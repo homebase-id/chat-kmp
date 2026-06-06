@@ -229,6 +229,71 @@ actual object ImageUtils {
         return ImageSize(img.width, img.height)
     }
 
+    actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
+        return try {
+            val image = decodeImage(srcBytes)
+            // Fast path: the decoded image declares itself fully opaque.
+            if (image.imageInfo.colorInfo.alphaType == ColorAlphaType.OPAQUE) return false
+
+            val w = image.width
+            val h = image.height
+            if (w <= 0 || h <= 0) return false
+
+            // Read every pixel into a BGRA_8888 buffer (alpha = high byte at
+            // offset 3 of each 4-byte pixel) — same layout the blur path uses.
+            val info = ImageInfo(
+                colorInfo = ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB),
+                width = w,
+                height = h,
+            )
+            val rowBytes = w * 4
+            val bitmap = SkiaBitmap()
+            if (!bitmap.allocPixels(info)) return false
+            try {
+                if (!image.readPixels(bitmap)) return false
+                val bytes = bitmap.readPixels(info, rowBytes, 0, 0) ?: return false
+
+                // Coarse grid (≤ ~ALPHA_PROBE_GRID² samples) so a huge image stays cheap.
+                val cols = minOf(w, ALPHA_PROBE_GRID)
+                val rows = minOf(h, ALPHA_PROBE_GRID)
+                for (gy in 0 until rows) {
+                    val y = (gy.toLong() * (h - 1) / maxOf(1, rows - 1)).toInt()
+                    for (gx in 0 until cols) {
+                        val x = (gx.toLong() * (w - 1) / maxOf(1, cols - 1)).toInt()
+                        val alpha = bytes[(y * w + x) * 4 + 3].toInt() and 0xFF
+                        if (alpha < ALPHA_OPAQUE_THRESHOLD) return true
+                    }
+                }
+                // Always include the 4 corners + centre — where cut-out stickers
+                // carry their transparency — in case the grid stepped over them.
+                val corners = listOf(
+                    0 to 0,
+                    (w - 1) to 0,
+                    0 to (h - 1),
+                    (w - 1) to (h - 1),
+                    (w / 2) to (h / 2),
+                )
+                corners.any { (x, y) ->
+                    (bytes[(y * w + x) * 4 + 3].toInt() and 0xFF) < ALPHA_OPAQUE_THRESHOLD
+                }
+            } finally {
+                bitmap.close()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Alpha below this counts as non-opaque. 250 (not 255) tolerates the
+     * compression fringe that WebP/PNG re-encode adds to near-opaque photos,
+     * so an ordinary photo isn't misdetected as a transparent sticker.
+     */
+    private const val ALPHA_OPAQUE_THRESHOLD: Int = 250
+
+    /** Grid side length → ALPHA_PROBE_GRID² ≤ ~4096 samples regardless of image size. */
+    private const val ALPHA_PROBE_GRID: Int = 64
+
     actual fun warpAffine(
         srcBytes: ByteArray,
         matrix9: FloatArray,

@@ -12,12 +12,17 @@ class ShareConversationCacheWriter(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun updateCache(conversations: List<ShareableConversation>, userDomain: String) {
+    fun updateCache(
+        conversations: List<ShareableConversation>,
+        userDomain: String,
+        momentsActivated: Boolean,
+    ) {
         try {
             val data = ShareConversationCacheData(
                 conversations = conversations.sortedByDescending { it.lastMessageTimestamp },
                 updatedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
                 userDomain = userDomain,
+                momentsActivated = momentsActivated,
             )
             val encoded = json.encodeToString(data)
             cacheStorage.writeConversationCache(encoded)

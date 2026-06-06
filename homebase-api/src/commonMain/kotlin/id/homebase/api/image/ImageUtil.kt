@@ -65,6 +65,22 @@ expect object ImageUtils {
     fun getNaturalSize(srcBytes: ByteArray): ImageSize
 
     /**
+     * Decode [srcBytes] and report whether ANY sampled pixel is non-opaque
+     * (alpha below an opaque threshold). Used to auto-detect sticker / cut-out
+     * images at send time so the bubble can drop its opaque backdrop.
+     *
+     * Callers MUST pre-gate by format — only call this for formats that can
+     * carry alpha (PNG / WebP) — to keep it cheap and avoid decoding JPEGs.
+     *
+     * Sampling is coarse (a bounded grid plus the four corners + centre, where
+     * cut-out stickers carry their transparency) so a huge image stays fast; a
+     * single transparent corner is therefore reliably detected. The probe is
+     * defensive: on ANY decode failure it returns `false` (opaque) so we never
+     * accidentally strip a real photo's backdrop.
+     */
+    fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean
+
+    /**
      * Apply an arbitrary affine transform to [srcBytes] and rasterize the
      * result into a new image of [outputWidth] x [outputHeight] pixels.
      *
