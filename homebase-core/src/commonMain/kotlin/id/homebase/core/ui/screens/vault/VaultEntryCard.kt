@@ -5,12 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -252,35 +254,39 @@ private fun VaultCardThumbnail(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
+    val descriptor = file.payloadDescriptors.firstOrNull()
+
     // 1. Local file available (pending upload or cached thumbnail)
     if ((file.isImage || file.isPdf) && localImage != null) {
-        var imageModifier: Modifier = Modifier.fillMaxSize()
-        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-            with(sharedTransitionScope) {
-                imageModifier = imageModifier.sharedBounds(
-                    rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    boundsTransform = { _, _ ->
-                        tween(
-                            durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                            easing = FastOutSlowInEasing,
-                        )
-                    },
-                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+        // Local previews carry the source photo's aspect ratio directly.
+        val photoAspect = localImage.aspectRatio?.takeIf { it.isFinite() && it > 0f }
+        VaultHeroThumbnail(
+            file = file,
+            firstPayloadKey = firstPayloadKey,
+            photoAspect = photoAspect,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            visibleCrop = {
+                AsyncImage(
+                    model = localImage.localFilePath,
+                    contentDescription = description,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
                 )
-            }
-        }
-        AsyncImage(
-            model = localImage.localFilePath,
-            contentDescription = description,
-            modifier = imageModifier,
-            contentScale = ContentScale.Crop,
+            },
+            sharedFit = {
+                AsyncImage(
+                    model = localImage.localFilePath,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            },
         )
         return
     }
 
     // 2. Encrypted server thumbnail (image or PDF — same HomebaseImage path)
-    val descriptor = file.payloadDescriptors.firstOrNull()
     val thumbnailData = remember(descriptor, file.previewThumbnail) {
         descriptor?.let {
             file.imageDataFor(
@@ -292,13 +298,37 @@ private fun VaultCardThumbnail(
         }
     }
     if ((file.isImage || file.isPdf) && thumbnailData != null) {
-        HomebaseImage(
-            imageData = thumbnailData,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            contentDescription = description,
+        // Source aspect from the same thumbnail descriptor chat uses (MediaItem.kt):
+        // server thumbnails carry pixelWidth/pixelHeight; preview is the fallback.
+        val photoAspect = remember(descriptor, file.previewThumbnail) {
+            val thumb = descriptor?.thumbnails?.lastOrNull()
+                ?: descriptor?.previewThumbnail
+            val w = thumb?.pixelWidth
+            val h = thumb?.pixelHeight
+            if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h.toFloat() else null
+        }
+        VaultHeroThumbnail(
+            file = file,
+            firstPayloadKey = firstPayloadKey,
+            photoAspect = photoAspect,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
+            visibleCrop = {
+                HomebaseImage(
+                    imageData = thumbnailData,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = description,
+                )
+            },
+            sharedFit = {
+                HomebaseImage(
+                    imageData = thumbnailData,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    contentDescription = null,
+                )
+            },
         )
         return
     }
@@ -340,4 +370,109 @@ private fun VaultCardThumbnail(
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(32.dp),
     )
+}
+
+/**
+ * Decouples the *visible* cropped grid tile from the *shared-element* node that
+ * flies during the open/close hero transition, so the grid keeps its uniform
+ * cropped 100x88 look while the transition stays aspect-correct.
+ *
+ * Why this exists — the re-expand/snap:
+ * The full-screen destination ([ZoomableSubSamplingImage]) draws the photo with
+ * [ContentScale.Fit] (letterboxed to the photo's true aspect). If the shared
+ * element starts as a [ContentScale.Crop] tile sized to the ~1.14:1 cell, the
+ * RemeasureToBounds flight animates a cropped-square rect toward the screen while
+ * Crop keeps filling it, then at hand-off the destination's Fit re-letterboxes —
+ * a visible aspect shift (the "expand then snap to a different size"). Chat does
+ * not snap because its source bubble is already sized to the photo's true aspect
+ * with Fit (MediaItem.kt), so source aspect == destination Fit aspect and the
+ * photo grows in one continuous motion.
+ *
+ * Fix (keep the cropped grid look): render two stacked nodes inside the cell —
+ *  - [sharedFit]: the shared-element node, measured at [Modifier.aspectRatio]
+ *    ([photoAspect]) with [ContentScale.Fit]. Its lookahead bounds (the flight
+ *    start rect) therefore carry the photo's true aspect, matching the
+ *    destination's Fit content — one continuous grow, no snap. Drawn first, so
+ *    it sits *under* the crop.
+ *  - [visibleCrop]: a static [ContentScale.Crop] node filling the whole cell,
+ *    NO sharedBounds. Drawn on top, it fully covers the fitted node, so the grid
+ *    appearance at rest is the unchanged cropped square.
+ *
+ * During the open transition the whole grid (including [visibleCrop]) cross-fades
+ * out via the outer AnimatedContent while only the keyed [sharedFit] node is
+ * lifted into the shared-transition overlay and flies aspect-correctly.
+ *
+ * When [photoAspect] is null (dimension missing) or there is no transition scope,
+ * we fall back to the original single Crop node carrying the sharedBounds — the
+ * tile renders exactly as before; only the snap-free flight is forfeited.
+ */
+@Composable
+private fun VaultHeroThumbnail(
+    file: VaultEntry,
+    firstPayloadKey: String,
+    photoAspect: Float?,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    visibleCrop: @Composable () -> Unit,
+    sharedFit: @Composable () -> Unit,
+) {
+    val aspect = photoAspect?.takeIf { it.isFinite() && it > 0f }
+    if (aspect == null || sharedTransitionScope == null || animatedVisibilityScope == null) {
+        // Fallback: original behaviour — one Crop node carries the sharedBounds.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .vaultSharedBounds(file, firstPayloadKey, sharedTransitionScope, animatedVisibilityScope),
+        ) {
+            visibleCrop()
+        }
+        return
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Aspect-correct shared-element node (the thing that flies). Fitted within
+        // and centered in the cell, so its bounds never overflow the visible tile
+        // (a start rect larger than the tile would pop outward at flight start).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .wrapContentSize(Alignment.Center)
+                .aspectRatio(aspect)
+                .vaultSharedBounds(file, firstPayloadKey, sharedTransitionScope, animatedVisibilityScope),
+        ) {
+            sharedFit()
+        }
+        // Static cropped tile drawn on top — the unchanged grid appearance.
+        visibleCrop()
+    }
+}
+
+/**
+ * Applies the Vault image hero [SharedTransitionScope.sharedBounds] with the
+ * canonical key/transform so a node participates in the open/close transition.
+ * No-op when either scope is absent. The key
+ * (`image-<fileId>-<payloadKey>`) and RemeasureToBounds transform match the
+ * full-screen destination ([ZoomableSubSamplingImage]) so the elements pair up.
+ */
+@Composable
+private fun Modifier.vaultSharedBounds(
+    file: VaultEntry,
+    firstPayloadKey: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+): Modifier {
+    if (sharedTransitionScope == null || animatedVisibilityScope == null) return this
+    return with(sharedTransitionScope) {
+        this@vaultSharedBounds.sharedBounds(
+            rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+            animatedVisibilityScope = animatedVisibilityScope,
+            boundsTransform = { _, _ ->
+                tween(
+                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                    easing = FastOutSlowInEasing,
+                )
+            },
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+        )
+    }
 }
