@@ -1102,6 +1102,7 @@
 
     <!-- Contact info / chat overview -->
     <string name="contact_info_recent_media">Recent media</string>
+    <string name="conversation_chatting_since">Chatting since %1$s</string>
 
     <!-- Conversation media album + groups in common -->
     <string name="conversation_media_see_all">See all</string>
