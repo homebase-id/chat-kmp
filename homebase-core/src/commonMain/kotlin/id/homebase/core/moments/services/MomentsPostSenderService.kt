@@ -37,7 +37,11 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.notifications.MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.resources.MR
+import id.homebase.resources.moments_push_new_comment
+import id.homebase.resources.moments_push_new_post
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -356,7 +360,7 @@ class MomentsPostSenderService(
                         typeId = momentUniqueId.toString(),
                         tagId = momentUniqueId.toString(),
                         silent = false,
-                        unEncryptedMessage = "New moment posted",
+                        unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_post),
                     ),
                 ),
                 payloads = encrypted.payloads,
@@ -996,7 +1000,7 @@ class MomentsPostSenderService(
                     typeId = momentId.toString(),
                     tagId = MOMENT_COMMENT_TAG_SENTINEL,
                     silent = false,
-                    unEncryptedMessage = "New comment",
+                    unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_comment),
                 ),
             ),
             payloads = encrypted.payloads,

@@ -195,7 +195,11 @@ struct iOSApp: App {
     private func handleIncomingURL(_ url: URL) {
         switch url.scheme {
         case "homebase-share":
-            handleShareURL(url)
+            if url.host == "moment" {
+                ShareHandlerBridge.shared.handleIncomingMomentShare()
+            } else {
+                handleShareURL(url)
+            }
         case "homebase-fchat":
             switch url.host {
             case "permission-callback":

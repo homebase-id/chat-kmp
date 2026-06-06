@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -65,6 +66,8 @@ import id.homebase.resources.groups
 import id.homebase.resources.number_of_members
 import id.homebase.resources.recents
 import id.homebase.resources.sending_to_conversations
+import id.homebase.resources.share_picker_new_moment
+import id.homebase.resources.share_picker_new_moment_subtitle
 import id.homebase.resources.share_picker_next
 import id.homebase.resources.share_picker_send
 import id.homebase.resources.share_to
@@ -84,7 +87,8 @@ fun SharePickerScreen(
     sharedContent: SharedContent,
     hasFiles: Boolean,
     isSending: Boolean,
-    onSendToConversations: (Set<Uuid>) -> Unit,
+    showNewMomentOption: Boolean,
+    onTargetSelected: (ShareTarget) -> Unit,
     onCancel: () -> Unit,
 ) {
     val conversationsData by conversationStream.conversations.collectAsStateWithLifecycle()
@@ -186,7 +190,7 @@ fun SharePickerScreen(
                 ShareSendBar(
                     count = selectedIds.size,
                     buttonText = if (hasFiles) stringResource(MR.string.share_picker_next) else stringResource(MR.string.share_picker_send),
-                    onSend = { onSendToConversations(selectedIds) },
+                    onSend = { onTargetSelected(ShareTarget.Conversations(selectedIds)) },
                 )
             }
         },
@@ -212,6 +216,15 @@ fun SharePickerScreen(
             )
 
             HorizontalDivider()
+
+            // A "New Moment" destination sits above the conversation list (only
+            // when files are present and Moments is activated). It's an action,
+            // not a selectable checkbox row, so it dispatches immediately rather
+            // than joining the multi-select set.
+            if (showNewMomentOption && !isSending && conversationsData.dataReady) {
+                NewMomentRow(onClick = { onTargetSelected(ShareTarget.NewMoment) })
+                HorizontalDivider()
+            }
 
             if (isSending) {
                 Box(
@@ -347,6 +360,46 @@ private fun ShareSendBar(
             FilledTonalButton(onClick = onSend) {
                 Text(buttonText)
             }
+        }
+    }
+}
+
+@Composable
+private fun NewMomentRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 28.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(MR.string.share_picker_new_moment),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = stringResource(MR.string.share_picker_new_moment_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

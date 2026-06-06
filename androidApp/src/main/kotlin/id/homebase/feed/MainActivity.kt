@@ -160,6 +160,16 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
+            // Share-into-"New Moment" deep link: homebase-fchat://moment-compose
+            // The share flow already seeded MomentCreateFlowState with the chosen
+            // media; this only steers the nav stack into the composer.
+            if (data.host == "moment-compose") {
+                Logger.i(tag = "MainActivity") { "Deep link: navigating to moment compose" }
+                notificationService.navigateToMomentCompose()
+                intent.data = null
+                return
+            }
+
             // Owner-console "Extend Permissions" return URL.
             // Path: homebase-fchat://permission-callback?status=[canceled|...]
             if (data.host == "permission-callback") {
