@@ -36,7 +36,7 @@ class ConversationSettingsViewModel(
     fun onUiAction(action: ConversationSettingsUiAction) {
         when (action) {
             is ConversationSettingsUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.Back)}
-            is ConversationSettingsUiAction.ShowContactInfo -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.ShowContactInfo(action.odinId.toString()))}
+            is ConversationSettingsUiAction.ShowContactInfo -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.ShowContactInfo(action.odinId.toString(), route.conversationId))}
         }
     }
 

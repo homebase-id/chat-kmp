@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.common.BatchResult
@@ -13,7 +12,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
@@ -25,12 +23,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.uuid.Uuid
 
 class ContactInfoViewModel(
     savedStateHandle: SavedStateHandle,
     val contactService: ContactService,
     private val chatMessageStream: ChatMessageStream,
-    private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
     val route = savedStateHandle.toRoute<Route.ContactInfo>()
     private val _uiState = MutableStateFlow(ContactInfoUiState())
@@ -65,20 +63,21 @@ class ContactInfoViewModel(
     }
 
     /**
-     * Loads an overview of the 1:1 conversation with the contact. The 1:1
-     * conversationId is the deterministic XorId of the two identities, so we can
-     * query the chat drive directly without first resolving a conversation
-     * record. Runs independently of [loadData] so the avatar/name paint before
-     * the (heavier) message scan finishes.
+     * Loads an overview of the conversation with the contact. The conversationId
+     * is threaded in from the screen that opened this one (the conversation
+     * header → ConversationSettings → here), so we query the chat drive directly.
+     * Null when reached from a context without a conversation (e.g. a group
+     * member's profile); the summary is simply skipped then. Runs independently
+     * of [loadData] so the avatar/name paint before the (heavier) message scan.
      */
     private fun loadSummary() {
+        val conversationId = route.conversationId?.let { Uuid.parse(it) }
+        if (conversationId == null) {
+            _uiState.update { it.copy(isSummaryLoading = false) }
+            return
+        }
         viewModelScope.launch {
             try {
-                val self = credentialsManager.requireActiveDomain()
-                val other = OdinId(route.odinId)
-                val conversationId =
-                    XorIdUtil.getNewXorId(self.domainName, other.domainName)
-
                 val batch = chatMessageStream.fetchMessages(
                     conversationId = conversationId,
                     limit = SUMMARY_MESSAGE_CAP,

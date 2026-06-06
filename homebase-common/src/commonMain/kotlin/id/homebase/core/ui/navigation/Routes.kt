@@ -41,7 +41,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("contact")
-    data class ContactInfo(val odinId: String) : Route()
+    data class ContactInfo(val odinId: String, val conversationId: String? = null) : Route()
 
     @Serializable
     @SerialName("archived-conversations")

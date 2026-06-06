@@ -14,5 +14,5 @@ data class ConversationSettingsUiState(
 
 sealed interface ConversationSettingsUiEvent {
     data object Back : ConversationSettingsUiEvent
-    data class ShowContactInfo(val odinId: String) : ConversationSettingsUiEvent
+    data class ShowContactInfo(val odinId: String, val conversationId: String) : ConversationSettingsUiEvent
 }

@@ -28,7 +28,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ConversationSettingsScreen(
     viewModel: ConversationSettingsViewModel,
     onNavigateBack: () -> Unit,
-    onShowContactInfo: (odinId: String) -> Unit,
+    onShowContactInfo: (odinId: String, conversationId: String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -41,7 +41,7 @@ fun ConversationSettingsScreen(
 
             is ConversationSettingsUiEvent.ShowContactInfo -> {
                 viewModel.eventConsumed()
-                onShowContactInfo(event.odinId)
+                onShowContactInfo(event.odinId, event.conversationId)
             }
 
             null -> {}
