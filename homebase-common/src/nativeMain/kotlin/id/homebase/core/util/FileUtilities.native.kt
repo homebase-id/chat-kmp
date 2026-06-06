@@ -1,26 +1,37 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.io.files.Path
+import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.dataWithContentsOfURL
 import platform.Photos.PHAccessLevelAddOnly
 import platform.Photos.PHAssetChangeRequest
+import platform.Photos.PHAssetCreationRequest
+import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIImage
+import platform.UIKit.UIImageJPEGRepresentation
+import platform.posix.memcpy
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
@@ -68,7 +79,11 @@ actual fun getUriHandler(): FileSystemHandler {
         }
 
         @OptIn(ExperimentalForeignApi::class)
-        override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
+        override fun shareFile(file: Path, onError: (Throwable) -> Unit) =
+            shareFile(file, text = null, onError = onError)
+
+        @OptIn(ExperimentalForeignApi::class)
+        override fun shareFile(file: Path, text: String?, onError: (Throwable) -> Unit) {
             try {
                 val filePath = file.toString()
                 if (!NSFileManager.defaultManager.fileExistsAtPath(filePath)) {
@@ -76,8 +91,16 @@ actual fun getUriHandler(): FileSystemHandler {
                     return
                 }
                 val fileUrl = NSURL.fileURLWithPath(filePath)
+                // The caption rides as a second activity item; each share target
+                // decides whether to use it. Photos/Messages combine file + text
+                // cleanly; others may ignore the string.
+                val activityItems = if (!text.isNullOrBlank()) {
+                    listOf(fileUrl, text)
+                } else {
+                    listOf(fileUrl)
+                }
                 val activityVC = UIActivityViewController(
-                    activityItems = listOf(fileUrl), applicationActivities = null
+                    activityItems = activityItems, applicationActivities = null
                 )
                 activityVC.completionWithItemsHandler =
                     { _, _, _, error ->
@@ -166,6 +189,7 @@ actual fun getUriHandler(): FileSystemHandler {
             }
         }
 
+        @OptIn(ExperimentalForeignApi::class)
         private fun saveToPhotoLibrary(
             fileUrl: NSURL,
             isVideo: Boolean,
@@ -173,12 +197,31 @@ actual fun getUriHandler(): FileSystemHandler {
             onError: (Throwable) -> Unit,
         ) {
             val scoped = fileUrl.startAccessingSecurityScopedResource()
+
+            // Some image formats this platform serves (notably WebP, also AVIF)
+            // can be *displayed* by iOS but are rejected by the Photos library on
+            // import with PHPhotosError 3302 (invalidResource) — the cause of the
+            // "couldn't save photo" failures. UIImage can still decode them, so
+            // re-encode such files to JPEG and add them as raw photo-resource
+            // data. JPEG/PNG/GIF/HEIC import losslessly via the original file URL.
+            val reencodedJpeg: NSData? = if (isVideo) null else jpegForUnsupportedPhotoFormat(fileUrl)
+
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 changeBlock = {
-                    if (isVideo) {
-                        PHAssetChangeRequest.creationRequestForAssetFromVideoAtFileURL(fileUrl)
-                    } else {
-                        PHAssetChangeRequest.creationRequestForAssetFromImageAtFileURL(fileUrl)
+                    when {
+                        isVideo ->
+                            PHAssetChangeRequest.creationRequestForAssetFromVideoAtFileURL(fileUrl)
+
+                        reencodedJpeg != null ->
+                            PHAssetCreationRequest.creationRequestForAsset()
+                                .addResourceWithType(
+                                    type = PHAssetResourceTypePhoto,
+                                    data = reencodedJpeg,
+                                    options = null,
+                                )
+
+                        else ->
+                            PHAssetChangeRequest.creationRequestForAssetFromImageAtFileURL(fileUrl)
                     }
                 },
                 completionHandler = { success, error ->
@@ -190,6 +233,50 @@ actual fun getUriHandler(): FileSystemHandler {
                     }
                 },
             )
+        }
+
+        /**
+         * If [fileUrl] points to an image in a format the Photos library can't
+         * import (WebP/AVIF/BMP/unknown — anything other than JPEG/PNG/GIF/HEIC),
+         * decode it with UIImage and return JPEG bytes suitable for
+         * [PHAssetCreationRequest.addResourceWithType]. Returns null for formats
+         * Photos accepts directly (so the original bytes are preserved) or when
+         * the file can't be read/decoded (so Photos still gets to try the
+         * original and surface its own error).
+         */
+        @OptIn(ExperimentalForeignApi::class)
+        private fun jpegForUnsupportedPhotoFormat(fileUrl: NSURL): NSData? {
+            val data = NSData.dataWithContentsOfURL(fileUrl) ?: return null
+            val format = ImageFormatDetector.detectFormat(data.headerBytes(16))
+            val importsDirectly = format in setOf(
+                "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
+            )
+            if (importsDirectly) return null
+
+            Logger.d(tag = "FileUtilities") {
+                "saveToPhotoLibrary: re-encoding $format to JPEG (Photos cannot import it directly)"
+            }
+            val uiImage = UIImage.imageWithData(data)
+            if (uiImage == null) {
+                Logger.w(tag = "FileUtilities") {
+                    "saveToPhotoLibrary: UIImage could not decode $format; letting Photos try the original"
+                }
+                return null
+            }
+            return UIImageJPEGRepresentation(uiImage, 0.95)
+        }
+
+        /** Copy up to [count] leading bytes of this [NSData] into a [ByteArray]. */
+        @OptIn(ExperimentalForeignApi::class)
+        private fun NSData.headerBytes(count: Int): ByteArray {
+            val n = minOf(count.toULong(), length).toInt()
+            val out = ByteArray(n)
+            if (n > 0) {
+                out.usePinned { pinned ->
+                    memcpy(pinned.addressOf(0), bytes, n.toULong())
+                }
+            }
+            return out
         }
 
         override fun shareText(text: String, onError: (Throwable) -> Unit) {

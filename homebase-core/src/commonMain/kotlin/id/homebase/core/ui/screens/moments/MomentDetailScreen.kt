@@ -173,6 +173,7 @@ import id.homebase.resources.moments_detail_menu_delete
 import id.homebase.resources.moments_detail_menu_info
 import id.homebase.resources.moments_detail_menu_more
 import id.homebase.resources.moments_detail_menu_save_current
+import id.homebase.resources.moments_detail_menu_share
 import id.homebase.resources.moments_detail_description_hint
 import id.homebase.resources.moments_detail_description_save
 import id.homebase.resources.moments_detail_edit_description
@@ -517,7 +518,7 @@ fun MomentDetailPane(
             when (event) {
                 is MomentDetailUiEvent.MomentDeleted -> onNavigateBack?.invoke()
                 is MomentDetailUiEvent.ShareFileReady ->
-                    fileSystemHandler.shareFile(Path(event.filePath))
+                    fileSystemHandler.shareFile(Path(event.filePath), event.caption)
                 // "Save current": the VM has finished decrypting (+ remuxing)
                 // the visible payload to a cache file; hand it to the platform
                 // save-to-device flow and confirm with a snackbar. Reuses the
@@ -820,6 +821,9 @@ private fun DetailContent(
 private fun MomentOverflowMenu(
     isDeleting: Boolean,
     isSaving: Boolean,
+    isSharing: Boolean,
+    showShare: Boolean,
+    onShareClick: () -> Unit,
     showSave: Boolean,
     onSaveClick: () -> Unit,
     showInfo: Boolean,
@@ -830,11 +834,11 @@ private fun MomentOverflowMenu(
     iconTint: Color = Color.Unspecified,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // While a delete OR a save is in flight the icon is swapped for a spinner.
-    // Same shape as the per-comment delete indicator: tells the user
-    // "something is happening" — for save, that covers the decrypt/remux of
-    // the visible payload before the device-gallery write fires.
-    val busy = isDeleting || isSaving
+    // While a delete, save, OR share is in flight the icon is swapped for a
+    // spinner. Same shape as the per-comment delete indicator: tells the user
+    // "something is happening" — for save/share, that covers the decrypt/remux
+    // of the visible payload before the device-gallery write / share sheet fires.
+    val busy = isDeleting || isSaving || isSharing
     Box {
         IconButton(onClick = { expanded = true }, enabled = !busy) {
             if (busy) {
@@ -857,6 +861,15 @@ private fun MomentOverflowMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            if (showShare) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.moments_detail_menu_share)) },
+                    onClick = {
+                        expanded = false
+                        onShareClick()
+                    },
+                )
+            }
             if (showSave) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.moments_detail_menu_save_current)) },
@@ -1221,6 +1234,15 @@ private fun MomentMediaScaffold(
                         MomentOverflowMenu(
                             isDeleting = uiState.isDeleting,
                             isSaving = uiState.isSavingMedia,
+                            isSharing = uiState.isSharingMedia,
+                            // Hidden on description-only moments — nothing on
+                            // screen to share. Shares the visible item + caption.
+                            showShare = visiblePayloadKey != null,
+                            onShareClick = {
+                                visiblePayloadKey?.let {
+                                    onAction(MomentDetailUiAction.ShareMedia(it))
+                                }
+                            },
                             // Hidden on description-only moments — nothing on
                             // screen to save.
                             showSave = visiblePayloadKey != null,

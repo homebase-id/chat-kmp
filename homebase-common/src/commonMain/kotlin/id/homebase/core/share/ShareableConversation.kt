@@ -27,4 +27,9 @@ data class ShareConversationCacheData(
     val conversations: List<ShareableConversation>,
     val updatedAt: Long,
     val userDomain: String,
+    // Whether the Moments feature is activated for this user. The iOS share
+    // extension reads this to decide whether to offer "New Moment" as a share
+    // destination (it can't reach the main app's DB). Defaults false so older
+    // caches deserialize cleanly.
+    val momentsActivated: Boolean = false,
 )

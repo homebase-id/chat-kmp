@@ -74,6 +74,63 @@ class HomebaseImageLoaderTest {
     }
 
     @Test
+    fun `effectiveContentType prefers payloadContentType over preview thumbnail`() {
+        // A GIF ships a tiny WebP preview, so contentTypeHint is "image/webp".
+        // effectiveContentType must surface the real payload type ("image/gif")
+        // so the loader takes the thumbless / full-payload branch and the
+        // animated original renders inline (instead of a NotFoundException from
+        // a server thumbnail that was never generated for a GIF).
+        val gif = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16(),
+            payloadContentType = "image/gif",
+            previewThumbnail = EmbeddedThumb(
+                pixelWidth = 20,
+                pixelHeight = 20,
+                contentType = "image/webp",
+                content = "base64data"
+            )
+        )
+        assertEquals("image/gif", gif.effectiveContentType)
+        assertTrue(gif.effectiveContentType in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
+        // contentTypeHint is unchanged — still the preview thumbnail's type.
+        assertEquals("image/webp", gif.contentTypeHint)
+    }
+
+    @Test
+    fun `effectiveContentType falls back to preview thumbnail when payload type absent`() {
+        val data = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16(),
+            previewThumbnail = EmbeddedThumb(
+                pixelWidth = 20,
+                pixelHeight = 20,
+                contentType = "image/webp",
+                content = "base64data"
+            )
+        )
+        assertEquals("image/webp", data.effectiveContentType)
+        // A regular raster image is NOT thumbless, so it keeps the server-
+        // thumbnail path — no regression for JPEG/PNG/WebP.
+        assertTrue(data.effectiveContentType !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES)
+    }
+
+    @Test
+    fun `effectiveContentType is null when neither payload type nor preview present`() {
+        val data = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16()
+        )
+        assertNull(data.effectiveContentType)
+    }
+
+    @Test
     fun `ImageSize presets are correctly defined`() {
         assertEquals(320, ImageSize.THUMB_SMALL.pixelWidth)
         assertEquals(640, ImageSize.THUMB_MEDIUM.pixelWidth)

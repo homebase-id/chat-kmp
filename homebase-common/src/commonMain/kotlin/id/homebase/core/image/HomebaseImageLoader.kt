@@ -115,8 +115,12 @@ class HomebaseImageLoader(
             return fileOperationsProvider.loadPendingFile(data)
         }
 
-        // Skip thumbnail fetch for SVG/GIF (load full payload instead)
-        if (data.contentTypeHint in THUMBLESS_CONTENT_TYPES) {
+        // Skip thumbnail fetch for GIF (load the animated original instead).
+        // Use effectiveContentType — for a GIF the previewThumbnail is a tiny
+        // WebP, so contentTypeHint alone is "image/webp" and would wrongly try
+        // to fetch a server thumbnail that was never generated (N=0 thumbs for
+        // GIFs), surfacing as a NotFoundException / error triangle.
+        if (data.effectiveContentType in THUMBLESS_CONTENT_TYPES) {
             return loadFullPayload(data, retryConfig)
         }
 
