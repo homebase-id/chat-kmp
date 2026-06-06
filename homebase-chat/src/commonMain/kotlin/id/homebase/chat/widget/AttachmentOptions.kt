@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
@@ -68,10 +67,8 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
-import id.homebase.resources.cd_paste_clipboard_image
 import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
-import id.homebase.resources.chat_message_attachment_paste
 import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_groodle_share
@@ -398,11 +395,6 @@ fun AttachmentOptions(
     onEventClick: () -> Unit,
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
-    // iOS has no Ctrl+V and Compose's contentReceiver paste modifier is Android-only, so
-    // pasting a clipboard image needs an explicit affordance. Null hides the Paste option;
-    // the caller passes a handler only where a manual read makes sense (iOS, desktop) and
-    // omits it where paste is captured another way (Android keyboard) or unsupported (web).
-    onPasteClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -429,17 +421,6 @@ fun AttachmentOptions(
                     label = stringResource(MR.string.chat_message_attachment_file),
                     onClick = onFileClick
                 )
-            }
-            if (onPasteClick != null) {
-                item {
-                    AttachmentOption(
-                        modifier = Modifier.testTag("attachment_paste"),
-                        icon = Icons.Default.ContentPaste,
-                        label = stringResource(MR.string.chat_message_attachment_paste),
-                        contentDescription = stringResource(MR.string.cd_paste_clipboard_image),
-                        onClick = onPasteClick,
-                    )
-                }
             }
             if (isMobile()) {
                 item {
