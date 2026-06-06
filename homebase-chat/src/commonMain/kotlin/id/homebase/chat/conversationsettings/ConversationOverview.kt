@@ -44,6 +44,8 @@ data class SharedMediaItem(
     val previewThumbnail: EmbeddedThumb?,
     val isSticker: Boolean,
     val date: Instant,
+    /** Display name of whoever originally shared this item. */
+    val senderName: String = "",
 )
 
 /** A header-only dice-roll message — no payload, just its summary label. */
@@ -99,6 +101,7 @@ fun collectConversationOverview(
                 previewThumbnail = message.previewThumbnail,
                 isSticker = isSticker,
                 date = message.userDate,
+                senderName = message.displayName,
             )
             val contentType = payload.contentType
             when {
@@ -124,4 +127,36 @@ fun collectConversationOverview(
         diceRolls = diceRolls.toImmutableList(),
         locations = locations.toImmutableList(),
     )
+}
+
+/**
+ * Extracts just the location pins from a page of messages — used by the paged
+ * "See all → Locations" tab, which queries location messages directly by
+ * [ChatProtocol.ChatLocationMessageDataType] instead of scanning the whole
+ * conversation. Pure + side-effect-free (safe on [kotlinx.coroutines.Dispatchers.Default]).
+ */
+fun collectLocations(batch: BatchResult<MessageUiModel>): List<SharedMediaItem> {
+    val locations = mutableListOf<SharedMediaItem>()
+    for (message in batch.records) {
+        val payloads = message.payloads?.filter {
+            it.key != ChatProtocol.DefaultPayloadKey &&
+                    !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+        } ?: emptyList()
+        for (payload in payloads) {
+            if (payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION) {
+                locations.add(
+                    SharedMediaItem(
+                        fileId = message.fileId,
+                        payload = payload,
+                        keyHeader = message.keyHeader,
+                        previewThumbnail = message.previewThumbnail,
+                        isSticker = false,
+                        date = message.userDate,
+                        senderName = message.displayName,
+                    )
+                )
+            }
+        }
+    }
+    return locations
 }

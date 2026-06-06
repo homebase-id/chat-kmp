@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -28,6 +29,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,11 +40,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.DiceRollItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.LoadingListItem
+import id.homebase.chat.widget.LocationListRow
 import id.homebase.chat.widget.MediaItem
 import id.homebase.chat.widget.rememberSharedMediaSaver
 import id.homebase.core.config.chatTargetDrive
@@ -56,6 +63,8 @@ import id.homebase.resources.conversation_media_tab_files
 import id.homebase.resources.conversation_media_tab_locations
 import id.homebase.resources.conversation_media_tab_media
 import id.homebase.resources.menu_back
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.stringResource
 
 private enum class MediaTab { MEDIA, FILES, AUDIO, DICE, LOCATIONS }
@@ -130,7 +139,12 @@ fun ConversationMediaScreen(
                         MediaTab.FILES -> AttachmentListTab(overview.files, onClick = saveItem)
                         MediaTab.AUDIO -> AttachmentListTab(overview.audio, onClick = null)
                         MediaTab.DICE -> DiceTab(overview.diceRolls)
-                        MediaTab.LOCATIONS -> MediaGridTab(overview.locations) { fullScreenItem = it }
+                        MediaTab.LOCATIONS -> LocationListTab(
+                            items = uiState.locations,
+                            hasMore = uiState.hasMoreLocations,
+                            isLoading = uiState.isLoadingLocations,
+                            onLoadMore = viewModel::loadMoreLocations,
+                        )
                     }
                 }
             }
@@ -204,6 +218,77 @@ private fun AttachmentListTab(items: List<SharedMediaItem>, onClick: ((SharedMed
         }
     }
 }
+
+@OptIn(ExperimentalEncodingApi::class)
+@Composable
+private fun LocationListTab(
+    items: List<SharedMediaItem>,
+    hasMore: Boolean,
+    isLoading: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    if (items.isEmpty()) {
+        if (isLoading) LoadingListItem() else EmptyTab()
+        return
+    }
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= items.size - LOCATIONS_LOAD_MORE_THRESHOLD
+        }
+    }
+    LaunchedEffect(shouldLoadMore, hasMore, isLoading) {
+        if (shouldLoadMore && hasMore && !isLoading) onLoadMore()
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(items, key = { it.fileId.toString() }) { item ->
+            val descriptor = remember(item.payload.descriptorContent) {
+                item.payload.descriptorContent?.let { content ->
+                    try {
+                        OdinSystemSerializer
+                            .deserialize<List<LocationPreviewDescriptor>>(content)
+                            .firstOrNull()
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
+            val payloadIv = remember(item.payload.iv) {
+                item.payload.iv?.let { Base64.decode(it) }
+            }
+            if (descriptor != null && payloadIv != null) {
+                val metaLine = remember(item.senderName, item.date) {
+                    listOfNotNull(
+                        item.senderName.ifBlank { null },
+                        formatMediumDate(item.date),
+                    ).joinToString(" · ")
+                }
+                LocationListRow(
+                    descriptor = descriptor,
+                    fileId = item.fileId,
+                    driveId = chatTargetDrive.alias,
+                    payloadKey = item.payload.key,
+                    keyHeader = KeyHeader(payloadIv, item.keyHeader.aesKey),
+                    previewThumbnail = item.payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: item.previewThumbnail,
+                    metaLine = metaLine,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        if (isLoading) {
+            item { LoadingListItem() }
+        }
+    }
+}
+
+private const val LOCATIONS_LOAD_MORE_THRESHOLD = 5
 
 @Composable
 private fun DiceTab(items: List<DiceRollItem>) {
