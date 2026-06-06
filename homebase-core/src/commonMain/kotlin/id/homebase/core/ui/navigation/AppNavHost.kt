@@ -374,6 +374,30 @@ fun AppNavHost(
                     }
                     TextRenderingHelper.nudge()
                 }
+
+                is NotificationNavigationEvent.OpenMomentCompose -> {
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMomentCompose received: activated=${momentsPreferences.activated.value}"
+                    }
+                    // The share flow seeded MomentCreateFlowState before launching
+                    // us; MomentComposeViewModel reads that draft on init. Gate on
+                    // Moments being activated (the share picker only offers "New
+                    // Moment" when it is) and mirror the OpenMoment back-stack
+                    // handling: push Moments first so back-press from the composer
+                    // lands on the feed, then open the composer.
+                    if (momentsPreferences.activated.value) {
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(Route.MomentCompose)
+                    }
+                    TextRenderingHelper.nudge()
+                }
             }
         }
     }

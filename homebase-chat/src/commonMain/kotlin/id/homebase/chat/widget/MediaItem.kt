@@ -107,6 +107,7 @@ fun MediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
+    isSticker: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
@@ -143,8 +144,9 @@ fun MediaItem(
             }
         }
 
-    // Base modifier with shape clip
-    val baseModifier = modifier.clip(shape)
+    // Base modifier with shape clip. Stickers skip the rounded-card clip so the
+    // transparent cut-out shows the chat surface through; ordinary media keeps it.
+    val baseModifier = if (isSticker) modifier else modifier.clip(shape)
 
     // Apply aspect ratio only if needed and available.
     // Note: For aspect ratio to work for "fitting inside", we typically want fillMaxWidth()

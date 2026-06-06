@@ -3,6 +3,8 @@ package id.homebase.chat.services.builder
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageUtils
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.chat.services.PayloadBundle
 
 object MessageAttachmentBuilder {
@@ -37,6 +39,26 @@ object MessageAttachmentBuilder {
                                 fileOperationsProvider,
                             )
 
+                        // Sticker auto-detect: a transparent cut-out image renders
+                        // without the opaque bubble backdrop. Detect on the ORIGINAL
+                        // source bytes (the generator already read them — no second
+                        // read), gated to alpha-capable formats (PNG/WebP). forceSticker
+                        // (future manual toggle) bypasses detection. We store a tiny
+                        // {"isSticker":true} descriptor only when transparent; ordinary
+                        // photos keep the legacy "" so nothing changes for them.
+                        val isSticker = attachment.forceSticker ||
+                            run {
+                                val format = ImageFormatDetector.detectFormat(thumbs.sourceBytes)
+                                (format == "image/png" || format == "image/webp") &&
+                                    ImageUtils.hasNonOpaquePixels(thumbs.sourceBytes)
+                            }
+                        val descriptorContent =
+                            if (isSticker) {
+                                DescriptorContent.descriptorContentFromImage(isSticker = true)
+                            } else {
+                                ""
+                            }
+
                         PayloadBundle(
                             payloads =
                                 listOf(
@@ -45,7 +67,7 @@ object MessageAttachmentBuilder {
                                         filePath = attachment.filePath,
                                         contentType = attachment.contentType,
                                         previewThumbnail = thumbs.preview,
-                                        descriptorContent = ""
+                                        descriptorContent = descriptorContent
                                     )
                                 ),
                             thumbnails = thumbs.thumbnails,

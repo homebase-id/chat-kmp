@@ -3,8 +3,10 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedButton
@@ -76,7 +80,10 @@ import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
 import id.homebase.resources.chat_no_gallery_items
 import id.homebase.resources.cd_gallery_thumbnail
+import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_play_video
+import id.homebase.resources.chat_gallery_selection_index
+import id.homebase.resources.chat_gallery_send_count
 import id.homebase.resources.chat_select_more_photos
 import id.homebase.resources.go_to_settings
 import id.homebase.resources.manage
@@ -104,9 +111,14 @@ fun AttachmentOptionsDisplay(
     }
 }
 
+// Mirror Signal: cap a single multi-select batch so we never stage more than the
+// downstream editor / sender is built to handle in one go.
+private const val MaxGallerySelection = 32
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AttachmentGallery(
-    onImageSelected: (GalleryImage) -> Unit,
+    onImagesSelected: (List<GalleryImage>) -> Unit,
 ) {
     if (isMobile()) {
         // Get ImageLoader with HomebaseImageFetcher from Koin DI
@@ -119,6 +131,18 @@ fun AttachmentGallery(
                 galleryCache.refresh()
             }
         )
+
+        // Multi-select state. selectedIds is an ORDERED list keyed on GalleryImage.id —
+        // its position drives the numbered send-order badge (computed at render, never
+        // stored). multiSelect distinguishes the fast single-tap path (tap attaches now)
+        // from the batch path (long-press enters multi-select; tap then toggles).
+        var multiSelect by remember { mutableStateOf(false) }
+        var selectedIds by remember { mutableStateOf(emptyList<String>()) }
+
+        fun resetSelection() {
+            multiSelect = false
+            selectedIds = emptyList()
+        }
 
         if (!galleryPermissionState.hasGalleryPermission && !galleryPermissionState.hasPartialGalleryPermission) {
             Column(
@@ -138,6 +162,10 @@ fun AttachmentGallery(
                 }
             }
         } else {
+            // Gallery strip and confirm control stacked in a Column so the Send-(N)
+            // pill sits in its own row BELOW the 160dp thumbnail strip and never
+            // overlaps (occludes) the leading thumbnails.
+            Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -154,8 +182,51 @@ fun AttachmentGallery(
                     ) {
 
                         items(galleryItems, key = { it.id }) { galleryImage ->
+                            val isSelected = galleryImage.id in selectedIds
+                            // Send-order number, computed at render from list position — never stored.
+                            val selectionNumber = selectedIds.indexOf(galleryImage.id) + 1
                             Box(
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(160.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(
+                                                width = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (multiSelect) {
+                                                // In multi-select, tap toggles membership. Gate adds
+                                                // at the max so a batch never exceeds the cap.
+                                                selectedIds = if (isSelected) {
+                                                    selectedIds - galleryImage.id
+                                                } else if (selectedIds.size < MaxGallerySelection) {
+                                                    selectedIds + galleryImage.id
+                                                } else {
+                                                    selectedIds
+                                                }
+                                            } else {
+                                                // Fast path: first tap attaches immediately.
+                                                onImagesSelected(listOf(galleryImage))
+                                            }
+                                        },
+                                        onLongClick = {
+                                            // Long-press enters multi-select and selects the
+                                            // long-pressed item first.
+                                            if (!multiSelect) {
+                                                multiSelect = true
+                                                selectedIds = listOf(galleryImage.id)
+                                            }
+                                        }
+                                    )
                             ) {
                                 AsyncImage(
                                     imageLoader = imageLoader,
@@ -170,8 +241,7 @@ fun AttachmentGallery(
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
                                         .size(160.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { onImageSelected(galleryImage) },
+                                        .clip(RoundedCornerShape(8.dp)),
                                     contentScale = ContentScale.Crop
                                 )
                                 if (galleryImage.isVideo()) {
@@ -194,6 +264,15 @@ fun AttachmentGallery(
                                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                                         )
                                     }
+                                }
+                                if (multiSelect) {
+                                    SelectionBadge(
+                                        isSelected = isSelected,
+                                        selectionNumber = selectionNumber,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                    )
                                 }
                             }
                         }
@@ -247,7 +326,66 @@ fun AttachmentGallery(
                     }
                 }
             }
+            // Confirm control: while in multi-select with a non-empty ordered selection,
+            // resolve selectedIds to items (associate by id, ordered by selectedIds) and
+            // hand the batch to the existing send path, then reset. Anchored in its own
+            // row BELOW the 160dp strip so it never covers the thumbnails.
+            if (multiSelect && selectedIds.isNotEmpty()) {
+                val byId = galleryItems.associateBy { it.id }
+                val sendCount = selectedIds.size
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    ElevatedButton(
+                        onClick = {
+                            val ordered = selectedIds.mapNotNull { byId[it] }
+                            resetSelection()
+                            if (ordered.isNotEmpty()) {
+                                onImagesSelected(ordered)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(MR.string.chat_gallery_send_count, sendCount))
+                    }
+                }
+            }
+            }
         }
+    }
+}
+
+@Composable
+private fun SelectionBadge(
+    isSelected: Boolean,
+    selectionNumber: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (isSelected) {
+        Box(
+            modifier = modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = stringResource(MR.string.chat_gallery_selection_index, selectionNumber),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimary,
+                textAlign = TextAlign.Center,
+            )
+        }
+    } else {
+        // Unselected affordance — mirrors CreateConversationScreen's selection markers
+        // (CheckCircle when chosen / outlined Circle when not) for accessibility parity.
+        Icon(
+            imageVector = Icons.Outlined.Circle,
+            contentDescription = stringResource(MR.string.cd_not_selected),
+            tint = Color.White.copy(alpha = 0.85f),
+            modifier = modifier.size(24.dp)
+        )
     }
 }
 
