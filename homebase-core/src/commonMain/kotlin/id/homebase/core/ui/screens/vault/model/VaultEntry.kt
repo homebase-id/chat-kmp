@@ -149,6 +149,10 @@ fun VaultEntry.imageDataFor(
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
         lastModified = descriptor.lastModified,
+        // Carry the real payload type so the loader recognises thumbless
+        // formats (GIF) and loads the animated original even for the grid
+        // thumbnail request, where the preview thumb's type is WebP.
+        payloadContentType = descriptor.contentType,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
     )
 }
