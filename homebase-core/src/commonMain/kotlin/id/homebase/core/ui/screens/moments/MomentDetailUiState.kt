@@ -95,6 +95,13 @@ data class MomentDetailUiState(
     val isSavingMedia: Boolean = false,
 
     /**
+     * True while the "Share" flow is decrypting (and, for HLS video, remuxing)
+     * the visible payload into the share_outbound dir before the OS share sheet
+     * opens. Drives the same overflow-menu spinner as [isSavingMedia].
+     */
+    val isSharingMedia: Boolean = false,
+
+    /**
      * Comment ids whose delete is currently in flight. The comment row reads
      * this to disable its Edit/Delete buttons and show a small spinner while
      * the optimistic write + outbox enqueue is running. Entries are removed
@@ -387,10 +394,15 @@ sealed interface MomentDetailUiEvent {
     data class CommentDeleteFailed(val message: String?) : MomentDetailUiEvent
 
     /**
-     * Decrypted payload is written to [filePath] under the share_outbound sweep
-     * dir; the screen should hand the path to the platform share sheet.
+     * Decrypted (and, for HLS, remuxed) payload is written to [filePath] under
+     * the share_outbound sweep dir; the screen hands it to the platform share
+     * sheet. [caption] is the moment's description, attached so single-file +
+     * text shares carry the words alongside the media (best-effort per target).
      */
-    data class ShareFileReady(val filePath: String) : MomentDetailUiEvent
+    data class ShareFileReady(
+        val filePath: String,
+        val caption: String?,
+    ) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
 
     /**

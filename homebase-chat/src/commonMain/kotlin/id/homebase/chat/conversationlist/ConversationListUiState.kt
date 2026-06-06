@@ -209,7 +209,14 @@ sealed class MessageListContentModel(val id: String) {
     data class Message(
         val message: MessageUiModel,
         val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
-    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+    // NOTE: do NOT add message.hasMore to this key. When "Read more" downloads a
+    // spilled body, hasMore flips true->false; if it were in the key the LazyColumn
+    // item would be recreated mid-tap, resetting the bubble's bodyExpanded state and
+    // re-showing "Read more" on the now-full body (a double "Read more"). The body
+    // already refreshes on download because textState is remember(message.content)
+    // (MessageBubbleRaw) — the historical hasMore-in-key reset (commit 297c4830) was
+    // only needed back when RichTextState was keyless.
+    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString())
 
     data object UnreadSeparator : MessageListContentModel("unread-separator")
 

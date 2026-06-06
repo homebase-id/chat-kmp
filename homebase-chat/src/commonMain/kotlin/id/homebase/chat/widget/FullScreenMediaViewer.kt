@@ -351,6 +351,10 @@ fun FullScreenMediaViewer(
                                 payloadKey = payload.key,
                                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                                 lastModified = payload.lastModified,
+                                // Real payload type so a GIF rail thumbnail loads
+                                // the animated original instead of a never-generated
+                                // server thumbnail (its preview thumb is WebP).
+                                payloadContentType = payload.contentType,
                                 keyHeader = KeyHeader(
                                     iv = railIv,
                                     aesKey = data.keyHeader.aesKey

@@ -8,7 +8,10 @@ private let recentsCount = 5
 /// Supports multi-select — user taps conversations to toggle selection, then taps Send.
 struct SharePickerView: View {
     let conversations: [ShareableConversationSwift]
+    /// Whether to offer "New Moment" as a destination (media present + Moments activated).
+    var showMomentOption: Bool = false
     let onSelect: ([String]) -> Void
+    var onSelectMoment: () -> Void = {}
     let onCancel: () -> Void
 
     @State private var searchText = ""
@@ -50,6 +53,73 @@ struct SharePickerView: View {
 
     var body: some View {
         NavigationView {
+            VStack(spacing: 0) {
+                if showMomentOption {
+                    newMomentButton
+                    Divider()
+                }
+
+                conversationContent
+            }
+            .navigationTitle("Share to...")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(action: { onSelect(Array(selectedIds)) }) {
+                        if selectedIds.count > 1 {
+                            Text("Send (\(selectedIds.count))")
+                        } else {
+                            Text("Send")
+                        }
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(selectedIds.isEmpty)
+                }
+            }
+            .searchable(text: $searchText, prompt: "Search conversations...")
+        }
+    }
+
+    /// "New Moment" destination row, shown above the conversation list when the
+    /// share carries media and Moments is activated. Mirrors the Android picker.
+    private var newMomentButton: some View {
+        Button(action: onSelectMoment) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.accentColor.opacity(0.15))
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.accentColor)
+                        .imageScale(.large)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New Moment")
+                        .font(.body)
+                        .fontWeight(.medium)
+                    Text("Share to your Moments")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .foregroundColor(Color(UIColor.tertiaryLabel))
+                    .imageScale(.small)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var conversationContent: some View {
             Group {
                 if conversations.isEmpty {
                     emptyState
@@ -97,26 +167,6 @@ struct SharePickerView: View {
                     }
                 }
             }
-            .navigationTitle("Share to...")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: { onSelect(Array(selectedIds)) }) {
-                        if selectedIds.count > 1 {
-                            Text("Send (\(selectedIds.count))")
-                        } else {
-                            Text("Send")
-                        }
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(selectedIds.isEmpty)
-                }
-            }
-            .searchable(text: $searchText, prompt: "Search conversations...")
-        }
     }
 
     private func conversationButton(_ conversation: ShareableConversationSwift) -> some View {

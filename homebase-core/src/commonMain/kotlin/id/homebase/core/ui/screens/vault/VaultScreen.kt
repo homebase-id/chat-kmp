@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import id.homebase.core.HomebaseConstants
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -263,6 +265,24 @@ fun VaultScreen(
                 HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
 
             SharedTransitionLayout {
+                // Opaque dark floor beneath the cross-fade, present only while a gallery
+                // overlay is the target. The gallery destination is dark (its
+                // BottomSheetScaffold paints colorScheme.scrim) but the outer Scaffold's
+                // floor is the light colorScheme.background. Without this backdrop, at the
+                // cross-fade midpoint both the outgoing grid and incoming dark gallery sit
+                // at ~0.5 alpha, so the light Scaffold floor shows through the half-faded
+                // gallery = a whole-screen brightness flash. Painting the same scrim
+                // beneath the AnimatedContent makes the floor match the gallery, so the
+                // fade reveals dark-on-dark with no contrast (mirrors chat's frame-0
+                // opaque .background(surface) in FullScreenMediaViewer). Gated on
+                // overlay != null so the grid/home appearance is unchanged when closed.
+                if (uiState.fullScreenOverlay != null) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim),
+                    )
+                }
                 AnimatedContent(
                     targetState = uiState.fullScreenOverlay,
                     transitionSpec = {
