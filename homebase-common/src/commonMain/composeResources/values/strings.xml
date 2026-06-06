@@ -1112,6 +1112,17 @@
     <string name="contact_info_stat_events">Events</string>
     <string name="contact_info_stat_polls">Polls</string>
 
+    <!-- Conversation media album + groups in common -->
+    <string name="conversation_media_see_all">See all</string>
+    <string name="conversation_groups_in_common">Groups in common</string>
+    <string name="conversation_media_album_title">Shared media</string>
+    <string name="conversation_media_empty">Nothing here yet</string>
+    <string name="conversation_media_tab_media">Media</string>
+    <string name="conversation_media_tab_files">Files</string>
+    <string name="conversation_media_tab_audio">Audio</string>
+    <string name="conversation_media_tab_dice">Dice rolls</string>
+    <string name="conversation_media_tab_locations">Locations</string>
+
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>
     <string name="error_no_contact_loaded">No contact could be loaded</string>

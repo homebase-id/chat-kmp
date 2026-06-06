@@ -7,15 +7,13 @@ import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.DescriptorContent
-import id.homebase.api.common.BatchResult
-import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.ui.navigation.Route
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,14 +38,13 @@ class ConversationSettingsViewModel(
 
     init {
         loadData()
-        loadSummary()
+        loadOverview()
     }
 
 
     fun onUiAction(action: ConversationSettingsUiAction) {
         when (action) {
             is ConversationSettingsUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.Back)}
-            is ConversationSettingsUiAction.ShowContactInfo -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.ShowContactInfo(action.odinId.toString()))}
         }
     }
 
@@ -66,13 +63,19 @@ class ConversationSettingsViewModel(
                         it.copy(
                             conversation = conversation,
                             ownerSession = owner,
-                            isLoading = false
+                            isLoading = false,
                         )
                     }
                 } else {
                     val conversation = conversationService.getConversation(conversationId)
                     if (conversation != null) {
-                        _uiState.update { it.copy(conversation = conversation, isLoading = false) }
+                        _uiState.update {
+                            it.copy(
+                                conversation = conversation,
+                                groupsInCommon = groupsInCommonWith(conversation),
+                                isLoading = false,
+                            )
+                        }
                     } else {
                         Logger.d("Failed to load contact for conversation")
                         _uiState.update { it.copy(isLoading = false) }
@@ -86,11 +89,33 @@ class ConversationSettingsViewModel(
     }
 
     /**
-     * Loads an overview of this conversation (media/file/dice/etc. counts +
-     * recent images + "chatting since"). Runs independently of [loadData] so the
-     * avatar/name paint before the (heavier) message scan finishes.
+     * Group conversations that both the current identity and this 1:1's contact
+     * belong to. The contact is the participant that isn't us; matching excludes
+     * this conversation itself (which is 1:1, not a group, so it never matches).
      */
-    private fun loadSummary() {
+    private fun groupsInCommonWith(conversation: ConversationUiModel) =
+        try {
+            val self = ownerSessionRepository.user.value?.odinId
+            val contact = conversation.participants.firstOrNull { it != self }
+            if (contact == null) {
+                persistentListOf()
+            } else {
+                conversationStream.conversations.value.items
+                    .filter { it.isGroupConversation && it.participants.any { p -> p == contact } }
+                    .map { GroupInCommonItem(it.id, it.name, it.avatarModel) }
+                    .toImmutableList()
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to compute groups in common", e)
+            persistentListOf()
+        }
+
+    /**
+     * Loads the media/files/audio/dice/location overview of this conversation.
+     * Runs independently of [loadData] so the header paints before the (heavier)
+     * message scan finishes.
+     */
+    private fun loadOverview() {
         val conversationId = Uuid.parse(route.conversationId)
         viewModelScope.launch {
             try {
@@ -114,103 +139,23 @@ class ConversationSettingsViewModel(
                         batch.records.lastOrNull()?.userDate
                     }
 
-                val summary = withContext(Dispatchers.Default) {
-                    buildSummary(batch, firstMessageDate)
+                val overview = withContext(Dispatchers.Default) {
+                    collectConversationOverview(batch, firstMessageDate)
                 }
-                _uiState.update { it.copy(summary = summary, isSummaryLoading = false) }
+                _uiState.update { it.copy(overview = overview, isOverviewLoading = false) }
             } catch (e: Exception) {
-                Logger.e("Failed to load chat summary", e)
-                _uiState.update { it.copy(isSummaryLoading = false) }
+                Logger.e("Failed to load conversation overview", e)
+                _uiState.update { it.copy(isOverviewLoading = false) }
             }
         }
-    }
-
-    private fun buildSummary(
-        batch: BatchResult<MessageUiModel>,
-        firstMessageDate: kotlin.time.Instant?,
-    ): ChatSummaryUiModel {
-        var photos = 0
-        var stickers = 0
-        var videos = 0
-        var audio = 0
-        var files = 0
-        var links = 0
-        var locations = 0
-        var diceRolls = 0
-        var events = 0
-        var polls = 0
-        val recentMedia = mutableListOf<SharedMediaItem>()
-
-        for (message in batch.records) {
-            when (message.messageContent) {
-                is MessageContent.DiceRoll -> diceRolls++
-                is MessageContent.Event -> events++
-                is MessageContent.Groodle -> polls++
-                else -> Unit // text/media and Unknown fall through to payload counting
-            }
-
-            // Mirror MessageBubbleRaw's media filter: skip the internal default
-            // payload + descriptor payloads, count only real attachments.
-            val mediaPayloads = message.payloads?.filter {
-                it.key != ChatProtocol.DefaultPayloadKey &&
-                        !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
-            } ?: emptyList()
-
-            for (payload in mediaPayloads) {
-                val contentType = payload.contentType
-                when {
-                    // chat_links / chat_loc previews also carry an image/* content
-                    // type, so key-match them before the image branch.
-                    payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> links++
-                    payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> locations++
-                    contentType == null -> Unit
-                    contentType.startsWith("image/") -> {
-                        val isSticker =
-                            (payload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
-                        if (isSticker) stickers++ else photos++
-                        if (recentMedia.size < RECENT_MEDIA_CAP) {
-                            recentMedia.add(
-                                SharedMediaItem(
-                                    fileId = message.fileId,
-                                    payload = payload,
-                                    keyHeader = message.keyHeader,
-                                    previewThumbnail = message.previewThumbnail,
-                                    isSticker = isSticker,
-                                )
-                            )
-                        }
-                    }
-                    contentType.startsWith("video/") ||
-                            contentType == "application/vnd.apple.mpegurl" -> videos++
-                    contentType.startsWith("audio/") -> audio++
-                    else -> files++ // documents, archives, notes, etc.
-                }
-            }
-        }
-
-        return ChatSummaryUiModel(
-            totalMessages = batch.records.size,
-            isTruncated = batch.hasMoreRows,
-            firstMessageDate = firstMessageDate,
-            photoCount = photos,
-            stickerCount = stickers,
-            videoCount = videos,
-            audioCount = audio,
-            fileCount = files,
-            linkCount = links,
-            locationCount = locations,
-            diceRollCount = diceRolls,
-            eventCount = events,
-            pollCount = polls,
-            recentMedia = recentMedia.toImmutableList(),
-        )
     }
 
     companion object {
-        /** Upper bound on messages scanned for the conversation overview. */
+        /**
+         * Upper bound on messages scanned for the conversation overview. Every
+         * photo/video within these is surfaced in the media strip — the strip is
+         * a LazyRow, so it only ever composes/loads the thumbnails on screen.
+         */
         const val SUMMARY_MESSAGE_CAP = 1000
-
-        /** Max thumbnails shown in the shared-media strip. */
-        const val RECENT_MEDIA_CAP = 12
     }
 }

@@ -65,6 +65,7 @@ import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
@@ -849,9 +850,22 @@ fun AppNavHost(
                                 ConversationSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
                                     },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ConversationMedia> {
+                            if (isAuthenticated) {
+                                ConversationMediaScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
