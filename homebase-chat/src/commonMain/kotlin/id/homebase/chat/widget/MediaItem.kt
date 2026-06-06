@@ -270,7 +270,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
                         val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
                         HomebaseImageData(
                             driveId = driveId,
@@ -281,6 +281,11 @@ fun MediaItem(
                             requestedSize = imageSize,
                             lastModified = payload.lastModified,
                             isEncrypted = true,
+                            // Pass the real payload content type so the loader
+                            // recognises a GIF (whose preview thumb is WebP) and
+                            // loads the animated original inline instead of a
+                            // non-existent server thumbnail. See HomebaseImageData.
+                            payloadContentType = contentType,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                         )
                     }

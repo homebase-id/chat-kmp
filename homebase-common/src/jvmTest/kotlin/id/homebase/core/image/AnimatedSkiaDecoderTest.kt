@@ -80,10 +80,10 @@ class AnimatedSkiaDecoderTest {
         assertFalse(isAnimatableSource(sourceResult(png, mimeType = null)))
     }
 
-    // --- Factory ---
+    // --- Factory: claims only genuinely multi-frame sources ---
 
     @Test
-    fun `factory returns decoder for gif source`() {
+    fun `factory returns decoder for multi-frame gif`() {
         val gif = Base64.decode(ANIMATED_GIF_2_FRAMES)
         assertNotNull(factory.create(sourceResult(gif, "image/gif"), options, imageLoader))
     }
@@ -93,32 +93,43 @@ class AnimatedSkiaDecoderTest {
         assertNull(factory.create(sourceResult(ByteArray(16), "image/jpeg"), options, imageLoader))
     }
 
-    // --- decode(): animated vs static ---
+    @Test
+    fun `factory returns null for single-frame gif so coil falls back to static decoder`() {
+        // A null from create() makes Coil try the next factory (its default static
+        // Skia decoder). A null from decode() would NOT — it fails the load. That
+        // is why the multi-frame gate lives in create(), not decode().
+        val gif = Base64.decode(STATIC_GIF_1_FRAME)
+        assertNull(factory.create(sourceResult(gif, "image/gif"), options, imageLoader))
+    }
+
+    @Test
+    fun `factory returns null for single-frame source claimed via webp mime`() {
+        // Regression guard: WebP preview thumbnails (every image ships one) arrive
+        // with mimeType image/webp, so isAnimatableSource claims them. A static one
+        // must still make create() return null so the default decoder renders it —
+        // otherwise all image previews break on Desktop/iOS (full payloads, which
+        // are JPEG/PNG and never claimed here, kept working — the exact symptom).
+        val staticSingleFrame = Base64.decode(STATIC_GIF_1_FRAME)
+        assertNull(factory.create(sourceResult(staticSingleFrame, "image/webp"), options, imageLoader))
+    }
+
+    @Test
+    fun `factory returns null for empty bytes`() {
+        assertNull(factory.create(sourceResult(ByteArray(0), "image/gif"), options, imageLoader))
+    }
+
+    // --- decode(): the chosen (multi-frame) decoder always returns an image ---
 
     @Test
     fun `decode returns animating image for multi-frame gif`() = runTest {
         val gif = Base64.decode(ANIMATED_GIF_2_FRAMES)
-        val decoder = AnimatedSkiaDecoder(sourceResult(gif, "image/gif").source, options)
-        val result = decoder.decode()
-        assertNotNull(result, "multi-frame GIF should decode")
-        val image = result.image
+        val decoder = factory.create(sourceResult(gif, "image/gif"), options, imageLoader)
+        assertNotNull(decoder, "multi-frame GIF should be claimed by the factory")
+        val image = assertNotNull(decoder.decode()).image
         assertTrue(image is SkiaAnimatedImage, "expected SkiaAnimatedImage, got ${image::class}")
         assertTrue(image.animatable, "2-frame GIF must be animatable")
         assertEquals(2, image.width)
         assertEquals(1, image.height)
-    }
-
-    @Test
-    fun `decode returns null for single-frame gif so coil falls back to static decoder`() = runTest {
-        val gif = Base64.decode(STATIC_GIF_1_FRAME)
-        val decoder = AnimatedSkiaDecoder(sourceResult(gif, "image/gif").source, options)
-        assertNull(decoder.decode(), "single-frame GIF must defer to default Skia decoder")
-    }
-
-    @Test
-    fun `decode returns null for empty bytes`() = runTest {
-        val decoder = AnimatedSkiaDecoder(sourceResult(ByteArray(0), "image/gif").source, options)
-        assertNull(decoder.decode())
     }
 
     // --- frame timeline math (frameForElapsed) ---
@@ -126,8 +137,8 @@ class AnimatedSkiaDecoderTest {
     @Test
     fun `frameForElapsed maps elapsed time across frames and loops`() = runTest {
         val gif = Base64.decode(ANIMATED_GIF_2_FRAMES)
-        val image = AnimatedSkiaDecoder(sourceResult(gif, "image/gif").source, options)
-            .decode()!!.image as SkiaAnimatedImage
+        val decoder = factory.create(sourceResult(gif, "image/gif"), options, imageLoader)!!
+        val image = assertNotNull(decoder.decode()).image as SkiaAnimatedImage
 
         // Frame 0 spans [0,500), frame 1 spans [500,1250); loops forever.
         assertEquals(0, image.frameForElapsed(0))

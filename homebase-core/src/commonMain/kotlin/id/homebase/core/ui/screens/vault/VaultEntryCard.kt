@@ -252,35 +252,25 @@ private fun VaultCardThumbnail(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
-    // 1. Local file available (pending upload or cached thumbnail)
+    val descriptor = file.payloadDescriptors.firstOrNull()
+
+    // 1. Local file available (pending upload or cached thumbnail).
+    // The cropped square tile carries the sharedBounds directly; the snap-free
+    // uncrop is handled entirely at the destination ([VaultZoomableImage] passes
+    // the photo aspect to [ZoomableSubSamplingImage]'s aspect-box hero).
     if ((file.isImage || file.isPdf) && localImage != null) {
-        var imageModifier: Modifier = Modifier.fillMaxSize()
-        if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-            with(sharedTransitionScope) {
-                imageModifier = imageModifier.sharedBounds(
-                    rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    boundsTransform = { _, _ ->
-                        tween(
-                            durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                            easing = FastOutSlowInEasing,
-                        )
-                    },
-                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                )
-            }
-        }
         AsyncImage(
             model = localImage.localFilePath,
             contentDescription = description,
-            modifier = imageModifier,
+            modifier = Modifier
+                .fillMaxSize()
+                .vaultSharedBounds(file, firstPayloadKey, sharedTransitionScope, animatedVisibilityScope),
             contentScale = ContentScale.Crop,
         )
         return
     }
 
     // 2. Encrypted server thumbnail (image or PDF — same HomebaseImage path)
-    val descriptor = file.payloadDescriptors.firstOrNull()
     val thumbnailData = remember(descriptor, file.previewThumbnail) {
         descriptor?.let {
             file.imageDataFor(
@@ -294,11 +284,11 @@ private fun VaultCardThumbnail(
     if ((file.isImage || file.isPdf) && thumbnailData != null) {
         HomebaseImage(
             imageData = thumbnailData,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .vaultSharedBounds(file, firstPayloadKey, sharedTransitionScope, animatedVisibilityScope),
             contentScale = ContentScale.Crop,
             contentDescription = description,
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
         )
         return
     }
@@ -340,4 +330,34 @@ private fun VaultCardThumbnail(
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(32.dp),
     )
+}
+
+/**
+ * Applies the Vault image hero [SharedTransitionScope.sharedBounds] with the
+ * canonical key/transform so a node participates in the open/close transition.
+ * No-op when either scope is absent. The key
+ * (`image-<fileId>-<payloadKey>`) and RemeasureToBounds transform match the
+ * full-screen destination ([ZoomableSubSamplingImage]) so the elements pair up.
+ */
+@Composable
+private fun Modifier.vaultSharedBounds(
+    file: VaultEntry,
+    firstPayloadKey: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+): Modifier {
+    if (sharedTransitionScope == null || animatedVisibilityScope == null) return this
+    return with(sharedTransitionScope) {
+        this@vaultSharedBounds.sharedBounds(
+            rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+            animatedVisibilityScope = animatedVisibilityScope,
+            boundsTransform = { _, _ ->
+                tween(
+                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                    easing = FastOutSlowInEasing,
+                )
+            },
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+        )
+    }
 }
