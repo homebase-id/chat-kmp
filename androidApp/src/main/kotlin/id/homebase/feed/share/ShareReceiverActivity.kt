@@ -40,6 +40,8 @@ import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.FullScreenAttachmentEditor
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -81,6 +83,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
+    private val momentCreateFlowState: MomentCreateFlowState by inject()
+    private val momentsPreferences: MomentsPreferences by inject()
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
@@ -185,6 +189,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "initShareFlow: reached setContent (picker path)" }
         setContent {
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
+            val momentsActivated by momentsPreferences.activated.collectAsStateWithLifecycle()
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 
@@ -221,29 +226,16 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             sharedContent = sharedContent,
                             hasFiles = sharedContent.hasFiles,
                             isSending = isSending,
-                            onSendToConversations = { conversationIds ->
-                                Logger.d(tag = COLD_TAG) {
-                                    "picker.onSendToConversations: count=${conversationIds.size} hasFiles=${sharedContent.hasFiles}"
-                                }
-                                if (sharedContent.hasFiles) {
-                                    // Show overlay while converting files
-                                    isProcessing = true
-                                    lifecycleScope.launch {
-                                        val attachments = withContext(Dispatchers.IO) {
-                                            convertToAttachmentFiles(sharedContent.files)
-                                        }
-                                        val title = resolveConversationTitle(conversationIds)
-                                        editorAttachments = attachments
-                                        isProcessing = false
-                                        screenState = ShareScreenState.Previewing(
-                                            selectedConversationIds = conversationIds,
-                                            attachments = attachments,
-                                            conversationTitle = title,
-                                        )
-                                    }
-                                } else {
-                                    // Text-only: send directly as before
-                                    sendToMultipleConversations(conversationIds, sharedContent)
+                            // Moments need media — only offer "New Moment" when the
+                            // share carries files and the feature is activated.
+                            showNewMomentOption = sharedContent.hasFiles &&
+                                momentsActivated,
+                            onTargetSelected = { target ->
+                                when (target) {
+                                    is ShareTarget.Conversations ->
+                                        onConversationsPicked(target.ids, sharedContent)
+                                    ShareTarget.NewMoment ->
+                                        startNewMoment(sharedContent)
                                 }
                             },
                             onCancel = { finish() },
@@ -312,6 +304,68 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 }
                 } // Box
             }
+        }
+    }
+
+    /**
+     * Terminal dispatch for the [ShareTarget.Conversations] branch. Files go
+     * through the in-activity preview/caption editor; text-only sends directly.
+     */
+    private fun onConversationsPicked(conversationIds: Set<Uuid>, content: SharedContent) {
+        Logger.d(tag = COLD_TAG) {
+            "onConversationsPicked: count=${conversationIds.size} hasFiles=${content.hasFiles}"
+        }
+        if (content.hasFiles) {
+            // Show overlay while converting files
+            isProcessing = true
+            lifecycleScope.launch {
+                val attachments = withContext(Dispatchers.IO) {
+                    convertToAttachmentFiles(content.files)
+                }
+                val title = resolveConversationTitle(conversationIds)
+                editorAttachments = attachments
+                isProcessing = false
+                screenState = ShareScreenState.Previewing(
+                    selectedConversationIds = conversationIds,
+                    attachments = attachments,
+                    conversationTitle = title,
+                )
+            }
+        } else {
+            // Text-only: send directly as before
+            sendToMultipleConversations(conversationIds, content)
+        }
+    }
+
+    /**
+     * Terminal dispatch for the [ShareTarget.NewMoment] branch. Reuses the same
+     * `convertToAttachmentFiles` step the chat path uses, seeds the moments
+     * composer draft ([MomentCreateFlowState] is a process-wide Koin singleton
+     * that [MomentComposeViewModel] reads on init), then hands off to
+     * `Route.MomentCompose` in the main app. The moments composer is the editor
+     * here — trim/crop/description/audience all live there — so there's no
+     * in-activity preview step on this path.
+     */
+    private fun startNewMoment(content: SharedContent) {
+        if (!content.hasFiles) {
+            finish()
+            return
+        }
+        isProcessing = true
+        lifecycleScope.launch {
+            val attachments = withContext(Dispatchers.IO) {
+                convertToAttachmentFiles(content.files)
+            }
+            momentCreateFlowState.setDraft(
+                MomentCreateFlowState.Draft(
+                    attachments = attachments,
+                    description = content.text ?: "",
+                )
+            )
+            Logger.d(tag = COLD_TAG) { "startNewMoment: seeded draft with ${attachments.size} attachments" }
+            // The moments composer owns the temp files now; don't reap share_temp.
+            startActivity(openMomentComposeIntent())
+            finish()
         }
     }
 
@@ -449,6 +503,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             data = "homebase-fchat://conversation/$conversationId".toUri()
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, true)
+        }
+
+    /**
+     * Re-opens [MainActivity] on the moments composer. The draft has already
+     * been seeded into [MomentCreateFlowState]; MainActivity.handleIntent reads
+     * this `homebase-fchat://moment-compose` deep link and emits the
+     * OpenMomentCompose navigation event that AppNavHost routes to
+     * `Route.MomentCompose`.
+     */
+    internal fun openMomentComposeIntent(): Intent =
+        Intent(this, MainActivity::class.java).apply {
+            data = "homebase-fchat://moment-compose".toUri()
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
 
     private fun extractDirectShareConversationId(): String? {

@@ -634,4 +634,8 @@
     <string name="feed_error_retry">Prøv igen</string>
     <string name="feed_loading">Indlæser feed…</string>
 
+    <!-- Moments push notifications -->
+    <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
+    <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
+
 </resources>
