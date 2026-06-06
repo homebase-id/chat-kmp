@@ -69,6 +69,17 @@ kotlin {
     }
 
     sourceSets {
+        // Shared Skia-backed implementations for the targets that bundle skiko:
+        // Desktop/JVM, iOS/native, and Web/wasmJs. Android is intentionally
+        // excluded — it uses Coil's android.graphics-backed decoders (coil-gif
+        // animates GIFs there via AnimatedImageDecoder; see PR #663). Lets the
+        // in-house animated-GIF/WebP Skia decoder live in one place instead of
+        // three near-identical per-platform copies.
+        val skiaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(skiaMain)
+        nativeMain.get().dependsOn(skiaMain)
+        wasmJsMain.get().dependsOn(skiaMain)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))
