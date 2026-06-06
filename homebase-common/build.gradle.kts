@@ -69,6 +69,17 @@ kotlin {
     }
 
     sourceSets {
+        // Shared Skia-backed implementations for the targets that bundle skiko:
+        // Desktop/JVM, iOS/native, and Web/wasmJs. Android is intentionally
+        // excluded — it uses Coil's android.graphics-backed decoders (coil-gif
+        // animates GIFs there via AnimatedImageDecoder; see PR #663). Lets the
+        // in-house animated-GIF/WebP Skia decoder live in one place instead of
+        // three near-identical per-platform copies.
+        val skiaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(skiaMain)
+        nativeMain.get().dependsOn(skiaMain)
+        wasmJsMain.get().dependsOn(skiaMain)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))
@@ -121,6 +132,14 @@ kotlin {
             implementation(libs.accompanist.permissions)
             implementation(libs.firebase.crashlytics)
             api(libs.coil3.video)
+            // coil-gif is an Android-only artifact in Coil 3.4.0 (com.android.library,
+            // packaging=aar, no jvm/ios/wasmJs variants — verified against the published
+            // Gradle module metadata and the coil-gif/build.gradle.kts at the 3.4.0 tag).
+            // It supplies coil3.gif.AnimatedImageDecoder / coil3.gif.GifDecoder. There is
+            // NO AnimatedSkiaImageDecoder in Coil 3.4.0 (nor 3.5.0-beta01), so animated GIF
+            // decoding is Android-only at this Coil version; the other targets fall back to
+            // coil-core's static SkiaImageDecoder (first-frame still).
+            api(libs.coil3.gif)
             implementation(libs.kermit.io)
             // kmpnotifier has no wasmJs artifact — must stay off commonMain.
             // `api` so the dep cascades transitively to androidApp (which

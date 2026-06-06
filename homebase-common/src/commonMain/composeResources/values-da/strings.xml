@@ -40,6 +40,7 @@
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="show_more">Vis mere</string>
+    <string name="chat_message_read_more">Læs mere</string>
     <string name="slide_to_cancel">&lt; Træk for at annullere</string>
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
