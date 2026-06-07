@@ -38,3 +38,21 @@ expect suspend fun removeBackground(srcBytes: ByteArray): ByteArray?
  * engine is structurally unavailable here.
  */
 expect fun isBackgroundRemovalSupported(): Boolean
+
+/**
+ * Best-effort proactive download of the on-device segmentation model, so the first
+ * [removeBackground] call usually finds it already present instead of having to
+ * download it then (which makes that first attempt soft-fail while the model arrives).
+ *
+ * Android only: asks Google Play services to *deferred-install* the ML Kit Subject
+ * Segmentation optional module — it downloads when the device is idle and on unmetered
+ * Wi-Fi, with no progress UI and no guarantee it has finished by the time the user
+ * taps. The on-tap path ([removeBackground]) still installs-and-waits if this hasn't
+ * completed, so this is purely a latency optimization. A no-op on every other target:
+ * iOS Vision is built into the OS (nothing to download), and Desktop/Web are
+ * unsupported.
+ *
+ * Fire-and-forget and idempotent — safe to call each time an image editor opens.
+ * Returns immediately and never throws.
+ */
+expect fun warmUpBackgroundRemoval()

@@ -8,3 +8,8 @@ package id.homebase.chat.services.image
 actual suspend fun removeBackground(srcBytes: ByteArray): ByteArray? = null
 
 actual fun isBackgroundRemovalSupported(): Boolean = false
+
+/** No-op: Desktop has no segmenter, so there is no model to pre-download. */
+actual fun warmUpBackgroundRemoval() {
+    // Nothing to warm up on Desktop.
+}

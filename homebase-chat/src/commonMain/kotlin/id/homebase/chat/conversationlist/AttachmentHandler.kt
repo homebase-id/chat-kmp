@@ -14,6 +14,7 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
+import id.homebase.chat.services.image.warmUpBackgroundRemoval
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
@@ -165,6 +166,11 @@ internal class AttachmentHandler(
                     )
                 }
 
+                // Image editor is open — pre-warm the background-removal model so the
+                // first "Remove background" tap is usually instant (Android-only; no-op
+                // elsewhere and when no image was attached).
+                maybeWarmUpBackgroundRemoval(newFiles)
+
                 // Editor is now visible — extract thumbnails in the background and
                 // patch the pending FileVideo entries when they complete.
                 newFiles.forEach { f ->
@@ -228,6 +234,10 @@ internal class AttachmentHandler(
                         fullScreenOverlay = newOverlay,
                     )
                 }
+
+                // Image editor is open — pre-warm the background-removal model (no-op
+                // when no image was attached or the platform is unsupported).
+                maybeWarmUpBackgroundRemoval(newFiles)
 
                 // Editor visible — kick off thumbnail extraction in parallel.
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
@@ -325,6 +335,9 @@ internal class AttachmentHandler(
                 messagesUiState.update {
                     it.copy(fullScreenOverlay = newOverlay)
                 }
+
+                // A pasted image is always image-like — pre-warm the background-removal model.
+                maybeWarmUpBackgroundRemoval(listOf(newFile))
             } catch (e: Exception) {
                 Logger.e("Failed to attach clipboard image", e)
                 sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
@@ -466,6 +479,22 @@ internal class AttachmentHandler(
                 sendEvent(ShowErrorMessage("Failed to apply drawing: ${e.message}"))
             }
         }
+    }
+
+    /**
+     * Best-effort: when an image editor opens on a device that supports background
+     * removal, ask the platform to pre-download the segmentation model (Android's ML
+     * Kit optional module) so the first [handleRemoveBackground] tap usually finds it
+     * ready instead of triggering — and briefly failing on — the download then. No-op
+     * on platforms without an optional model, and when nothing image-like was attached.
+     */
+    private fun maybeWarmUpBackgroundRemoval(files: List<AttachmentPendingFile>) {
+        // Support is re-checked inside warmUpBackgroundRemoval() (a no-op on platforms
+        // without an optional model), so here we only gate on having an image.
+        val hasImage = files.any {
+            it is AttachmentPendingFile.FileImage || it is AttachmentPendingFile.Gallery
+        }
+        if (hasImage) warmUpBackgroundRemoval()
     }
 
     /**

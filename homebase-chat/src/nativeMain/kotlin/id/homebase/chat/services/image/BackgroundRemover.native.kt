@@ -130,6 +130,15 @@ actual suspend fun removeBackground(srcBytes: ByteArray): ByteArray? = withConte
  */
 actual fun isBackgroundRemovalSupported(): Boolean = true
 
+/**
+ * No-op on iOS: the Vision foreground-instance segmenter is part of the OS, so there
+ * is no optional model to pre-download (unlike Android's ML Kit module that rides on
+ * Google Play services).
+ */
+actual fun warmUpBackgroundRemoval() {
+    // Nothing to warm up — Vision ships with the OS.
+}
+
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray {
     val size = length.toInt()
