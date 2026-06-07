@@ -60,12 +60,19 @@ Triggers differ per platform:
 | MSAA / antialiasing | Canvas GL `samples: 0`, `antialias: false` | Not MSAA (the recurring `READ_BUFFER attachment is multisampled` warning is from an internal Skia target and is benign — Flutter CanvasKit emits it too) |
 | DevicePixelRatio mismatch | `dpr: 1`, canvas buffer == css size (1583×573) | Not DPR |
 | Browser-specific (Firefox) | Reproduced in **Edge** (Chromium/ANGLE) too | Not browser-specific |
+| HTTP/2 | Local Node **HTTP/2 + Brotli** server, deployed bytes (`:8443`) | Renders → not HTTP/2 |
+| Brotli framing (chunked, no `content-length`) | `:8443` re-served with **streamed Brotli, no content-length** (exactly Kestrel's framing) | Renders → not the framing |
+| Wrong content-type for wasm | `text/html` seen for a `.wasm` was the **SPA fallback for a stale hash**; current real files (`0c7a3ff…` skiko, `1e6a451a…` app) serve as `application/wasm` | Not content-type |
 
-**Being tested now:** **HTTP/2** in isolation — a local Node HTTP/2 + Brotli server (self-signed
-cert) serving the deployed bytes at `https://localhost:8443/apps/chat-wasm/`, mimicking Kestrel's
-serving exactly. (No CDN to test — frodo serves directly from odin-core Kestrel.) If `:8443`
-reproduces the blank, we have a **local repro**; if not, the remaining plan is to run a **local
-odin-core Kestrel backend** with the exact frodo setup and reproduce against that.
+**Piecewise mimicry exhausted.** Every individually-replicable attribute of Kestrel's response —
+HTTP/2, Brotli (incl. streamed/no-content-length framing), `application/wasm` content-type, the exact
+bytes — was reproduced on a local server and **renders every time**. Only the actual odin-core Kestrel
+server blanks. So either it's the precise combination/timing of the real server, or a genuine
+timing-sensitive skiko/Compose web rendering race that this server happens to trigger.
+
+**Plan B (in progress):** stand up a **local odin-core Kestrel + odin-js** with frodo's exact setup,
+wire in the freshly-built chat-wasm bundle, and reproduce against the real server locally — then bisect
+its serving config / get a fix-iteration loop without frodo deploys.
 
 ## Console commands run on the live (blank) site + results
 
@@ -100,8 +107,10 @@ window.dispatchEvent(new Event('homebase:recover-text'))
 | Python `:8000` | `/` | none | text ✓ |
 | Python `:8002` | `/apps/chat-wasm/` | none | text ✓ |
 | Python `:8003` (deployed bytes) | `/apps/chat-wasm/` | none | text ✓ |
-| Python `:8004` (deployed bytes) | `/apps/chat-wasm/` | **brotli** | text ✓ |
-| **Kestrel / frodo (live)** | `/apps/chat-wasm/` | brotli, HTTP/2 | **blank ✗** |
+| Python `:8004` (deployed bytes) | `/apps/chat-wasm/` | **brotli** (HTTP/1) | text ✓ |
+| Node `:8443` (deployed bytes) | `/apps/chat-wasm/` | **brotli, HTTP/2** | text ✓ |
+| Node `:8443` (deployed bytes) | `/apps/chat-wasm/` | **brotli streamed, no content-length, HTTP/2** | text ✓ |
+| **Kestrel / odin-core / frodo (live)** | `/apps/chat-wasm/` | brotli, HTTP/2 | **blank ✗** |
 
 Deployed `skiko.wasm` is **byte-identical** to the local build (hash `6e23e5428398b92da386`); the app
 wasm/js differ only by ~100/~24 bytes (build timestamp). Conclusion: **same code + same browser/GPU,
@@ -129,11 +138,41 @@ only the server differs.**
 - Branch `upgrade-compose-1-11` / PR #656: 1.11 upgrade reverted (net diff is just `main.wasm.kt`,
   the now-disproven defer-backend change + the manual `homebase:recover-text` hook). The PR title is
   stale and the defer-backend change should be reverted once a real fix lands.
-- It's the **odin-core Kestrel HTTP serving** (HTTP/2 + Brotli), not the build, not the app, not the
-  backend, not the network speed, not Brotli alone. **HTTP/2 is the prime remaining suspect.**
-- **In progress:** test HTTP/2 locally (`https://localhost:8443/apps/chat-wasm/`, Node HTTP/2 +
-  Brotli, deployed bytes):
-  - Blank → **local repro** of the HTTP/2 trigger → iterate the real fix locally, no more deploys.
-  - Renders → HTTP/2 ruled out → **run a local odin-core Kestrel** with frodo's exact setup and
-    reproduce against that, then bisect the serving config.
+- It's the **odin-core Kestrel HTTP serving**, full stop — not the build, app, backend, network speed,
+  Brotli, HTTP/2, content-type, or response framing (all reproduced locally → render).
+- **In progress (plan B):** stand up local **odin-core** (backend) + **odin-js** (frontend), wire in a
+  freshly-built chat-wasm bundle, reproduce against the real Kestrel locally, then bisect the serving.
 - Once a fix is found and verified: **port it to iOS** (cold start + foreground-after-long-idle).
+
+## Notes for a JetBrains (Compose Multiplatform) issue report
+
+Copy/adapt when filing. The hook that makes this report unusually strong: **byte-identical app, same
+browser + GPU, same protocol/compression — text renders under one HTTP server and is blank under
+another.**
+
+- **Title:** [Web/wasmJs] Text/glyphs blank (frames render) when the wasm app is served by ASP.NET
+  Kestrel, but renders identically-byte-for-byte under other HTTP servers.
+- **Compose Multiplatform:** 1.10.3 (also reproduced on 1.11.1). **Kotlin:** 2.3.21. **Target:**
+  `wasmJs` / `ComposeViewport`. **Browsers:** Firefox and Edge (Chromium/ANGLE) — both reproduce.
+- **Symptom:** All `Text` is blank; non-text (boxes, icons, images) renders. **Freshly-composed**
+  glyphs render (characters typed into a `BasicTextField`; a just-opened dropdown/menu) while
+  already-on-screen glyphs stay blank → looks like a stale/never-populated GPU glyph atlas.
+- **Canvas/GL state (DevTools, shadow-root canvas):** `1583×573`, `dpr 1`, `antialias false`,
+  `samples 0`, `contextLost false`. `WebGL_debug_renderer_info` and `READ_BUFFER attachment is
+  multisampled` warnings appear but are benign (also in Flutter CanvasKit).
+- **The decisive observation:** the *exact same* built bytes (skiko.wasm byte-identical) **render**
+  when served by Python `http.server` and a Node `http2` server (tested: HTTP/1.1 & HTTP/2; raw &
+  Brotli; Brotli with fixed `content-length` & streamed/no-`content-length`; root & sub-path
+  hosting), but are **blank** when served by the production **ASP.NET Core Kestrel** backend. Same
+  machine, same browser, same GPU.
+- **Recovery attempts that do NOT fix it (web):** `org.jetbrains.skia.Graphics.purgeAllCaches()` +
+  redraw; forced full re-composition (re-key the tree); window/container resize. `WEBGL_lose_context`
+  → skiko throws `kotlin.RuntimeException` and the canvas goes black (skiko does not survive WebGL
+  context loss).
+- **Parallel iOS symptom (likely same root):** intermittent blank text on **cold start** and after
+  **long idle** (GPU-resource reclamation); a just-opened menu shows text. Background-entry variant
+  was CMP-9488, fixed in 1.10.1.
+- **Asks for JetBrains:** is there a known glyph-atlas population/residency issue sensitive to the
+  HTTP response timing/streaming of the wasm? Is there a supported way to force a glyph-atlas
+  rebuild / GrDirectContext resource purge from app code (the global `Graphics.purgeAllCaches` does
+  not reach the per-context GPU atlas)? Does skiko handle/should it handle WebGL context loss?
