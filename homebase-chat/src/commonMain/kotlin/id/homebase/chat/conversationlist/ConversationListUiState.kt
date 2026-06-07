@@ -266,6 +266,15 @@ sealed interface FullScreenOverlay {
         val conversationTitle: String,
         val conversationId: Uuid,
         val attachments: List<AttachmentPendingFile>,
+        /**
+         * Attachment ids whose background removal is currently running. The editor's
+         * "Remove background" tool shows a spinner and disables itself for these, so the
+         * multi-hundred-ms (first call: model download / warm-up) on-device segmentation
+         * pass doesn't read as a dead button. Keyed by id so the spinner follows the
+         * specific image across pager swipes. Added/removed (in a `finally`) by
+         * [AttachmentHandler.handleRemoveBackground].
+         */
+        val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
     @Immutable
@@ -287,11 +296,12 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
      * @param includeLocation Per-image opt-in for embedding GPS coordinates in the
      *   eventual post. Date / camera / dimensions always travel when known —
      *   only the privacy-sensitive bit is gated. Defaults false.
-     * @param forceSticker Per-image opt-in to render this image as a bare,
-     *   transparent cut-out sticker (no rounded-card bubble). Read once at send to
-     *   set [id.homebase.chat.services.builder.AttachmentInput.forceSticker], which
-     *   overrides the send-time alpha auto-detect. Ephemeral editor state, like
-     *   [includeLocation]. Defaults false.
+     * @param forceSticker Per-image opt-in to send as a sticker (transparent
+     *   cut-out render), threaded into [id.homebase.chat.services.builder.AttachmentInput.forceSticker]
+     *   at send time so it skips the auto alpha probe. Set true by the
+     *   background-remover tool so intent survives a re-encode that flattens
+     *   fringe alpha; also the carrier for the manual "Send as sticker" toggle.
+     *   Ephemeral editor state, like [includeLocation]. Defaults false.
      */
     data class FileImage(
         val id: Uuid,
@@ -316,7 +326,7 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class Gallery(
         val id: Uuid,
         val image: GalleryImage,
-        /** Per-image opt-in to send as a transparent cut-out sticker. See [FileImage.forceSticker]. */
+        /** See [FileImage.forceSticker]. */
         val forceSticker: Boolean = false,
     ) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
