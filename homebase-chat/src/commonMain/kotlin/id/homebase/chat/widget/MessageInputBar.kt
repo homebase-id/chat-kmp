@@ -390,7 +390,13 @@ fun MessageTextFieldExpanded(
                     }
                 }
                 .onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                    // Cmd/Ctrl+V image paste works on any platform with a hardware
+                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                    // stays desktop/web only; mobile uses the send button.
+                    if (keyEvent.type == KeyEventType.KeyDown &&
+                        (isDesktopOrWeb() ||
+                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                    ) {
                         when {
                             keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
                                 state.addTextAfterSelection("\n")
@@ -658,7 +664,13 @@ fun MessageTextFieldCompact(
                                     }
                                 }
                                 .onPreviewKeyEvent { keyEvent ->
-                                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                                    // Cmd/Ctrl+V image paste works on any platform with a hardware
+                                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                                    // stays desktop/web only; mobile uses the send button.
+                                    if (keyEvent.type == KeyEventType.KeyDown &&
+                                        (isDesktopOrWeb() ||
+                                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                                    ) {
                                         when {
                                             keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
                                                 state.addTextAfterSelection("\n")
