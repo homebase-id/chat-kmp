@@ -292,7 +292,7 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
      *   at send time so it skips the auto alpha probe. Set true by the
      *   background-remover tool so intent survives a re-encode that flattens
      *   fringe alpha; also the carrier for the manual "Send as sticker" toggle.
-     *   Defaults false.
+     *   Ephemeral editor state, like [includeLocation]. Defaults false.
      */
     data class FileImage(
         val id: Uuid,

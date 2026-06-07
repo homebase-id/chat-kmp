@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -74,6 +76,7 @@ import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_image_attachment
 import id.homebase.resources.cd_pause_video
 import id.homebase.resources.cd_play_video
+import id.homebase.resources.cd_send_as_sticker
 import id.homebase.resources.cd_send_to
 import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
@@ -108,6 +111,7 @@ fun FullScreenAttachmentEditor(
     onDrawImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
     onRemoveBackground: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
     onTrimChange: (conversationId: Uuid, attachmentId: Uuid, startMs: Long?, endMs: Long?) -> Unit = { _, _, _, _ -> },
+    onToggleSticker: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -549,6 +553,25 @@ fun FullScreenAttachmentEditor(
                             contentDescription = stringResource(MR.string.chat_remove_background),
                         )
                     }
+                }
+                // Send-as-sticker: render this image as a bare transparent cut-out
+                // (no rounded-card bubble) on the receiver. Always available — the
+                // source-of-truth is the per-image forceSticker flag on the model, so
+                // the checked state survives page swipes in the pager.
+                val isSticker = when (currentAttachment) {
+                    is AttachmentPendingFile.FileImage -> currentAttachment.forceSticker
+                    is AttachmentPendingFile.Gallery -> currentAttachment.forceSticker
+                }
+                FilledIconToggleButton(
+                    checked = isSticker,
+                    onCheckedChange = {
+                        onToggleSticker(data.conversationId, currentAttachment.attachmentId)
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = stringResource(MR.string.cd_send_as_sticker),
+                    )
                 }
             }
             if (currentAttachment != null) {

@@ -1,7 +1,7 @@
 package id.homebase.chat.services.chat
 
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import kotlinx.serialization.Serializable
@@ -24,14 +24,10 @@ object ChatMessageSizer {
         return OdinSystemSerializer.serialize(payload).encodeToByteArray()
     }
 
-    fun preview(markdown: String): String {
-        val plain =
-            markdown
-                .replace(Regex("[*_`#>\\-]"), "")
-                .replace("\n", " ")
-
-        return plain.truncateToCodePoints(400)
-    }
+    fun preview(markdown: String): String =
+        // Shared AST strip — mirrors the renderer's grammar and, unlike the old
+        // `[*_`#>\-]` regex, leaves mid-word hyphens/underscores intact.
+        markdownToPlainPreview(markdown, maxCodePoints = 400)
 }
 
 @Serializable

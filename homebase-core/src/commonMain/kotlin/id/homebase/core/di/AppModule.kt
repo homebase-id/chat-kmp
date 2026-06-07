@@ -21,6 +21,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
@@ -538,6 +539,7 @@ val appModule = module {
     viewModelOf(::MessageInfoViewModel)
     viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
+    viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)

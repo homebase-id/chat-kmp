@@ -514,6 +514,19 @@
     <string name="chat_message_emoji">Emoji</string>
     <string name="chat_message_location">Placering</string>
 
+    <!-- Markdown-værktøjslinje (tilgængelighedsetiketter) og link-dialog -->
+    <string name="chat_markdown_heading">Overskrift</string>
+    <string name="chat_markdown_blockquote">Citat</string>
+    <string name="chat_markdown_inline_code">Indlejret kode</string>
+    <string name="chat_markdown_code_block">Kodeblok</string>
+    <string name="chat_markdown_link">Indsæt link</string>
+    <string name="chat_markdown_nested_list">Indryk liste</string>
+    <string name="chat_markdown_link_dialog_title">Indsæt link</string>
+    <string name="chat_markdown_link_dialog_text">Tekst</string>
+    <string name="chat_markdown_link_dialog_url">URL</string>
+    <string name="chat_markdown_link_dialog_insert">Indsæt</string>
+    <string name="chat_markdown_link_dialog_cancel">Annullér</string>
+
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>
     <string name="chat_message_report">Rapportér</string>
@@ -540,6 +553,8 @@
     <string name="draw">Tegn</string>
     <string name="chat_remove_background">Fjern baggrund</string>
     <string name="chat_remove_background_failed">Kunne ikke fjerne baggrunden</string>
+    <string name="send_as_sticker">Send som klistermærke</string>
+    <string name="cd_send_as_sticker">Skift send som klistermærke</string>
     <string name="trim_start_handle">Beskær start</string>
     <string name="trim_end_handle">Beskær slut</string>
     <string name="trim_position">Afspilningsposition</string>

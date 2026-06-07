@@ -27,13 +27,13 @@ class MessageSearchItemTest {
         onNodeWithText("Alice").assertExists()
     }
 
-    // Regression: the search-results row used to call setMarkdown() directly,
-    // which throws StringIndexOutOfBoundsException inside the markdown parser
+    // Regression: the search-results row used to call richeditor setMarkdown()
+    // directly, which threw StringIndexOutOfBoundsException inside that parser
     // for certain inputs (see RichTextRenderingTest for the exact input). The
-    // fix routes the call through applyMarkDownContent(), which catches the
-    // parser blow-up and falls back to plain text. This test composes the
-    // widget with that same known-problematic input and asserts composition
-    // does not throw.
+    // row now strips to plain text via the shared CommonMark AST walk
+    // (markdownToPlainPreview) before rendering, so the crash class is gone.
+    // This composes the widget with that same known-problematic input and
+    // asserts composition does not throw.
     @Test
     fun rendersWithoutCrashing_forParserBreakingMarkdown() = runComposeUiTest {
         val problematic = "gg\n\n  gg"

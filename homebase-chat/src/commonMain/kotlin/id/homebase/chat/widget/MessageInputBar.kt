@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -49,11 +50,16 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.AddLink
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
-import androidx.compose.material.icons.outlined.FormatUnderlined
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,7 +67,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -102,6 +110,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
+import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
@@ -129,6 +138,17 @@ import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_message_record_video
+import id.homebase.resources.chat_markdown_blockquote
+import id.homebase.resources.chat_markdown_code_block
+import id.homebase.resources.chat_markdown_heading
+import id.homebase.resources.chat_markdown_inline_code
+import id.homebase.resources.chat_markdown_link
+import id.homebase.resources.chat_markdown_link_dialog_cancel
+import id.homebase.resources.chat_markdown_link_dialog_insert
+import id.homebase.resources.chat_markdown_link_dialog_text
+import id.homebase.resources.chat_markdown_link_dialog_title
+import id.homebase.resources.chat_markdown_link_dialog_url
+import id.homebase.resources.chat_markdown_nested_list
 import id.homebase.resources.chat_message_take_photo
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
@@ -390,7 +410,13 @@ fun MessageTextFieldExpanded(
                     }
                 }
                 .onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                    // Cmd/Ctrl+V image paste works on any platform with a hardware
+                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                    // stays desktop/web only; mobile uses the send button.
+                    if (keyEvent.type == KeyEventType.KeyDown &&
+                        (isDesktopOrWeb() ||
+                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                    ) {
                         when {
                             keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
                                 state.addTextAfterSelection("\n")
@@ -658,7 +684,13 @@ fun MessageTextFieldCompact(
                                     }
                                 }
                                 .onPreviewKeyEvent { keyEvent ->
-                                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                                    // Cmd/Ctrl+V image paste works on any platform with a hardware
+                                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                                    // stays desktop/web only; mobile uses the send button.
+                                    if (keyEvent.type == KeyEventType.KeyDown &&
+                                        (isDesktopOrWeb() ||
+                                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                                    ) {
                                         when {
                                             keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
                                                 state.addTextAfterSelection("\n")
@@ -1205,12 +1237,26 @@ fun MessageTextFieldForAttachment(
     }
 }
 
+@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun RichTextEditorButtons(
     modifier: Modifier = Modifier,
     state: RichTextState,
     enabled: Boolean,
 ) {
+    // Localized a11y labels for the new authoring affordances. Resolved here
+    // (outside the LazyRow item lambdas) so the Konsist no-literal-Text gate is
+    // satisfied and the labels survive into TalkBack/VoiceOver.
+    val headingLabel = stringResource(MR.string.chat_markdown_heading)
+    val blockquoteLabel = stringResource(MR.string.chat_markdown_blockquote)
+    val inlineCodeLabel = stringResource(MR.string.chat_markdown_inline_code)
+    val codeBlockLabel = stringResource(MR.string.chat_markdown_code_block)
+    val linkLabel = stringResource(MR.string.chat_markdown_link)
+    val nestedListLabel = stringResource(MR.string.chat_markdown_nested_list)
+
+    var showLinkDialog by remember { mutableStateOf(false) }
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+
     LazyRow(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         item {
             RichTextStyleButton(
@@ -1238,20 +1284,10 @@ fun RichTextEditorButtons(
             )
         }
 
-        item {
-            RichTextStyleButton(
-                onClick = {
-                    state.toggleSpanStyle(
-                        SpanStyle(textDecoration = TextDecoration.Underline)
-                    )
-                },
-                enabled = enabled,
-                isSelected = state.currentSpanStyle.textDecoration?.contains(
-                    TextDecoration.Underline
-                ) == true,
-                icon = Icons.Outlined.FormatUnderlined,
-            )
-        }
+        // Underline intentionally dropped: it has no CommonMark representation,
+        // so toMarkdown() would silently lose it and it would not round-trip to
+        // other Homebase clients (which speak markdown on the wire) nor render in
+        // the mikepenz CommonMark renderer.
 
         item {
             RichTextStyleButton(
@@ -1270,7 +1306,79 @@ fun RichTextEditorButtons(
             )
         }
 
-        item { Box(Modifier.height(24.dp).width(1.dp).background(Color(0xFF393B3D))) }
+        // Inline code (re-enabled). Styled by the renderer as a monospace chip.
+        item {
+            RichTextStyleButton(
+                onClick = { state.toggleCodeSpan() },
+                enabled = enabled,
+                isSelected = state.isCodeSpan,
+                icon = Icons.Outlined.Code,
+                contentDescription = inlineCodeLabel,
+            )
+        }
+
+        // Insert a link via dialog (text + URL).
+        item {
+            RichTextStyleButton(
+                onClick = { showLinkDialog = true },
+                enabled = enabled,
+                isSelected = state.isLink,
+                icon = Icons.Outlined.AddLink,
+                contentDescription = linkLabel,
+            )
+        }
+
+        item {
+            Box(
+                Modifier.height(24.dp).width(1.dp).background(dividerColor)
+            )
+        }
+
+        // Heading: cycle Normal -> H1 -> H2 -> Normal (richeditor serialises the
+        // level as a CommonMark ATX prefix `# ` / `## `).
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    val next = when (state.currentHeadingStyle) {
+                        HeadingStyle.Normal -> HeadingStyle.H1
+                        HeadingStyle.H1 -> HeadingStyle.H2
+                        else -> HeadingStyle.Normal
+                    }
+                    state.setHeadingStyle(next)
+                },
+                enabled = enabled,
+                isSelected = state.currentHeadingStyle != HeadingStyle.Normal,
+                icon = Icons.Outlined.Title,
+                contentDescription = headingLabel,
+            )
+        }
+
+        // Blockquote and fenced code block. richeditor has no paragraph-level
+        // toggle for these, so we insert the CommonMark markers at the cursor;
+        // the editor renders them live and toMarkdown() emits them verbatim.
+        item {
+            RichTextStyleButton(
+                onClick = { state.addTextAfterSelection("\n> ") },
+                enabled = enabled,
+                icon = Icons.Outlined.FormatQuote,
+                contentDescription = blockquoteLabel,
+            )
+        }
+
+        item {
+            RichTextStyleButton(
+                onClick = { state.addTextAfterSelection("\n```\n\n```\n") },
+                enabled = enabled,
+                icon = Icons.Outlined.Terminal,
+                contentDescription = codeBlockLabel,
+            )
+        }
+
+        item {
+            Box(
+                Modifier.height(24.dp).width(1.dp).background(dividerColor)
+            )
+        }
 
         item {
             RichTextStyleButton(
@@ -1290,23 +1398,78 @@ fun RichTextEditorButtons(
             )
         }
 
-        //            item {
-        //                Box(
-        //                    Modifier
-        //                        .height(24.dp)
-        //                        .width(1.dp)
-        //                        .background(Color(0xFF393B3D))
-        //                )
-        //            }
-        //            item {
-        //                RichTextStyleButton(
-        //                    onClick = {
-        //                        state.toggleCodeSpan()
-        //                    },
-        //                    isSelected = state.isCodeSpan,
-        //                    icon = Icons.Outlined.Code,
-        //                )
-        //            }
+        // Nested list: increase the indent level of the current list item. Only
+        // meaningful while the cursor sits inside a list.
+        item {
+            RichTextStyleButton(
+                onClick = { state.increaseListLevel() },
+                enabled = enabled && state.isList,
+                icon = Icons.AutoMirrored.Outlined.FormatIndentIncrease,
+                contentDescription = nestedListLabel,
+            )
+        }
     }
+
+    if (showLinkDialog) {
+        MarkdownLinkDialog(
+            initialText = "",
+            onDismiss = { showLinkDialog = false },
+            onConfirm = { text, url ->
+                if (text.isNotBlank() && url.isNotBlank()) {
+                    state.addLink(text = text, url = url)
+                }
+                showLinkDialog = false
+            },
+        )
+    }
+}
+
+/**
+ * Small dialog to insert a markdown link as `[text](url)`. The editor's
+ * [RichTextState.addLink] handles the actual insertion; this only collects the
+ * two fields. All labels come from string resources so the Konsist no-literal
+ * gate is satisfied and the dialog is localizable.
+ */
+@Composable
+private fun MarkdownLinkDialog(
+    initialText: String,
+    onDismiss: () -> Unit,
+    onConfirm: (text: String, url: String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initialText) }
+    var url by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.chat_markdown_link_dialog_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(MR.string.chat_markdown_link_dialog_text)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text(stringResource(MR.string.chat_markdown_link_dialog_url)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text, url) }) {
+                Text(stringResource(MR.string.chat_markdown_link_dialog_insert))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(MR.string.chat_markdown_link_dialog_cancel))
+            }
+        },
+    )
 }
 

@@ -277,6 +277,12 @@ sealed interface ConversationListUiAction {
         val trimEndMs: Long?,
     ) : ConversationListUiAction
 
+    /** User toggled Send-as-sticker on an image attachment. */
+    data class ToggleStickerAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
 }

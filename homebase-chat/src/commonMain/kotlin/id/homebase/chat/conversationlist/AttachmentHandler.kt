@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
@@ -281,10 +282,20 @@ internal class AttachmentHandler(
     fun handleAttachClipboardImage(action: ConversationListUiAction.AttachClipboardImage) {
         scope.launch {
             try {
+                // The temp file's EXTENSION is what the send path turns into the wire
+                // content-type: MessageActionsHandler resolves it via resolveContentType(
+                // fileName = file.name, ...), which falls back to extension-based lookup
+                // for a bare temp file with no rich platform MIME. So a pasted animated
+                // GIF written to a ".png" file would ship as image/gif's bytes mislabeled
+                // image/png — the receiver would request a thumbnail (image/gif is in
+                // THUMBLESS_CONTENT_TYPES, image/png isn't) and the GIF would not animate.
+                // Sniff the magic bytes and pick the matching extension so the bytes and
+                // their declared type agree end to end. We never re-encode the bytes.
+                val suffix = clipboardImageSuffix(action.imageBytes)
                 val tempPath = fileOperationsProvider.writeBytesToTempFile(
                     action.imageBytes,
                     "clipboard_image",
-                    ".png"
+                    suffix
                 )
                 val platformFile = platformFileFromPath(tempPath)
                 val newFile = AttachmentPendingFile.FileImage(
@@ -539,6 +550,28 @@ internal class AttachmentHandler(
         }
     }
 
+    /* Send-as-sticker toggle on an image attachment. Synchronous, like the trim
+     * reducer: flip the per-image forceSticker flag on the matching FileImage or
+     * Gallery entry in the open editor overlay. Read at send to set
+     * AttachmentInput.forceSticker. */
+    fun handleToggleStickerAttachment(action: ConversationListUiAction.ToggleStickerAttachment) {
+        val overlay = messagesUiState.value.fullScreenOverlay
+        if (overlay !is FullScreenOverlay.AttachmentData) return
+        val newAttachments = overlay.attachments.map { existing ->
+            when {
+                existing.attachmentId != action.attachmentId -> existing
+                existing is AttachmentPendingFile.FileImage ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                existing is AttachmentPendingFile.Gallery ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                else -> existing
+            }
+        }
+        messagesUiState.update {
+            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+        }
+    }
+
     /* Audio recording */
     fun handleShowRecordingHelp() {
         sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
@@ -628,3 +661,23 @@ internal class AttachmentHandler(
         }
     }
 }
+
+/**
+ * Picks the temp-file extension for a pasted clipboard image by sniffing the magic
+ * bytes (via [ImageFormatDetector.detectFormat]) rather than trusting the source.
+ *
+ * The extension matters because the send path derives the wire content-type from the
+ * file name (extension fallback in `resolveContentType`). An animated GIF must keep a
+ * ".gif" suffix so it is sent as image/gif — that type is THUMBLESS, so receivers load
+ * the full payload and the GIF animates. JPEG keeps ".jpg"; everything else (PNG,
+ * unknown raster) defaults to ".png", which matches the previous hardcoded behavior.
+ *
+ * The bytes themselves are never re-encoded.
+ */
+internal fun clipboardImageSuffix(bytes: ByteArray): String =
+    when (ImageFormatDetector.detectFormat(bytes)) {
+        "image/gif" -> ".gif"
+        "image/jpeg" -> ".jpg"
+        "image/webp" -> ".webp"
+        else -> ".png"
+    }

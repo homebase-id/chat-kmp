@@ -373,6 +373,14 @@ fun ConversationMessagesPane(
                                     )
                                 )
                             },
+                            onToggleSticker = { conversationId, attachmentId ->
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction.ToggleStickerAttachment(
+                                        conversationId,
+                                        attachmentId,
+                                    )
+                                )
+                            },
                         )
                     }
                 }

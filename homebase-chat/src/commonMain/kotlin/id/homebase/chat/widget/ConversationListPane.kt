@@ -412,6 +412,11 @@ fun ConversationListPane(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,
                                     iconOnlyMode = iconOnlyMode,
+                                    // Live search text drives the highlight in
+                                    // message-search rows; empty when not searching.
+                                    searchQuery = if (uiState.isSearchActive)
+                                        searchTextState.text.toString()
+                                    else "",
                                     onUiAction = onUiAction,
                                     onConversationSelected = onConversationSelected,
                                 )
@@ -477,6 +482,7 @@ fun ConversationLisContentItem(
     listItem: ConversationListContentModel,
     selectedConversationId: Uuid?,
     iconOnlyMode: Boolean,
+    searchQuery: String,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
@@ -552,6 +558,7 @@ fun ConversationLisContentItem(
             MessageSearchItem(
                 memberName = listItem.message.displayName,
                 message = listItem.message.content,
+                searchQuery = searchQuery,
                 contactOdinId = listItem.message.originalAuthor,
                 timestamp = listItem.message.userDate,
                 onClick = {
