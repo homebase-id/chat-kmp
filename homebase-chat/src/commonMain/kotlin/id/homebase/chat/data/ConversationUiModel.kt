@@ -44,6 +44,13 @@ data class ConversationUiModel(
     val exitedAt: Instant? = null,
     /** Server-stamped last-modified time of the conversation file (fileMetadata.updated). */
     val fileUpdated: Instant = Instant.fromEpochMilliseconds(0),
+    /**
+     * Server-stamped creation time of the conversation file (fileMetadata.created).
+     * Sync-independent, so it's the reliable "chatting since" date — unlike the
+     * oldest *locally-synced* message. Epoch 0 when unknown (e.g. an orphan
+     * placeholder created before its real header synced).
+     */
+    val fileCreated: Instant = Instant.fromEpochMilliseconds(0),
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)
