@@ -456,13 +456,6 @@ fun AppNavHost(
                                     textAlign = TextAlign.Center,
                                 )
                             },
-                            label = {
-                                Text(
-                                    stringResource(topLevelRoute.labelRes),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,
