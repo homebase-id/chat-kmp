@@ -166,6 +166,11 @@
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
+    <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
+    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_generic">Login failed</string>
+    <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
+    <string name="login_continue_button">Continue to sign in</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>

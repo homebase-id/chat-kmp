@@ -9,11 +9,11 @@ import org.w3c.dom.events.Event
 /**
  * Web implementation of BrowserLauncher.
  *
- * YouAuth runs in a popup window opened from the login click gesture (see
- * `prepareWebAuthPopup` / `rememberAuthBrowserLauncher`). The popup navigates to the owner
- * console, then lands back on our own `/authorization-code-callback` page, which posts the
- * full callback URL to this (the opener) window and closes itself — keeping the in-memory
- * `callbackRegistry` in `YouAuthFlowManager` alive so the token exchange can finish here.
+ * YouAuth runs in a popup window opened by `rememberAuthBrowserLauncher` once the identity has
+ * passed its format + ping checks. The popup navigates to the owner console, then lands back on
+ * our own `/authorization-code-callback` page, which posts the full callback URL to this (the
+ * opener) window and closes itself — keeping the in-memory `callbackRegistry` in
+ * `YouAuthFlowManager` alive so the token exchange can finish here.
  *
  * `onAuthBrowserOpened` registers a one-shot, same-origin `message` listener that forwards
  * that callback URL to [onCallbackUrl].
