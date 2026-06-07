@@ -32,10 +32,14 @@ Count`), `NSProcessInfo` `thermal`, `lowPower`, `physMemMb`.
 - `homebase-core/src/nativeMain/.../diagnostics/IosGpuTextDiagnostics.kt` — iOS probe (skiko +
   NSProcessInfo) + `installGpuTextDiagnostics()` (lifecycle observers), wired in `MainViewController`.
 
-**Optional manual marker (not yet wired — needs a few lines of Swift in `iosApp/`):** detect a shake
-and call `GpuTextDiagnostics.shared.capture(reason:)` so we get a snapshot taken AT the blank moment.
-A Compose overlay hotspot was rejected (it would consume the back button's touches); a Settings row
-was rejected (it would leak a useless control to Android/Desktop, which have no probe).
+**Manual marker (device shake — wired in `iosApp/`):** `UIWindow.motionEnded` posts a shake
+notification that `ContentView` observes and calls `logBlankTextMarker(trigger:)`. Because every
+label is unreadable during the bug, a physical shake is the only reliable trigger. It **logs only**
+(no recovery, no Kotlin bridge): an `os_log` marker on the `TextRendering` channel plus the read-only
+state of each CAMetalLayer Skiko view (device present? drawableSize?), to line the moment up against
+the automatic `GpuTextDiag` entries in `homebase.log`. A Compose overlay hotspot was rejected (it
+would consume the back button's touches); a Settings row was rejected (it would leak a useless
+control to Android/Desktop, which have no probe).
 
 **How to use it when it recurs:** ask the user for the approximate time; pull `homebase.log`; find the
 `GpuTextDiag` line nearest that time. `ColdStart` near the time → cold-start race; `Foreground` with a

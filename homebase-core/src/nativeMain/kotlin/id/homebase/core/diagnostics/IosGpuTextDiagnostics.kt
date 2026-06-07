@@ -7,11 +7,6 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSProcessInfoThermalState
-import platform.Foundation.NSProcessInfoThermalStateCritical
-import platform.Foundation.NSProcessInfoThermalStateFair
-import platform.Foundation.NSProcessInfoThermalStateNominal
-import platform.Foundation.NSProcessInfoThermalStateSerious
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
@@ -20,11 +15,11 @@ import platform.UIKit.UIApplicationWillEnterForegroundNotification
 /**
  * iOS implementation of [GpuTextDiagnostics] (see that class and BLANK_TEXT_INVESTIGATION.md).
  *
- * Reads the skiko global font-cache counters plus NSProcessInfo memory/thermal signals, and logs a
- * snapshot at the moments the intermittent blank-text bug is known to strike: cold start, every
- * foreground (with the wall-clock time spent backgrounded), and every memory warning. The GPU glyph
- * atlas itself isn't readable (Compose owns the DirectContext), so these signals are the context we
- * correlate against a user-reported recurrence.
+ * Reads the skiko global font-cache counters plus device physical memory, and logs a snapshot at the
+ * moments the intermittent blank-text bug is known to strike: cold start, every foreground (with the
+ * wall-clock time spent backgrounded), and every memory warning. The GPU glyph atlas itself isn't
+ * readable (Compose owns the DirectContext), so these signals + the lifecycle events are the context
+ * we correlate against a user-reported recurrence.
  */
 @OptIn(ExperimentalForeignApi::class)
 private object IosGpuTextProbe : GpuTextDiagnostics.Probe {
@@ -47,26 +42,16 @@ private object IosGpuTextProbe : GpuTextDiagnostics.Probe {
         note: String?,
         backgroundDurationMs: Long?,
     ): GpuTextDiagnostics.Snapshot {
-        val processInfo = NSProcessInfo.processInfo
         return GpuTextDiagnostics.Snapshot(
             event = event,
             note = note,
             backgroundDurationMs = backgroundDurationMs,
-            fontCacheUsedBytes = runCatching { Graphics.fontCacheUsed }.getOrNull(),
-            fontCacheLimitBytes = runCatching { Graphics.fontCacheLimit }.getOrNull(),
+            // skiko exposes these as Int on the native target; widen for the platform-neutral Snapshot.
+            fontCacheUsedBytes = runCatching { Graphics.fontCacheUsed }.getOrNull()?.toLong(),
+            fontCacheLimitBytes = runCatching { Graphics.fontCacheLimit }.getOrNull()?.toLong(),
             fontCacheCountUsed = runCatching { Graphics.fontCacheCountUsed }.getOrNull(),
-            thermalState = thermalName(processInfo.thermalState),
-            lowPowerMode = processInfo.lowPowerModeEnabled,
-            physicalMemoryMb = (processInfo.physicalMemory / (1024uL * 1024uL)).toLong(),
+            physicalMemoryMb = (NSProcessInfo.processInfo.physicalMemory / (1024uL * 1024uL)).toLong(),
         )
-    }
-
-    private fun thermalName(state: NSProcessInfoThermalState): String = when (state) {
-        NSProcessInfoThermalStateNominal -> "nominal"
-        NSProcessInfoThermalStateFair -> "fair"
-        NSProcessInfoThermalStateSerious -> "serious"
-        NSProcessInfoThermalStateCritical -> "critical"
-        else -> "unknown"
     }
 }
 
