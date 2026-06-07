@@ -4,8 +4,11 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.createconversation.ContactGroup
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +22,8 @@ import kotlinx.coroutines.launch
 
 class SelectMembersViewModel(
     private val contactService: ContactService,
+    private val connectionService: ConnectionService,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SelectMembersUiState())
@@ -63,6 +68,28 @@ class SelectMembersViewModel(
                             uiState.value.selectedContacts.map { selected -> selected.id.toString() })
                     )
                 }
+            }
+
+            is SelectMembersUiAction.RefreshClicked -> onRefreshClicked()
+        }
+    }
+
+    private fun onRefreshClicked() {
+        if (uiState.value.isRefreshing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            try {
+                // Re-mount the contact drive in case a prior 403 unmounted it this
+                // session, then pull it from the server. The contact list updates
+                // itself when the sync completes (ContactService observes the drive
+                // event). Connections are fetched directly from the server.
+                driveSyncManager.ensureMandatoryMounted()
+                driveSyncManager.syncDrive(SystemDriveConstants.contactDrive.alias)
+                connectionService.refresh()
+            } catch (e: Exception) {
+                sendEvent(SelectMembersUiEvent.ShowErrorMessage(e.message ?: "Refresh failed"))
+            } finally {
+                _uiState.update { it.copy(isRefreshing = false) }
             }
         }
     }
