@@ -100,6 +100,21 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
+            // mikepenz markdown renderer — declared here, not only in homebase-chat
+            // (its actual home), for the SAME reason richeditor is duplicated above:
+            // desktopApp consumes homebase-chat via a repackaged per-platform JAR
+            // (desktopApp/build.gradle.kts `jvmJarMacosArm64` etc.) that carries only
+            // homebase-chat's own classes and STRIPS its external transitive deps.
+            // So the renderer's core/m3/coil3 artifacts never reach the Desktop
+            // runtime through homebase-chat. homebase-core, by contrast, is consumed
+            // by desktopApp as a normal JVM project dependency with full metadata, so
+            // listing them here puts them on the Desktop classpath and fixes the
+            // NoClassDefFoundError com/mikepenz/markdown/annotator/AnnotatorSettingsKt
+            // at first markdown render. (Android/iOS/Web were always fine — they
+            // consume homebase-chat normally and got these transitively.)
+            implementation(libs.markdown.renderer)
+            implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.coil3)
             implementation(libs.filekit.dialogs.compose)
         }
         nativeMain.dependencies {
