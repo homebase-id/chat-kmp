@@ -12,6 +12,17 @@ interface FileSystemHandler {
     fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFileBrowser(file: Path, onError: (Throwable) -> Unit = {})
     fun shareFile(file: Path, onError: (Throwable) -> Unit = {})
+
+    /**
+     * Share a file alongside a caption (e.g. a Moment's media + its
+     * description). Single-file + text is the one multi-part share the OS
+     * delivers reliably across target apps. Defaults to a file-only share so
+     * platforms that don't carry text (Desktop/Web) degrade gracefully; Android
+     * and iOS override to attach [text] when it's non-blank.
+     */
+    fun shareFile(file: Path, text: String?, onError: (Throwable) -> Unit = {}) =
+        shareFile(file, onError)
+
     fun shareText(text: String, onError: (Throwable) -> Unit = {})
     fun openAppStore(onError: (Throwable) -> Unit = {})
 

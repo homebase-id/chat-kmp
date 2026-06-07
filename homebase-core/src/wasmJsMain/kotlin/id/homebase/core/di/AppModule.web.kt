@@ -13,6 +13,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.getAudioPlayer
 import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.PlatformGalleryManager
+import id.homebase.core.image.AnimatedSkiaDecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.notifications.NoopNotificationBackend
@@ -56,6 +57,9 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PlatformFileFetcher.Factory())
+                    // Animates multi-frame GIF/WebP in-house via skiko; static
+                    // images fall through to Coil's default Skia decoder.
+                    add(AnimatedSkiaDecoder.Factory())
                 }
                 .build()
     }

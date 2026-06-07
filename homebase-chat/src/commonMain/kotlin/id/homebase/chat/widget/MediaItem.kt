@@ -107,6 +107,7 @@ fun MediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
+    isSticker: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
@@ -143,8 +144,9 @@ fun MediaItem(
             }
         }
 
-    // Base modifier with shape clip
-    val baseModifier = modifier.clip(shape)
+    // Base modifier with shape clip. Stickers skip the rounded-card clip so the
+    // transparent cut-out shows the chat surface through; ordinary media keeps it.
+    val baseModifier = if (isSticker) modifier else modifier.clip(shape)
 
     // Apply aspect ratio only if needed and available.
     // Note: For aspect ratio to work for "fitting inside", we typically want fillMaxWidth()
@@ -268,7 +270,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
                         val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
                         HomebaseImageData(
                             driveId = driveId,
@@ -279,6 +281,11 @@ fun MediaItem(
                             requestedSize = imageSize,
                             lastModified = payload.lastModified,
                             isEncrypted = true,
+                            // Pass the real payload content type so the loader
+                            // recognises a GIF (whose preview thumb is WebP) and
+                            // loads the animated original inline instead of a
+                            // non-existent server thumbnail. See HomebaseImageData.
+                            payloadContentType = contentType,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                         )
                     }

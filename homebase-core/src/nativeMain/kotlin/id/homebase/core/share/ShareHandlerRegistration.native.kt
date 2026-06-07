@@ -7,3 +7,11 @@ actual fun registerShareHandler(handler: (conversationId: String) -> Unit) {
 actual fun unregisterShareHandler() {
     ShareHandlerBridge.clearHandler()
 }
+
+actual fun registerMomentShareHandler(handler: () -> Unit) {
+    ShareHandlerBridge.setMomentHandler(handler)
+}
+
+actual fun unregisterMomentShareHandler() {
+    // Cleared together with the conversation handler in ShareHandlerBridge.clearHandler().
+}

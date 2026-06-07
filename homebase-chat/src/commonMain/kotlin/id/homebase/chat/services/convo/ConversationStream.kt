@@ -24,6 +24,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.share.ShareCacheStorage
+import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
@@ -67,6 +68,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val momentsPreferences: MomentsPreferences,
 ) : ConversationLoader, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
@@ -1458,7 +1460,7 @@ class ConversationStream(
                 )
             }
             _shareableConversations.value = shareable
-            shareCacheWriter.updateCache(shareable, domain)
+            shareCacheWriter.updateCache(shareable, domain, momentsPreferences.activated.value)
 
             // Pre-cache group avatar images for the iOS share extension
             for (convo in conversations) {

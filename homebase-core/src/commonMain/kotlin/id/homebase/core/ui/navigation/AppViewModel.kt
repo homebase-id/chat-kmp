@@ -17,8 +17,12 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.permission.registerPermissionCallbackHandler
 import id.homebase.core.permission.unregisterPermissionCallbackHandler
+import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.registerMomentShareHandler
 import id.homebase.core.share.registerShareHandler
+import id.homebase.core.share.sharedMediaAttachment
+import id.homebase.core.share.unregisterMomentShareHandler
 import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.upgrade.PendingUpgradeManager
@@ -46,6 +50,7 @@ class AppViewModel(
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
+    private val momentCreateFlowState: MomentCreateFlowState,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -63,6 +68,7 @@ class AppViewModel(
     init {
         collectNotificationEvents()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
+        registerMomentShareHandler { handleMomentShareIntent() }
         registerPermissionCallbackHandler { canceled ->
             viewModelScope.launch {
                 eventBus.emit(
@@ -91,6 +97,7 @@ class AppViewModel(
     override fun onCleared() {
         super.onCleared()
         unregisterShareHandler()
+        unregisterMomentShareHandler()
         unregisterPermissionCallbackHandler()
         unregisterDataUpgradeCallbackHandler()
     }
@@ -195,6 +202,37 @@ class AppViewModel(
         } else {
             Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
         }
+    }
+
+    /**
+     * Called when the app receives a "New Moment" share (iOS: via the
+     * `homebase-share://moment` URL scheme). Reads the media the share extension
+     * staged in the App Group, seeds the moments composer draft (the same
+     * [MomentCreateFlowState] the Android share path seeds), and navigates to
+     * the composer via [NotificationNavigationEvent.OpenMomentCompose].
+     *
+     * Deliberately does NOT call [ShareContentProcessor.cleanup] — that deletes
+     * the staged files, which the composer/upload still needs. As on Android,
+     * the composer owns the files from here; the next share overwrites the
+     * staging area.
+     */
+    fun handleMomentShareIntent() {
+        val descriptor = shareContentProcessor.readPendingContent()
+        if (descriptor == null || descriptor.fileNames.isEmpty()) {
+            Logger.w(tag = "AppViewModel") { "Moment share: no pending media to compose" }
+            return
+        }
+        val attachments = descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
+            sharedMediaAttachment(shareContentProcessor.resolveFilePath(name), mime)
+        }
+        Logger.i(tag = "AppViewModel") { "Moment share: seeding draft with ${attachments.size} attachments" }
+        momentCreateFlowState.setDraft(
+            MomentCreateFlowState.Draft(
+                attachments = attachments,
+                description = descriptor.text ?: "",
+            )
+        )
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
     }
 
     private fun listenForConnectionRequests() {

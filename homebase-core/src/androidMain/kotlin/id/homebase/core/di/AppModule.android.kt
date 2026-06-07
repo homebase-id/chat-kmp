@@ -1,8 +1,11 @@
 package id.homebase.core.di
 
+import android.os.Build
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
@@ -82,6 +85,15 @@ actual fun platformModule(): Module = module {
                     add(PublicImageFetcher.Factory(get()))
                     add(PlatformFileFetcher.Factory())
                     add(VideoFrameDecoder.Factory())
+                    // Animated GIF decoding. AnimatedImageDecoder uses the platform
+                    // android.graphics.ImageDecoder (API 28+); GifDecoder is the
+                    // pure-Kotlin fallback for API 27 (our minSdk). Both ship in
+                    // coil-gif, which is Android-only at Coil 3.4.0.
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        add(AnimatedImageDecoder.Factory())
+                    } else {
+                        add(GifDecoder.Factory())
+                    }
                 }
             .memoryCache {
                 MemoryCache.Builder()

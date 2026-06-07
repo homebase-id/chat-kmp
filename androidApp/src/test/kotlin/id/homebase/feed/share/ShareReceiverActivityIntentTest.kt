@@ -87,4 +87,26 @@ class ShareReceiverActivityIntentTest {
             "Re-opening MainActivity must not spawn a duplicate (SINGLE_TOP).",
         )
     }
+
+    @Test
+    fun `openMomentComposeIntent targets MainActivity with the moment-compose deep link`() {
+        val intent = activity.openMomentComposeIntent()
+
+        assertEquals(
+            MainActivity::class.java.name,
+            intent.component?.className,
+            "The New-Moment hand-off intent must land in MainActivity.",
+        )
+        assertEquals(
+            "homebase-fchat://moment-compose",
+            intent.data?.toString(),
+            "MainActivity.handleIntent() matches host == \"moment-compose\" to steer the " +
+                "nav stack into the composer; the deep link must encode exactly that.",
+        )
+        assertTrue(
+            intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0 &&
+                intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0,
+            "Re-opening MainActivity must reuse the existing task (CLEAR_TOP|SINGLE_TOP).",
+        )
+    }
 }

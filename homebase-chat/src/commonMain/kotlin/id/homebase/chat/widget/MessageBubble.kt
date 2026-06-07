@@ -947,6 +947,10 @@ fun InlineReplyPreview(
                 ?: replyPreview.previewThumbnail,
             requestedSize = ImageSize.THUMB_SMALL,
             isEncrypted = true,
+            // Real payload type so a GIF reply preview loads the animated
+            // original instead of a never-generated server thumbnail (its
+            // preview thumb is WebP).
+            payloadContentType = firstVisualPayload.contentType,
             keyHeader = KeyHeader(iv = payloadIv, aesKey = replyMessage.keyHeader.aesKey),
         )
     }
