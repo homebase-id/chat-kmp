@@ -1601,7 +1601,8 @@ fun ConversationContent(
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
-                    })
+                    },
+                    )
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
