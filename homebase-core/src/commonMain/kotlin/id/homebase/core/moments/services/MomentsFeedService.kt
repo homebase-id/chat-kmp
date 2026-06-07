@@ -18,8 +18,11 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.momentsLabeledDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -46,6 +49,7 @@ class MomentsFeedService(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
+    private val userStateStore: MomentsUserStateStore,
     private val scope: CoroutineScope,
 ) {
 
@@ -62,6 +66,27 @@ class MomentsFeedService(
 
     private val _feed = MutableStateFlow<List<MomentFeedItem>>(emptyList())
     val feed: StateFlow<List<MomentFeedItem>> = _feed.asStateFlow()
+
+    /**
+     * Count of moments received from other identities that are newer than the
+     * user's last-viewed watermark — the unseen-moments nav badge. Derived from
+     * the always-on [feed] and the synced watermark, so it is live without the
+     * Moments screen being open. Own posts (`senderOdinId == null`) never count.
+     * A null watermark (never viewed) treats everything received as unseen.
+     */
+    val unseenCount: StateFlow<Int> =
+        combine(feed, userStateStore.lastViewedMs) { items, watermark ->
+            val since = watermark ?: Long.MIN_VALUE
+            items.count { it.senderOdinId != null && it.createdMs > since }
+        }.stateIn(scope, SharingStarted.Eagerly, 0)
+
+    /**
+     * Advance the feed "last viewed" watermark. Called when the user views the
+     * feed (see `MomentsScreen`). Delegates to [MomentsUserStateStore.markViewed]
+     * — monotonic, optimistic + outbox, cross-device synced.
+     */
+    suspend fun markViewed(newestReceivedCreatedMs: Long) =
+        userStateStore.markViewed(newestReceivedCreatedMs)
 
     private var started = false
 

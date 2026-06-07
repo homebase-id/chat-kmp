@@ -652,6 +652,35 @@ class OptimisticWriter(
             )
         }
 
+    /**
+     * Generic sibling of [stampConversationLastReadTime] for non-chat callers
+     * (e.g. the moments feed "last viewed" watermark, which has no
+     * [ConversationLocalAppDataJson] of its own): optimistically writes the
+     * already-serialized [content] into [uniqueId]'s `localAppData.content`,
+     * emits a `BatchReceived` so live readers converge, and returns the outbox
+     * request that pushes it to the server. Returns null when the target file
+     * isn't present locally (same contract as the chat path — the caller
+     * leaves its state pending and retries). The caller enqueues the returned
+     * request via `OutboxSync`.
+     */
+    suspend fun stampLocalAppDataContent(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        content: String,
+        opName: String = "stampLocalAppDataContent",
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: run {
+            Logger.d(tag = TAG) {
+                "OptimisticWriter.$opName: uniqueId=$uniqueId NOT FOUND in DriveMainIndex — skipping"
+            }
+            return null
+        }
+        return pushLocalAppDataContent(existingFile, driveId, content, opName)
+    }
+
     @OptIn(ExperimentalEncodingApi::class)
     private suspend fun stampConversationLocalAppData(
         driveId: Uuid,
@@ -678,6 +707,25 @@ class OptimisticWriter(
         }
         val updatedLocalAppData = mutate(existing ?: ConversationLocalAppDataJson())
         val content = OdinSystemSerializer.serialize(updatedLocalAppData)
+
+        return pushLocalAppDataContent(existingFile, driveId, content, opName)
+    }
+
+    /**
+     * Shared tail of the localAppData-content write path: stamp [content] onto
+     * [existingFile]'s `localAppData`, optimistically upsert + emit, and return
+     * the (pre-encrypted) outbox request. Extracted verbatim from
+     * [stampConversationLocalAppData] so chat and non-chat callers share one
+     * encryption/upsert contract.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun pushLocalAppDataContent(
+        existingFile: HomebaseFile,
+        driveId: Uuid,
+        content: String,
+        opName: String,
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
         val updatedFile = existingFile.copy(
@@ -721,7 +769,7 @@ class OptimisticWriter(
                 )
             )
             Logger.d(tag = "MarkAsRead") {
-                "OptimisticWriter.$opName: optimistic local upsert ok convo=$conversationId fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
+                "OptimisticWriter.$opName: optimistic local upsert ok fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
             }
             UpdateLocalAppdataContentOutboxRequest(
                 driveId = driveId,
@@ -731,8 +779,8 @@ class OptimisticWriter(
                 iv = ivBase64
             )
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "$opName failed for conversationId=$conversationId" }
-            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED convo=$conversationId" }
+            Logger.e(throwable = e, tag = TAG) { "$opName failed for fileId=${existingFile.fileId}" }
+            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED fileId=${existingFile.fileId}" }
             null
         }
     }

@@ -85,7 +85,9 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
-import id.homebase.core.moments.services.MomentsRecipientMruStore
+import id.homebase.api.sync.database.OutboxSync
+import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -137,13 +139,16 @@ val appModule = module {
     single { UserPreferences(get()) }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
-    // MRU store mirrors DriveRegistry's wiring — narrow lambda deps for the
-    // write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
-    // for uploadFile/updateFileByUniqueId) so tests can swap in fakes.
+    // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
+    // the write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
+    // for the MRU lane; OptimisticWriter + OutboxSync for the watermark lane) so
+    // tests can swap in fakes.
     single {
         val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
         val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
-        MomentsRecipientMruStore(
+        val optimisticWriter = get<OptimisticWriter>()
+        val outboxSync = get<OutboxSync>()
+        MomentsUserStateStore(
             credentialsManager = get(),
             databaseManager = get(),
             getFileHeaderByUid = { driveId, uniqueId ->
@@ -151,6 +156,14 @@ val appModule = module {
             },
             uploadFile = { request -> uploader.uploadFile(request) },
             updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
+            stampLocalAppData = { uniqueId, content ->
+                optimisticWriter.stampLocalAppDataContent(
+                    driveId = momentsLabeledDrive.drive.alias,
+                    uniqueId = uniqueId,
+                    content = content,
+                )
+            },
+            enqueueOutbox = { request -> outboxSync.tryEnqueue(request) },
             eventBus = get(),
             scope = get(),
         )
@@ -296,7 +309,7 @@ val appModule = module {
                 // MRU store before lookup: lookup's combine() reads
                 // mruStore.stableKeys, and started-first means the cold-load
                 // emits before the lookup builds its first list.
-                get<MomentsRecipientMruStore>().start()
+                get<MomentsUserStateStore>().start()
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
