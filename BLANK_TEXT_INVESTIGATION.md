@@ -30,11 +30,16 @@ sample the atlas. This is the **shared layer** between iOS and Web (both use ski
 Triggers differ per platform:
 
 - **Web:** **PROVEN to be the live deployment runtime, not the build.** The *same deployed bytes*
-  render under a local Python server but go blank under the live Kestrel/odin-core server (see
-  tests). Leading hypothesis: the live runtime's startup work (WebSocket connect + drive sync,
-  kicked off by `promoteToForeground()`) contends with the **first paint**, so glyphs rasterize
-  into the atlas before the WebGL surface is ready. (Backend-block confirmation test still
-  pending.)
+  render under a local Python server but go blank when served by the live server. **frodo is served
+  directly by the odin-core Kestrel backend — there is NO CDN** (the `x-odin-cdn-payload:
+  https://cdn.ravenhosting.cloud` response header is misleading: it's an odin-core header, the
+  payload is not actually fetched through a CDN). So the difference is purely Kestrel's HTTP serving
+  (HTTP/2 + Brotli) vs the local servers.
+  - ~~Backend-contention hypothesis~~ **RULED OUT.** The live console logs show the login screen does
+    **zero** backend work (unauthenticated: `wsClient=null`, `dsmRunning=false`, no WebSocket, no
+    sync, `DriveSync stop() size=0`), and the deferred `promoteToForeground()` logged "already
+    foreground, no-op." Same minimal work as localhost, yet blank — so it is not startup/backend
+    contention.
 - **iOS:** **cold start** (first paint races the Metal surface/atlas) and **long idle** (iOS
   reclaims GPU resources during long background/idle; on resume the cached glyph atlas is dead).
   The earlier background-GPU variant — JetBrains **CMP-9488** "dirty font cache when entering
@@ -56,8 +61,11 @@ Triggers differ per platform:
 | DevicePixelRatio mismatch | `dpr: 1`, canvas buffer == css size (1583×573) | Not DPR |
 | Browser-specific (Firefox) | Reproduced in **Edge** (Chromium/ANGLE) too | Not browser-specific |
 
-**Not yet tested:** HTTP/2 in isolation (local HTTP/2 server); the `x-odin-cdn-payload`
-(`cdn.ravenhosting.cloud`) CDN path the browser may take vs the origin curl sees.
+**Being tested now:** **HTTP/2** in isolation — a local Node HTTP/2 + Brotli server (self-signed
+cert) serving the deployed bytes at `https://localhost:8443/apps/chat-wasm/`, mimicking Kestrel's
+serving exactly. (No CDN to test — frodo serves directly from odin-core Kestrel.) If `:8443`
+reproduces the blank, we have a **local repro**; if not, the remaining plan is to run a **local
+odin-core Kestrel backend** with the exact frodo setup and reproduce against that.
 
 ## Console commands run on the live (blank) site + results
 
@@ -111,20 +119,21 @@ only the server differs.**
    the GPU atlas).
 3. **Web: purge + forced full re-composition** (re-key the tree) — no effect on the live deploy
    (confirmed live via wasm string markers); same reason — the per-context GPU atlas survives.
-4. **Web: defer backend connect past first paint** (current — `main.wasm.kt`): move
-   `ComposeViewport` ahead of `promoteToForeground()` and delay the latter ~3s so the first frames
-   paint into a clean, ready surface before the startup churn. Pending live verification.
+4. **Web: defer backend connect past first paint** (`main.wasm.kt`) — **deployed, did NOT work.**
+   The live logs then showed *why*: the login screen does no backend work at all (see "RULED OUT"
+   above), so there was nothing to defer. Disproven; the deferred call was a no-op. (Still in the
+   branch; should be reverted once a real fix lands — keep the manual `homebase:recover-text` hook.)
 
 ## Current status / next steps
 
-- Branch `upgrade-compose-1-11` / PR #656 now contains **only the web defer-backend fix** (1.11
-  upgrade reverted; net diff is just `main.wasm.kt`). Manual `homebase:recover-text` console hook
-  retained for debugging.
-- **Verify** the defer-backend fix on frodo:
-  - Renders → confirms the live-runtime first-paint race; then **port the same defer to iOS**
-    cold start, and add a glyph re-render on **foreground-after-long-idle** (the second iOS
-    trigger).
-  - Still blank → rules out backend contention; test **HTTP/2** in isolation and the **CDN** path.
-- Outstanding confirmation test (needs console/network access, not cell): on frodo, DevTools →
-  Network → block the WS/Fetch backend requests → reload. Text rendering would confirm the
-  backend-contention root cause.
+- Branch `upgrade-compose-1-11` / PR #656: 1.11 upgrade reverted (net diff is just `main.wasm.kt`,
+  the now-disproven defer-backend change + the manual `homebase:recover-text` hook). The PR title is
+  stale and the defer-backend change should be reverted once a real fix lands.
+- It's the **odin-core Kestrel HTTP serving** (HTTP/2 + Brotli), not the build, not the app, not the
+  backend, not the network speed, not Brotli alone. **HTTP/2 is the prime remaining suspect.**
+- **In progress:** test HTTP/2 locally (`https://localhost:8443/apps/chat-wasm/`, Node HTTP/2 +
+  Brotli, deployed bytes):
+  - Blank → **local repro** of the HTTP/2 trigger → iterate the real fix locally, no more deploys.
+  - Renders → HTTP/2 ruled out → **run a local odin-core Kestrel** with frodo's exact setup and
+    reproduce against that, then bisect the serving config.
+- Once a fix is found and verified: **port it to iOS** (cold start + foreground-after-long-idle).
