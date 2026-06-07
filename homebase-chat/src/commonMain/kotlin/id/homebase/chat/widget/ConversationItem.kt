@@ -34,8 +34,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -43,7 +43,6 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
@@ -335,19 +334,18 @@ fun ConversationMessagePreview(
         }
 
         if (text.isNotEmpty()) {
-            // IMPORTANT: RichTextState MUST be wrapped in remember(text).
-            // Without remember, a new RichTextState() is created on every recomposition and
-            // setMarkdown() modifies internal Compose MutableState during composition. This
-            // triggers another recomposition, which creates another RichTextState, which calls
-            // setMarkdown again — causing an infinite recomposition loop that pins the GPU at
-            // ~15-16% (one full core) permanently. The loop is invisible in logs because it
-            // happens purely in the Compose rendering layer with no app-level side effects.
-            val textState = remember(text) {
-                RichTextState().applyDefaultStyling().also { it.setMarkdown(text) }
+            // A conversation-list row is a single line, so render the stripped
+            // plain-text preview rather than the block markdown renderer — a
+            // heading/list/quote would otherwise blow up the one-liner. The
+            // strip is the same AST walk the renderer and previews share, and it
+            // sidesteps the old RichTextState infinite-recomposition footgun
+            // entirely (no Compose MutableState is mutated during composition).
+            val previewText = remember(text) {
+                markdownToPlainPreview(text, maxCodePoints = 200)
             }
 
             Text(
-                text = textState.annotatedString,
+                text = previewText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                     alpha = if (isDeleted) 0.5f else 1f

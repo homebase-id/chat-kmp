@@ -21,6 +21,7 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.core.diagnostics.installGpuTextDiagnostics
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
@@ -86,6 +87,12 @@ fun initializeApp() {
     // Detect main-thread stalls and log them to homebase.log. On iOS the stack itself can't be
     // captured from a background thread, but the "stalled for Nms" breadcrumb is still recorded.
     MainThreadWatchdog().start()
+
+    // Field instrumentation for the intermittent iOS blank-text bug (stale GPU glyph atlas). Logs a
+    // ColdStart snapshot now and observes foreground-after-idle + memory warnings — the moments it
+    // strikes — so a user-reported recurrence can be diagnosed from homebase.log. See
+    // GpuTextDiagnostics / BLANK_TEXT_INVESTIGATION.md.
+    installGpuTextDiagnostics()
 
     val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
     runBlocking {
