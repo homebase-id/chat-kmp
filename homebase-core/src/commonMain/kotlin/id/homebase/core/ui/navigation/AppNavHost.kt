@@ -333,6 +333,71 @@ fun AppNavHost(
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
+
+                is NotificationNavigationEvent.OpenMoment -> {
+                    val momentId = Uuid.parseOrNull(event.momentId)
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMoment received: id=$momentId openComments=${event.openComments} " +
+                                "activated=${momentsPreferences.activated.value}"
+                    }
+                    // Only route when Moments is activated (receiving a moment push
+                    // implies the moments drive is subscribed, so this normally holds).
+                    if (momentId != null && momentsPreferences.activated.value) {
+                        // Cold-start safety: a tap can arrive while the NavHost is
+                        // still on Route.AppLoading (startDestination). AppLoadingScreen
+                        // finishes by navigating to ChatList with
+                        // popUpTo(AppLoading, inclusive = true) — so anything we push
+                        // *during* loading (Moments/MomentDetail) gets popped off with
+                        // AppLoading and the user lands on ChatList. Gate on ChatList
+                        // being present (returns immediately when warm; on cold start
+                        // resolves the instant AppLoading→ChatList completes, by which
+                        // point AppLoading is already gone) before pushing. Mirrors the
+                        // OpenConversation gate above.
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        // Push Moments first so back-press from the reels detail lands
+                        // on the feed, then open the detail pager on the tapped moment.
+                        // The pager resolves the moment from MomentsFeedService's live
+                        // feed, which is already syncing post-auth (and waits for it).
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(
+                            Route.MomentDetail(
+                                momentId = momentId.toString(),
+                                openComments = event.openComments,
+                            )
+                        )
+                    }
+                    TextRenderingHelper.nudge()
+                }
+
+                is NotificationNavigationEvent.OpenMomentCompose -> {
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMomentCompose received: activated=${momentsPreferences.activated.value}"
+                    }
+                    // The share flow seeded MomentCreateFlowState before launching
+                    // us; MomentComposeViewModel reads that draft on init. Gate on
+                    // Moments being activated (the share picker only offers "New
+                    // Moment" when it is) and mirror the OpenMoment back-stack
+                    // handling: push Moments first so back-press from the composer
+                    // lands on the feed, then open the composer.
+                    if (momentsPreferences.activated.value) {
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(Route.MomentCompose)
+                    }
+                    TextRenderingHelper.nudge()
+                }
             }
         }
     }
@@ -590,6 +655,7 @@ fun AppNavHost(
                                 HomeScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
+                                    onNavigateToMoments = openMoments,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }

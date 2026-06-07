@@ -114,6 +114,11 @@ fun FullScreenMediaViewer(
     }
 
     BoxWithConstraints(
+        // Deliberate divergence from the chat bubble: the bubble renders stickers
+        // transparently (no backdrop), but the full-screen viewer keeps a solid
+        // surface backdrop for all media — including stickers — so a maximised
+        // cut-out image sits on a clean, predictable surface rather than whatever
+        // is behind the viewer.
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
@@ -329,6 +334,10 @@ fun FullScreenMediaViewer(
                                 payloadKey = payload.key,
                                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                                 lastModified = payload.lastModified,
+                                // Real payload type so a GIF rail thumbnail loads
+                                // the animated original instead of a never-generated
+                                // server thumbnail (its preview thumb is WebP).
+                                payloadContentType = payload.contentType,
                                 keyHeader = KeyHeader(
                                     iv = railIv,
                                     aesKey = data.keyHeader.aesKey

@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -47,11 +48,13 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -76,7 +79,7 @@ import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
-import id.homebase.resources.show_more
+import id.homebase.resources.chat_message_read_more
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
@@ -85,6 +88,16 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+/**
+ * Mobile-only collapsed line cap for header-resident long message bodies (Task F).
+ * Bodies exceeding this many lines render an inline "Read more" expander instead of
+ * spilling past a screenful. Desktop ignores this and always shows the full body.
+ *
+ * NOTE: this is only ever passed to Compose `maxLines` (clamped internally by text
+ * layout) — it is never used as an array index or loop bound.
+ */
+private const val CollapsedBodyMaxLines = 10
 
 /**
  * Core message bubble composable that renders message content with smart layout.
@@ -190,6 +203,17 @@ fun MessageBubbleRaw(
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    // Task F: collapse header-resident long bodies (< 7 KB, hasMore = false) that still
+    // overflow a screenful, on mobile only. Transient (no rememberSaveable) and reset per
+    // message identity so recycled bubbles don't inherit a stale expanded state.
+    var bodyExpanded by remember(message.id) { mutableStateOf(false) }
+    // Desktop always shows the full body and never an expander.
+    val bodyMaxLines = if (isMobile() && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
+    // Derive truncation from the captured layout result rather than measuring screen height.
+    // hasVisualOverflow is true exactly when the line cap clipped the body.
+    val isBodyTruncated =
+        isMobile() && !bodyExpanded && (textLayoutResult?.hasVisualOverflow == true)
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
 
@@ -236,12 +260,26 @@ fun MessageBubbleRaw(
     val mediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview == null }
     val replyMediaOnly = remember { !message.content.hasContent() && hasMedia && message.messageAppData.replyPreview != null }
     val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
+
+    // A media-only sticker message must float directly on the chat wallpaper, so its
+    // transparent pixels show the background — not the bubble fill. Detect it the same
+    // way MediaMessage does (solo, transparent image payload) and, when true, drop the
+    // outer Surface fill/shape/elevation entirely and render it like an emoji-only
+    // message (see StickerMessage). Non-sticker bubbles are unaffected.
+    val isSticker = remember(filteredPayloads) {
+        filteredPayloads?.size == 1 &&
+            (filteredPayloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
+    val isStickerBubble = isSticker && mediaOnly
+
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
         else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
         else MaterialTheme.colorScheme.surfaceContainerHigh
+    // Stickers float on the wallpaper like emoji-only, so their tucked timestamp uses the
+    // same wallpaper-readable onSurface color rather than a sent-bubble tint.
     val contentColor =
-        if (emojiOnly) MaterialTheme.colorScheme.onSurface
+        if (emojiOnly || isStickerBubble) MaterialTheme.colorScheme.onSurface
         else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
         else MaterialTheme.colorScheme.onSurface
 
@@ -295,7 +333,7 @@ fun MessageBubbleRaw(
 
     Surface(
         modifier = modifier
-            .clip(shape)
+            .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(
                     onClick = {},
@@ -308,8 +346,8 @@ fun MessageBubbleRaw(
                 scaleX = scaleAnim.value
                 scaleY = scaleAnim.value
             },
-        shape = shape,
-        color = backgroundColor,
+        shape = if (isStickerBubble) RectangleShape else shape,
+        color = if (isStickerBubble) Color.Transparent else backgroundColor,
     ) {
         Box {
             // Overlay Box that captures all long clicks
@@ -325,7 +363,35 @@ fun MessageBubbleRaw(
                 )
             }
 
-            if (mediaOnly && !message.isDeleted) {
+            if (isStickerBubble && !message.isDeleted) {
+                // Stickers render exactly like emoji-only messages: a bare image floating
+                // on the wallpaper with a tucked, scrim-free timestamp. This deliberately
+                // bypasses MediaMessage's media chrome and MediaTimestampOverlay's gray
+                // scrim — see StickerMessage. Non-sticker media-only messages fall through
+                // to the unchanged path below.
+                StickerMessage(
+                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                    decryptedFiles = decryptedFiles,
+                    keyHeader = message.keyHeader,
+                    driveId = chatTargetDrive.alias,
+                    fileId = message.fileId,
+                    messageId = message.id,
+                    previewThumbnail = message.previewThumbnail,
+                    messageInfoText = messageInfoText,
+                    sentByYou = sentByYou,
+                    isPendingSend = isPendingSend,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
+                    contentColor = contentColor,
+                    pendingSince = message.userDate,
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = { handleLongClick() },
+                    onRequestDecryptedFile = onRequestDecryptedFile,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    downloadingFiles = downloadingFiles,
+                    uploadStatus = uploadStatus,
+                )
+            } else if (mediaOnly && !message.isDeleted) {
                 Box(modifier = Modifier.wrapContentWidth()) {
                     MediaMessage(
                         payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
@@ -478,31 +544,46 @@ fun MessageBubbleRaw(
                                         text = highlightedText,
                                         onTextLayout = { textLayoutResult = it },
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = contentColor
+                                        color = contentColor,
+                                        maxLines = bodyMaxLines,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 } else {
                                     RichText(
                                         state = textState,
                                         onTextLayout = { textLayoutResult = it },
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = contentColor
+                                        color = contentColor,
+                                        maxLines = bodyMaxLines,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
                             }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (onShowMoreClick != null) Modifier.clickable(onClick = onShowMoreClick)
-                                        else Modifier
-                                    )
-                            ) {
-                                if (message.hasMore && onShowMoreClick != null) {
+                            // Single custom-Layout slot for the one-way "Read more"
+                            // affordance, kept as exactly ONE child so the
+                            // textIndex/showMoreIndex/infoIndex math below stays UNCHANGED.
+                            // Unifies the former "Show more" (payload spill) and "Read more"
+                            // (inline line-cap) into one control: it shows whenever the body
+                            // is incomplete (hasMore — a spilled DefaultPayload, ANY platform)
+                            // OR clipped by the mobile line cap. Tapping downloads the spilled
+                            // payload when present AND expands, in a single action — there is
+                            // no collapse-back ("Read more" only).
+                            val showReadMore = !bodyExpanded && (message.hasMore || isBodyTruncated)
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                if (showReadMore) {
                                     Text(
-                                        text = stringResource(MR.string.show_more),
+                                        text = stringResource(MR.string.chat_message_read_more),
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                                         color = contentColor,
+                                        // The chip owns the tap: it fetches the spilled body
+                                        // (when hasMore) and expands, and consumes the gesture
+                                        // so it does NOT bubble up to the bubble's
+                                        // combinedClickable / long-press overlay.
                                         modifier = Modifier
+                                            .clickable {
+                                                if (message.hasMore) onShowMoreClick?.invoke()
+                                                bodyExpanded = true
+                                            }
                                             .padding(
                                                 start = 12.dp,
                                                 end = 12.dp,

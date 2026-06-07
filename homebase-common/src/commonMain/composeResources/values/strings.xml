@@ -70,6 +70,7 @@
     <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
+    <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
@@ -324,6 +325,7 @@
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>
+    <string name="moments_home_subtitle">Photos, clips and notes worth keeping</string>
     <string name="moments_onboarding_title">Moments worth remembering</string>
     <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
     <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
@@ -335,6 +337,8 @@
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
+    <string name="moments_push_new_post">A moment has been shared with you...</string>
+    <string name="moments_push_new_comment">Commented on a moment you\'re in</string>
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
@@ -363,6 +367,7 @@
     <string name="moments_detail_menu_more">More options</string>
     <string name="moments_detail_menu_delete">Delete</string>
     <string name="moments_detail_menu_save_current">Save current</string>
+    <string name="moments_detail_menu_share">Share</string>
     <string name="moments_detail_menu_info">Info</string>
     <string name="moments_detail_menu_add_people">Add people</string>
     <string name="moments_add_people_title">Add people</string>
@@ -479,6 +484,8 @@
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
+    <string name="chat_gallery_selection_index">%1$d</string>
+    <string name="chat_gallery_send_count">Send (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
@@ -643,11 +650,14 @@
     <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_moment">New Moment</string>
+    <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
     <string name="chat_message_deleted">🚫 This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
+    <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>

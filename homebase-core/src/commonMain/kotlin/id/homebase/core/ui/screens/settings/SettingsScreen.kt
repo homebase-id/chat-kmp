@@ -377,16 +377,16 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                imageVector = Icons.Outlined.Lock,
+                text = stringResource(MR.string.vault_settings_section),
+                onClick = onNavigateToVaultSettings,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
                 modifier = Modifier.testTag("helpButton"),
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 text = stringResource(MR.string.settings_help),
                 onClick = onNavigateToHelp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Lock,
-                text = stringResource(MR.string.vault_settings_section),
-                onClick = onNavigateToVaultSettings,
             )
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
