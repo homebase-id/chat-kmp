@@ -39,6 +39,11 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Our GlobalCoroutineExceptionHandler is registered via a ServiceLoader
+            // file at this path, which collides with the one kotlinx-coroutines-android
+            // ships (AndroidExceptionPreHandler). Concatenate them so BOTH handlers
+            // survive packaging instead of one silently winning the merge.
+            merges += "META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler"
         }
     }
 

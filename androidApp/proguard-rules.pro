@@ -34,3 +34,8 @@
 # Play Core
 -keep class com.google.android.play.core.** { *; }
 -dontwarn com.google.android.play.core.**
+
+# Global coroutine exception handler — instantiated by fully-qualified name via
+# ServiceLoader (META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler),
+# so R8 must neither rename nor strip it.
+-keep class id.homebase.feed.GlobalCoroutineExceptionHandler { *; }
