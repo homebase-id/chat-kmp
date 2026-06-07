@@ -1,8 +1,6 @@
 package id.homebase.api.video
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import id.homebase.api.coroutines.supervisedScope
 import kotlinx.coroutines.launch
 
 /**
@@ -17,7 +15,7 @@ import kotlinx.coroutines.launch
 class VideoPreloadService(
     private val videoPreloader: VideoPreloader,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = supervisedScope("video-preload")
 
     /** Schedule a background preload. Returns immediately. Safe to call repeatedly for the
      *  same (fileId, payloadKey) — duplicate in-flight calls serialize on the preloader's mutex,

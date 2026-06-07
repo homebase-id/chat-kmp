@@ -484,6 +484,28 @@ internal class AttachmentHandler(
         }
     }
 
+    /* Send-as-sticker toggle on an image attachment. Synchronous, like the trim
+     * reducer: flip the per-image forceSticker flag on the matching FileImage or
+     * Gallery entry in the open editor overlay. Read at send to set
+     * AttachmentInput.forceSticker. */
+    fun handleToggleStickerAttachment(action: ConversationListUiAction.ToggleStickerAttachment) {
+        val overlay = messagesUiState.value.fullScreenOverlay
+        if (overlay !is FullScreenOverlay.AttachmentData) return
+        val newAttachments = overlay.attachments.map { existing ->
+            when {
+                existing.attachmentId != action.attachmentId -> existing
+                existing is AttachmentPendingFile.FileImage ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                existing is AttachmentPendingFile.Gallery ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                else -> existing
+            }
+        }
+        messagesUiState.update {
+            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+        }
+    }
+
     /* Audio recording */
     fun handleShowRecordingHelp() {
         sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))

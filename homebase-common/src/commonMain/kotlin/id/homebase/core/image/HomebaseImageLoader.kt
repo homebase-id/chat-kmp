@@ -5,14 +5,12 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.withRetry
+import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -46,7 +44,7 @@ class HomebaseImageLoader(
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
     // prefetch whose grid item left composition) does not abort a load that
     // other callers are awaiting.
-    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val cacheScope = supervisedScope("image-loader")
     private val fullPayloadCache = FullPayloadByteCache(
         maxBytes = MAX_FULL_PAYLOAD_CACHE_BYTES,
         scope = cacheScope,
