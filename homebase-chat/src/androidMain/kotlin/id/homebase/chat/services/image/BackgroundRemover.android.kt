@@ -19,6 +19,14 @@ import kotlin.coroutines.resume
 private const val TAG = "BackgroundRemover"
 
 /**
+ * Cap (px, longest edge) on the bitmap fed to ML Kit. A 12-MP frame would otherwise
+ * decode into a ~48 MB ARGB bitmap which, alongside ML Kit's own foreground bitmap,
+ * risks OOM on low-RAM devices; 2048px still yields a high-quality mask for a <=512px
+ * sticker.
+ */
+private const val MAX_SEGMENT_INPUT_DIM = 2048
+
+/**
  * Android implementation: ML Kit Subject Segmentation (on-device, model downloaded
  * via Google Play services — not bundled, so ~0 APK cost). The segmenter's
  * `foregroundBitmap` is already an alpha-cut ARGB bitmap; we PNG-encode it so the
@@ -34,7 +42,7 @@ actual suspend fun removeBackground(srcBytes: ByteArray): ByteArray? = withConte
     if (!isBackgroundRemovalSupported()) return@withContext null
 
     val source = runCatching {
-        BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size)
+        decodeBoundedBitmap(srcBytes, MAX_SEGMENT_INPUT_DIM)
     }.getOrNull()
     if (source == null) {
         Logger.w(tag = TAG) { "Android: could not decode source bytes for background removal" }
@@ -86,3 +94,25 @@ actual fun isBackgroundRemovalSupported(): Boolean = runCatching {
     GoogleApiAvailability.getInstance()
         .isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
 }.getOrDefault(false)
+
+/**
+ * Decode [srcBytes] with an `inSampleSize` cap so the segmenter input stays within
+ * [maxDim] on its longest edge. `inSampleSize` only powers-of-two downsamples at decode
+ * time and does NOT apply EXIF rotation — matching the previous raw `decodeByteArray`,
+ * so the cut-out's orientation is unchanged. ARGB_8888 preserves the alpha channel ML
+ * Kit fills into the foreground bitmap.
+ */
+private fun decodeBoundedBitmap(srcBytes: ByteArray, maxDim: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, bounds)
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    var sample = 1
+    while (longest > 0 && longest / sample > maxDim) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    return BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options)
+}

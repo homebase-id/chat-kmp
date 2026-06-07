@@ -12,6 +12,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
@@ -482,9 +483,18 @@ internal class AttachmentHandler(
      */
     fun handleRemoveBackground(action: ConversationListUiAction.RemoveBackgroundAttachment) {
         scope.launch {
+            val overlay = messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+            // Idempotency guard: the wand is disabled while running, but a rapid double-tap
+            // could still launch twice within the same frame. scope is the Main dispatcher,
+            // so this check-then-mark prefix runs before the first suspension point — the
+            // second launch sees the id already in-flight and bails, avoiding a redundant
+            // parallel segmentation and an orphaned temp file.
+            if (overlay == null || action.attachmentId in overlay.processingAttachmentIds) {
+                return@launch
+            }
+            setBackgroundRemovalInProgress(action.attachmentId, inProgress = true)
             try {
-                val overlay = messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
-                val attachment = overlay?.attachments?.firstOrNull {
+                val attachment = overlay.attachments.firstOrNull {
                     it.attachmentId == action.attachmentId
                 }
                 val sourcePath = when (attachment) {
@@ -506,8 +516,15 @@ internal class AttachmentHandler(
                     return@launch
                 }
 
+                // The segmenter returns a full-resolution lossless PNG. The send path
+                // uploads images byte-for-byte (no resize — see MessageAttachmentBuilder),
+                // so persist a sticker-sized (<=512px) PNG instead: alpha-perfect at a
+                // fraction of the bytes. Falls back to the original cut-out on any
+                // re-encode failure so it can never block sending.
+                val stickerBytes = StickerImageProcessor.downscaleCutOut(cutOutBytes)
+
                 val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                    cutOutBytes,
+                    stickerBytes,
                     "cutout_image",
                     ".png",
                 )
@@ -524,10 +541,30 @@ internal class AttachmentHandler(
                 messagesUiState.update {
                     it.copy(fullScreenOverlay = current.copy(attachments = newAttachments))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("RemoveBackground failed", e)
                 sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+            } finally {
+                setBackgroundRemovalInProgress(action.attachmentId, inProgress = false)
             }
+        }
+    }
+
+    /**
+     * Toggle the editor's per-attachment "background removal in progress" marker, which
+     * drives the wand-button spinner in
+     * [id.homebase.chat.widget.FullScreenAttachmentEditor]. No-ops if the attachment
+     * overlay is no longer open (e.g. the user dismissed it mid-run).
+     */
+    private fun setBackgroundRemovalInProgress(attachmentId: Uuid, inProgress: Boolean) {
+        messagesUiState.update { state ->
+            val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                ?: return@update state
+            val ids = if (inProgress) overlay.processingAttachmentIds + attachmentId
+            else overlay.processingAttachmentIds - attachmentId
+            state.copy(fullScreenOverlay = overlay.copy(processingAttachmentIds = ids))
         }
     }
 

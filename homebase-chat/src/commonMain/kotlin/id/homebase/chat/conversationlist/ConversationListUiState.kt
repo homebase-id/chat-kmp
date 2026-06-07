@@ -266,6 +266,15 @@ sealed interface FullScreenOverlay {
         val conversationTitle: String,
         val conversationId: Uuid,
         val attachments: List<AttachmentPendingFile>,
+        /**
+         * Attachment ids whose background removal is currently running. The editor's
+         * "Remove background" tool shows a spinner and disables itself for these, so the
+         * multi-hundred-ms (first call: model download / warm-up) on-device segmentation
+         * pass doesn't read as a dead button. Keyed by id so the spinner follows the
+         * specific image across pager swipes. Added/removed (in a `finally`) by
+         * [AttachmentHandler.handleRemoveBackground].
+         */
+        val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
     @Immutable

@@ -553,6 +553,7 @@
     <string name="draw">Tegn</string>
     <string name="chat_remove_background">Fjern baggrund</string>
     <string name="chat_remove_background_failed">Kunne ikke fjerne baggrunden</string>
+    <string name="chat_removing_background">Fjerner baggrund…</string>
     <string name="send_as_sticker">Send som klistermærke</string>
     <string name="cd_send_as_sticker">Skift send som klistermærke</string>
     <string name="trim_start_handle">Beskær start</string>

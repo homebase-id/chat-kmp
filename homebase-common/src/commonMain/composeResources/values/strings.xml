@@ -1018,6 +1018,7 @@
     <string name="draw">Draw</string>
     <string name="chat_remove_background">Remove background</string>
     <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_removing_background">Removing background…</string>
     <string name="send_as_sticker">Send as sticker</string>
     <string name="cd_send_as_sticker">Toggle send as sticker</string>
     <string name="trim_start_handle">Trim start</string>

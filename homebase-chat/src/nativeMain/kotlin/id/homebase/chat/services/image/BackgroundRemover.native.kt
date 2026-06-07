@@ -41,6 +41,14 @@ private const val TAG = "BackgroundRemover"
  * a no-op on the Simulator / CPU-only devices — it surfaces here as an empty
  * observation list, which we map to null. Requires physical-device testing.
  *
+ * NOTE (deliberate platform asymmetry): unlike the Android actual — which caps the
+ * segmenter input via `inSampleSize` to bound peak memory on low-RAM devices — iOS feeds
+ * the full-resolution CGImage to Vision. iOS gives apps generous memory and we target
+ * modern devices (18.2), so the transient full-res bitmap is acceptable here; the
+ * uploaded cut-out is still downscaled to a sticker size by the shared
+ * [id.homebase.chat.services.image.StickerImageProcessor]. Add ImageIO thumbnail
+ * decoding here if a low-RAM iOS OOM ever shows up in the field.
+ *
  * Returns null (soft fail) when the source can't be decoded, the request errors,
  * or no confident subject instance is found.
  */

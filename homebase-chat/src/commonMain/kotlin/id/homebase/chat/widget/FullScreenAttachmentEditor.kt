@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
@@ -58,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -82,6 +85,7 @@ import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.chat_remove_background
+import id.homebase.resources.chat_removing_background
 import id.homebase.resources.crop
 import id.homebase.resources.draw
 import id.homebase.resources.menu_back
@@ -542,16 +546,33 @@ fun FullScreenAttachmentEditor(
                 // Background remover — hidden on platforms where the on-device
                 // segmenter is unavailable (Desktop/Web) so there's no dead control.
                 if (backgroundRemovalSupported) {
+                    // Per-attachment so the spinner follows this image across pager swipes.
+                    val isRemovingBackground =
+                        currentAttachment.attachmentId in data.processingAttachmentIds
                     IconButton(
                         onClick = { onRemoveBackground(data.conversationId, currentAttachment.attachmentId) },
+                        enabled = !isRemovingBackground,
                         colors = IconButtonDefaults.iconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoFixHigh,
-                            contentDescription = stringResource(MR.string.chat_remove_background),
-                        )
+                        if (isRemovingBackground) {
+                            // First call can take ~1s (model download / warm-up); a spinner
+                            // keeps the wand from reading as a dead button.
+                            val removingDescription =
+                                stringResource(MR.string.chat_removing_background)
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .semantics { contentDescription = removingDescription },
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AutoFixHigh,
+                                contentDescription = stringResource(MR.string.chat_remove_background),
+                            )
+                        }
                     }
                 }
                 // Send-as-sticker: render this image as a bare transparent cut-out
