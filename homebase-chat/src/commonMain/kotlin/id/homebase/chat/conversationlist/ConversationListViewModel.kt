@@ -978,6 +978,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
+            is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
+
             is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()
 
             is ConversationListUiAction.StartRecording -> attachmentHandler.handleStartRecording(action)
