@@ -19,14 +19,13 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.coroutines.supervisedScope
 import id.homebase.core.config.LabeledDrive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,11 +77,13 @@ class DriveRegistry(
     private val uploadFile: suspend (UploadFileRequest) -> Unit,
     private val updateFileByUniqueId: suspend (UpdateFileByUniqueIdRequest) -> Unit,
     private val eventBus: EventBus,
-    // Scope for the BatchReceived observer. Defaults to a fresh Default-dispatched scope
-    // with a SupervisorJob, so an observer crash doesn't take down the process. Tests pass
-    // `backgroundScope` from `runTest` so virtual-time helpers (advanceUntilIdle) see the
-    // observer coroutine.
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+    // Scope for the BatchReceived observer. Defaults to a named, supervised scope whose
+    // fallback CoroutineExceptionHandler keeps an observer crash (e.g. a transient
+    // network error) from taking down the process — the SupervisorJob alone wouldn't
+    // (it only stops siblings cancelling; an uncaught child still reaches the thread's
+    // uncaught handler). Tests pass `backgroundScope` from `runTest` so virtual-time
+    // helpers (advanceUntilIdle) see the observer coroutine.
+    private val scope: CoroutineScope = supervisedScope("drive-registry"),
 ) {
     private val stateMutex = Mutex()
     private var observerJob: Job? = null
