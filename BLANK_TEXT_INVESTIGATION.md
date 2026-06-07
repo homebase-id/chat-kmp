@@ -176,3 +176,63 @@ another.**
   HTTP response timing/streaming of the wasm? Is there a supported way to force a glyph-atlas
   rebuild / GrDirectContext resource purge from app code (the global `Graphics.purgeAllCaches` does
   not reach the per-context GPU atlas)? Does skiko handle/should it handle WebGL context loss?
+
+---
+
+## UPDATE — LOCAL REPRODUCTION ACHIEVED (session 2)
+
+**Breakthrough: the blank is reproducible locally, narrowed to odin-core's ASP.NET *Kestrel*
+static-file serving on :443 — NOT the build, app, bytes, compression, network speed, HTTP/2,
+Brotli, the real-domain origin, or a service worker.**
+
+### Local repro setup (resumable)
+- Built bundle: `./gradlew webApp:wasmJsBrowserDistribution --no-configuration-cache -PpublicPath=/apps/chat-wasm/`,
+  copied `webApp/build/dist/wasmJs/productionExecutable` → `odin-core/src/apps/Odin.Hosting/client/apps/chat-wasm`.
+- odin-core on branch **`chat-wasm-bundling`** (PR #1545; restores the `/apps/chat-wasm` route that
+  main reverted via #1543). Run: `dotnet run --no-build --project Odin.Hosting.csproj`,
+  ASPNETCORE_ENVIRONMENT=Development, DOTNET_ROOT=/home/seifert/.dotnet9.
+- **Local edits to odin-core `Startup.cs` (REVERT when done):**
+  1. Added a **dev-mode** `/apps/chat-wasm` static route (~line 225) — #1545's route is in the
+     production `else` branch only; in Development `/apps/*` proxies to Vite (:3000–3006) and the
+     catch-all swallowed chat-wasm. The dev route serves it via Kestrel static files (the repro).
+  2. **Commented out `app.UseResponseCompression();`** (line 91) for the compression test.
+- Test URLs (same bundle, same `frodo.dotyou.cloud` host):
+  - `https://frodo.dotyou.cloud/apps/chat-wasm/#login` — **Kestrel :443 → BLANK** (the repro)
+  - `https://frodo.dotyou.cloud:9443/apps/chat-wasm/#login` — **Node :9443 → RENDERS** (`/tmp/h2/frodo.js`)
+
+### Ruled out this session (all on the same origin / local repro)
+- **Bytes**: Kestrel-served (decompressed) sha256 == originals for every wasm/js; range requests sane.
+- **Response compression** (Brotli, `EnableForHttps=true`, incl. application/wasm): disabled → still blank.
+- **Real-domain origin/hostname**: Node @ `frodo.dotyou.cloud:9443` renders → not the hostname.
+- **Service worker**: only one, scoped `/owner/` (not chat-wasm); unregister + cache-clear didn't help.
+- **CdnMiddleware**: only sets the `x-odin-cdn-payload` header when CDN enabled; no body manipulation.
+- **Backend contention** (the deployed defer-backend fix): disproven — login does zero backend work.
+
+### Still confirmed
+- **Fresh-renders-vs-static-blank**: typed text, a just-opened menu, AND the red "Valid Homebase ID
+  is required" validation error all render; only already-on-screen/initial text is blank → a
+  first-render GPU glyph-atlas state issue, *triggered by* how Kestrel serves the assets.
+
+### NEXT THINGS TO TRY (in order)
+1. **Isolate the Kestrel trait** by ADDING Kestrel's response behaviors to the *working* Node:9443
+   server one at a time (fast, no odin-core rebuild) until it blanks. Prime suspect first:
+   **`accept-ranges: bytes` + `ETag` (+ handle `Range:` → 206)** — i.e. the browser range-requesting
+   the 15 MB wasm. Then misc headers (`strict-transport-security`, `x-odin-version`).
+2. **Diff DevTools Network** Kestrel:443 (blank) vs Node:9443 (renders): per request → status,
+   transferred size, timing, from-cache, and especially **is the wasm fetched via 206 range requests
+   on Kestrel vs a single 200 on Node?**
+3. **Kestrel static-file delivery mechanics**: `UseStaticFiles`/`PhysicalFileProvider` may
+   stream/sendfile/chunk the wasm differently than Node's single `res.end`, shifting when
+   `instantiateStreaming` finishes relative to GPU/canvas readiness → losing the first-render
+   glyph-atlas race. Test fix: serve chat-wasm with `EnableRangeProcessing=false`, or a one-shot
+   `SendFileAsync` middleware mirroring Node.
+4. Root issue is still a **skiko/Compose first-render glyph-atlas race** this serving triggers
+   (app-side purge/redraw/recomposition all failed; WebGL context-loss crashes skiko). If steps
+   1–3 don't yield a server-side fix, **file the JetBrains issue** with this decisive repro:
+   *byte-identical bundle renders under Node but is blank under ASP.NET Kestrel static files.*
+
+### Cleanup owed
+- Revert odin-core `Startup.cs` (dev chat-wasm route + the commented `UseResponseCompression`),
+  rebuild/relaunch. Kill test servers: `pkill -f frodo.js`; `pkill -f "http.server"`.
+- chat-kmp `main.wasm.kt` reverted to clean by the user. PR #656 branch `upgrade-compose-1-11` net
+  content is now just this doc (1.11 upgrade + defer-backend both reverted).
