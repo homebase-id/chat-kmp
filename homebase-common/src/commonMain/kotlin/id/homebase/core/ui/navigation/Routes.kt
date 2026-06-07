@@ -56,6 +56,10 @@ sealed class Route {
     data class ConversationSettings(val conversationId: String) : Route()
 
     @Serializable
+    @SerialName("conversation-media")
+    data class ConversationMedia(val conversationId: String) : Route()
+
+    @Serializable
     @SerialName("group-settings")
     data class GroupSettings(val conversationId: String) : Route()
 

@@ -9,6 +9,7 @@ import kotlinx.collections.immutable.persistentListOf
 @Immutable
 data class SelectMembersUiState(
     val uiEvent: SelectMembersUiEvent? = null,
+    val isRefreshing: Boolean = false,
     val displayItems: PersistentList<ContactGroup> = persistentListOf(),
     val selectedContacts: PersistentList<ContactUiModel> = persistentListOf(),
 )

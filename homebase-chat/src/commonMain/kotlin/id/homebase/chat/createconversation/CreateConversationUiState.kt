@@ -9,6 +9,7 @@ import kotlin.uuid.Uuid
 @Immutable
 data class CreateConversationUiState(
     val uiEvent: CreateConversationUiEvent? = null,
+    val isRefreshing: Boolean = false,
     val displayItems: PersistentList<CreateConversationListItem> = persistentListOf(),
 )
 
