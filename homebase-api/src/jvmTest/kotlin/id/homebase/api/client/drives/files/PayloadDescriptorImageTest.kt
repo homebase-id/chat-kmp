@@ -10,9 +10,10 @@ import kotlin.test.assertTrue
  * Pins the per-image sticker descriptor that rides on `PayloadDescriptor.descriptorContent`.
  * The bubble reads this flag to decide whether to drop its opaque backdrop. The contract is
  * additive and backward-compatible: a blank, null, or malformed descriptor must yield a
- * non-sticker [DescriptorContent.ImageFile] (never throw, never accidentally cut out a photo),
- * and `filename()` must return null for an image so the download name still falls back to the
- * payload key.
+ * non-sticker [DescriptorContent.ImageFile] (never throw, never accidentally cut out a photo).
+ * `filename()` returns null for a NON-sticker image (download name falls back to the payload
+ * key, the legacy behaviour), and "StickerFile.<ext>" for a sticker so a saved sticker is named
+ * neutrally instead of leaking the sender's original camera-roll filename.
  */
 class PayloadDescriptorImageTest {
 
@@ -90,10 +91,44 @@ class PayloadDescriptorImageTest {
     }
 
     @Test
-    fun imageFilename_isNull_soDownloadNameFallsBackToPayloadKey() {
-        // The sticker descriptor is NOT a filename — filename() must return null so
+    fun nonStickerImageFilename_isNull_soDownloadNameFallsBackToPayloadKey() {
+        // A non-sticker image carries no usable name — filename() returns null so
         // MediaDownloadHandler keeps falling back to payload.key (legacy "" behaviour).
-        assertNull(imageDescriptor(DescriptorContent.descriptorContentFromImage(true)).filename())
+        assertNull(imageDescriptor(DescriptorContent.descriptorContentFromImage(false)).filename())
         assertNull(imageDescriptor("").filename())
+    }
+
+    @Test
+    fun stickerFilename_isStickerFileWithDetectedExtension() {
+        // A sticker downloads as "StickerFile.<ext>" — the detected format drives the extension,
+        // so the sender's original filename (e.g. IMG_1234.png) is never leaked on download.
+        assertEquals(
+            "StickerFile.png",
+            imageDescriptor(
+                DescriptorContent.descriptorContentFromImage(isSticker = true, format = "image/png")
+            ).filename(),
+        )
+        assertEquals(
+            "StickerFile.webp",
+            imageDescriptor(
+                DescriptorContent.descriptorContentFromImage(isSticker = true, format = "image/webp")
+            ).filename(),
+        )
+        assertEquals(
+            "StickerFile.jpg",
+            imageDescriptor(
+                DescriptorContent.descriptorContentFromImage(isSticker = true, format = "image/jpeg")
+            ).filename(),
+        )
+    }
+
+    @Test
+    fun legacyStickerWithoutFormat_downloadsAsStickerFilePng() {
+        // A sticker descriptor from an older sender (no "format" key) still gets a usable name:
+        // the extension defaults to png rather than leaving the file unnamed.
+        assertEquals(
+            "StickerFile.png",
+            imageDescriptor("""{"isSticker":true}""").filename(),
+        )
     }
 }

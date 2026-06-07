@@ -90,6 +90,14 @@ class MessageAttachmentBuilderStickerTest {
         return (info as? DescriptorContent.ImageFile)?.isSticker
     }
 
+    /** Reconstruct the descriptor as a receiver would and read back the download filename. */
+    private fun filenameOf(descriptorContent: String?): String? =
+        id.homebase.api.client.drives.files.PayloadDescriptor(
+            key = "chat_web0",
+            contentType = "image/png",
+            descriptorContent = descriptorContent,
+        ).filename()
+
     @Test
     fun transparentPng_setsStickerDescriptor() = runTest {
         val path = "/tmp/cutout.png"
@@ -151,5 +159,51 @@ class MessageAttachmentBuilderStickerTest {
         )
         val info = descriptor.descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile && info.isSticker)
+    }
+
+    @Test
+    fun transparentPng_downloadNameIsStickerFilePng() = runTest {
+        // An auto-detected transparent PNG sticker downloads as StickerFile.png, not the
+        // sender's original camera-roll name.
+        val path = "/tmp/IMG_1234.png"
+        val bundle = MessageAttachmentBuilder.buildSingle(
+            attachment = AttachmentInput(filePath = path, contentType = "image/png"),
+            fileOperationsProvider = fakeFsServing(path, transparentPng()),
+            payloadKey = "chat_web0",
+        )
+        assertEquals("StickerFile.png", filenameOf(bundle.payloads.single().descriptorContent))
+    }
+
+    @Test
+    fun forceStickerWebp_downloadNameIsStickerFileWebp() = runTest {
+        // The "Send as sticker" toggle on an opaque WebP still names the download
+        // StickerFile.webp — the real detected extension is preserved.
+        val path = "/tmp/IMG_5678.webp"
+        val bundle = MessageAttachmentBuilder.buildSingle(
+            attachment = AttachmentInput(
+                filePath = path,
+                contentType = "image/webp",
+                forceSticker = true,
+            ),
+            fileOperationsProvider = fakeFsServing(
+                path,
+                encode(32, 32, EncodedImageFormat.WEBP) { _, _ -> 0xFF },
+            ),
+            payloadKey = "chat_web0",
+        )
+        assertEquals("StickerFile.webp", filenameOf(bundle.payloads.single().descriptorContent))
+    }
+
+    @Test
+    fun opaqueJpeg_keepsOriginalDownloadName() = runTest {
+        // A non-sticker image carries no ImageFile descriptor, so filename() stays null and
+        // the download falls back to the original/key as before — only stickers are renamed.
+        val path = "/tmp/photo.jpg"
+        val bundle = MessageAttachmentBuilder.buildSingle(
+            attachment = AttachmentInput(filePath = path, contentType = "image/jpeg"),
+            fileOperationsProvider = fakeFsServing(path, opaqueJpeg()),
+            payloadKey = "chat_web0",
+        )
+        assertEquals(null, filenameOf(bundle.payloads.single().descriptorContent))
     }
 }
