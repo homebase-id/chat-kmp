@@ -47,9 +47,14 @@ okio = "3.17.0"
 richeditorCompose = "1.0.0-rc14"
 # Read-only markdown RENDERER (mikepenz). Built on org.jetbrains:markdown:0.7.3
 # (the CommonMark engine richeditor already pulls in — no version conflict).
-# Publishes m3 + coil3 artifacts for android/jvm/iosArm64/iosSimulatorArm64/wasmJs
-# at 0.41.0 (verified on Maven Central). Drives every read-only display site.
-markdownRenderer = "0.41.0"
+# Publishes m3 + coil3 artifacts for android/jvm/iosArm64/iosSimulatorArm64/wasmJs.
+# Pinned to 0.40.2 (NOT 0.41.0): 0.41.0's bytecode references the synthetic
+# `androidx.compose.ui.graphics.painter.Painter.$stable` field, which Compose 1.10
+# removed — so 0.41.0 throws NoSuchFieldError at runtime on our Compose 1.10.3 the
+# moment it renders an inline markdown image (MarkdownInlineImageWithSize). 0.40.2
+# is the newest release whose bytecode carries no removed-field reference (verified
+# via javap), and 0.39.x release notes confirm the 0.39–0.40 line targets CMP 1.10.
+markdownRenderer = "0.40.2"
 sqldelight = "2.3.2"
 sqlcipher = "4.13.0"
 kotlinx-coroutines = "1.10.2"
