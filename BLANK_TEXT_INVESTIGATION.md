@@ -3,6 +3,67 @@
 Living record of the "text/labels are missing while the rest of the UI renders" bug on the
 Skia-backed targets (iOS and Web). Update as we learn more.
 
+---
+
+## ✅ SOLVED (web) — 2026-06-07 — ROOT CAUSE FOUND, FIX VERIFIED
+
+**The web blank-text bug is NOT a GPU/Skia glyph-atlas issue.** It is a **server MIME
+misconfiguration in odin-core (ASP.NET Kestrel)**. The glyph-atlas / first-render-race theory
+that dominates the rest of this doc was a wrong turn — keep it for the record but it is superseded.
+
+**Mechanism (proven by hard evidence):**
+Compose Multiplatform on web loads its entire string table over HTTP from
+`.../composeResources/id.homebase.resources/values/strings.commonMain.cvr`. `.cvr` is an extension
+Kestrel's content-type map doesn't know, so `UseStaticFiles` **404s it**, and the chat-wasm SPA
+fallback (`chatWasmApp.Run → SendFileAsync(index.html)`) then returns **`index.html`** (5207 bytes,
+`text/html`) with a 200. Compose receives HTML bytes for its string table, fails to parse them, and
+**every `stringResource()` resolves to empty → all labels blank**. Frames render (no strings); typed
+characters render (drawn directly); the one visible error "Valid Homebase ID is required" renders
+because it's a **hardcoded literal** (`LoginViewModel.kt:120`), not a resource — which is exactly
+why it survived while resource-backed labels did not.
+
+**Decisive evidence** (same bundle bytes, two servers):
+
+| server | `.cvr` content-type | size | sha256 vs disk | renders? |
+|---|---|---|---|---|
+| Kestrel :443 (odin-core) | `text/html` | 5207 (=index.html) | MISMATCH | **blank** |
+| Node :9443 (test server) | `application/octet-stream` | 57557 | match | renders |
+
+**The fix (odin-core `Startup.cs`)** — on BOTH the dev (~line 235) and **production** (~line 352)
+chat-wasm `UseStaticFiles(StaticFileOptions)` blocks:
+```csharp
+ServeUnknownFileTypes = true,
+DefaultContentType = "application/octet-stream"
+```
+Existing `.cvr` (and any future unknown-extension Compose resource) is then served with real bytes;
+genuinely missing paths still fall through to the `index.html` SPA fallback (deep-links keep working
+— verified: a non-existent path still returns index.html 200). Verified at the wire (sha matches
+disk, with compression on too) and visually in-browser on the real Kestrel site.
+
+**Production impact:** `frodo.baggins.demo.rocks` is broken for this exact reason; deploying odin-core
+with the production-route fix resolves it. No chat-kmp change is required.
+
+**Shipped:** odin-core **PR #1547** (base `chat-wasm-bundling` #1545) — the `ServeUnknownFileTypes`
+MIME fix on the chat-wasm static route, PLUS a shared `SpaFallback` helper applied to every SPA route
+(owner/feed/chat/mail/community/chat-wasm) so a missing asset 404s instead of being masked as
+`200 index.html` (Accept-based: only `text/html` navigations get the shell). Unit-tested in
+`Odin.Hosting.Tests.V2/Hosting/SpaFallbackTests.cs`. The bundle itself is NOT committed (CI's
+`build-kotlin-wasm` action builds it from chat-kmp).
+
+**Consequence for iOS:** the web cause was server-side, so the iOS blank text is a SEPARATE bug.
+Crucially, this means all the WEB "purge/redraw didn't recover" experiments below tell us NOTHING
+about iOS — on web there was never a real glyph atlas problem to recover (the string table was HTML,
+so strings were empty; purging glyph caches couldn't help because there were no glyphs to fix). The
+iOS evidence (screenshot: all text blank EXCEPT a just-opened menu) stands on its own and is genuine
+stale-GPU-atlas evidence. Treat iOS fresh, uncontaminated by the web red herring.
+
+**iOS is a SEPARATE bug.** This cause is web-only — iOS reads composeResources from the app bundle,
+not over HTTP, so there is no MIME/server step to fail. The hope that iOS + web shared one root cause
+does NOT hold for this finding. iOS's intermittent cold-start blank remains its own investigation
+(see the Skia/Metal/CMP-9488 notes below).
+
+---
+
 ## Symptom
 
 - UI frames, boxes, icons and images render normally, but **text/labels are blank**.
