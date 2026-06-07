@@ -811,6 +811,20 @@
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
+
+    <!-- Markdown composer toolbar (accessibility labels) and link dialog -->
+    <string name="chat_markdown_heading">Heading</string>
+    <string name="chat_markdown_blockquote">Block quote</string>
+    <string name="chat_markdown_inline_code">Inline code</string>
+    <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_link">Insert link</string>
+    <string name="chat_markdown_nested_list">Indent list</string>
+    <string name="chat_markdown_link_dialog_title">Insert link</string>
+    <string name="chat_markdown_link_dialog_text">Text</string>
+    <string name="chat_markdown_link_dialog_url">URL</string>
+    <string name="chat_markdown_link_dialog_insert">Insert</string>
+    <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
     <string name="chat_reactions_tap_to_remove">Tap to remove</string>

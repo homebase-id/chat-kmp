@@ -51,9 +51,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -66,7 +63,6 @@ import id.homebase.core.media.MediaRailItem
 import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
-import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
@@ -79,7 +75,7 @@ import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalRichTextApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
@@ -107,11 +103,6 @@ fun FullScreenMediaViewer(
     }
 
     val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
-
-    // See ConversationItem.kt ConversationMessagePreview for why remember is required here
-    val textState = remember(data.content) {
-        RichTextState().applyDefaultStyling().also { it.setMarkdown(data.content) }
-    }
 
     BoxWithConstraints(
         // Deliberate divergence from the chat bubble: the bubble renders stickers
@@ -289,9 +280,10 @@ fun FullScreenMediaViewer(
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {
-                    RichText(
-                        state = textState,
+                    ChatMarkdown(
+                        content = data.content,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = maxCaptionHeight)
