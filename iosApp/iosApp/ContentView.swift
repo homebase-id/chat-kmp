@@ -66,6 +66,11 @@ struct ContentView: View {
                 nudgeMetalLayer(trigger: "colorScheme→\(newScheme)")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+            // Manual blank-text marker: log only (no recovery), so the user can shake when text is
+            // missing and we can find the exact moment in the logs. See logBlankTextMarker.
+            logBlankTextMarker(trigger: "user-shake")
+        }
     }
 }
 
