@@ -1,6 +1,7 @@
 package id.homebase.core.diagnostics
 
 import co.touchlab.kermit.Logger
+import kotlin.concurrent.Volatile
 
 /**
  * Field instrumentation for the intermittent **iOS "all text blank, frames fine"** bug.
