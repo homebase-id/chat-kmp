@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
@@ -23,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.annotator.annotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
@@ -240,14 +243,18 @@ fun ChatMarkdown(
         dividerColor = color.copy(alpha = DIVIDER_ALPHA),
     )
     val typography = markdownTypography(
-        // Headings: scaled down from mikepenz's display* defaults so they fit a
-        // chat bubble while staying on the M3 typography scale.
-        h1 = MaterialTheme.typography.headlineSmall,
-        h2 = MaterialTheme.typography.titleLarge,
-        h3 = MaterialTheme.typography.titleMedium,
-        h4 = MaterialTheme.typography.titleSmall,
-        h5 = MaterialTheme.typography.labelLarge,
-        h6 = MaterialTheme.typography.labelMedium,
+        // Heading ladder. The M3 title/headline scale is too compressed to give a
+        // legible six-level hierarchy inside a chat bubble (titleLarge 22 → titleMedium
+        // 16 is a cliff, headlineSmall 24 → titleLarge 22 barely steps), so each level
+        // is a weighted, bubble-coloured step scaled off the body [style] instead. h1–h3
+        // bold for a clear top hierarchy; h4–h6 semibold. Sizes scale with the base body
+        // size so they track the chat type scale rather than being absolute.
+        h1 = style.bubbleHeading(color, scale = 1.5f, weight = FontWeight.Bold),
+        h2 = style.bubbleHeading(color, scale = 1.3f, weight = FontWeight.Bold),
+        h3 = style.bubbleHeading(color, scale = 1.15f, weight = FontWeight.Bold),
+        h4 = style.bubbleHeading(color, scale = 1.05f, weight = FontWeight.SemiBold),
+        h5 = style.bubbleHeading(color, scale = 1.0f, weight = FontWeight.SemiBold),
+        h6 = style.bubbleHeading(color, scale = 0.95f, weight = FontWeight.SemiBold),
         text = style,
         paragraph = style,
         ordered = style,
@@ -279,14 +286,27 @@ fun ChatMarkdown(
         // Default is fillMaxSize(); a chat bubble must wrap its content.
         modifier = modifier.wrapContentSize(),
         dimens = markdownDimens(
-            blockQuoteThickness = 3.dp,
-            codeBackgroundCornerSize = 8.dp,
+            // A slightly thicker quote bar reads as a deliberate accent (Notion-style)
+            // rather than a hairline.
+            blockQuoteThickness = 4.dp,
+            codeBackgroundCornerSize = 10.dp,
             dividerThickness = 1.dp,
         ),
         padding = markdownPadding(
-            block = 4.dp,
+            // Vertical rhythm between blocks — the single biggest lever on the
+            // "document" feel. 8.dp gives paragraphs/headings/lists room to breathe
+            // without ballooning the bubble.
+            block = 8.dp,
             list = 4.dp,
-            listIndent = 12.dp,
+            // Space between consecutive list items so multi-item lists don't read as
+            // one dense run.
+            listItemBottom = 4.dp,
+            // Wider indent so nested bullets/numbers clearly step in (was a cramped 12).
+            listIndent = 20.dp,
+            // Generous internal padding so fenced code looks like a real code card.
+            codeBlock = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            // Offset the quote text from its accent bar.
+            blockQuoteText = PaddingValues(start = 12.dp, top = 2.dp, bottom = 2.dp),
         ),
         imageTransformer = Coil3ImageTransformerImpl,
         // Custom code components: same default body, but the container is a [color]
@@ -324,6 +344,25 @@ private const val FENCED_CODE_BORDER_ALPHA = 0.25f
 
 /** Divider (`---`) tint — stronger than the code fills so the rule stays visible. */
 private const val DIVIDER_ALPHA = 0.3f
+
+/**
+ * One rung of the bubble heading ladder: the body [this] style re-weighted to [weight]
+ * and recoloured to the bubble content [color], with its font size multiplied by [scale]
+ * (line height derived at 1.3× for headline-tight leading). Scaled off the body style —
+ * not a fixed M3 role — because the M3 type scale has no clean six-level heading ladder
+ * that stays chat-bubble-appropriate; scaling keeps the headings tracking the body type
+ * size. Falls back to a 16sp base if the body size is unspecified.
+ */
+private fun TextStyle.bubbleHeading(color: Color, scale: Float, weight: FontWeight): TextStyle {
+    val baseSp = if (fontSize.isSpecified) fontSize.value else 16f
+    val sizeSp = baseSp * scale
+    return copy(
+        color = color,
+        fontWeight = weight,
+        fontSize = sizeSp.sp,
+        lineHeight = (sizeSp * 1.3f).sp,
+    )
+}
 
 /**
  * Fenced/code-block container for a chat bubble: a faint [color] tint with a subtle
