@@ -6,6 +6,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
 import id.homebase.resources.chat_sticker_send_failed
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -124,6 +125,24 @@ class StickerCreatorTest {
         c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
         c.dismiss(); advanceUntilIdle()
         assertEquals(0, rec.saved.size); assertEquals(0, rec.sent.size); assertNull(c.state.value)
+    }
+
+    @Test fun cancel_during_processing_clears_state_and_never_saves() = runTest {
+        // Suspend runCreate in the heavy phase: cutOut never returns, so the flow parks in
+        // Processing (spinner showing). Dismissing must cancel cleanly — clear the state and
+        // save/send nothing — rather than leak the job or strand the spinner.
+        val rec = Rec()
+        val gate = CompletableDeferred<Unit>()
+        val c = creator(
+            this, rec, isTransparent = { false },
+            cutOut = { gate.await(); byteArrayOf(1) },
+            outline = { byteArrayOf(2) },
+        )
+        c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
+        assertTrue(c.state.value is StickerCreateState.Processing)
+        c.dismiss(); advanceUntilIdle()
+        assertNull(c.state.value)
+        assertEquals(0, rec.saved.size); assertEquals(0, rec.sent.size)
     }
 
     @Test fun save_failure_reports_failed() = runTest {
