@@ -31,6 +31,7 @@ fun AvatarNameDisplay(
     modifier: Modifier = Modifier,
     displayName: String,
     avatarModel: ConversationAvatarModel,
+    subtitle: String? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -65,6 +66,16 @@ fun AvatarNameDisplay(
                         contentDescription = stringResource(MR.string.details)
                     )
                 }
+            }
+            // Secondary line (e.g. the odinId) under the larger display name.
+            subtitle?.takeIf { it.isNotBlank() }?.let {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
