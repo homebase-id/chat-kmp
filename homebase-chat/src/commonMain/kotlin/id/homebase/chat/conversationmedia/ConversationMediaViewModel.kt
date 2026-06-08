@@ -6,17 +6,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.conversationsettings.collectConversationOverview
 import id.homebase.chat.conversationsettings.collectLocations
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.util.extensionForMimeType
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +33,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 @Immutable
@@ -39,6 +50,12 @@ data class ConversationMediaUiState(
     val locations: ImmutableList<SharedMediaItem> = persistentListOf(),
     val isLoadingLocations: Boolean = false,
     val hasMoreLocations: Boolean = true,
+    /**
+     * Decrypted on-device paths for audio payloads the user has tapped to play,
+     * keyed the same way the chat does ([DecryptedFileKey]). The audio row hands
+     * the path to [id.homebase.core.widget.AudioPlayerWidget] as its `audioFile`.
+     */
+    val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
 )
 
 /**
@@ -51,6 +68,8 @@ data class ConversationMediaUiState(
 class ConversationMediaViewModel(
     savedStateHandle: SavedStateHandle,
     private val chatMessageStream: ChatMessageStream,
+    private val driveFileProvider: DriveFileProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.ConversationMedia>()
@@ -59,6 +78,9 @@ class ConversationMediaViewModel(
     val uiState: StateFlow<ConversationMediaUiState> = _uiState.asStateFlow()
 
     private var locationsCursor: QueryBatchCursor? = null
+
+    /** Audio payloads currently being decrypted — dedupes concurrent tap requests. */
+    private val decryptingAudio = mutableSetOf<DecryptedFileKey>()
 
     init {
         load()
@@ -74,6 +96,16 @@ class ConversationMediaViewModel(
                 )
                 val overview = withContext(Dispatchers.Default) {
                     collectConversationOverview(batch)
+                }
+                // TEMP DIAGNOSTIC (A1): confirm the waveform thumbnails survive the overview
+                // fetch path before assuming the missing-waveform fix. Remove before finishing.
+                overview.audio.forEach { a ->
+                    val imageThumbs = a.payload.thumbnails
+                        ?.count { it.contentType?.startsWith("image/") == true }
+                    Logger.i(tag = "AudioWaveformDiag") {
+                        "fileId=${a.fileId} totalThumbs=${a.payload.thumbnails?.size} " +
+                                "imageThumbs=$imageThumbs iv=${a.payload.iv != null}"
+                    }
                 }
                 _uiState.update { it.copy(overview = overview, isLoading = false) }
             } catch (e: Exception) {
@@ -113,6 +145,56 @@ class ConversationMediaViewModel(
             } catch (e: Exception) {
                 Logger.e("Failed to load conversation locations", e)
                 _uiState.update { it.copy(isLoadingLocations = false) }
+            }
+        }
+    }
+
+    /**
+     * Decrypts an audio payload to a local cache file so it can be played inline,
+     * then publishes the path into [ConversationMediaUiState.decryptedFiles]. Mirrors
+     * the chat's decrypt-on-demand flow (MediaDownloadHandler.handleDecryptFile) but
+     * keyed straight off the [SharedMediaItem] (which already carries fileId / payload /
+     * keyHeader) instead of a message lookup. No-op if already decrypted or in-flight.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    fun requestDecryptedAudio(item: SharedMediaItem) {
+        val key = DecryptedFileKey(item.fileId, item.payload.key)
+        if (_uiState.value.decryptedFiles.containsKey(key) || !decryptingAudio.add(key)) return
+        viewModelScope.launch {
+            try {
+                val payloadIv = Base64.decode(
+                    item.payload.iv
+                        ?: throw IllegalStateException("encrypted payload requires key header")
+                )
+                val rawName = item.payload.filename() ?: item.payload.key
+                val filePath = if (rawName.contains('.')) {
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName"
+                } else {
+                    val extension = item.payload.contentType?.let { extensionForMimeType(it) }
+                        ?: item.payload.contentType?.substringAfter("/")
+                        ?: "bin"
+                    "${fileOperationsProvider.getCacheDirectory()}/$rawName.$extension"
+                }
+
+                val success = driveFileProvider.streamPayloadDecryptedToPath(
+                    driveId = chatTargetDrive.alias,
+                    fileId = item.fileId,
+                    key = item.payload.key,
+                    keyHeader = KeyHeader(payloadIv, item.keyHeader.aesKey),
+                    outputPath = filePath,
+                    fileOps = fileOperationsProvider,
+                )
+                if (success) {
+                    _uiState.update {
+                        it.copy(
+                            decryptedFiles = (it.decryptedFiles + (key to filePath)).toPersistentMap(),
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.e("Failed to decrypt audio for playback", e)
+            } finally {
+                decryptingAudio.remove(key)
             }
         }
     }
