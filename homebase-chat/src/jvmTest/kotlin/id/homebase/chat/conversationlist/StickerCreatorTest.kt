@@ -5,10 +5,13 @@ package id.homebase.chat.conversationlist
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
+import id.homebase.resources.chat_sticker_send_failed
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.ContinuationInterceptor
 import org.jetbrains.compose.resources.StringResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +19,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+/** The test scope's own dispatcher, so StickerCreator's withContext(workDispatcher) stays on the
+ *  test scheduler and advanceUntilIdle drives it deterministically. */
+private fun CoroutineScope.testDispatcher(): CoroutineDispatcher =
+    coroutineContext[ContinuationInterceptor] as CoroutineDispatcher
 
 private class Rec {
     val infos = mutableListOf<StringResource>()
@@ -42,6 +50,7 @@ private fun creator(
     cutOut = cutOut,
     addOutline = outline,
     normalize = normalize,
+    workDispatcher = scope.testDispatcher(),
 )
 
 class StickerCreatorTest {
@@ -53,8 +62,9 @@ class StickerCreatorTest {
         c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
         val s = c.state.value
         assertTrue(s is StickerCreateState.Choose)
+        val cut = s.variants.first { it.kind == StickerVariant.CutOut }
+        assertTrue(cut.bytes.contentEquals(byteArrayOf(2)))
         assertEquals(StickerVariant.CutOut, s.selected)
-        assertTrue(s.cutOutOutlined!!.contentEquals(byteArrayOf(2)))
     }
 
     @Test fun transparent_source_skips_removal_outlines_source() = runTest {
@@ -63,7 +73,7 @@ class StickerCreatorTest {
         c.create(byteArrayOf(5), "image/png", convo); advanceUntilIdle()
         val s = c.state.value as StickerCreateState.Choose
         assertTrue(!removeCalled)
-        assertTrue(s.cutOutOutlined!!.contentEquals(byteArrayOf(5, 2)))
+        assertTrue(s.variants.first { it.kind == StickerVariant.CutOut }.bytes.contentEquals(byteArrayOf(5, 2)))
     }
 
     @Test fun opaque_no_subject_only_original() = runTest {
@@ -71,7 +81,7 @@ class StickerCreatorTest {
         val c = creator(this, rec, isTransparent = { false }, cutOut = { null })
         c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
         val s = c.state.value as StickerCreateState.Choose
-        assertNull(s.cutOutOutlined)
+        assertTrue(s.variants.none { it.kind == StickerVariant.CutOut })
         assertEquals(StickerVariant.Original, s.selected)
     }
 
@@ -80,7 +90,7 @@ class StickerCreatorTest {
         val c = creator(this, rec, isTransparent = { false }, bgSupported = { false }, cutOut = { cutCalled = true; byteArrayOf(1) })
         c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
         val s = c.state.value as StickerCreateState.Choose
-        assertNull(s.cutOutOutlined); assertTrue(!cutCalled)
+        assertTrue(s.variants.none { it.kind == StickerVariant.CutOut }); assertTrue(!cutCalled)
     }
 
     @Test fun confirm_cutout_saves_and_sends_png_then_clears() = runTest {
@@ -135,5 +145,23 @@ class StickerCreatorTest {
         // both save and send receive the normalized JPEG bytes + content type (not raw HEIC)
         assertTrue(rec.saved[0].first.contentEquals(jpeg)); assertEquals("image/jpeg", rec.saved[0].second)
         assertTrue(rec.sent[0].second.contentEquals(jpeg)); assertEquals("image/jpeg", rec.sent[0].third)
+    }
+
+    @Test fun send_failure_reports_send_failed() = runTest {
+        val rec = Rec()
+        val c = StickerCreator(
+            scope = this,
+            saveSticker = { b, ct -> rec.saved += b to ct; Uuid.random() },
+            sendSticker = { _, _, _ -> throw RuntimeException("send boom") },
+            sendInfo = { rec.infos += it },
+            awaitDriveGranted = {},
+            isTransparent = { false }, bgRemovalSupported = { true },
+            cutOut = { byteArrayOf(1) }, addOutline = { byteArrayOf(2) },
+            normalize = { b, ct -> b to ct },
+            workDispatcher = testDispatcher(),
+        )
+        c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
+        c.confirm(); advanceUntilIdle()
+        assertEquals(MR.string.chat_sticker_send_failed, rec.infos.single())
     }
 }

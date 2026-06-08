@@ -263,22 +263,20 @@ class ConversationListViewModel(
             stickerService.saveSticker(bytes = bytes, contentType = contentType, scope = viewModelScope)
         },
         sendSticker = { conversationId, bytes, contentType ->
-            viewModelScope.launch {
-                val suffix = when (contentType) {
-                    "image/jpeg" -> ".jpg"
-                    "image/webp" -> ".webp"
-                    else -> ".png"
-                }
-                val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
-                messageActionsHandler.addMessageWithFiles(
-                    conversationId, "",
-                    listOf(AttachmentPendingFile.FileImage(
-                        id = Uuid.generateV7(),
-                        file = platformFileFromPath(path),
-                        forceSticker = true,
-                    )),
-                )
+            val suffix = when (contentType) {
+                "image/jpeg" -> ".jpg"
+                "image/webp" -> ".webp"
+                else -> ".png"
             }
+            val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
+            messageActionsHandler.addMessageWithFiles(
+                conversationId, "",
+                listOf(AttachmentPendingFile.FileImage(
+                    id = Uuid.generateV7(),
+                    file = platformFileFromPath(path),
+                    forceSticker = true,
+                )),
+            )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
         awaitDriveGranted = {

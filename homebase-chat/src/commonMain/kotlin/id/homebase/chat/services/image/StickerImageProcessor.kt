@@ -30,19 +30,6 @@ object StickerImageProcessor {
     // PNG is lossless so quality is a no-op for the encoder, but the API requires it.
     private const val STICKER_PNG_QUALITY = 100
 
-    /**
-     * Downscale the segmenter's full-resolution cut-out to a `<= [STICKER_MAX_DIM]`px
-     * **lossless PNG** (alpha preserved) for upload.
-     *
-     * PNG, not WebP: the Android [ImageUtils] WebP branch is `WEBP_LOSSY` and gated to
-     * API 30+, but `minSdk` is 28 — WebP output would `NoSuchFieldError`-crash on API
-     * 28/29. PNG encodes on every API level and keeps cut-out edges alpha-perfect.
-     *
-     * Never upscales (an already-small cut-out is just re-encoded). Defensive: returns
-     * the original [cutOutBytes] unchanged if the re-encode fails or yields nothing, so a
-     * resize hiccup can never block sending the cut-out. CPU-bound, so it hops to
-     * [Dispatchers.Default].
-     */
     // Alpha above this counts as "the subject" when building the outline mask.
     private const val OUTLINE_ALPHA_THRESHOLD = 16
     // Outline thickness as a fraction of the (capped) longest edge.
@@ -120,7 +107,8 @@ object StickerImageProcessor {
                         else -> padded[i]                                           // outside halo
                     }
                 }
-                ImageUtils.encodeArgbToPng(ArgbImage(out, pw, ph))
+                val outlinedPng = ImageUtils.encodeArgbToPng(ArgbImage(out, pw, ph))
+                if (maxOf(pw, ph) > STICKER_MAX_DIM) downscaleCutOut(outlinedPng) else outlinedPng
             }.getOrDefault(cutOutPng)
         }
 
@@ -139,6 +127,19 @@ object StickerImageProcessor {
         return (outA shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
     }
 
+    /**
+     * Downscale the segmenter's full-resolution cut-out to a `<= [STICKER_MAX_DIM]`px
+     * **lossless PNG** (alpha preserved) for upload.
+     *
+     * PNG, not WebP: the Android [ImageUtils] WebP branch is `WEBP_LOSSY` and gated to
+     * API 30+, but `minSdk` is 28 — WebP output would `NoSuchFieldError`-crash on API
+     * 28/29. PNG encodes on every API level and keeps cut-out edges alpha-perfect.
+     *
+     * Never upscales (an already-small cut-out is just re-encoded). Defensive: returns
+     * the original [cutOutBytes] unchanged if the re-encode fails or yields nothing, so a
+     * resize hiccup can never block sending the cut-out. CPU-bound, so it hops to
+     * [Dispatchers.Default].
+     */
     suspend fun downscaleCutOut(cutOutBytes: ByteArray): ByteArray =
         withContext(Dispatchers.Default) {
             // runCatching catches Throwable, so a resize failure — or, hypothetically, an

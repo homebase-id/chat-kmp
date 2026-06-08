@@ -12,7 +12,9 @@ import id.homebase.chat.services.image.removeBackground
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
+import id.homebase.resources.chat_sticker_send_failed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,46 +31,44 @@ private const val TAG = "StickerCreator"
 
 enum class StickerVariant { CutOut, Original }
 
+/** One selectable option in the chooser: its rendered bytes + content type. */
+data class StickerVariantOption(
+    val kind: StickerVariant,
+    val bytes: ByteArray,
+    val contentType: String,
+) {
+    override fun equals(other: Any?) = this === other || (other is StickerVariantOption &&
+        kind == other.kind && contentType == other.contentType && bytes.contentEquals(other.bytes))
+    override fun hashCode() = (kind.hashCode() * 31 + contentType.hashCode()) * 31 + bytes.contentHashCode()
+}
+
+/** Transient state for the create-a-sticker chooser. null = not creating. */
 sealed interface StickerCreateState {
     data object Processing : StickerCreateState
     data class Choose(
         val conversationId: Uuid,
-        val cutOutOutlined: ByteArray?,
-        val original: ByteArray,
-        val originalContentType: String,
+        val variants: List<StickerVariantOption>, // 1..N options in display order
         val selected: StickerVariant,
-    ) : StickerCreateState {
-        override fun equals(other: Any?) = this === other || (other is Choose &&
-            conversationId == other.conversationId && selected == other.selected &&
-            original.contentEquals(other.original) && originalContentType == other.originalContentType &&
-            (if (cutOutOutlined == null) other.cutOutOutlined == null
-             else other.cutOutOutlined != null && cutOutOutlined.contentEquals(other.cutOutOutlined)))
-        override fun hashCode(): Int {
-            var r = conversationId.hashCode(); r = 31 * r + selected.hashCode()
-            r = 31 * r + original.contentHashCode(); r = 31 * r + (cutOutOutlined?.contentHashCode() ?: 0)
-            return r
-        }
-    }
+    ) : StickerCreateState
 }
 
 /**
- * Create-a-sticker chooser flow (cut-out+outline vs original) behind injectable seams.
- * Confirm saves to the library AND sends to the conversation.
+ * Create-a-sticker chooser flow (cut-out+outline vs original; extensible to more variants)
+ * behind injectable seams. Confirm saves to the library AND sends to the conversation, with
+ * the bytes normalized once so both copies are byte-identical. All heavy image work runs off
+ * the main thread.
  */
 class StickerCreator(
     private val scope: CoroutineScope,
     private val saveSticker: suspend (bytes: ByteArray, contentType: String) -> Uuid?,
-    private val sendSticker: (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
+    private val sendSticker: suspend (conversationId: Uuid, bytes: ByteArray, contentType: String) -> Unit,
     private val sendInfo: (StringResource) -> Unit,
     private val awaitDriveGranted: suspend () -> Unit,
     private val isTransparent: (ByteArray) -> Boolean = ImageUtils::hasNonOpaquePixels,
     private val bgRemovalSupported: () -> Boolean = ::isBackgroundRemovalSupported,
-    private val cutOut: suspend (ByteArray) -> ByteArray? = {
-        removeBackground(it)?.let { png -> StickerImageProcessor.downscaleCutOut(png) }
-    },
+    // removeBackground only — addWhiteOutline caps the working size internally, so no separate downscale here.
+    private val cutOut: suspend (ByteArray) -> ByteArray? = { removeBackground(it) },
     private val addOutline: suspend (ByteArray) -> ByteArray = { StickerImageProcessor.addWhiteOutline(it) },
-    /** Normalize the final bytes before save+send (HEIC→JPEG; else passthrough), so the saved
-     *  library copy and the sent copy are byte-identical. */
     private val normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { bytes, contentType ->
         withContext(Dispatchers.Default) {
             if (ImageFormatDetector.isHeic(bytes)) {
@@ -77,6 +77,9 @@ class StickerCreator(
             } else bytes to contentType
         }
     },
+    // Where the heavy image work (decode/transparency probe/segmenter/outline) runs. Default
+    // off the main thread; tests inject the test dispatcher so advanceUntilIdle stays deterministic.
+    private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _state = MutableStateFlow<StickerCreateState?>(null)
     val state: StateFlow<StickerCreateState?> = _state.asStateFlow()
@@ -89,21 +92,22 @@ class StickerCreator(
 
     private suspend fun runCreate(bytes: ByteArray, contentType: String, conversationId: Uuid) {
         try {
-            val outlined: ByteArray? = when {
-                isTransparent(bytes) -> addOutline(bytes)
-                bgRemovalSupported() -> {
-                    _state.value = StickerCreateState.Processing
-                    cutOut(bytes)?.let { addOutline(it) }
+            _state.value = StickerCreateState.Processing // show the spinner before any heavy decode
+            // All heavy work off the main thread: the transparency probe alone is a full image
+            // decode + readPixels, which would otherwise freeze the UI (and the spinner) on a
+            // large pick.
+            val outlined: ByteArray? = withContext(workDispatcher) {
+                when {
+                    isTransparent(bytes) -> addOutline(bytes)
+                    bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(it) }
+                    else -> null
                 }
-                else -> null
             }
-            _state.value = StickerCreateState.Choose(
-                conversationId = conversationId,
-                cutOutOutlined = outlined,
-                original = bytes,
-                originalContentType = contentType,
-                selected = if (outlined != null) StickerVariant.CutOut else StickerVariant.Original,
-            )
+            val variants = buildList {
+                if (outlined != null) add(StickerVariantOption(StickerVariant.CutOut, outlined, "image/png"))
+                add(StickerVariantOption(StickerVariant.Original, bytes, contentType))
+            }
+            _state.value = StickerCreateState.Choose(conversationId, variants, variants.first().kind)
         } catch (e: CancellationException) {
             _state.value = null; throw e
         } catch (e: Exception) {
@@ -115,29 +119,26 @@ class StickerCreator(
 
     fun selectVariant(variant: StickerVariant) {
         val s = _state.value as? StickerCreateState.Choose ?: return
-        if (variant == StickerVariant.CutOut && s.cutOutOutlined == null) return
+        if (s.variants.none { it.kind == variant }) return
         _state.value = s.copy(selected = variant)
     }
 
     fun confirm() {
         val s = _state.value as? StickerCreateState.Choose ?: return
-        val (rawBytes, rawType) = when (s.selected) {
-            StickerVariant.CutOut -> (s.cutOutOutlined ?: return) to "image/png"
-            StickerVariant.Original -> s.original to s.originalContentType
-        }
+        val opt = s.variants.firstOrNull { it.kind == s.selected } ?: return
         _state.value = null
         scope.launch {
             try {
-                val (bytes, contentType) = normalize(rawBytes, rawType)
+                val (bytes, contentType) = normalize(opt.bytes, opt.contentType)
                 awaitDriveGranted()
                 val saved = saveSticker(bytes, contentType)
-                sendSticker(s.conversationId, bytes, contentType)
+                sendSticker(s.conversationId, bytes, contentType) // suspend; a failure throws → caught below
                 sendInfo(if (saved != null) MR.string.chat_sticker_saved else MR.string.chat_sticker_save_failed)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Confirm sticker create failed" }
-                sendInfo(MR.string.chat_sticker_save_failed)
+                sendInfo(MR.string.chat_sticker_send_failed)
             }
         }
     }

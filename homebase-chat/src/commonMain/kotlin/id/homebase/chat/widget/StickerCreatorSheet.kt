@@ -56,24 +56,22 @@ fun StickerCreatorSheet(
                     }
                 is StickerCreateState.Choose ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (state.cutOutOutlined != null) {
+                        state.variants.forEach { opt ->
+                            val label = when (opt.kind) {
+                                StickerVariant.CutOut -> stringResource(MR.string.chat_sticker_variant_cutout)
+                                StickerVariant.Original -> stringResource(MR.string.chat_sticker_variant_original)
+                            }
+                            val cd = when (opt.kind) {
+                                StickerVariant.CutOut -> stringResource(MR.string.cd_sticker_variant_cutout)
+                                StickerVariant.Original -> stringResource(MR.string.cd_sticker_variant_original)
+                            }
                             VariantTile(
-                                bytes = state.cutOutOutlined,
-                                label = stringResource(MR.string.chat_sticker_variant_cutout),
-                                cd = stringResource(MR.string.cd_sticker_variant_cutout),
-                                selected = state.selected == StickerVariant.CutOut,
+                                bytes = opt.bytes, label = label, cd = cd,
+                                selected = state.selected == opt.kind,
                                 modifier = Modifier.weight(1f),
-                                onClick = { onSelect(StickerVariant.CutOut) },
+                                onClick = { onSelect(opt.kind) },
                             )
                         }
-                        VariantTile(
-                            bytes = state.original,
-                            label = stringResource(MR.string.chat_sticker_variant_original),
-                            cd = stringResource(MR.string.cd_sticker_variant_original),
-                            selected = state.selected == StickerVariant.Original,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onSelect(StickerVariant.Original) },
-                        )
                     }
             }
         },
