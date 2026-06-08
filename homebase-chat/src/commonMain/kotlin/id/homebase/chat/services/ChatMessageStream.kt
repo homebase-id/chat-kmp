@@ -251,20 +251,35 @@ class ChatMessageStream(
     }
 
     /**
+     * True when [messageId] is present in the cached in-memory window for
+     * [conversationId]. Lets a jump-to-message caller decide whether it needs a
+     * re-seeded (centered) window — see [loadConversationAroundMessage] — or can
+     * reuse the existing one. Returns false when the conversation has no window
+     * cached at all.
+     */
+    fun isMessageInWindow(conversationId: Uuid, messageId: Uuid): Boolean =
+        paginatedState.getWindow(conversationId)?.messages?.any { it.id == messageId } == true
+
+    /**
      * Load a centered page of messages around [messageUniqueId]. Used to
      * restore scroll position on conversation open and to jump to a search
-     * result that's outside the current window. If the target message
-     * isn't in the local DB (purged, never synced), falls back to
+     * result (or album item) that's outside the current window. If the target
+     * message isn't in the local DB (purged, never synced), falls back to
      * [loadConversation].
+     *
+     * Returns true when the anchor was found and a window centered on it was
+     * built, false when it fell back to the latest page. Callers performing an
+     * explicit jump use the false result to tell the user the target is gone,
+     * rather than silently landing on the latest page.
      */
-    suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid) {
+    suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid): Boolean {
         val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
             Logger.d(tag = "ChatPaging") {
                 "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
             }
             loadConversation(conversationId)
-            return
+            return false
         }
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
         val olderHalfCursor = QueryBatchCursor(
@@ -299,6 +314,7 @@ class ChatMessageStream(
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
+        return true
     }
 
     /**

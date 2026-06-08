@@ -97,16 +97,6 @@ class ConversationMediaViewModel(
                 val overview = withContext(Dispatchers.Default) {
                     collectConversationOverview(batch)
                 }
-                // TEMP DIAGNOSTIC (A1): confirm the waveform thumbnails survive the overview
-                // fetch path before assuming the missing-waveform fix. Remove before finishing.
-                overview.audio.forEach { a ->
-                    val imageThumbs = a.payload.thumbnails
-                        ?.count { it.contentType?.startsWith("image/") == true }
-                    Logger.i(tag = "AudioWaveformDiag") {
-                        "fileId=${a.fileId} totalThumbs=${a.payload.thumbnails?.size} " +
-                                "imageThumbs=$imageThumbs iv=${a.payload.iv != null}"
-                    }
-                }
                 _uiState.update { it.copy(overview = overview, isLoading = false) }
             } catch (e: Exception) {
                 Logger.e("Failed to load conversation media album", e)
