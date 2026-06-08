@@ -18,16 +18,22 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,10 +47,14 @@ import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.services.sticker.toImageData
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.cd_import_sticker
 import id.homebase.resources.cd_sticker_thumbnail
+import id.homebase.resources.chat_sticker_remove
+import id.homebase.resources.chat_sticker_remove_confirm
 import id.homebase.resources.chat_sticker_tray_title
 import id.homebase.resources.chat_stickers_empty
+import id.homebase.resources.remove
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
@@ -73,8 +83,12 @@ fun StickerTraySheet(
 ) {
     val stickerStream: StickerStream = koinInject()
     val stickers by stickerStream.stickers.collectAsStateWithLifecycle()
+    val isLoaded by stickerStream.isLoaded.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+    // Long-press stages a removal; the confirmation dialog below guards the destructive
+    // delete so a single long-press never silently drops a sticker.
+    var pendingDelete by remember { mutableStateOf<SavedSticker?>(null) }
 
     // Mount the optional Stickers drive the first time the tray is opened (mirror Moments).
     LaunchedEffect(Unit) {
@@ -104,15 +118,35 @@ fun StickerTraySheet(
         )
         StickerTray(
             stickers = stickers,
+            isLoaded = isLoaded,
             onStickerSelected = { sticker ->
                 onUiAction(ConversationListUiAction.SendSavedSticker(conversationId, sticker))
                 onDismiss()
             },
-            onStickerLongPress = { sticker ->
-                onUiAction(ConversationListUiAction.RemoveSticker(sticker))
-            },
+            onStickerLongPress = { sticker -> pendingDelete = sticker },
             onImportClick = { importPicker.launch() },
             modifier = Modifier.heightIn(max = 360.dp),
+        )
+    }
+
+    pendingDelete?.let { sticker ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(text = stringResource(MR.string.chat_sticker_remove)) },
+            text = { Text(text = stringResource(MR.string.chat_sticker_remove_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onUiAction(ConversationListUiAction.RemoveSticker(sticker))
+                    pendingDelete = null
+                }) {
+                    Text(text = stringResource(MR.string.remove))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(text = stringResource(MR.string.cancel))
+                }
+            },
         )
     }
 }
@@ -129,6 +163,7 @@ fun StickerTraySheet(
 @Composable
 fun StickerTray(
     stickers: List<SavedSticker>,
+    isLoaded: Boolean,
     onStickerSelected: (SavedSticker) -> Unit,
     onStickerLongPress: (SavedSticker) -> Unit,
     onImportClick: () -> Unit,
@@ -166,9 +201,20 @@ fun StickerTray(
             }
         }
 
-        if (stickers.isEmpty()) {
-            // Empty-state label spanning the rest of the row.
-            item {
+        when {
+            // Still hydrating the library from the local DB — show a spinner instead of
+            // the empty label so a populated tray doesn't flash "no stickers yet".
+            !isLoaded -> item {
+                Box(
+                    modifier = Modifier.aspectRatio(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(strokeWidth = 2.dp)
+                }
+            }
+
+            // Loaded and genuinely empty.
+            stickers.isEmpty() -> item {
                 Box(
                     modifier = Modifier.aspectRatio(1f),
                     contentAlignment = Alignment.Center,
@@ -181,8 +227,8 @@ fun StickerTray(
                     )
                 }
             }
-        } else {
-            items(stickers, key = { it.uniqueId }) { sticker ->
+
+            else -> items(stickers, key = { it.uniqueId }) { sticker ->
                 StickerTile(
                     sticker = sticker,
                     contentDescription = stickerDescription,

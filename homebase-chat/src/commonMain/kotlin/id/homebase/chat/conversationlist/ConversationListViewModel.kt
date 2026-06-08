@@ -247,11 +247,14 @@ class ConversationListViewModel(
         chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
+        // drive is granted. Instant once granted; on first use it waits for the user to
+        // complete the flow so the upload isn't enqueued to an ungranted (unsynced) drive.
+        awaitDriveGranted = {
+            stickerPermissionViewModel.recheckPermissions()
+            stickerPermissionViewModel.permissionsGranted.first { it }
+        },
     )
-
-    /** Saved stickers for the composer's sticker tray (mirror of VaultStream). */
-    val savedStickers: StateFlow<List<id.homebase.chat.services.sticker.SavedSticker>> =
-        stickerStream.stickers
 
     /**
      * Extend-permissions VM for the optional Stickers drive. Exposed so the host
@@ -1050,19 +1053,16 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SendSavedSticker -> stickerHandler.handleSendSavedSticker(action)
 
-            // Saving/importing a sticker also needs the Stickers drive granted+mounted so
-            // the new sticker syncs back to the tray. Kick the same extend-permissions gate
-            // (it surfaces the dialog when not yet granted; no-op once granted) alongside
-            // the save — the upload itself is outbox-driven and proceeds regardless.
-            is ConversationListUiAction.SaveStickerFromMessage -> {
-                stickerPermissionViewModel.recheckPermissions()
+            // Saving/importing a sticker needs the Stickers drive granted+mounted so the
+            // new sticker syncs back to the tray. The handler awaits that grant (via
+            // [StickerHandler.awaitDriveGranted], which surfaces the extend-permissions
+            // dialog when not yet granted) BEFORE enqueuing the upload, so we never write
+            // to an ungranted drive that the sync engine would silently drop.
+            is ConversationListUiAction.SaveStickerFromMessage ->
                 stickerHandler.handleSaveStickerFromMessage(action)
-            }
 
-            is ConversationListUiAction.ImportSticker -> {
-                stickerPermissionViewModel.recheckPermissions()
+            is ConversationListUiAction.ImportSticker ->
                 stickerHandler.handleImportSticker(action)
-            }
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }

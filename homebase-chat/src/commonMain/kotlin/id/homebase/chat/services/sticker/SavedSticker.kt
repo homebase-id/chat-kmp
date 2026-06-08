@@ -7,7 +7,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.Base64
@@ -48,13 +47,9 @@ fun HomebaseFile.toSavedSticker(): SavedSticker? {
     val payloads = fileMetadata.payloads
     val payload = payloads?.firstOrNull() ?: return null
 
-    val content = fileMetadata.appData.content
-    // Content is optional (we only store an optional name); a missing/garbled content
-    // must NOT drop the sticker, so parse defensively and fall through to the payload.
-    if (content != null) {
-        runCatching { OdinSystemSerializer.deserialize<StickerFileContent>(content) }
-    }
-
+    // appData.content carries only an optional [StickerFileContent.name], which the v1
+    // tray does not surface — so we deliberately don't read it here. The sticker identity
+    // and render data all come from the envelope + payload below.
     return SavedSticker(
         fileId = fileId,
         uniqueId = fileMetadata.appData.uniqueId ?: fileId,

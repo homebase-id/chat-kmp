@@ -5,16 +5,17 @@ package id.homebase.chat.conversationlist
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.image.ImageUtils
-import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_import_not_transparent
+import id.homebase.resources.chat_sticker_remove_failed
 import id.homebase.resources.chat_sticker_removed
 import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
+import id.homebase.resources.chat_sticker_send_failed
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -42,6 +43,13 @@ internal class StickerHandler(
     private val chatMessageActionService: ChatMessageActionService,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val addMessageWithFiles: (conversationId: Uuid, content: String, files: List<AttachmentPendingFile>) -> Unit,
+    /**
+     * Suspends until the optional Stickers drive is granted (instant when it already is;
+     * waits for the extend-permissions dialog on first use). The write paths
+     * (import / save-from-message) gate on this so they never enqueue an upload to an
+     * ungranted drive — which the sync engine wouldn't push, silently losing the sticker.
+     */
+    private val awaitDriveGranted: suspend () -> Unit,
 ) {
 
     fun handleSendSavedSticker(action: ConversationListUiAction.SendSavedSticker) {
@@ -60,7 +68,7 @@ internal class StickerHandler(
                 addMessageWithFiles(action.conversationId, "", listOf(pending))
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Failed to send saved sticker" }
-                sendEvent(ShowErrorMessage("Failed to send sticker: ${e.message}"))
+                sendEvent(ShowInfoMessage(MR.string.chat_sticker_send_failed))
             }
         }
     }
@@ -86,6 +94,9 @@ internal class StickerHandler(
                     sendEvent(ShowInfoMessage(MR.string.chat_sticker_save_failed))
                     return@launch
                 }
+                // Don't enqueue the upload until the Stickers drive is granted, or the
+                // sync engine would drop it (ungranted drives aren't pushed).
+                awaitDriveGranted()
                 val saved = stickerService.saveSticker(
                     bytes = bytes,
                     contentType = payload.contentType ?: "image/png",
@@ -114,6 +125,9 @@ internal class StickerHandler(
                     sendEvent(ShowInfoMessage(MR.string.chat_sticker_import_not_transparent))
                     return@launch
                 }
+                // Don't enqueue the upload until the Stickers drive is granted, or the
+                // sync engine would drop it (ungranted drives aren't pushed).
+                awaitDriveGranted()
                 val saved = stickerService.saveSticker(
                     bytes = action.bytes,
                     contentType = action.contentType,
@@ -139,7 +153,7 @@ internal class StickerHandler(
                 if (ok) sendEvent(ShowInfoMessage(MR.string.chat_sticker_removed))
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Failed to remove sticker" }
-                sendEvent(ShowErrorMessage("Failed to remove sticker: ${e.message}"))
+                sendEvent(ShowInfoMessage(MR.string.chat_sticker_remove_failed))
             }
         }
     }

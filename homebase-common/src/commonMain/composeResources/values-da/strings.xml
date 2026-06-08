@@ -459,11 +459,14 @@
     <string name="chat_save_sticker">Gem klistermærke</string>
     <string name="chat_sticker_saved">Klistermærke gemt</string>
     <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
+    <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
     <string name="chat_sticker_import">Importér klistermærke</string>
     <string name="chat_sticker_import_not_transparent">Vælg en gennemsigtig PNG for at bruge den som klistermærke</string>
     <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
     <string name="chat_sticker_remove">Fjern klistermærke</string>
+    <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
     <string name="chat_sticker_removed">Klistermærke fjernet</string>
+    <string name="chat_sticker_remove_failed">Kunne ikke fjerne klistermærke</string>
     <string name="chat_sticker_tray_title">Mine klistermærker</string>
     <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
     <string name="cd_import_sticker">Importér et klistermærke</string>

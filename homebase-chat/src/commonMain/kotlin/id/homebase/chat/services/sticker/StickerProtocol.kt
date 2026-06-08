@@ -27,8 +27,6 @@ object StickerProtocol {
      */
     const val STICKER_FILE_TYPE = 7060
 
-    const val STICKER_VERSION = 1
-
     /** Payload key for the solo sticker image payload. */
     const val STICKER_PAYLOAD_KEY = "stk_00"
 }
