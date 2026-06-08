@@ -291,6 +291,105 @@ fun LocationPreviewCard(
     }
 }
 
+// ─── Compact list row (the "See all" locations tab) ──────────────────────────
+
+/**
+ * A single-line-dense row for the conversation's "See all → Locations" list: a
+ * small map thumbnail on the start, then address, coordinates, and a meta line
+ * (sender · date). Tapping opens the user's own map app via `geo:` URI — the map
+ * PNG is the encrypted drive payload, so nothing reaches a third-party provider.
+ */
+@Composable
+fun LocationListRow(
+    descriptor: LocationPreviewDescriptor,
+    fileId: Uuid,
+    driveId: Uuid,
+    payloadKey: String,
+    keyHeader: KeyHeader,
+    previewThumbnail: EmbeddedThumb?,
+    metaLine: String,
+    modifier: Modifier = Modifier,
+) {
+    val uriHandler = LocalUriHandler.current
+    val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
+        buildGeoUri(descriptor.lat, descriptor.lon, descriptor.address)
+    }
+    val coordinatesLabel = remember(descriptor.lat, descriptor.lon) {
+        formatLatLon(descriptor.lat, descriptor.lon)
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .clickable { uriHandler.openUri(geoUri) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.padding(end = 12.dp).size(64.dp).clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (descriptor.hasImage) {
+                val imageData = remember(driveId, fileId, payloadKey) {
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payloadKey,
+                        previewThumbnail = previewThumbnail,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        isEncrypted = true,
+                        keyHeader = keyHeader,
+                        loadFullPayload = true,
+                    )
+                }
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = descriptor.address,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = stringResource(MR.string.cd_location_pin),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            if (descriptor.address.isNotEmpty()) {
+                Text(
+                    text = descriptor.address,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+            Text(
+                text = coordinatesLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (metaLine.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = metaLine,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
 private fun formatLatLon(lat: Double, lon: Double): String {

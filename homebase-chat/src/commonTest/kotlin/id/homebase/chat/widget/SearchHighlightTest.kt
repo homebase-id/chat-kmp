@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.ui.graphics.Color
+import id.homebase.api.util.markdownToPlainPreview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -61,5 +62,35 @@ class SearchHighlightTest {
         val result = buildSearchHighlightedText(body, "Mon", color)!!
         val last = result.spanStyles.last()
         assertEquals(body.length, last.end)
+    }
+
+    @Test
+    fun highlightOffsetsValidAgainstRenderedPlainText() {
+        // The new combined styling+highlight path (ChatMarkdown / MessageSearchItem)
+        // computes highlight offsets against the markdown's RENDERED plain form,
+        // not the raw markdown. This proves that for a markdown body the spans
+        // stay inside the rendered plain string — i.e. the stale-offset
+        // subSequence crash class (which fired when the styled string had a
+        // different length than the highlight string) cannot recur, because both
+        // worlds now share one AnnotatedString.
+        val markdownBody = buildString {
+            append("# Heading with Monday\n\n")
+            append("Here is **bold Monday** and `code Monday` and a [Monday link](https://x.test).\n\n")
+            repeat(20) { append("- item Monday number $it\n") }
+        }
+        val plain = markdownToPlainPreview(markdownBody, maxCodePoints = Int.MAX_VALUE)
+        val result = buildSearchHighlightedText(plain, "Monday", color)!!
+
+        // The rendered plain string must not contain markdown syntax markers,
+        // and every produced span must stay within its bounds.
+        assertEquals(plain, result.text)
+        assertTrue(!plain.contains("**"), "bold markers should be stripped: $plain")
+        assertTrue(!plain.contains("`"), "inline-code markers should be stripped")
+        assertTrue(!plain.contains("https://"), "link URL should be stripped")
+        assertTrue(plain.contains("Monday link"), "link label text should survive")
+        for (range in result.spanStyles) {
+            assertTrue(range.end <= plain.length, "end=${range.end} > len=${plain.length}")
+            assertTrue(range.start in 0..range.end)
+        }
     }
 }

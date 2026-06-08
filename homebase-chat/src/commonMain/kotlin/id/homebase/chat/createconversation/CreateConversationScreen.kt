@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +22,9 @@ import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,6 +69,7 @@ import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_search_result_empty
+import id.homebase.resources.connections_refresh
 import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_selected
 import id.homebase.resources.contacts
@@ -156,6 +160,24 @@ fun CreateConversationUi(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
                         )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { onUiAction(CreateConversationUiAction.RefreshClicked) },
+                        enabled = !uiState.isRefreshing,
+                    ) {
+                        if (uiState.isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(MR.string.connections_refresh)
+                            )
+                        }
                     }
                 },
             )

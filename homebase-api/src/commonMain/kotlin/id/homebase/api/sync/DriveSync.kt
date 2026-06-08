@@ -15,12 +15,11 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
+import id.homebase.api.coroutines.supervisedScope
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -40,7 +39,7 @@ class DriveSync(
     private val policy: DriveSyncPolicy = DriveSyncPolicy(),
 ) {
     // Background work is Network and DB bound, so using IO
-    private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = scope ?: supervisedScope("drive-sync")
     private var cursor: QueryBatchCursor?
     private val mutex = Mutex()
     private var batchSize = 500 // Balanced starting point
