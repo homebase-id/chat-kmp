@@ -133,9 +133,18 @@ class DriveContactService(
 
     private suspend fun refresh() {
         val result = fetchContacts()
-        _contacts.value = result.records
+        // The contact drive can hold more than one file row for the same
+        // identity (e.g. a row from the connection-accept flow plus one from a
+        // later public-profile fetch). Records arrive NewestFirst, so
+        // distinctBy keeps the freshest row per odinId and drops the stale
+        // duplicate — otherwise the duplicate entry flows into every consumer
+        // of `contacts`. Chat pickers each defend with their own
+        // `.distinctBy { it.odinId }`; the moments audience picker did not, so
+        // it surfaced the duplicate. Dedupe once here at the source.
+        val deduped = result.records.distinctBy { it.odinId }
+        _contacts.value = deduped
         contactByOdinId.value =
-            result.records.associateBy { it.odinId }
+            deduped.associateBy { it.odinId }
     }
 
 
