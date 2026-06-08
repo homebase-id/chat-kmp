@@ -166,6 +166,11 @@
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
+    <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
+    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_generic">Login failed</string>
+    <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
+    <string name="login_continue_button">Continue to sign in</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
@@ -825,6 +830,20 @@
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
+
+    <!-- Markdown composer toolbar (accessibility labels) and link dialog -->
+    <string name="chat_markdown_heading">Heading</string>
+    <string name="chat_markdown_blockquote">Block quote</string>
+    <string name="chat_markdown_inline_code">Inline code</string>
+    <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_link">Insert link</string>
+    <string name="chat_markdown_nested_list">Indent list</string>
+    <string name="chat_markdown_link_dialog_title">Insert link</string>
+    <string name="chat_markdown_link_dialog_text">Text</string>
+    <string name="chat_markdown_link_dialog_url">URL</string>
+    <string name="chat_markdown_link_dialog_insert">Insert</string>
+    <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
     <string name="chat_reactions_tap_to_remove">Tap to remove</string>
@@ -1016,6 +1035,11 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="chat_remove_background">Remove background</string>
+    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_removing_background">Removing background…</string>
+    <string name="send_as_sticker">Send as sticker</string>
+    <string name="cd_send_as_sticker">Toggle send as sticker</string>
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>
@@ -1114,6 +1138,21 @@
     <!-- Storage warnings -->
     <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
     <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil's default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+
+    <!-- Contact info / chat overview -->
+    <string name="contact_info_recent_media">Recent media</string>
+    <string name="conversation_chatting_since">Chatting since %1$s</string>
+
+    <!-- Conversation media album + groups in common -->
+    <string name="conversation_media_see_all">See all</string>
+    <string name="conversation_groups_in_common">Groups in common</string>
+    <string name="conversation_media_album_title">Shared media</string>
+    <string name="conversation_media_empty">Nothing here yet</string>
+    <string name="conversation_media_tab_media">Media</string>
+    <string name="conversation_media_tab_files">Files</string>
+    <string name="conversation_media_tab_audio">Audio</string>
+    <string name="conversation_media_tab_dice">Dice rolls</string>
+    <string name="conversation_media_tab_locations">Locations</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>

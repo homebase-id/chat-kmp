@@ -11,12 +11,13 @@ import androidx.compose.runtime.remember
  * (ASWebAuthenticationSession couples launching with callback handling).
  */
 @Composable
-actual fun rememberAuthBrowserLauncher(): (url: String) -> Unit {
+actual fun rememberAuthBrowserLauncher(): (url: String) -> Boolean {
     return remember {
         { _: String ->
             // No-op: iOS uses ASWebAuthenticationSession which is launched
             // from BrowserLauncher.onAuthBrowserOpened() because the API
             // couples browser launching with callback handling
+            true
         }
     }
 }

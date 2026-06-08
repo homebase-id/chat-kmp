@@ -435,6 +435,13 @@ class ChatMessageStream(
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null,
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
+        /**
+         * Optional header-level dataType filter (e.g. [ChatProtocol.ChatLocationMessageDataType]).
+         * When set, the SQL query returns only messages stamped with one of these
+         * dataTypes — lets callers page a single message kind (locations, dice…)
+         * straight from the index instead of scanning every message client-side.
+         */
+        datatypesAnyOf: List<Int>? = null,
     ): BatchResult<MessageUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
@@ -461,6 +468,7 @@ class ChatMessageStream(
                 fileSystemType = 0,
                 fileState = fileStateFilter,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                datatypesAnyOf = datatypesAnyOf,
                 groupIdAnyOf = listOf(conversationId)
             )
         val queryElapsed = queryStart.elapsedNow()

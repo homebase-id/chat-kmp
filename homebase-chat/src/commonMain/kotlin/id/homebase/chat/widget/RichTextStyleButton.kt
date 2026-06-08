@@ -20,6 +20,7 @@ fun RichTextStyleButton(
     tint: Color? = null,
     enabled: Boolean = true,
     isSelected: Boolean = false,
+    contentDescription: String? = null,
 ) {
     IconButton(
         modifier = Modifier
@@ -39,7 +40,7 @@ fun RichTextStyleButton(
     ) {
         Icon(
             icon,
-            contentDescription = icon.name,
+            contentDescription = contentDescription ?: icon.name,
             tint = tint ?: LocalContentColor.current,
             modifier = Modifier
                 .background(

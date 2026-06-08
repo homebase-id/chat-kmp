@@ -259,12 +259,28 @@ sealed interface ConversationListUiAction {
         val paintedBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /**
+     * User tapped the "Remove background" tool on an image attachment. The handler
+     * runs on-device segmentation off the main thread and, on success, swaps the
+     * attachment for a transparent-PNG cut-out tagged as a sticker.
+     */
+    data class RemoveBackgroundAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
     /** Inline trim scrubber moved — store the chosen range, or null to clear. */
     data class ApplyTrimResult(
         val conversationId: Uuid,
         val attachmentId: Uuid,
         val trimStartMs: Long?,
         val trimEndMs: Long?,
+    ) : ConversationListUiAction
+
+    /** User toggled Send-as-sticker on an image attachment. */
+    data class ToggleStickerAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
     ) : ConversationListUiAction
 
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction

@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
@@ -11,11 +12,15 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.chat.services.image.StickerImageProcessor
+import id.homebase.chat.services.image.removeBackground
+import id.homebase.chat.services.image.warmUpBackgroundRemoval
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
 import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_message_audio_recording_help
+import id.homebase.resources.chat_remove_background_failed
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
@@ -161,6 +166,11 @@ internal class AttachmentHandler(
                     )
                 }
 
+                // Image editor is open — pre-warm the background-removal model so the
+                // first "Remove background" tap is usually instant (Android-only; no-op
+                // elsewhere and when no image was attached).
+                maybeWarmUpBackgroundRemoval(newFiles)
+
                 // Editor is now visible — extract thumbnails in the background and
                 // patch the pending FileVideo entries when they complete.
                 newFiles.forEach { f ->
@@ -225,6 +235,10 @@ internal class AttachmentHandler(
                     )
                 }
 
+                // Image editor is open — pre-warm the background-removal model (no-op
+                // when no image was attached or the platform is unsupported).
+                maybeWarmUpBackgroundRemoval(newFiles)
+
                 // Editor visible — kick off thumbnail extraction in parallel.
                 newFiles.zip(action.files).forEach { (pending, gallery) ->
                     if (pending is AttachmentPendingFile.FileVideo) {
@@ -279,10 +293,20 @@ internal class AttachmentHandler(
     fun handleAttachClipboardImage(action: ConversationListUiAction.AttachClipboardImage) {
         scope.launch {
             try {
+                // The temp file's EXTENSION is what the send path turns into the wire
+                // content-type: MessageActionsHandler resolves it via resolveContentType(
+                // fileName = file.name, ...), which falls back to extension-based lookup
+                // for a bare temp file with no rich platform MIME. So a pasted animated
+                // GIF written to a ".png" file would ship as image/gif's bytes mislabeled
+                // image/png — the receiver would request a thumbnail (image/gif is in
+                // THUMBLESS_CONTENT_TYPES, image/png isn't) and the GIF would not animate.
+                // Sniff the magic bytes and pick the matching extension so the bytes and
+                // their declared type agree end to end. We never re-encode the bytes.
+                val suffix = clipboardImageSuffix(action.imageBytes)
                 val tempPath = fileOperationsProvider.writeBytesToTempFile(
                     action.imageBytes,
                     "clipboard_image",
-                    ".png"
+                    suffix
                 )
                 val platformFile = platformFileFromPath(tempPath)
                 val newFile = AttachmentPendingFile.FileImage(
@@ -311,6 +335,9 @@ internal class AttachmentHandler(
                 messagesUiState.update {
                     it.copy(fullScreenOverlay = newOverlay)
                 }
+
+                // A pasted image is always image-like — pre-warm the background-removal model.
+                maybeWarmUpBackgroundRemoval(listOf(newFile))
             } catch (e: Exception) {
                 Logger.e("Failed to attach clipboard image", e)
                 sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
@@ -454,6 +481,122 @@ internal class AttachmentHandler(
         }
     }
 
+    /**
+     * Best-effort: when an image editor opens on a device that supports background
+     * removal, ask the platform to pre-download the segmentation model (Android's ML
+     * Kit optional module) so the first [handleRemoveBackground] tap usually finds it
+     * ready instead of triggering — and briefly failing on — the download then. No-op
+     * on platforms without an optional model, and when nothing image-like was attached.
+     */
+    private fun maybeWarmUpBackgroundRemoval(files: List<AttachmentPendingFile>) {
+        // Support is re-checked inside warmUpBackgroundRemoval() (a no-op on platforms
+        // without an optional model), so here we only gate on having an image.
+        val hasImage = files.any {
+            it is AttachmentPendingFile.FileImage || it is AttachmentPendingFile.Gallery
+        }
+        if (hasImage) warmUpBackgroundRemoval()
+    }
+
+    /**
+     * Remove the background from the current image attachment via on-device
+     * segmentation, then swap it for a transparent-PNG cut-out tagged as a sticker.
+     *
+     * Same swap shape as [handleApplyCropResult] but the bytes come from
+     * [removeBackground] (run off the main thread by the platform actual) instead
+     * of an editor result bus. The result is written as a `.png` temp so the
+     * alpha survives, and `forceSticker = true` is carried on the swapped image so
+     * the send path tags it a sticker even if a downstream re-encode flattens
+     * fringe alpha. On a null result (unsupported platform, no subject, or model
+     * unavailable) the original attachment is left untouched and a soft error is
+     * surfaced.
+     */
+    fun handleRemoveBackground(action: ConversationListUiAction.RemoveBackgroundAttachment) {
+        scope.launch {
+            val overlay = messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+            // Idempotency guard: the wand is disabled while running, but a rapid double-tap
+            // could still launch twice within the same frame. scope is the Main dispatcher,
+            // so this check-then-mark prefix runs before the first suspension point — the
+            // second launch sees the id already in-flight and bails, avoiding a redundant
+            // parallel segmentation and an orphaned temp file.
+            if (overlay == null || action.attachmentId in overlay.processingAttachmentIds) {
+                return@launch
+            }
+            setBackgroundRemovalInProgress(action.attachmentId, inProgress = true)
+            try {
+                val attachment = overlay.attachments.firstOrNull {
+                    it.attachmentId == action.attachmentId
+                }
+                val sourcePath = when (attachment) {
+                    is AttachmentPendingFile.FileImage -> attachment.file.toString()
+                    is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
+                    else -> null
+                }
+                if (sourcePath == null) {
+                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    return@launch
+                }
+
+                val srcBytes = fileOperationsProvider.readFileBytes(sourcePath)
+                val cutOutBytes = removeBackground(srcBytes)
+                if (cutOutBytes == null) {
+                    // Soft fail: no confident subject, model not available, or
+                    // unsupported platform. Leave the original image in place.
+                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    return@launch
+                }
+
+                // The segmenter returns a full-resolution lossless PNG. The send path
+                // uploads images byte-for-byte (no resize — see MessageAttachmentBuilder),
+                // so persist a sticker-sized (<=512px) PNG instead: alpha-perfect at a
+                // fraction of the bytes. Falls back to the original cut-out on any
+                // re-encode failure so it can never block sending.
+                val stickerBytes = StickerImageProcessor.downscaleCutOut(cutOutBytes)
+
+                val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                    stickerBytes,
+                    "cutout_image",
+                    ".png",
+                )
+                val newFile = AttachmentPendingFile.FileImage(
+                    id = action.attachmentId,
+                    file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
+                    forceSticker = true,
+                )
+                val current = messagesUiState.value.fullScreenOverlay
+                if (current !is FullScreenOverlay.AttachmentData) return@launch
+                val newAttachments = current.attachments.map { existing ->
+                    if (existing.attachmentId == action.attachmentId) newFile else existing
+                }
+                messagesUiState.update {
+                    it.copy(fullScreenOverlay = current.copy(attachments = newAttachments))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("RemoveBackground failed", e)
+                sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+            } finally {
+                setBackgroundRemovalInProgress(action.attachmentId, inProgress = false)
+            }
+        }
+    }
+
+    /**
+     * Toggle the editor's per-attachment "background removal in progress" marker, which
+     * drives the wand-button spinner in
+     * [id.homebase.chat.widget.FullScreenAttachmentEditor]. No-ops if the attachment
+     * overlay is no longer open (e.g. the user dismissed it mid-run).
+     */
+    private fun setBackgroundRemovalInProgress(attachmentId: Uuid, inProgress: Boolean) {
+        messagesUiState.update { state ->
+            val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                ?: return@update state
+            val ids = if (inProgress) overlay.processingAttachmentIds + attachmentId
+            else overlay.processingAttachmentIds - attachmentId
+            state.copy(fullScreenOverlay = overlay.copy(processingAttachmentIds = ids))
+        }
+    }
+
     /* Inline trim scrubber result. */
     fun handleApplyTrimResult(action: ConversationListUiAction.ApplyTrimResult) {
         val overlay = messagesUiState.value.fullScreenOverlay
@@ -467,6 +610,28 @@ internal class AttachmentHandler(
                     trimEndMs = action.trimEndMs,
                 )
             } else existing
+        }
+        messagesUiState.update {
+            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+        }
+    }
+
+    /* Send-as-sticker toggle on an image attachment. Synchronous, like the trim
+     * reducer: flip the per-image forceSticker flag on the matching FileImage or
+     * Gallery entry in the open editor overlay. Read at send to set
+     * AttachmentInput.forceSticker. */
+    fun handleToggleStickerAttachment(action: ConversationListUiAction.ToggleStickerAttachment) {
+        val overlay = messagesUiState.value.fullScreenOverlay
+        if (overlay !is FullScreenOverlay.AttachmentData) return
+        val newAttachments = overlay.attachments.map { existing ->
+            when {
+                existing.attachmentId != action.attachmentId -> existing
+                existing is AttachmentPendingFile.FileImage ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                existing is AttachmentPendingFile.Gallery ->
+                    existing.copy(forceSticker = !existing.forceSticker)
+                else -> existing
+            }
         }
         messagesUiState.update {
             it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
@@ -562,3 +727,23 @@ internal class AttachmentHandler(
         }
     }
 }
+
+/**
+ * Picks the temp-file extension for a pasted clipboard image by sniffing the magic
+ * bytes (via [ImageFormatDetector.detectFormat]) rather than trusting the source.
+ *
+ * The extension matters because the send path derives the wire content-type from the
+ * file name (extension fallback in `resolveContentType`). An animated GIF must keep a
+ * ".gif" suffix so it is sent as image/gif — that type is THUMBLESS, so receivers load
+ * the full payload and the GIF animates. JPEG keeps ".jpg"; everything else (PNG,
+ * unknown raster) defaults to ".png", which matches the previous hardcoded behavior.
+ *
+ * The bytes themselves are never re-encoded.
+ */
+internal fun clipboardImageSuffix(bytes: ByteArray): String =
+    when (ImageFormatDetector.detectFormat(bytes)) {
+        "image/gif" -> ".gif"
+        "image/jpeg" -> ".jpg"
+        "image/webp" -> ".webp"
+        else -> ".png"
+    }

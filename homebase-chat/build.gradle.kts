@@ -76,6 +76,22 @@ kotlin {
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network)
             implementation(libs.richeditor.compose)
+            // mikepenz read-only markdown renderer (m3 styling + in-markdown
+            // images via the existing Coil3 loader). m3/coil3 ship commonMain +
+            // android/jvm/ios/wasmJs, so no per-target block is needed.
+            //
+            // The CORE artifact is declared explicitly because MarkdownRenderer.kt
+            // imports com.mikepenz.markdown.annotator.{annotatorSettings,
+            // buildMarkdownAnnotatedString}, which live in the core module — a
+            // first-order use, not merely a transitive of m3/coil3. Without this
+            // line the core only reached the compile classpath transitively; the
+            // Desktop distributable (which consumes homebase-chat via a repackaged
+            // platform JAR in desktopApp, see homebase-core below) dropped it at
+            // runtime → NoClassDefFoundError com/mikepenz/markdown/annotator/
+            // AnnotatorSettingsKt at first render.
+            implementation(libs.markdown.renderer)
+            implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.coil3)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }
@@ -86,6 +102,9 @@ kotlin {
             implementation(libs.androidx.media3.ui)
             implementation(libs.androidx.ui.tooling)
             implementation(libs.play.services.location)
+            // On-device subject segmentation for the "Remove background" sticker tool.
+            // Model is downloaded via Google Play services (not bundled) → ~0 APK cost.
+            implementation(libs.mlkit.subject.segmentation)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)

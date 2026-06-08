@@ -51,11 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -66,12 +64,8 @@ import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.ui.theme.LightColors
-import id.homebase.core.util.applyDefaultStyling
-import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
@@ -119,7 +113,6 @@ private const val CollapsedBodyMaxLines = 10
  * @param sharedTransitionScope The shared transition scope for animations.
  * @param animatedVisibilityScope The animated visibility scope for animations.
  */
-@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun MessageBubbleRaw(
     modifier: Modifier = Modifier,
@@ -284,30 +277,29 @@ fun MessageBubbleRaw(
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
-    val textState =
-        remember(message.isDeleted, message.content) {
-            RichTextState()
-                .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-                .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
-        }
-    // When a search query is active we render a plain AnnotatedString instead of RichText,
-    // so that the string the highlight offsets are computed against is exactly the string
-    // being drawn. RichTextState can reassemble its annotatedString to a different length
-    // at layout time (markdown tokens), which would leave stale SpanStyle ranges and crash
-    // String.subSequence during draw.
-    val highlightedText: AnnotatedString? =
-        remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
-            if (message.isDeleted) return@remember null
-            val highlightColor = if (isCurrentSearchResult)
-                Color(0xFFFF8C00).copy(alpha = 0.6f)
-            else
-                Color(0xFFFFEB3B).copy(alpha = 0.5f)
-            buildSearchHighlightedText(
-                plain = message.content,
-                searchQuery = searchQuery,
-                highlightColor = highlightColor,
-            )
-        }
+    // Body markdown rendered (and search-highlighted) by the single ChatMarkdown
+    // renderer below — no RichTextState round-trip, no separate highlight fork.
+    val bodyText = if (message.isDeleted) deletedText else message.content
+    // A search query never applies to the system "deleted" placeholder.
+    val effectiveSearchQuery = if (message.isDeleted) "" else searchQuery
+
+    // When the body contains markdown BLOCK elements (headings, lists, quotes,
+    // code blocks, tables, rules), ChatMarkdown renders the multi-node mikepenz
+    // block Column. That Column re-fires layout on Desktop hover (links/hover),
+    // and the timestamp-tucking custom Layout below reads a freshly-written
+    // textLayoutResult during its own measure pass and force-remeasures children —
+    // re-measuring the block Column from inside that pass throws
+    // "layout state is not idle before measure starts". So a block body is routed
+    // to a plain Column (timestamp placed below as a normal element) instead of
+    // the custom Layout. Emoji-only, search, and the "deleted" placeholder always
+    // render as a single stable Text, so they keep the custom Layout's last-line
+    // timestamp tuck.
+    val bodyIsBlock = remember(bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
+        !message.isDeleted &&
+            !emojiOnly &&
+            effectiveSearchQuery.isEmpty() &&
+            markdownHasBlockElements(bodyText)
+    }
 
     val big = Dimens.Message.cornerRadius
     val small = Dimens.Message.cornerCollapseRadius
@@ -473,6 +465,119 @@ fun MessageBubbleRaw(
                         mediaPlaceable.placeRelative(0, replyPlaceable.height)
                     }
                 }
+            } else if (bodyIsBlock) {
+                // BLOCK body path: the multi-node mikepenz block Markdown() Column
+                // is interactive (links/hover) and re-fires layout on Desktop
+                // hover. It must NOT be a child of the timestamp-tucking custom
+                // Layout (which reads textLayoutResult mid-measure and
+                // force-remeasures siblings) — that combination throws
+                // "layout state is not idle before measure starts". So we stack
+                // the same children in a plain Column and place the timestamp
+                // below as a normal element. ChatMarkdown's block path reports no
+                // textLayoutResult, so there is no last-line tuck to lose here:
+                // this is exactly the below-placement the custom Layout already
+                // falls back to when textLayoutResult is null.
+                Column(modifier = Modifier.wrapContentWidth()) {
+                    authorName?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = authorColor ?: contentColor,
+                            modifier = Modifier.padding(
+                                start = 12.dp,
+                                top = 8.dp,
+                                end = 12.dp,
+                                bottom = 4.dp,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                    message.messageAppData.replyPreview?.let { reply ->
+                        InlineReplyPreview(
+                            replyPreview = reply,
+                            sentByYou = sentByYou,
+                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            replyMessage = replyMessages[reply.replyUniqueId],
+                            driveId = chatTargetDrive.alias,
+                        )
+                    }
+                    if (hasMedia) {
+                        MediaMessage(
+                            payloads = filteredPayloads.toPersistentList(),
+                            decryptedFiles = decryptedFiles,
+                            fileId = message.fileId,
+                            driveId = chatTargetDrive.alias,
+                            previewThumbnail = message.previewThumbnail,
+                            onMediaClick = onMediaClick,
+                            keyHeader = message.keyHeader,
+                            shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
+                                topStart = Dimens.Message.cornerRadius,
+                                topEnd = Dimens.Message.cornerRadius
+                            ) else RoundedCornerShape(0.dp),
+                            onMediaLongPress = { _, _ -> handleLongClick() },
+                            onRequestDecryptedFile = onRequestDecryptedFile,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            messageId = message.id,
+                            downloadingFiles = downloadingFiles,
+                            uploadStatus = uploadStatus,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    ) {
+                        // No onTextLayout: the block renderer reports none, and the
+                        // timestamp is placed below as its own row (next).
+                        ChatMarkdown(
+                            content = bodyText,
+                            color = contentColor,
+                            style = MaterialTheme.typography.bodyLarge,
+                            searchQuery = effectiveSearchQuery,
+                            isCurrentSearchResult = isCurrentSearchResult,
+                        )
+                    }
+                    if (message.hasMore && onShowMoreClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onShowMoreClick)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_message_read_more),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = contentColor,
+                                modifier = Modifier.padding(
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                    top = 4.dp,
+                                    bottom = 6.dp,
+                                ),
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Text(
+                            text = messageInfoText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                        if (sentByYou && !message.isDeleted) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            DeliveryStatus(
+                                isPendingSend = isPendingSend,
+                                deliveryStatus = message.messageAppData.deliveryStatus,
+                                contentColor = contentColor.copy(alpha = 0.7f),
+                                pendingSince = message.userDate,
+                            )
+                        }
+                    }
+                }
             } else {
                 // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
                 Column {
@@ -539,23 +644,16 @@ fun MessageBubbleRaw(
                                         style = MaterialTheme.typography.displaySmall,
                                         color = contentColor
                                     )
-                                } else if (highlightedText != null) {
-                                    Text(
-                                        text = highlightedText,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = contentColor,
-                                        maxLines = bodyMaxLines,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
                                 } else {
-                                    RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyLarge,
+                                    ChatMarkdown(
+                                        content = bodyText,
                                         color = contentColor,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        searchQuery = effectiveSearchQuery,
+                                        isCurrentSearchResult = isCurrentSearchResult,
                                         maxLines = bodyMaxLines,
                                         overflow = TextOverflow.Ellipsis,
+                                        onTextLayout = { textLayoutResult = it },
                                     )
                                 }
                             }

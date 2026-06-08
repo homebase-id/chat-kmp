@@ -235,7 +235,8 @@ class ConversationMapper(
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
                     exitedAt = exitedAt,
-                    fileUpdated = metadata.updated.toInstant()
+                    fileUpdated = metadata.updated.toInstant(),
+                    fileCreated = metadata.created.toInstant(),
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Cooperative cancellation — never an indictment of file content.
@@ -275,7 +276,8 @@ class ConversationMapper(
                     admins = emptySet(),
                     conversationState = ConversationState.Invalid,
                     isGroup = false,
-                    fileUpdated = conversationFile.fileMetadata.updated.toInstant()
+                    fileUpdated = conversationFile.fileMetadata.updated.toInstant(),
+                    fileCreated = conversationFile.fileMetadata.created.toInstant(),
                 )
             }
         } finally {
@@ -395,7 +397,8 @@ class ConversationMapper(
             admins = setOf(domain),
             conversationState = ConversationState.Deleted,
             isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true,
-            fileUpdated = metadata.updated.toInstant()
+            fileUpdated = metadata.updated.toInstant(),
+            fileCreated = metadata.created.toInstant(),
         )
     }
 

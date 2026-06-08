@@ -488,7 +488,8 @@ private fun AttachmentOption(
     modifier: Modifier = Modifier,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    contentDescription: String? = null,
 ) {
     Column(
         modifier = modifier.width(72.dp).noRippleClickable { onClick() },
@@ -505,7 +506,7 @@ private fun AttachmentOption(
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = contentDescription,
                 modifier = Modifier.size(24.dp)
             )
         }

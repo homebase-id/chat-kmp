@@ -705,6 +705,7 @@ internal class MessageActionsHandler(
                                 filePath = filePath,
                                 contentType = contentType,
                                 displayName = attachment.image.fileName,
+                                forceSticker = attachment.forceSticker,
                             )
                         )
                     }

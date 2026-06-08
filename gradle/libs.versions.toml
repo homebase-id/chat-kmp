@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.0"
+agp = "9.2.1"
 android-compileSdk = "36"
 android-minSdk = "28"
 android-targetSdk = "36"
@@ -40,7 +40,21 @@ junit = "4.13.2"
 kotlin = "2.3.21"
 browser = "1.10.0"
 okio = "3.17.0"
+# richeditorCompose: 1.0.0-rc14 is the newest published build (2026-04-26); no
+# stable release exists, so there is no upgrade target. Kept as the WYSIWYG
+# composer/editor (the only CMP library that does true inline editing on all
+# four targets, incl. wasmJs). Read-only rendering uses mikepenz below.
 richeditorCompose = "1.0.0-rc14"
+# Read-only markdown RENDERER (mikepenz). Built on org.jetbrains:markdown:0.7.3
+# (the CommonMark engine richeditor already pulls in — no version conflict).
+# Publishes m3 + coil3 artifacts for android/jvm/iosArm64/iosSimulatorArm64/wasmJs.
+# Pinned to 0.40.2 (NOT 0.41.0): 0.41.0's bytecode references the synthetic
+# `androidx.compose.ui.graphics.painter.Painter.$stable` field, which Compose 1.10
+# removed — so 0.41.0 throws NoSuchFieldError at runtime on our Compose 1.10.3 the
+# moment it renders an inline markdown image (MarkdownInlineImageWithSize). 0.40.2
+# is the newest release whose bytecode carries no removed-field reference (verified
+# via javap), and 0.39.x release notes confirm the 0.39–0.40 line targets CMP 1.10.
+markdownRenderer = "0.40.2"
 sqldelight = "2.3.2"
 sqlcipher = "4.13.0"
 kotlinx-coroutines = "1.10.2"
@@ -72,6 +86,7 @@ playPublisher = "4.0.0"
 buildconfig = "6.0.9"
 play-app-update = "2.1.0"
 play-services-location = "21.3.0"
+mlkit-subject-segmentation = "16.0.0-beta1"
 metadataExtractor = "2.19.0"
 
 [libraries]
@@ -140,6 +155,10 @@ kermit-io = { module = "co.touchlab:kermit-io", version.ref = "kermit" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 okio-fakefilesystem = { module = "com.squareup.okio:okio-fakefilesystem", version.ref = "okio" }
 richeditor-compose = { module = "com.mohamedrejeb.richeditor:richeditor-compose", version.ref = "richeditorCompose" }
+markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "markdownRenderer" }
+markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
+markdown-renderer-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "markdownRenderer" }
+jetbrains-markdown = { module = "org.jetbrains:markdown", version = "0.7.3" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
@@ -197,6 +216,7 @@ composenativewebview = { module = "io.github.kdroidfilter:composewebview", versi
 conveyor-control = { module = "dev.hydraulic.conveyor:conveyor-control", version.ref = "conveyorControl" }
 play-app-update = { module = "com.google.android.play:app-update-ktx", version.ref = "play-app-update" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
+mlkit-subject-segmentation = { module = "com.google.android.gms:play-services-mlkit-subject-segmentation", version.ref = "mlkit-subject-segmentation" }
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
 nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }

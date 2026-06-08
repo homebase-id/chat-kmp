@@ -21,6 +21,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
@@ -286,6 +287,7 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             driveRegistry = get(),
+            securityContextProvider = get(),
             // Start headless only where the OS can cold-wake us in the background
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
@@ -553,6 +555,7 @@ val appModule = module {
     viewModelOf(::MessageInfoViewModel)
     viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
+    viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
