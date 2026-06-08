@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -31,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -77,14 +75,19 @@ fun ExpressionSheet(
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
-        var selected by rememberSaveable { mutableStateOf(ExpressionTab.Default) }
+        // Ephemeral panel state (rememberSaveable with a plain enum isn't reliably saveable
+        // on iOS/Desktop; the tab choice needn't survive process death).
+        var selected by remember { mutableStateOf(ExpressionTab.Default) }
         val tabs = remember { expressionTabs(gifsEnabled = false) }
 
         Column(modifier = modifier) {
             ExpressionTabRow(tabs = tabs, selected = selected, onSelect = { selected = it })
             when (selected) {
+                // weight(1f) fills the remaining panel height (the panel is floored at 300.dp
+                // and the keyboard can be shorter); a fixed height would clip the picker. The
+                // emoji grid scrolls internally.
                 ExpressionTab.Emoji -> EmojiSelection(
-                    modifier = Modifier.fillMaxWidth().height(380.dp).padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
                     messageInputMode = true,
                     onBackSpace = onBackSpace,
                     onEmojiSelected = onEmojiSelected,
