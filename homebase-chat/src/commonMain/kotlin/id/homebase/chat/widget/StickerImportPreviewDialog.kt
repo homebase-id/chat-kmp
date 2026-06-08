@@ -24,8 +24,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * Confirm dialog for the smart-import opaque branch: a spinner while the background is
- * removed, then the cut-out preview with Use / Cancel. Rendered from [ConversationContent]
- * off the importer's preview flow so it survives tab switches and panel collapse.
+ * removed, then the cut-out preview with Use / Cancel. Rendered from `ConversationListScreen`
+ * off the ViewModel's preview flow so it survives tab switches and panel collapse.
  */
 @Composable
 fun StickerImportPreviewDialog(

@@ -99,6 +99,9 @@ class StickerImporter(
     fun confirm() {
         val ready = _preview.value as? StickerImportPreview.Ready ?: return
         _preview.value = null
+        // Intentionally NOT tracked by [job]: a confirmed save must complete even if the
+        // user closes the panel or starts a new import (which cancels [job]).
+        // awaitDriveGranted is idempotent, so a concurrent import is safe.
         scope.launch {
             try {
                 awaitDriveGranted()
@@ -112,7 +115,12 @@ class StickerImporter(
         }
     }
 
-    /** User tapped "Cancel", closed the panel, or re-imported — cancel any in-flight work. */
+    /**
+     * User tapped "Cancel" on the preview dialog, or started another import — cancel any
+     * in-flight work and clear the preview. Note: closing the composer panel does NOT call
+     * this; the dialog is hoisted to screen level so an in-flight/ready import deliberately
+     * survives a panel or tab change.
+     */
     fun dismiss() {
         job?.cancel()
         job = null
