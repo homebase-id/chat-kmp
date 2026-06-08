@@ -762,7 +762,6 @@
     <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
     <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
     <string name="chat_sticker_import">Import sticker</string>
-    <string name="chat_sticker_import_not_transparent">Pick a transparent PNG to use as a sticker</string>
     <string name="chat_stickers_empty">No saved stickers yet</string>
     <string name="chat_sticker_remove">Remove sticker</string>
     <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
@@ -771,10 +770,11 @@
     <string name="chat_sticker_tray_title">My Stickers</string>
     <string name="cd_sticker_thumbnail">Saved sticker</string>
     <string name="cd_import_sticker">Import a sticker</string>
-    <string name="chat_sticker_import_processing">Removing background…</string>
-    <string name="chat_sticker_import_title">Use this sticker?</string>
-    <string name="chat_sticker_import_use">Use</string>
-    <string name="chat_sticker_import_no_subject">Couldn\'t find a subject to cut out</string>
+    <string name="chat_sticker_choose_title">Create sticker</string>
+    <string name="chat_sticker_variant_cutout">Cut-out</string>
+    <string name="chat_sticker_variant_original">Original</string>
+    <string name="cd_sticker_variant_cutout">Cut-out version</string>
+    <string name="cd_sticker_variant_original">Original photo version</string>
     <string name="cd_tab_emoji">Emoji</string>
     <string name="cd_tab_stickers">Stickers</string>
 

@@ -165,7 +165,7 @@ private fun StickersTabContent(
             scope.launch {
                 val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@launch
                 val contentType = detectContentTypeFromExtensionOrHint(file.name)
-                onUiAction(ConversationListUiAction.ImportSticker(bytes, contentType))
+                onUiAction(ConversationListUiAction.CreateStickerFromImage(conversationId, bytes, contentType))
             }
         }
     }

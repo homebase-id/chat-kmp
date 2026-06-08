@@ -40,6 +40,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
@@ -256,10 +257,28 @@ class ConversationListViewModel(
         },
     )
 
-    private val stickerImporter = StickerImporter(
+    private val stickerCreator = StickerCreator(
         scope = viewModelScope,
         saveSticker = { bytes, contentType ->
             stickerService.saveSticker(bytes = bytes, contentType = contentType, scope = viewModelScope)
+        },
+        sendSticker = { conversationId, bytes, contentType ->
+            viewModelScope.launch {
+                val suffix = when (contentType) {
+                    "image/jpeg" -> ".jpg"
+                    "image/webp" -> ".webp"
+                    else -> ".png"
+                }
+                val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
+                messageActionsHandler.addMessageWithFiles(
+                    conversationId, "",
+                    listOf(AttachmentPendingFile.FileImage(
+                        id = Uuid.generateV7(),
+                        file = platformFileFromPath(path),
+                        forceSticker = true,
+                    )),
+                )
+            }
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
         awaitDriveGranted = {
@@ -268,8 +287,8 @@ class ConversationListViewModel(
         },
     )
 
-    /** Smart-import confirm dialog state (null = no dialog). Observed by ConversationContent. */
-    val stickerImportPreview: StateFlow<StickerImportPreview?> = stickerImporter.preview
+    /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
+    val stickerCreateState: StateFlow<StickerCreateState?> = stickerCreator.state
 
     /**
      * Extend-permissions VM for the optional Stickers drive. Exposed so the host
@@ -1076,12 +1095,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.SaveStickerFromMessage ->
                 stickerHandler.handleSaveStickerFromMessage(action)
 
-            is ConversationListUiAction.ImportSticker ->
-                stickerImporter.import(action.bytes, action.contentType)
-
-            is ConversationListUiAction.ConfirmStickerImport -> stickerImporter.confirm()
-
-            is ConversationListUiAction.DismissStickerImport -> stickerImporter.dismiss()
+            is ConversationListUiAction.CreateStickerFromImage ->
+                stickerCreator.create(action.bytes, action.contentType, action.conversationId)
+            is ConversationListUiAction.SelectStickerVariant -> stickerCreator.selectVariant(action.variant)
+            is ConversationListUiAction.ConfirmStickerCreate -> stickerCreator.confirm()
+            is ConversationListUiAction.DismissStickerCreate -> stickerCreator.dismiss()
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }

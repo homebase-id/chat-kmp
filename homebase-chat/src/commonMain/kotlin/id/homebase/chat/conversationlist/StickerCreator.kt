@@ -4,6 +4,8 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.convertHeicToJpeg
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.isBackgroundRemovalSupported
 import id.homebase.chat.services.image.removeBackground
@@ -12,11 +14,13 @@ import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -63,6 +67,16 @@ class StickerCreator(
         removeBackground(it)?.let { png -> StickerImageProcessor.downscaleCutOut(png) }
     },
     private val addOutline: suspend (ByteArray) -> ByteArray = { StickerImageProcessor.addWhiteOutline(it) },
+    /** Normalize the final bytes before save+send (HEIC→JPEG; else passthrough), so the saved
+     *  library copy and the sent copy are byte-identical. */
+    private val normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { bytes, contentType ->
+        withContext(Dispatchers.Default) {
+            if (ImageFormatDetector.isHeic(bytes)) {
+                val jpeg = convertHeicToJpeg(bytes)
+                if (jpeg != null) jpeg to "image/jpeg" else bytes to contentType
+            } else bytes to contentType
+        }
+    },
 ) {
     private val _state = MutableStateFlow<StickerCreateState?>(null)
     val state: StateFlow<StickerCreateState?> = _state.asStateFlow()
@@ -107,13 +121,14 @@ class StickerCreator(
 
     fun confirm() {
         val s = _state.value as? StickerCreateState.Choose ?: return
-        val (bytes, contentType) = when (s.selected) {
+        val (rawBytes, rawType) = when (s.selected) {
             StickerVariant.CutOut -> (s.cutOutOutlined ?: return) to "image/png"
             StickerVariant.Original -> s.original to s.originalContentType
         }
         _state.value = null
         scope.launch {
             try {
+                val (bytes, contentType) = normalize(rawBytes, rawType)
                 awaitDriveGranted()
                 val saved = saveSticker(bytes, contentType)
                 sendSticker(s.conversationId, bytes, contentType)

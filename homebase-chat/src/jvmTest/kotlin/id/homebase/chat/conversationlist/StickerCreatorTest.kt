@@ -30,6 +30,7 @@ private fun creator(
     cutOut: suspend (ByteArray) -> ByteArray? = { byteArrayOf(7) },
     outline: suspend (ByteArray) -> ByteArray = { it + 9 },
     saveResult: Uuid? = Uuid.random(),
+    normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { b, ct -> b to ct },
 ) = StickerCreator(
     scope = scope,
     saveSticker = { b, ct -> rec.saved += b to ct; saveResult },
@@ -40,6 +41,7 @@ private fun creator(
     bgRemovalSupported = bgSupported,
     cutOut = cutOut,
     addOutline = outline,
+    normalize = normalize,
 )
 
 class StickerCreatorTest {
@@ -120,5 +122,18 @@ class StickerCreatorTest {
         c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
         c.confirm(); advanceUntilIdle()
         assertEquals(MR.string.chat_sticker_save_failed, rec.infos.single())
+    }
+
+    @Test fun confirm_normalizes_bytes_before_save_and_send() = runTest {
+        val rec = Rec()
+        val heic = byteArrayOf(0x68, 0x65) // pretend-HEIC
+        val jpeg = byteArrayOf(0x6A, 0x70)
+        val c = creator(this, rec, isTransparent = { false }, cutOut = { byteArrayOf(1) }, outline = { byteArrayOf(2) },
+            normalize = { b, ct -> if (b.contentEquals(heic)) jpeg to "image/jpeg" else b to ct })
+        c.create(heic, "image/heic", convo); advanceUntilIdle()
+        c.selectVariant(StickerVariant.Original); c.confirm(); advanceUntilIdle()
+        // both save and send receive the normalized JPEG bytes + content type (not raw HEIC)
+        assertTrue(rec.saved[0].first.contentEquals(jpeg)); assertEquals("image/jpeg", rec.saved[0].second)
+        assertTrue(rec.sent[0].second.contentEquals(jpeg)); assertEquals("image/jpeg", rec.sent[0].third)
     }
 }
