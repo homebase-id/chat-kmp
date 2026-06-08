@@ -2,6 +2,7 @@ package id.homebase.api.di
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.HttpClientProvider
+import id.homebase.api.client.UploadHttpClientPool
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
@@ -56,6 +57,10 @@ val apiModule = module {
 
     // this creates the HttpClient
     single { HttpClientProvider.create() }
+
+    // Pool of send-buffer-capped HTTP clients (one per size tier) used only by the multipart
+    // drive-upload path so onUpload progress tracks the wire instead of the socket buffer.
+    single { UploadHttpClientPool() }
 
     // Constructed via the lambda DSL (not singleOf) so Kotlin's default values for
     // the compressor/probe params are honored — Koin's constructor DSL would instead

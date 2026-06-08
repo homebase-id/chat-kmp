@@ -3,6 +3,7 @@ package id.homebase.api.client
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.compression.ContentEncoding
@@ -26,25 +27,40 @@ internal val HttpBreadcrumbPlugin = createClientPlugin("HttpBreadcrumb") {
     }
 }
 
+/**
+ * The shared plugin/config block applied to every Odin HTTP client — the default
+ * client built by [HttpClientProvider.create] and the per-tier upload clients built by
+ * [createUploadHttpClient]. Extracted so upload clients are byte-for-byte plugin-identical
+ * to the shared one; the only thing upload clients add on top is a capped socket send buffer
+ * (Android/OkHttp only), which is engine config, not a plugin.
+ *
+ * Note: [ContentEncoding] here is response-side (Accept-Encoding + response decode). It does
+ * NOT compress request bodies unless `compress()` is called explicitly, which the multipart
+ * upload path never does — so upload byte math stays exact.
+ */
+internal fun HttpClientConfig<*>.applyOdinDefaults() {
+    install(HttpBreadcrumbPlugin)
+
+    install(ContentNegotiation) {
+        json(OdinSystemSerializer.json)
+    }
+
+    install(ContentEncoding) {
+        gzip(quality = 1.0f)
+        deflate(quality = 0.9f)
+    }
+
+    install(HttpTimeout) {
+        requestTimeoutMillis = 5 * 60_000   // 5 minutes
+        connectTimeoutMillis = 30_000        // 30 seconds
+        socketTimeoutMillis = 5 * 60_000     // 5 minutes
+    }
+}
+
 object HttpClientProvider {
     fun create(): HttpClient {
         return HttpClient {
-            install(HttpBreadcrumbPlugin)
-
-            install(ContentNegotiation) {
-                json(OdinSystemSerializer.json)
-            }
-
-            install(ContentEncoding) {
-                gzip(quality = 1.0f)
-                deflate(quality = 0.9f)
-            }
-
-            install(HttpTimeout) {
-                requestTimeoutMillis = 5 * 60_000   // 5 minutes
-                connectTimeoutMillis = 30_000        // 30 seconds
-                socketTimeoutMillis = 5 * 60_000     // 5 minutes
-            }
+            applyOdinDefaults()
         }
     }
 }

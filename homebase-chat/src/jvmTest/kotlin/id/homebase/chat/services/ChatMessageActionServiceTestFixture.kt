@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.UploadHttpClientPool
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
@@ -191,6 +192,7 @@ class ChatMessageActionServiceTestFixture(
                     httpClient,
                     credentialsManager,
                     NoopFileOperationsProvider(),
+                    UploadHttpClientPool(),
                 ),
                 fileProvider = fileProvider,
                 operationsProvider = DriveFileOperationsProvider(httpClient, credentialsManager),

@@ -228,13 +228,16 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         formData: MultiPartFormDataContent,
-        onProgress: UploadProgress? = null
+        onProgress: UploadProgress? = null,
+        // The send-buffer-capped upload client for this payload's tier (see UploadHttpClientPool).
+        // Defaults to the shared client so non-upload callers are unaffected.
+        client: HttpClient = httpClient
     ): ApiResponse {
         requireHostInUrl(url)
 
         return request(
             {
-                httpClient.post(url) {
+                client.post(url) {
                     bearerAuth(token)
                     setBody(formData)
 
@@ -251,13 +254,14 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         formData: MultiPartFormDataContent,
-        onProgress: UploadProgress? = null
+        onProgress: UploadProgress? = null,
+        client: HttpClient = httpClient
     ): ApiResponse {
         requireHostInUrl(url)
 
         return request(
             {
-                httpClient.patch(url) {
+                client.patch(url) {
                     bearerAuth(token)
                     setBody(formData)
 

@@ -5,6 +5,7 @@ import id.homebase.api.client.ApiResponse
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.UploadHttpClientPool
 import id.homebase.api.client.OdinErrorResponse
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
@@ -23,6 +24,7 @@ import io.ktor.client.request.forms.MultiPartFormDataContent
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -89,6 +91,7 @@ class DriveUploadProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val uploadClientPool: UploadHttpClientPool,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
@@ -142,18 +145,37 @@ class DriveUploadProvider(
             fileOperationsProvider
         )
 
-        val wrappedProgress = onProgress?.let { progress ->
-            suspend { sent: Long, _: Long? ->
-                progress(sent, totalUploadSize)
+        // Timing breakdown so a repro proves where the upload spends its time:
+        // handoffMs = until onUpload reports the last byte accepted into the (now capped) socket
+        // buffer; waitMs = handoff → server response = the "Finalizing" tail (wire drain + ack).
+        val bufferBytes = uploadClientPool.bufferBytesFor(totalUploadSize)
+        val start = TimeSource.Monotonic.markNow()
+        var handoffMs: Long? = null
+
+        val wrappedProgress: UploadProgress = { sent: Long, _: Long? ->
+            if (handoffMs == null && totalUploadSize > 0 && sent >= totalUploadSize) {
+                handoffMs = start.elapsedNow().inWholeMilliseconds
             }
+            onProgress?.invoke(sent, totalUploadSize)
         }
 
         val result =
             pureUpload(
                 request.driveId, data, request.fileSystemType,
                 wrappedProgress,
-                onVersionConflict
+                onVersionConflict,
+                uploadSizeBytes = totalUploadSize,
             )
+
+        val totalMs = start.elapsedNow().inWholeMilliseconds
+        val handoff = handoffMs ?: totalMs
+        val waitMs = (totalMs - handoff).coerceAtLeast(0)
+        val throughputKBps = if (totalMs > 0) totalUploadSize * 1000 / totalMs / 1024 else 0
+        Logger.i(tag = TAG) {
+            "(UploadTiming) uniqueId=${request.metadata.appData.uniqueId} bytes=$totalUploadSize " +
+                "bufferBytes=$bufferBytes payloads=${request.payloads.size} thumbs=${request.thumbnails.size} " +
+                "handoffMs=$handoff waitMs=$waitMs totalMs=$totalMs throughputKBps=$throughputKBps"
+        }
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -203,7 +225,10 @@ class DriveUploadProvider(
         }
 
         val path = "/drives/${request.driveId}/files/${request.fileId}"
-        val result = pureUpdate(data, path, wrappedProgress, onVersionConflict)
+        val result = pureUpdate(
+            data, path, wrappedProgress, onVersionConflict,
+            uploadSizeBytes = totalUploadSize,
+        )
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -267,9 +292,27 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider,
             )
 
+        val totalUploadSize = calculateUploadSize(
+            request.payloads,
+            request.thumbnails,
+            sharedSecretEncryptedDescriptor,
+            fileOperationsProvider
+        )
+
+        // Report progress against the true total (engine total can be unknown for chunked
+        // multipart) and pick the send-buffer-capped client for honest wire-paced progress.
+        val wrappedProgress = onProgress?.let { progress ->
+            suspend { sent: Long, _: Long? ->
+                progress(sent, totalUploadSize)
+            }
+        }
+
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
 
-        val result = pureUpdate(data, path, onProgress, onVersionConflict)
+        val result = pureUpdate(
+            data, path, wrappedProgress, onVersionConflict,
+            uploadSizeBytes = totalUploadSize,
+        )
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -380,7 +423,10 @@ class DriveUploadProvider(
         data: MultiPartFormDataContent,
         fileSystemType: FileSystemType? = null,
         onProgress: UploadProgress? = null,
-        onVersionConflict: (suspend () -> CreateFileResult?)? = null
+        onVersionConflict: (suspend () -> CreateFileResult?)? = null,
+        // Total payload+thumbnail+descriptor byte size, used to pick a send-buffer-capped
+        // upload client so onUpload progress tracks the wire instead of the socket buffer.
+        uploadSizeBytes: Long = 0L,
     ): CreateFileResult? {
 
         val credentials = requireCreds()
@@ -415,7 +461,8 @@ class DriveUploadProvider(
                 url = url,
                 token = credentials.accessToken,
                 formData = data,
-                onProgress = onProgress
+                onProgress = onProgress,
+                client = uploadClientPool.clientFor(uploadSizeBytes)
             )
 
         if (response.status in 200..299) {
@@ -431,7 +478,8 @@ class DriveUploadProvider(
         data: MultiPartFormDataContent,
         path: String,
         onProgress: UploadProgress? = null,
-        onVersionConflict: (suspend () -> UpdateFileResult?)? = null
+        onVersionConflict: (suspend () -> UpdateFileResult?)? = null,
+        uploadSizeBytes: Long = 0L,
     ): UpdateFileResult? {
         val credentials = requireCreds()
 
@@ -441,7 +489,8 @@ class DriveUploadProvider(
                 url = url,
                 token = credentials.accessToken,
                 formData = data,
-                onProgress = onProgress
+                onProgress = onProgress,
+                client = uploadClientPool.clientFor(uploadSizeBytes)
             )
 
         if (response.status in 200..299) {
