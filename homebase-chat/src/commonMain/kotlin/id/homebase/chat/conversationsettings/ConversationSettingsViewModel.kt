@@ -11,6 +11,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -29,6 +30,7 @@ class ConversationSettingsViewModel(
     private val conversationStream: ConversationStream,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val chatMessageStream: ChatMessageStream,
+    private val contactService: ContactService,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -71,6 +73,7 @@ class ConversationSettingsViewModel(
                         _uiState.update {
                             it.copy(
                                 conversation = conversation,
+                                contactName = resolveContactName(conversation),
                                 groupsInCommon = groupsInCommonWith(conversation),
                                 isLoading = false,
                             )
@@ -85,6 +88,23 @@ class ConversationSettingsViewModel(
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    /**
+     * Resolved full name of the 1:1 contact, or null to fall back to the raw
+     * odinId in [ConversationUiModel.name]. The mapper deliberately stores the
+     * odinId as the conversation name (contact resolution is a UI-layer concern,
+     * see ConversationMapper), so we resolve it here against the contact list —
+     * mirroring EnrichedConversationUiModel.getDisplayName for the list. Null for
+     * groups, and when the contact carries no display name (resolves back to the
+     * odinId), so the header doesn't render the same string twice.
+     */
+    private fun resolveContactName(conversation: ConversationUiModel): String? {
+        if (conversation.isGroupConversation) return null
+        val self = ownerSessionRepository.user.value?.odinId
+        val contact = conversation.participants.firstOrNull { it != self } ?: return null
+        val resolved = contactService.resolveByOdinId(contact)?.name
+        return resolved?.takeIf { it.isNotBlank() && it != contact.domainName }
     }
 
     /**
