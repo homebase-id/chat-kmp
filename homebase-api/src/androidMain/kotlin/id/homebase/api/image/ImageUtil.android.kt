@@ -474,6 +474,25 @@ actual object ImageUtils {
         )
     }
 
+    actual fun decodeToArgb(srcBytes: ByteArray): ArgbImage? {
+        val bmp = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size) ?: return null
+        val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp
+            else bmp.copy(Bitmap.Config.ARGB_8888, false).also { bmp.recycle() }
+        val w = argb.width; val h = argb.height
+        val pixels = IntArray(w * h)
+        argb.getPixels(pixels, 0, w, 0, 0, w, h)
+        argb.recycle()
+        return ArgbImage(pixels, w, h)
+    }
+
+    actual fun encodeArgbToPng(image: ArgbImage): ByteArray {
+        val bmp = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        bmp.recycle()
+        return out.toByteArray()
+    }
+
     private fun blurAndroidBitmap(src: Bitmap, radius: Int): Bitmap {
         val w = src.width
         val h = src.height
