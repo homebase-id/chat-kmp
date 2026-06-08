@@ -15,6 +15,8 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.convertHeicToJpeg
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.PayloadBundle
@@ -88,8 +90,14 @@ class StickerService(
     ): Uuid? {
         ensureDriveMounted()
 
-        val ext = contentType.substringAfter("/", "png").let { if (it == "jpeg") "jpg" else it }
-        val tempPath = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_", ".$ext")
+        // Mirror VaultUploaderService: convert HEIC/HEIF to JPEG so the drive and receivers
+        // get a web image format. A directly-saved transparent HEIC would otherwise upload as
+        // image/heic and fail thumbnail generation on platforms that can't decode it.
+        val uploadBytes = if (ImageFormatDetector.isHeic(bytes)) convertHeicToJpeg(bytes) ?: bytes else bytes
+        val uploadType = if (uploadBytes !== bytes) "image/jpeg" else contentType
+
+        val ext = uploadType.substringAfter("/", "png").let { if (it == "jpeg") "jpg" else it }
+        val tempPath = fileOperationsProvider.writeBytesToTempFile(uploadBytes, "sticker_", ".$ext")
         return try {
             val keyHeader = KeyHeader.newRandom16()
             val key = StickerProtocol.STICKER_PAYLOAD_KEY
@@ -104,11 +112,15 @@ class StickerService(
             val payload = PayloadFile(
                 key = key,
                 filePath = tempPath,
-                contentType = contentType,
+                contentType = uploadType,
                 previewThumbnail = thumbs?.preview,
                 // PR #664 wire format: marks the payload as a transparent cut-out so
-                // receivers render it bare (no opaque bubble backdrop).
-                descriptorContent = DescriptorContent.descriptorContentFromImage(isSticker = true),
+                // receivers render it bare (no opaque bubble backdrop). The format lets a
+                // receiver pick the right decoder and a downloaded file get the right extension.
+                descriptorContent = DescriptorContent.descriptorContentFromImage(
+                    isSticker = true,
+                    format = ImageFormatDetector.detectFormat(uploadBytes),
+                ),
             )
 
             val bundle = PayloadBundle(
@@ -187,11 +199,11 @@ class StickerService(
                     uniqueId = uniqueId,
                     driveId = driveId,
                     payloadKey = key,
-                    contentType = contentType,
+                    contentType = uploadType,
                     keyHeader = keyHeader,
                     previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
                     payloadDescriptor = payloadDescriptors?.firstOrNull()
-                        ?: PayloadDescriptor(key = key, contentType = contentType),
+                        ?: PayloadDescriptor(key = key, contentType = uploadType),
                     createdAt = Clock.System.now().toEpochMilliseconds(),
                     isPending = true,
                 )

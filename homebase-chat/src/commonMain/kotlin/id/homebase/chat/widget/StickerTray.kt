@@ -131,6 +131,19 @@ private fun StickerTile(
     onSelected: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    // A pending sticker is still uploading: the server hasn't assigned its real fileId yet,
+    // so its thumbnail can't be fetched and it can't be sent or deleted (both would target a
+    // placeholder id). Show a spinner and ignore taps until the outbox confirms it
+    // (StickerStream then clears isPending and the real row takes over).
+    if (sticker.isPending) {
+        Box(modifier = Modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        return
+    }
     val imageData = sticker.toImageData()
     Box(
         modifier = Modifier
