@@ -165,6 +165,18 @@ fun MomentsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Clear the unseen-moments nav badge: while this screen is composed (i.e.
+    // the user is on the Moments tab), advance the "last viewed" watermark to
+    // the newest moment received from someone else. Re-runs when a newer one
+    // arrives mid-view; cancels when the user leaves the tab (composition
+    // exits), so it never clears the badge for moments seen on another screen.
+    val newestReceivedMs = remember(uiState.moments) {
+        uiState.moments.filter { it.senderOdinId != null }.maxOfOrNull { it.createdMs }
+    }
+    LaunchedEffect(newestReceivedMs) {
+        newestReceivedMs?.let { viewModel.markFeedViewed(it) }
+    }
+
     // Permission-drift detection: re-check on every screen entry. The
     // moments-qualified ExtendPermissionViewModel runs an initial check on
     // construction, but its result is cached for the lifetime of the VM.

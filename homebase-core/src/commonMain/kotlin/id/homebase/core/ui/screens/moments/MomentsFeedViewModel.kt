@@ -37,7 +37,7 @@ import kotlin.uuid.Uuid
  * to render the chat-style header (avatar with status indicators).
  */
 class MomentsFeedViewModel(
-    feedService: MomentsFeedService,
+    private val feedService: MomentsFeedService,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
@@ -114,6 +114,25 @@ class MomentsFeedViewModel(
             }
             _uiState.update { state ->
                 state.copy(uploadProgress = (state.uploadProgress - momentId).toPersistentMap())
+            }
+        }
+    }
+
+    /**
+     * Mark the feed as viewed up to [newestReceivedCreatedMs] (the newest
+     * received moment the user has now seen), clearing the unseen-moments nav
+     * badge. Fired from `MomentsScreen` on entry and whenever a newer received
+     * moment arrives while the screen is open. Monotonic + best-effort — the
+     * store no-ops when nothing newer has arrived.
+     */
+    fun markFeedViewed(newestReceivedCreatedMs: Long) {
+        viewModelScope.launch {
+            try {
+                feedService.markViewed(newestReceivedCreatedMs)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "markFeedViewed failed for watermark=$newestReceivedCreatedMs: ${t.message}"
+                }
             }
         }
     }
