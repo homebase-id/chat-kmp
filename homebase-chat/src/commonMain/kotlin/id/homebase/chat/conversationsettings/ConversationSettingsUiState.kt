@@ -10,6 +10,12 @@ import kotlinx.collections.immutable.persistentListOf
 data class ConversationSettingsUiState(
     val isLoading: Boolean = true,
     val conversation: ConversationUiModel? = null,
+    /**
+     * Resolved full name of the other party in a 1:1 conversation (from the
+     * contact list). Null for groups, note-to-self, or when the contact has no
+     * display name — [ConversationUiModel.name] (the raw odinId) is the fallback.
+     */
+    val contactName: String? = null,
     val ownerSession: OwnerSession? = null,
     val isOverviewLoading: Boolean = true,
     val overview: ConversationOverview? = null,

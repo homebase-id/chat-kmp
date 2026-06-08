@@ -90,17 +90,24 @@ fun ConversationMediaScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.conversation_media_album_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
-            )
+            // While the full-screen viewer is open it draws its own top bar
+            // (title + date + back/menu). Suppress this screen's app bar so the
+            // two don't stack — the viewer's opaque surface already covers the
+            // tabs beneath it. Mirrors the chat, which replaces its whole content
+            // (app bar included) with the viewer.
+            if (fullScreenItem == null) {
+                TopAppBar(
+                    title = { Text(stringResource(MR.string.conversation_media_album_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                            )
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
