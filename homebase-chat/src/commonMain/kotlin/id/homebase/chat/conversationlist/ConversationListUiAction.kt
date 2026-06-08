@@ -259,6 +259,16 @@ sealed interface ConversationListUiAction {
         val paintedBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /**
+     * User tapped the "Remove background" tool on an image attachment. The handler
+     * runs on-device segmentation off the main thread and, on success, swaps the
+     * attachment for a transparent-PNG cut-out tagged as a sticker.
+     */
+    data class RemoveBackgroundAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
     /** Inline trim scrubber moved — store the chosen range, or null to clear. */
     data class ApplyTrimResult(
         val conversationId: Uuid,
@@ -275,4 +285,48 @@ sealed interface ConversationListUiAction {
 
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
+
+    // region Stickers
+
+    /** Tapping a saved sticker in the tray — re-stage its bytes and send immediately. */
+    data class SendSavedSticker(
+        val conversationId: Uuid,
+        val sticker: id.homebase.chat.services.sticker.SavedSticker,
+    ) : ConversationListUiAction
+
+    /** Long-press "Save sticker" on a received/sent sticker bubble or full-screen viewer. */
+    data class SaveStickerFromMessage(
+        val messageId: Uuid,
+        val payloadKey: String,
+    ) : ConversationListUiAction
+
+    /** Import a transparent PNG/WebP picked from disk into the sticker library. */
+    data class ImportSticker(
+        val bytes: ByteArray,
+        val contentType: String,
+    ) : ConversationListUiAction {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ImportSticker) return false
+            return contentType == other.contentType && bytes.contentEquals(other.bytes)
+        }
+
+        override fun hashCode(): Int = 31 * bytes.contentHashCode() + contentType.hashCode()
+    }
+
+    /** Remove a saved sticker from the library (tray long-press). */
+    data class RemoveSticker(
+        val sticker: id.homebase.chat.services.sticker.SavedSticker,
+    ) : ConversationListUiAction
+
+    /** Ensure the optional Stickers drive is mounted (first tray open). */
+    data object EnsureStickerDriveMounted : ConversationListUiAction
+
+    /** User tapped "Use" on the smart-import preview. */
+    data object ConfirmStickerImport : ConversationListUiAction
+
+    /** User cancelled / dismissed the smart-import preview. */
+    data object DismissStickerImport : ConversationListUiAction
+
+    // endregion
 }

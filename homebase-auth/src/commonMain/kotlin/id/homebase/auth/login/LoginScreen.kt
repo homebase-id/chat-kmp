@@ -52,8 +52,6 @@ import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
-import id.homebase.core.ui.auth.closeWebAuthPopup
-import id.homebase.core.ui.auth.prepareWebAuthPopup
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.core.widget.SquircleIcon
@@ -63,9 +61,11 @@ import id.homebase.resources.failed
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
+import id.homebase.resources.login_continue_button
 import id.homebase.resources.login_create_account_button
 import id.homebase.resources.login_id_label
 import id.homebase.resources.login_id_placeholder
+import id.homebase.resources.login_popup_blocked
 import id.homebase.resources.login_sign_in_button
 import id.homebase.resources.login_sub_title
 import id.homebase.resources.login_successful
@@ -88,6 +88,22 @@ fun LoginScreen(
 
     // Get platform-specific browser launcher via Compose context
     val launchAuthBrowser = rememberAuthBrowserLauncher()
+
+    // The auth window is opened only after the identity passes its format + ping checks (see
+    // LoginViewModel.startLogin). On web that open can be blocked by the popup blocker because it
+    // happens after the async ping — in that case we stash the URL and surface a "Continue" button
+    // that re-opens it from a fresh click gesture. Always null / unused on native.
+    var pendingAuthUrl by remember { mutableStateOf<String?>(null) }
+
+    val openAuth: (String) -> Unit = { url ->
+        if (launchAuthBrowser(url)) {
+            pendingAuthUrl = null
+            // Set up the callback listener now that the auth window is actually open.
+            BrowserLauncher.onAuthBrowserOpened(url, viewModel::onCallbackUrl)
+        } else {
+            pendingAuthUrl = url
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -119,24 +135,19 @@ fun LoginScreen(
 
             is LoginUiEvent.OpenAuthUrl -> {
                 viewModel.eventConsumed()
-                // Launch browser via Compose context (platform-specific)
-                launchAuthBrowser(uiEvent.url)
-                // Notify BrowserLauncher for callback setup (JVM needs server, iOS launches here)
-                BrowserLauncher.onAuthBrowserOpened(uiEvent.url, viewModel::onCallbackUrl)
+                // Open the auth window (platform-specific). Sets up the callback listener on
+                // success; on a blocked web popup, surfaces the "Continue" button instead.
+                openAuth(uiEvent.url)
             }
 
             null -> {}
         }
     }
 
-    // If the login attempt fails (e.g. identity ping failed) before the auth URL is ready, close
-    // the popup that was opened on the click gesture so it doesn't linger blank. No-op off web.
-    LaunchedEffect(uiState.errorMessage) {
-        if (uiState.errorMessage != null) closeWebAuthPopup()
-    }
-
     LoginUi(
         uiState = uiState,
+        pendingAuthUrl = pendingAuthUrl,
+        onContinueAuth = { pendingAuthUrl?.let { openAuth(it) } },
         onAction = viewModel::onAction
     )
 }
@@ -145,7 +156,17 @@ fun LoginScreen(
 fun LoginUi(
     uiState: LoginUiState,
     onAction: (LoginUiAction )-> Unit,
+    pendingAuthUrl: String? = null,
+    onContinueAuth: () -> Unit = {},
 ) {
+    val errorText: String? = uiState.error?.let { error ->
+        when (error) {
+            is LoginError.Res ->
+                if (error.arg != null) stringResource(error.resource, error.arg)
+                else stringResource(error.resource)
+            is LoginError.Message -> error.text
+        }
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surfaceContainerLowest
@@ -168,31 +189,18 @@ fun LoginUi(
             Spacer(modifier = Modifier.height(24.dp))
 
             when {
+                // Web popup was blocked — re-open it from this fresh click gesture.
+                pendingAuthUrl != null -> LoginPopupBlocked(onContinue = onContinueAuth)
                 uiState.isLoading -> LoginLoading(
                     driveProgresses = uiState.driveProgresses,
                     isPinging = uiState.isPinging
                 )
                 uiState.isAuthenticated -> LoginSuccess()
-                uiState.errorMessage != null ->
-                    LoginForm(
-                        errorMessage = uiState.errorMessage,
-                        homebaseId = uiState.homebaseId,
-                        onLoginClick = {
-                            // Open the auth popup synchronously in the click gesture (web only,
-                            // no-op elsewhere) so the browser doesn't block it after the async ping.
-                            prepareWebAuthPopup()
-                            onAction(LoginUiAction.LoginClicked(it))
-                        },
-                        onCreateAccountClick = {
-                            onAction(LoginUiAction.CreateAccount)
-                        },
-                    )
-
                 else ->
                     LoginForm(
+                        errorMessage = errorText,
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
-                            prepareWebAuthPopup()
                             onAction(LoginUiAction.LoginClicked(it))
                         },
                         onCreateAccountClick = {
@@ -200,6 +208,29 @@ fun LoginUi(
                         },
                     )
             }
+        }
+    }
+}
+
+@Composable
+private fun LoginPopupBlocked(onContinue: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(MR.string.login_popup_blocked),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("popup_blocked_text"),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onContinue,
+            modifier = Modifier.fillMaxWidth().testTag("continue_auth_button"),
+        ) {
+            Text(stringResource(MR.string.login_continue_button))
         }
     }
 }
@@ -430,7 +461,7 @@ fun LoginUiFormPreview() {
                 homebaseId = "example.homebase.id",
                 isLoading = false,
                 isAuthenticated = false,
-                errorMessage = null
+                error = null
             ),
             onAction = {}
         )
@@ -446,7 +477,7 @@ fun LoginUiLoadingPreview() {
                 homebaseId = "example.homebase.id",
                 isLoading = true,
                 isAuthenticated = false,
-                errorMessage = null,
+                error = null,
                 driveProgresses = persistentListOf(
                     DriveProgress(driveId = "uuid-chat", name = "Chat", completed = true, total = 42, count = 42, progress = 1f),
                     DriveProgress(driveId = "uuid-feed", name = "Feed", count = 17, total = 17, progress = null),

@@ -13,7 +13,7 @@ import androidx.core.net.toUri
  * needed - we get context directly from Compose.
  */
 @Composable
-actual fun rememberAuthBrowserLauncher(): (url: String) -> Unit {
+actual fun rememberAuthBrowserLauncher(): (url: String) -> Boolean {
     val context = LocalContext.current
 
     return remember(context) {
@@ -36,6 +36,7 @@ actual fun rememberAuthBrowserLauncher(): (url: String) -> Unit {
                             .build()
 
             customTabsIntent.launchUrl(context, url.toUri())
+            true
         }
     }
 }

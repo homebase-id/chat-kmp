@@ -10,6 +10,8 @@ import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.LabeledDrive
@@ -41,6 +43,7 @@ class AuthConnectionCoordinator(
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
+    private val securityContextProvider: SecurityContextProvider,
     private val onPostAuthenticated: () -> Unit = {},
     /**
      * Initial value of [headless]. True only on platforms that can cold-wake the
@@ -105,6 +108,14 @@ class AuthConnectionCoordinator(
      * mounted. Null until the first Authenticated lands.
      */
     @Volatile private var lastAuthenticatedDrives: List<LabeledDrive>? = null
+
+    /**
+     * Normalized (lowercased, hyphen-stripped) aliases of the drives this app token can READ,
+     * resolved from the security context on each Authenticated transition. Null when unknown
+     * (security-context fetch failed) — in that case [retainGrantedDrives] does not filter, so a
+     * transient fetch failure degrades to the pre-existing behaviour rather than hiding drives.
+     */
+    @Volatile private var grantedDriveAliases: Set<String>? = null
     // endregion
 
     /**
@@ -171,16 +182,27 @@ class AuthConnectionCoordinator(
                 // subscribes to the full set — no late observer-driven reconnect.
                 // Unconditional: BG sync's syncAll() needs the drive list.
                 val initialDrives = driveRegistry.bootstrap()
-                // Pre-mount optional drives so they're in driveSyncs when
-                // onConnected fires start() + syncAll(). mountDrive() defers
-                // the network kick while isRunning is false; syncAll() picks
-                // them up alongside the mandatory drives.
-                for (drive in initialDrives) {
+                // Resolve which optional drives this app token can actually READ before mounting
+                // anything. The registry is the cross-device "activated" list and is NOT
+                // permission-aware: a drive activated on another device (or before a permission
+                // change) can appear here without this app holding a read grant. Mounting such a
+                // drive makes the server 403 the REST query-batch AND close the whole notify
+                // WebSocket — one unauthorized drive in EstablishConnectionRequest tears down the
+                // socket, which surfaced as a dropped initial handshake + premature "connected".
+                refreshGrantedDriveAliases()
+
+                // Pre-mount the granted optional drives so they're in driveSyncs when
+                // onConnected fires start() + syncAll(). mountDrive() defers the network kick
+                // while isRunning is false; syncAll() picks them up alongside the mandatory drives.
+                for (drive in initialDrives.retainGrantedDrives()) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
                 logLifecycleSnapshot("drives mounted")
 
-                // Stash for [promoteToForeground] replay if we're headless.
+                // Stash the FULL registry list: it's the baseline for the registry-change observer
+                // (an intentionally-skipped ungranted drive must not look like a brand-new mount)
+                // and the replay source for promoteToForeground. connect() re-applies the grant
+                // filter for the WebSocket subscription itself.
                 lastAuthenticatedDrives = initialDrives
 
                 if (headless) {
@@ -338,7 +360,10 @@ class AuthConnectionCoordinator(
             return
         }
 
-        val optionalDrives = extraDrives ?: driveRegistry.loadDrives()
+        // Filter to drives this app token can read — covers reconnects (extraDrives == null →
+        // loadDrives()) and the login/promote paths, so an ungranted drive is never put on the
+        // WebSocket subscription where it would make the server close the socket.
+        val optionalDrives = (extraDrives ?: driveRegistry.loadDrives()).retainGrantedDrives()
         _connectionState.update { it.copy(isConnecting = true) }
         wsClient =
             OdinWebSocketClient(
@@ -498,6 +523,51 @@ class AuthConnectionCoordinator(
         Logger.i(tag = "AuthLifecycle") { "AuthCC: disconnect() end (wsClient nulled)" }
         logLifecycleSnapshot("disconnect end")
     }
+
+    /**
+     * Refresh [grantedDriveAliases] from the security context. Called once per Authenticated
+     * transition, before any optional drive is mounted/subscribed. On failure it leaves the
+     * filter disabled (null) so we degrade to mounting everything rather than hiding a granted
+     * drive on a transient fetch error.
+     */
+    private suspend fun refreshGrantedDriveAliases() {
+        val ctx = securityContextProvider.getSecurityContext()
+        if (ctx == null) {
+            Logger.w(tag = "AuthLifecycle") {
+                "AuthCC: security context unavailable — drive-grant filter disabled this cycle"
+            }
+            grantedDriveAliases = null
+            return
+        }
+        val readable = ctx.permissionContext.permissionGroups
+            .flatMap { it.driveGrants ?: emptyList() }
+            .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }
+            .mapTo(mutableSetOf()) { normalizeAlias(it.permissionedDrive.drive.alias) }
+        grantedDriveAliases = readable
+        Logger.i(tag = "AuthLifecycle") { "AuthCC: readable drive grants resolved (count=${readable.size})" }
+    }
+
+    /**
+     * Drop drives this app token has no read grant for (see [grantedDriveAliases]). No-op when the
+     * grant set is unknown. Applied to optional/registry drives only — mandatory drives are always
+     * required and are never filtered here.
+     */
+    private fun List<LabeledDrive>.retainGrantedDrives(): List<LabeledDrive> {
+        val granted = grantedDriveAliases ?: return this
+        return filter { ld ->
+            val ok = normalizeAlias(ld.drive.alias.toString()) in granted
+            if (!ok) {
+                Logger.w(tag = "AuthLifecycle") {
+                    "AuthCC: skipping drive '${ld.label}' (${ld.drive.alias}) — app token has no read " +
+                        "grant; not mounting/subscribing it (avoids server WS close + REST 403)"
+                }
+            }
+            ok
+        }
+    }
+
+    // Match compareStringUuId's normalization so aliases compare regardless of hyphen/case format.
+    private fun normalizeAlias(alias: String): String = alias.lowercase().replace("-", "")
 
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L

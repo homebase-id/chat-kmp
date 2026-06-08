@@ -102,6 +102,9 @@ kotlin {
             implementation(libs.androidx.media3.ui)
             implementation(libs.androidx.ui.tooling)
             implementation(libs.play.services.location)
+            // On-device subject segmentation for the "Remove background" sticker tool.
+            // Model is downloaded via Google Play services (not bundled) → ~0 APK cost.
+            implementation(libs.mlkit.subject.segmentation)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
