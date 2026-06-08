@@ -76,38 +76,46 @@ extension UIWindow {
     }
 }
 
-/// Log a blank-text marker. When the intermittent iOS blank-text bug strikes, every label is
-/// unreadable so the user can't tap an on-screen control — but a physical shake works regardless.
-/// On shake we LOG ONLY (no recovery, no Kotlin bridge): a loud marker plus the read-only state of
-/// every CAMetalLayer-backed Skiko view (device present? drawableSize?), so the moment can be lined
-/// up against the automatic `GpuTextDiag` entries in homebase.log. Distinct from `nudgeMetalLayer`,
-/// which calls `setNeedsDisplay` to attempt a fix.
-func logBlankTextMarker(trigger: String) {
-    os_log("[%{public}@] BLANK-TEXT MARKER — user reported missing text", log: textRenderLog, type: .error, trigger)
-    guard let view = MainViewControllerRef.shared.instance?.view else {
-        os_log("[%{public}@] marker: MainViewControllerRef.instance is nil", log: textRenderLog, type: .fault, trigger)
-        return
-    }
-    view.layoutIfNeeded()
+/// Blank-text recovery EXPERIMENT, fired by a device shake. When the bug strikes every label is
+/// unreadable, so the user can't tap an on-screen control — a physical shake works regardless.
+///
+/// We read the (read-only) CAMetalLayer state from the view hierarchy and hand it to Kotlin
+/// `onBlankTextShake`, which logs the font-cache state to homebase.log BEFORE, attempts a recovery
+/// (purge Skia caches + force a full Compose re-composition so glyphs re-rasterize), and logs the
+/// font-cache state again ~1.5s later. The before/after counts tell us whether the recovery worked.
+/// Passing the CAMetalLayer fields means the GPU-surface state lands in the shareable homebase.log
+/// too (Kotlin can't read Compose's Metal view).
+func captureAndRecoverOnShake() {
+    os_log("BLANK-TEXT shake — capturing state + attempting recovery", log: textRenderLog, type: .error)
+
     var count = 0
-    logMetalLayerState(in: view, trigger: trigger, count: &count)
-    if count == 0 {
-        os_log("[%{public}@] marker: NO CAMetalLayer view found in hierarchy", log: textRenderLog, type: .error, trigger)
+    var devicePresent = false
+    var drawableW = 0.0
+    var drawableH = 0.0
+    if let view = MainViewControllerRef.shared.instance?.view {
+        view.layoutIfNeeded()
+        collectMetalState(in: view, count: &count, devicePresent: &devicePresent, drawableW: &drawableW, drawableH: &drawableH)
+    } else {
+        os_log("shake: MainViewControllerRef.instance is nil", log: textRenderLog, type: .fault)
     }
+
+    IosGpuTextDiagnosticsKt.onBlankTextShake(
+        metalLayerCount: Int32(count),
+        metalDevicePresent: devicePresent,
+        drawableWidth: drawableW,
+        drawableHeight: drawableH
+    )
 }
 
-/// Read-only walk: logs CAMetalLayer state without touching it (no `setNeedsDisplay`).
-private func logMetalLayerState(in view: UIView, trigger: String, count: inout Int) {
+/// Read-only walk: collect CAMetalLayer state without touching it (no `setNeedsDisplay`).
+private func collectMetalState(in view: UIView, count: inout Int, devicePresent: inout Bool, drawableW: inout Double, drawableH: inout Double) {
     if let metalLayer = view.layer as? CAMetalLayer {
         count += 1
-        os_log("[%{public}@] marker CAMetalLayer: type=%{public}@, device=%{public}@, drawableSize=%.0fx%.0f, framebufferOnly=%{public}@",
-               log: textRenderLog, type: .info, trigger,
-               String(describing: type(of: view)),
-               String(describing: metalLayer.device != nil),
-               metalLayer.drawableSize.width, metalLayer.drawableSize.height,
-               String(describing: metalLayer.framebufferOnly))
+        if metalLayer.device != nil { devicePresent = true }
+        drawableW = Double(metalLayer.drawableSize.width)
+        drawableH = Double(metalLayer.drawableSize.height)
     }
     for subview in view.subviews {
-        logMetalLayerState(in: subview, trigger: trigger, count: &count)
+        collectMetalState(in: subview, count: &count, devicePresent: &devicePresent, drawableW: &drawableW, drawableH: &drawableH)
     }
 }
