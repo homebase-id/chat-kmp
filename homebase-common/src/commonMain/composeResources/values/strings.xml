@@ -771,6 +771,12 @@
     <string name="chat_sticker_tray_title">My Stickers</string>
     <string name="cd_sticker_thumbnail">Saved sticker</string>
     <string name="cd_import_sticker">Import a sticker</string>
+    <string name="chat_sticker_import_processing">Removing background…</string>
+    <string name="chat_sticker_import_title">Use this sticker?</string>
+    <string name="chat_sticker_import_use">Use</string>
+    <string name="chat_sticker_import_no_subject">Couldn\'t find a subject to cut out</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Stickers</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>

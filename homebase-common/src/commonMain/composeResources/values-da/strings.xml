@@ -470,6 +470,12 @@
     <string name="chat_sticker_tray_title">Mine klistermærker</string>
     <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
     <string name="cd_import_sticker">Importér et klistermærke</string>
+    <string name="chat_sticker_import_processing">Fjerner baggrund…</string>
+    <string name="chat_sticker_import_title">Brug dette klistermærke?</string>
+    <string name="chat_sticker_import_use">Brug</string>
+    <string name="chat_sticker_import_no_subject">Kunne ikke finde et motiv at skære ud</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Klistermærker</string>
 
     <!-- Dice attachment -->
     <string name="chat_dice_share">Terninger</string>
