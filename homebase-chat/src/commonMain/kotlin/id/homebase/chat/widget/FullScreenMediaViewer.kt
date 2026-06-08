@@ -89,6 +89,7 @@ fun FullScreenMediaViewer(
     onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
     onDelete: (messageId: Uuid) -> Unit,
     onDismiss: () -> Unit,
+    onNavigateToMessage: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -271,7 +272,13 @@ fun FullScreenMediaViewer(
                             onDelete = {
                                 showMenu = false
                                 onDelete(data.messageId)
-                            }
+                            },
+                            onNavigateToMessage = onNavigateToMessage?.let {
+                                {
+                                    showMenu = false
+                                    it()
+                                }
+                            },
                         )
                     }
                 },

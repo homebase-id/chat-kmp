@@ -27,7 +27,9 @@ class LinkPreviewProvider(
             secret = creds.secret,
             queryString = "url=${standardisedUrl}"
         )
-        Logger.d("getLinkPreview: $response")
+        // Don't log the full response — link-preview bodies embed base64 image data-URIs that
+        // can be 100KB+ each and bloat homebase.log. Log status + headers + body length only.
+        Logger.d { "getLinkPreview: status=${response.status} headers=${response.headers} bodyLen=${response.body.length}" }
 
         if (response.status == 404) {
             return null

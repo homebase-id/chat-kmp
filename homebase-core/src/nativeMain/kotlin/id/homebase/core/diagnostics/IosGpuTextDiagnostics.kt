@@ -2,6 +2,9 @@ package id.homebase.core.diagnostics
 
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.skia.Graphics
 import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
@@ -98,4 +101,37 @@ fun installGpuTextDiagnostics() {
 
     Logger.i(tag = GpuTextDiagnostics.TAG) { "installed (probe + lifecycle observers attached)" }
     GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ColdStart)
+}
+
+/**
+ * iOS blank-text recovery EXPERIMENT — called from Swift (`ContentView`) when the user shakes the
+ * device during a blank screen. Because every label is unreadable during the bug, a physical shake
+ * is the only reliable trigger.
+ *
+ * It (1) logs the font-cache state to homebase.log BEFORE, (2) attempts a recovery — purge Skia's
+ * CPU strike cache + GPU resource/atlas pages, then force a full re-composition so every `Text`
+ * re-shapes and re-rasterizes against a clean atlas — and (3) logs the font-cache state again ~1.5s
+ * later. The before/after `fontCacheCount` tells us whether the recovery worked (climbs to ~80 = text
+ * rendered; stays ~0 = glyphs still aren't rasterizing, pointing upstream of the GPU).
+ *
+ * The CAMetalLayer fields come from Swift (Kotlin can't read Compose's Metal view) so the GPU-surface
+ * state (device present? drawable size?) also lands in the shareable homebase.log. Runs on main.
+ */
+fun onBlankTextShake(
+    metalLayerCount: Int,
+    metalDevicePresent: Boolean,
+    drawableWidth: Double,
+    drawableHeight: Double,
+) {
+    val metal = "metal[count=$metalLayerCount device=$metalDevicePresent " +
+        "drawable=${drawableWidth.toInt()}x${drawableHeight.toInt()}]"
+    GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake/before $metal")
+
+    runCatching { Graphics.purgeAllCaches() }
+    TextRecovery.forceRecompose()
+
+    MainScope().launch {
+        delay(1500)
+        GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake/after purge+recompose")
+    }
 }
