@@ -1,5 +1,6 @@
 package id.homebase.chat.services.image
 
+import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,102 @@ object StickerImageProcessor {
      * resize hiccup can never block sending the cut-out. CPU-bound, so it hops to
      * [Dispatchers.Default].
      */
+    // Alpha above this counts as "the subject" when building the outline mask.
+    private const val OUTLINE_ALPHA_THRESHOLD = 16
+    // Outline thickness as a fraction of the (capped) longest edge.
+    private const val OUTLINE_RADIUS_FRACTION = 0.06f
+
+    /**
+     * Adds a WhatsApp-style opaque-white outline around the alpha shape of a transparent
+     * cut-out. Caps the working size to [STICKER_MAX_DIM] (so cost is independent of the
+     * caller's input resolution), pads the canvas by the outline radius (so the halo around
+     * a frame-filling subject isn't clipped), computes a chamfer distance transform from the
+     * subject (O(w*h), round halo), paints pixels within the radius opaque white, and
+     * composites the original on top. Pure PNG-in/PNG-out on Dispatchers.Default; returns the
+     * input unchanged on any failure so it can never block sticker creation.
+     */
+    suspend fun addWhiteOutline(cutOutPng: ByteArray, radiusPx: Int = -1): ByteArray =
+        withContext(Dispatchers.Default) {
+            runCatching {
+                // Bound the working size; resizePreserveAspect never upscales, so an already
+                // small cut-out is just re-encoded.
+                val capped = ImageUtils.resizePreserveAspect(
+                    srcBytes = cutOutPng,
+                    maxWidth = STICKER_MAX_DIM, maxHeight = STICKER_MAX_DIM,
+                    outputFormat = ImageFormat.PNG, quality = STICKER_PNG_QUALITY,
+                ).bytes.takeIf { it.isNotEmpty() } ?: cutOutPng
+
+                val img = ImageUtils.decodeToArgb(capped) ?: return@runCatching cutOutPng
+                val sw = img.width; val sh = img.height
+                if (sw == 0 || sh == 0) return@runCatching cutOutPng
+                val r = if (radiusPx >= 0) radiusPx
+                    else maxOf(1, (maxOf(sw, sh) * OUTLINE_RADIUS_FRACTION).toInt())
+
+                // Pad by r on all sides so the halo has room (0 = transparent).
+                val pw = sw + 2 * r; val ph = sh + 2 * r
+                val padded = IntArray(pw * ph)
+                for (y in 0 until sh) {
+                    val srcRow = y * sw; val dstRow = (y + r) * pw + r
+                    for (x in 0 until sw) padded[dstRow + x] = img.pixels[srcRow + x]
+                }
+
+                // Chamfer 3-4 distance from the subject. Orthogonal step = 3, diagonal = 4;
+                // a pixel within r px of the subject has dist <= r*3 (round, approx-Euclidean).
+                val inf = Int.MAX_VALUE / 4
+                val dist = IntArray(pw * ph) {
+                    if ((padded[it] ushr 24 and 0xFF) > OUTLINE_ALPHA_THRESHOLD) 0 else inf
+                }
+                for (y in 0 until ph) for (x in 0 until pw) {
+                    val i = y * pw + x
+                    if (dist[i] == 0) continue
+                    var d = dist[i]
+                    if (x > 0) d = minOf(d, dist[i - 1] + 3)
+                    if (y > 0) d = minOf(d, dist[i - pw] + 3)
+                    if (x > 0 && y > 0) d = minOf(d, dist[i - pw - 1] + 4)
+                    if (x < pw - 1 && y > 0) d = minOf(d, dist[i - pw + 1] + 4)
+                    dist[i] = d
+                }
+                for (y in ph - 1 downTo 0) for (x in pw - 1 downTo 0) {
+                    val i = y * pw + x
+                    var d = dist[i]
+                    if (x < pw - 1) d = minOf(d, dist[i + 1] + 3)
+                    if (y < ph - 1) d = minOf(d, dist[i + pw] + 3)
+                    if (x < pw - 1 && y < ph - 1) d = minOf(d, dist[i + pw + 1] + 4)
+                    if (x > 0 && y < ph - 1) d = minOf(d, dist[i + pw - 1] + 4)
+                    dist[i] = d
+                }
+
+                val threshold = r * 3
+                val white = 0xFFFFFFFF.toInt()
+                val out = IntArray(pw * ph)
+                for (i in padded.indices) {
+                    val a = padded[i] ushr 24 and 0xFF
+                    out[i] = when {
+                        a == 0xFF -> padded[i]                                      // solid subject
+                        dist[i] <= threshold ->                                     // halo
+                            if (a > 0) alphaOver(padded[i], white) else white
+                        else -> padded[i]                                           // outside halo
+                    }
+                }
+                ImageUtils.encodeArgbToPng(ArgbImage(out, pw, ph))
+            }.getOrDefault(cutOutPng)
+        }
+
+    /** Source-over composite of [fg] (0xAARRGGBB) onto [bg]. */
+    private fun alphaOver(fg: Int, bg: Int): Int {
+        val fa = fg ushr 24 and 0xFF
+        if (fa == 0) return bg
+        if (fa == 0xFF) return fg
+        val ba = bg ushr 24 and 0xFF
+        val outA = fa + ba * (255 - fa) / 255
+        fun ch(sh: Int): Int {
+            val f = fg ushr sh and 0xFF; val b = bg ushr sh and 0xFF
+            val v = (f * fa + b * ba * (255 - fa) / 255) / maxOf(1, outA)
+            return v.coerceIn(0, 255)
+        }
+        return (outA shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
     suspend fun downscaleCutOut(cutOutBytes: ByteArray): ByteArray =
         withContext(Dispatchers.Default) {
             // runCatching catches Throwable, so a resize failure — or, hypothetically, an
