@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
-import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
@@ -74,7 +73,6 @@ import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_groodle_share
 import id.homebase.resources.chat_location_share
-import id.homebase.resources.chat_sticker_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
 import id.homebase.resources.chat_no_gallery_items
@@ -397,7 +395,6 @@ fun AttachmentOptions(
     onEventClick: () -> Unit,
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
-    onStickersClick: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -457,14 +454,6 @@ fun AttachmentOptions(
                     icon = Icons.Default.Casino,
                     label = stringResource(MR.string.chat_dice_share),
                     onClick = onDicesClick,
-                )
-            }
-            item {
-                AttachmentOption(
-                    modifier = Modifier.testTag("attachment_stickers"),
-                    icon = Icons.Default.EmojiEmotions,
-                    label = stringResource(MR.string.chat_sticker_share),
-                    onClick = onStickersClick,
                 )
             }
         }
