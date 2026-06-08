@@ -8,8 +8,10 @@ import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.isIos
 import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.SyncState
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.AppConfig
@@ -18,8 +20,6 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.notifications.NotificationService
-import id.homebase.core.util.StartupState
-import id.homebase.core.util.mapToStartupState
 import id.homebase.resources.MR
 import id.homebase.resources.error_unknown
 import id.homebase.resources.login_error_generic
@@ -238,10 +238,11 @@ class LoginViewModel(
         didHandleAuthenticated = false
         authStateJob = viewModelScope.launch {
             combine(
+                youAuthFlowManager.authState,
                 authConnectionCoordinator.connectionState,
-                youAuthFlowManager.authState
-            ) { connectionState, authState ->
-                authState.mapToStartupState(connectionState.isConnecting)
+                driveSyncManager.syncState
+            ) { authState, connectionState, syncState ->
+                Triple(authState, connectionState.isConnecting, syncState)
             }
                 .distinctUntilChanged() // Ensures only unique combined results are emitted
                 .catch { error ->
@@ -252,29 +253,41 @@ class LoginViewModel(
                         )
                     }
                 }
-                .collectLatest { authState ->
-                    Logger.i(tag = "LoginViewModel", messageString = "AuthState: $authState")
+                .collectLatest { (authState, isConnecting, syncState) ->
+                    Logger.i(
+                        tag = "LoginViewModel",
+                        messageString = "AuthState: ${authState::class.simpleName} " +
+                            "sync=${syncState::class.simpleName} connecting=$isConnecting"
+                    )
                     when (authState) {
-                        is StartupState.Authenticated -> {
-                            handleAuthenticatedUser()
-                        }
-
-                        is StartupState.Unauthenticated -> {
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    isAuthenticated = false
-                                )
+                        is YouAuthState.Authenticated -> {
+                            // Hold the initial loading screen until the drive sync has STOPPED —
+                            // Completed OR Failed (a drive "Stopped" event). A premature churn
+                            // (e.g. network drop) still yields a terminal state, so we close the
+                            // screen and the running client resumes syncing on WS reconnect. If the
+                            // sync can't even start (Idle once the connection has settled), skip the
+                            // loading screen entirely. Identical on every platform — driven only by
+                            // the shared DriveSyncManager.syncState + connection state.
+                            val syncStopped =
+                                syncState is SyncState.Completed || syncState is SyncState.Failed
+                            val syncCannotStart = syncState is SyncState.Idle && !isConnecting
+                            if (syncStopped || syncCannotStart) {
+                                handleAuthenticatedUser()
+                            } else {
+                                _uiState.update { it.copy(isLoading = true) }
                             }
                         }
 
-                        is StartupState.Authenticating -> {
-                            _uiState.update {
-                                it.copy(isLoading = true)
-                            }
+                        is YouAuthState.Authenticating,
+                        is YouAuthState.Initializing -> {
+                            _uiState.update { it.copy(isLoading = true) }
                         }
 
-                        is StartupState.Error -> {
+                        is YouAuthState.Unauthenticated -> {
+                            _uiState.update { it.copy(isLoading = false, isAuthenticated = false) }
+                        }
+
+                        is YouAuthState.Error -> {
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
@@ -282,10 +295,6 @@ class LoginViewModel(
                                     error = LoginError.Message(authState.message)
                                 )
                             }
-                        }
-
-                        else -> {
-                            // ignore
                         }
                     }
                 }
