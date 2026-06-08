@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
@@ -9,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,138 +15,25 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.services.sticker.SavedSticker
-import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.services.sticker.toImageData
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
-import id.homebase.resources.cancel
 import id.homebase.resources.cd_import_sticker
 import id.homebase.resources.cd_sticker_thumbnail
-import id.homebase.resources.chat_sticker_remove
-import id.homebase.resources.chat_sticker_remove_confirm
-import id.homebase.resources.chat_sticker_tray_title
 import id.homebase.resources.chat_stickers_empty
-import id.homebase.resources.remove
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.readBytes
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
-import kotlin.uuid.Uuid
-
-/**
- * Bottom-sheet wrapper around [StickerTray]. Self-contained like
- * [id.homebase.chat.event.EventComposerSheet]: pulls the saved-stickers flow from the
- * [StickerStream] singleton and routes selection/import/removal through [onUiAction], so
- * the host (`ConversationContent`) only owns the open/close boolean.
- *
- * Tapping a sticker sends it immediately and dismisses; the Import tile opens a FileKit
- * image picker (transparent-PNG/WebP), reads the bytes, and dispatches
- * [ConversationListUiAction.ImportSticker] (the handler enforces the alpha-gate).
- */
-@Composable
-fun StickerTraySheet(
-    conversationId: Uuid,
-    onUiAction: (ConversationListUiAction) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val stickerStream: StickerStream = koinInject()
-    val stickers by stickerStream.stickers.collectAsStateWithLifecycle()
-    val isLoaded by stickerStream.isLoaded.collectAsStateWithLifecycle()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    // Long-press stages a removal; the confirmation dialog below guards the destructive
-    // delete so a single long-press never silently drops a sticker.
-    var pendingDelete by remember { mutableStateOf<SavedSticker?>(null) }
-
-    // Mount the optional Stickers drive the first time the tray is opened (mirror Moments).
-    LaunchedEffect(Unit) {
-        onUiAction(ConversationListUiAction.EnsureStickerDriveMounted)
-    }
-
-    val importPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        if (file != null) {
-            scope.launch {
-                // PlatformFile.readBytes() is suspend. The alpha-gate (reject opaque)
-                // + persistence happen in StickerHandler.handleImportSticker.
-                val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@launch
-                val contentType = detectContentTypeFromExtensionOrHint(file.name)
-                onUiAction(ConversationListUiAction.ImportSticker(bytes, contentType))
-            }
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Text(
-            text = stringResource(MR.string.chat_sticker_tray_title),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-        )
-        StickerTray(
-            stickers = stickers,
-            isLoaded = isLoaded,
-            onStickerSelected = { sticker ->
-                onUiAction(ConversationListUiAction.SendSavedSticker(conversationId, sticker))
-                onDismiss()
-            },
-            onStickerLongPress = { sticker -> pendingDelete = sticker },
-            onImportClick = { importPicker.launch() },
-            modifier = Modifier.heightIn(max = 360.dp),
-        )
-    }
-
-    pendingDelete?.let { sticker ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text(text = stringResource(MR.string.chat_sticker_remove)) },
-            text = { Text(text = stringResource(MR.string.chat_sticker_remove_confirm)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    onUiAction(ConversationListUiAction.RemoveSticker(sticker))
-                    pendingDelete = null
-                }) {
-                    Text(text = stringResource(MR.string.remove))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text(text = stringResource(MR.string.cancel))
-                }
-            },
-        )
-    }
-}
 
 /**
  * The composer's "My Stickers" tray: a [LazyVerticalGrid] of the user's saved stickers
