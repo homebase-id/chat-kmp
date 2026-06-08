@@ -36,8 +36,9 @@ object StickerImageProcessor {
 
     // Alpha above this counts as "the subject" when building the outline mask.
     private const val OUTLINE_ALPHA_THRESHOLD = 16
-    // Outline thickness as a fraction of the (capped) longest edge.
-    private const val OUTLINE_RADIUS_FRACTION = 0.06f
+    // Outline thickness as a fraction of the (capped) longest edge. ~4–5% reads as a clean
+    // WhatsApp-style halo without looking heavy.
+    private const val OUTLINE_RADIUS_FRACTION = 0.045f
 
     /**
      * Adds a WhatsApp-style opaque-white outline around the alpha shape of a transparent

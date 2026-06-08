@@ -69,4 +69,37 @@ class StickerOutlineTest {
         assertEquals(0xFF, img.pixels[up] ushr 24 and 0xFF)
         assertEquals(0xFFFFFF, img.pixels[up] and 0xFFFFFF)
     }
+
+    // The halo extends exactly `radiusPx` from the subject: white at distance r, transparent at r+1.
+    private fun assertOutlineWidthEqualsRadius(size: Int, r: Int) = runTest {
+        val mid = size / 2
+        val src = png(size) { it[mid * size + mid] = 0xFFFF0000.toInt() } // single opaque pixel
+        val img = ImageUtils.decodeToArgb(StickerImageProcessor.addWhiteOutline(src, radiusPx = r))!!
+        val pw = img.width
+        val c = (mid + r) * pw + (mid + r) // subject in padded coords
+        // exactly r px above the subject: opaque white (inside the ring)
+        assertEquals(0xFF, img.pixels[c - r * pw] ushr 24 and 0xFF, "r=$r: pixel at distance r must be opaque")
+        assertEquals(0xFFFFFF, img.pixels[c - r * pw] and 0xFFFFFF, "r=$r: pixel at distance r must be white")
+        // r+1 px above: transparent (outside the ring)
+        assertEquals(0x00, img.pixels[c - (r + 1) * pw] ushr 24 and 0xFF, "r=$r: pixel at distance r+1 must be transparent")
+    }
+
+    @Test fun outline_width_equals_radius_2() = assertOutlineWidthEqualsRadius(size = 7, r = 2)
+
+    @Test fun outline_width_equals_radius_3() = assertOutlineWidthEqualsRadius(size = 9, r = 3)
+
+    @Test fun default_outline_width_scales_with_image_size() = runTest {
+        // The default radius is a fraction of the longest edge, so a larger sticker gets a wider
+        // halo. Pins the proportional behaviour without hard-coding the exact fraction (which is
+        // tuned for look). padding added on each side == the radius used.
+        suspend fun defaultRadius(size: Int): Int {
+            val src = png(size) { px -> for (i in px.indices) px[i] = 0xFFFF0000.toInt() } // fully opaque
+            val out = ImageUtils.decodeToArgb(StickerImageProcessor.addWhiteOutline(src))!!
+            return (out.width - size) / 2
+        }
+        val small = defaultRadius(100)
+        val large = defaultRadius(400)
+        assertTrue(small >= 1, "small radius must be >= 1 (was $small)")
+        assertTrue(large > small, "outline width must grow with image size (small=$small large=$large)")
+    }
 }
