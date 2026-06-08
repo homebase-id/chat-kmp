@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -42,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -100,6 +103,7 @@ import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -166,6 +170,8 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val momentsFeedService = koinInject<MomentsFeedService>()
+    val momentsUnseenCount by momentsFeedService.unseenCount.collectAsStateWithLifecycle()
     val momentsViewModel: MomentsViewModel = koinViewModel()
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
@@ -437,16 +443,17 @@ fun AppNavHost(
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
                             icon = {
-                                Icon(
-                                    topLevelRoute.icon,
-                                    contentDescription = stringResource(topLevelRoute.labelRes)
+                                TopLevelNavIcon(
+                                    topLevelRoute = topLevelRoute,
+                                    showMomentsBadge = momentsUnseenCount > 0,
                                 )
                             },
                             label = {
                                 Text(
                                     stringResource(topLevelRoute.labelRes),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
                                 )
                             },
                             selected = currentDestination?.hasRoute(
@@ -479,9 +486,9 @@ fun AppNavHost(
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
                                 icon = {
-                                    Icon(
-                                        topLevelRoute.icon,
-                                        contentDescription = stringResource(topLevelRoute.labelRes)
+                                    TopLevelNavIcon(
+                                        topLevelRoute = topLevelRoute,
+                                        showMomentsBadge = momentsUnseenCount > 0,
                                     )
                                 },
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
@@ -1332,4 +1339,29 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+}
+
+/**
+ * Bottom-nav / rail icon for a top-level destination. Draws a small dot badge
+ * over the Moments icon when there are unseen moments ([showMomentsBadge]) —
+ * a "there's something new" indicator, intentionally count-less to keep the
+ * chip small (swap `Badge()` for `Badge { Text(stringResource(...)) }` with a
+ * `%1$d` resource if a number is wanted later).
+ */
+@Composable
+private fun TopLevelNavIcon(
+    topLevelRoute: TopLevelRoute,
+    showMomentsBadge: Boolean,
+) {
+    val icon: @Composable () -> Unit = {
+        Icon(
+            topLevelRoute.icon,
+            contentDescription = stringResource(topLevelRoute.labelRes),
+        )
+    }
+    if (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) {
+        BadgedBox(badge = { Badge() }) { icon() }
+    } else {
+        icon()
+    }
 }

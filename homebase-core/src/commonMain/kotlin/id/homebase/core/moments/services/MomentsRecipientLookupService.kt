@@ -29,7 +29,7 @@ private const val TAG = "MomentsRecipientLookupService"
 class MomentsRecipientLookupService(
     private val contactService: ContactService,
     private val groupService: MomentGroupService,
-    private val mruStore: MomentsRecipientMruStore,
+    private val mruStore: MomentsUserStateStore,
     private val credentialsManager: CredentialsManager,
     private val scope: CoroutineScope,
 ) {
