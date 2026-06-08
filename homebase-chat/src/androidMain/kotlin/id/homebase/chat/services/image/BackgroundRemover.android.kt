@@ -2,6 +2,7 @@ package id.homebase.chat.services.image
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import co.touchlab.kermit.Logger
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -15,6 +16,7 @@ import com.google.mlkit.vision.segmentation.subject.SubjectSegmentationResult
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmenter
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
 import id.homebase.api.ActivityProvider
+import id.homebase.api.image.readImageMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -218,10 +220,12 @@ private suspend fun ensureSegmentationModuleInstalled(segmenter: SubjectSegmente
 
 /**
  * Decode [srcBytes] with an `inSampleSize` cap so the segmenter input stays within
- * [maxDim] on its longest edge. `inSampleSize` only powers-of-two downsamples at decode
- * time and does NOT apply EXIF rotation — matching the previous raw `decodeByteArray`,
- * so the cut-out's orientation is unchanged. ARGB_8888 preserves the alpha channel ML
- * Kit fills into the foreground bitmap.
+ * [maxDim] on its longest edge, then rotate it into upright display orientation.
+ * `inSampleSize` only powers-of-two downsamples at decode time, and `BitmapFactory`
+ * does NOT honour the EXIF orientation tag — so a camera photo / HEIC (which stores a
+ * rotated sensor frame plus an orientation tag) would otherwise segment sideways and
+ * the cut-out would come out rotated. ARGB_8888 preserves the alpha channel ML Kit fills
+ * into the foreground bitmap.
  */
 private fun decodeBoundedBitmap(srcBytes: ByteArray, maxDim: Int): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -235,5 +239,37 @@ private fun decodeBoundedBitmap(srcBytes: ByteArray, maxDim: Int): Bitmap? {
         inSampleSize = sample
         inPreferredConfig = Bitmap.Config.ARGB_8888
     }
-    return BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options)
+    val decoded = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options) ?: return null
+    // Reuse the shared, HEIF-capable EXIF reader rather than re-parsing here; orientation
+    // is 1..8 (TIFF 6.0), or null when absent/unreadable (then the bitmap is already upright).
+    val orientation = readImageMetadata(srcBytes)?.orientation ?: return decoded
+    return applyExifOrientation(decoded, orientation)
+}
+
+/**
+ * Rotate/flip [bitmap] from its EXIF [orientation] (1..8) into upright display
+ * orientation. Returns [bitmap] unchanged for orientation 1 (normal) or anything
+ * unmapped; recycles the source once a new, transformed bitmap is produced. Falls back
+ * to the un-rotated bitmap if the transform runs out of memory.
+ */
+private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+    val matrix = Matrix()
+    when (orientation) {
+        2 -> matrix.postScale(-1f, 1f)                              // flip horizontal
+        3 -> matrix.postRotate(180f)                                // rotate 180
+        4 -> matrix.postScale(1f, -1f)                              // flip vertical
+        5 -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }  // transpose
+        6 -> matrix.postRotate(90f)                                 // rotate 90 CW
+        7 -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) } // transverse
+        8 -> matrix.postRotate(270f)                                // rotate 270 CW
+        else -> return bitmap                                       // 1 = normal / unknown
+    }
+    return try {
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        if (rotated !== bitmap) bitmap.recycle()
+        rotated
+    } catch (e: OutOfMemoryError) {
+        Logger.w(tag = TAG) { "Android: EXIF rotation OOM (orientation=$orientation), using unrotated bitmap" }
+        bitmap
+    }
 }

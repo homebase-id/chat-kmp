@@ -9,17 +9,23 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import platform.CoreGraphics.CGRectMake
 import platform.CoreImage.CIContext
 import platform.CoreImage.CIImage
 import platform.CoreImage.createCGImage
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
+import platform.UIKit.UIGraphicsBeginImageContextWithOptions
+import platform.UIKit.UIGraphicsEndImageContext
+import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
 import platform.UIKit.UIImage
+import platform.UIKit.UIImageOrientation
 import platform.UIKit.UIImagePNGRepresentation
 import platform.Vision.VNGenerateForegroundInstanceMaskRequest
 import platform.Vision.VNImageRequestHandler
@@ -33,7 +39,7 @@ private const val TAG = "BackgroundRemover"
  * class-agnostic foreground instance mask; the app targets iOS 18.2 so the
  * availability is fully covered).
  *
- * Pipeline: bytes → UIImage → CGImage → VNImageRequestHandler →
+ * Pipeline: bytes → UIImage → upright CGImage → VNImageRequestHandler →
  * VNInstanceMaskObservation.generateMaskedImageOfInstances → CVPixelBuffer →
  * CIImage → CGImage → UIImage → PNG (alpha preserved).
  *
@@ -62,7 +68,10 @@ actual suspend fun removeBackground(srcBytes: ByteArray): ByteArray? = withConte
         Logger.w(tag = TAG) { "iOS: could not decode source bytes" }
         return@withContext null
     }
-    val cgImage = uiImage.CGImage ?: run {
+    // UIImage parses EXIF orientation into imageOrientation, but `.CGImage` hands back the
+    // raw, unrotated pixel buffer — feeding that to Vision yields a sideways cut-out for
+    // camera photos / HEIC. Bake the orientation into an upright image first.
+    val cgImage = uiImage.uprightImage().CGImage ?: run {
         Logger.w(tag = TAG) { "iOS: UIImage has no CGImage backing" }
         return@withContext null
     }
@@ -137,6 +146,23 @@ actual fun isBackgroundRemovalSupported(): Boolean = true
  */
 actual fun warmUpBackgroundRemoval() {
     // Nothing to warm up — Vision ships with the OS.
+}
+
+/**
+ * Return an upright copy of this image. [UIImage.CGImage] exposes the raw, unrotated
+ * pixel buffer regardless of [UIImage.imageOrientation], so for any non-`.up` orientation
+ * (camera / HEIC portrait frames) we redraw — which applies the orientation — and return
+ * the upright result. Returns the receiver unchanged when already upright, or if the
+ * redraw fails. Runs off-main; the UIGraphics image-context stack is thread-local/safe.
+ */
+private fun UIImage.uprightImage(): UIImage {
+    if (imageOrientation == UIImageOrientation.UIImageOrientationUp) return this
+    val (width, height) = size.useContents { width to height }
+    UIGraphicsBeginImageContextWithOptions(size, false, scale)
+    drawInRect(CGRectMake(0.0, 0.0, width, height))
+    val upright = UIGraphicsGetImageFromCurrentImageContext()
+    UIGraphicsEndImageContext()
+    return upright ?: this
 }
 
 @OptIn(ExperimentalForeignApi::class)
