@@ -475,7 +475,15 @@ actual object ImageUtils {
     }
 
     actual fun decodeToArgb(srcBytes: ByteArray): ArgbImage? {
-        val bmp = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size) ?: return null
+        // Decode straight (non-premultiplied) alpha so the round-trip is lossless, matching
+        // the Skia actual (which uses Codec for the same reason). BitmapFactory premultiplies
+        // by default: alpha-0 pixels lose their RGB entirely and partial-alpha RGB drifts on
+        // the premul→getPixels(un-premul) round-trip. inPremultiplied=false stores straight
+        // alpha, so getPixels returns every channel exactly as encoded. We only read pixels
+        // here (never draw the bitmap), so the no-hardware-draw constraint on non-premultiplied
+        // bitmaps doesn't apply.
+        val opts = BitmapFactory.Options().apply { inPremultiplied = false }
+        val bmp = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, opts) ?: return null
         val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp
             else bmp.copy(Bitmap.Config.ARGB_8888, false).also { bmp.recycle() }
         val w = argb.width; val h = argb.height
