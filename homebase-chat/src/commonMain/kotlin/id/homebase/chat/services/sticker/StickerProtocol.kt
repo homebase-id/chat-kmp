@@ -27,8 +27,13 @@ object StickerProtocol {
      */
     const val STICKER_FILE_TYPE = 7060
 
-    /** Payload key for the solo sticker image payload. */
-    const val STICKER_PAYLOAD_KEY = "stk_00"
+    /**
+     * Payload key for the solo sticker image payload. MUST match the server's payload-key
+     * pattern `^[a-z0-9_]{8,10}$` (8–10 chars) — the same rule [id.homebase.chat.services.ChatProtocol.DefaultPayloadKey]
+     * ("dflt_key") satisfies. The original "stk_00" (6 chars) was rejected by the drive
+     * thumb/payload endpoints with "Missing payload key", which broke sticker thumbnails.
+     */
+    const val STICKER_PAYLOAD_KEY = "sticker_0"
 }
 
 @Serializable

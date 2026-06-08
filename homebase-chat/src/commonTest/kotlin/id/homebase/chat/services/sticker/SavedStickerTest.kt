@@ -81,7 +81,18 @@ class SavedStickerTest {
     @Test
     fun stickerFileType_isReservedValue() {
         assertEquals(7060, StickerProtocol.STICKER_FILE_TYPE)
-        assertEquals("stk_00", StickerProtocol.STICKER_PAYLOAD_KEY)
+        assertEquals("sticker_0", StickerProtocol.STICKER_PAYLOAD_KEY)
+    }
+
+    @Test
+    fun stickerPayloadKey_matchesServerPattern() {
+        // The drive payload/thumb endpoints reject keys that don't match this pattern with
+        // "Missing payload key" (a 400). "stk_00" (6 chars) failed; the key must be 8–10
+        // chars of [a-z0-9_]. This guards against a regression that breaks sticker thumbnails.
+        assertTrue(
+            StickerProtocol.STICKER_PAYLOAD_KEY.matches(Regex("^[a-z0-9_]{8,10}$")),
+            "STICKER_PAYLOAD_KEY '${StickerProtocol.STICKER_PAYLOAD_KEY}' must match ^[a-z0-9_]{8,10}\$",
+        )
     }
 
     @Test
