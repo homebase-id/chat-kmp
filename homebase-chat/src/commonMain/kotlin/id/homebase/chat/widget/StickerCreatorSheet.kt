@@ -32,11 +32,7 @@ import id.homebase.chat.conversationlist.StickerCreateState
 import id.homebase.chat.conversationlist.StickerVariant
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.cd_sticker_variant_cutout
-import id.homebase.resources.cd_sticker_variant_original
 import id.homebase.resources.chat_sticker_choose_title
-import id.homebase.resources.chat_sticker_variant_cutout
-import id.homebase.resources.chat_sticker_variant_original
 import id.homebase.resources.send
 import org.jetbrains.compose.resources.stringResource
 
@@ -64,16 +60,10 @@ fun StickerCreatorSheet(
                 is StickerCreateState.Choose ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         state.variants.forEach { opt ->
-                            val label = when (opt.kind) {
-                                StickerVariant.CutOut -> stringResource(MR.string.chat_sticker_variant_cutout)
-                                StickerVariant.Original -> stringResource(MR.string.chat_sticker_variant_original)
-                            }
-                            val cd = when (opt.kind) {
-                                StickerVariant.CutOut -> stringResource(MR.string.cd_sticker_variant_cutout)
-                                StickerVariant.Original -> stringResource(MR.string.cd_sticker_variant_original)
-                            }
                             VariantTile(
-                                bytes = opt.bytes, label = label, cd = cd,
+                                bytes = opt.bytes,
+                                label = stringResource(opt.kind.label),
+                                cd = stringResource(opt.kind.contentDescription),
                                 selected = state.selected == opt.kind,
                                 modifier = Modifier.weight(1f),
                                 onClick = { onSelect(opt.kind) },

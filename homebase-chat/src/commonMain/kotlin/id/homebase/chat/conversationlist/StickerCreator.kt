@@ -10,9 +10,13 @@ import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.isBackgroundRemovalSupported
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.resources.MR
+import id.homebase.resources.cd_sticker_variant_cutout
+import id.homebase.resources.cd_sticker_variant_original
 import id.homebase.resources.chat_sticker_save_failed
 import id.homebase.resources.chat_sticker_saved
 import id.homebase.resources.chat_sticker_send_failed
+import id.homebase.resources.chat_sticker_variant_cutout
+import id.homebase.resources.chat_sticker_variant_original
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +33,15 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "StickerCreator"
 
-enum class StickerVariant { CutOut, Original }
+/**
+ * A renderable sticker variant offered in the chooser. Each carries its own display label and
+ * accessibility description, so adding a variant is a single enum entry — the chooser UI
+ * iterates [StickerCreateState.Choose.variants] without a per-kind `when`.
+ */
+enum class StickerVariant(val label: StringResource, val contentDescription: StringResource) {
+    CutOut(MR.string.chat_sticker_variant_cutout, MR.string.cd_sticker_variant_cutout),
+    Original(MR.string.chat_sticker_variant_original, MR.string.cd_sticker_variant_original),
+}
 
 /** One selectable option in the chooser: its rendered bytes + content type. */
 data class StickerVariantOption(
