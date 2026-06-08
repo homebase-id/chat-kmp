@@ -107,6 +107,9 @@ class StickerCreator(
                 if (outlined != null) add(StickerVariantOption(StickerVariant.CutOut, outlined, "image/png"))
                 add(StickerVariantOption(StickerVariant.Original, bytes, contentType))
             }
+            Logger.d(tag = TAG) {
+                "create: cutOutOffered=${outlined != null} cutOut=${outlined?.size ?: 0}B original=${bytes.size}B $contentType"
+            }
             _state.value = StickerCreateState.Choose(conversationId, variants, variants.first().kind)
         } catch (e: CancellationException) {
             _state.value = null; throw e
@@ -126,6 +129,7 @@ class StickerCreator(
     fun confirm() {
         val s = _state.value as? StickerCreateState.Choose ?: return
         val opt = s.variants.firstOrNull { it.kind == s.selected } ?: return
+        Logger.d(tag = TAG) { "confirm: variant=${s.selected} bytes=${opt.bytes.size}B ${opt.contentType}" }
         _state.value = null
         scope.launch {
             try {

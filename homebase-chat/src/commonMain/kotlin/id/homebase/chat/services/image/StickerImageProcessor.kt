@@ -1,10 +1,14 @@
 package id.homebase.chat.services.image
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private const val TAG = "StickerImageProcessor"
 
 /**
  * Sizing/encoding for the background-remover sticker pipeline.
@@ -46,7 +50,7 @@ object StickerImageProcessor {
      */
     suspend fun addWhiteOutline(cutOutPng: ByteArray, radiusPx: Int = -1): ByteArray =
         withContext(Dispatchers.Default) {
-            runCatching {
+            try {
                 // Bound the working size; resizePreserveAspect never upscales, so an already
                 // small cut-out is just re-encoded.
                 val capped = ImageUtils.resizePreserveAspect(
@@ -55,9 +59,16 @@ object StickerImageProcessor {
                     outputFormat = ImageFormat.PNG, quality = STICKER_PNG_QUALITY,
                 ).bytes.takeIf { it.isNotEmpty() } ?: cutOutPng
 
-                val img = ImageUtils.decodeToArgb(capped) ?: return@runCatching cutOutPng
+                val img = ImageUtils.decodeToArgb(capped)
+                if (img == null) {
+                    Logger.w(tag = TAG) { "addWhiteOutline: decodeToArgb returned null — returning un-outlined cut-out" }
+                    return@withContext cutOutPng
+                }
                 val sw = img.width; val sh = img.height
-                if (sw == 0 || sh == 0) return@runCatching cutOutPng
+                if (sw == 0 || sh == 0) {
+                    Logger.w(tag = TAG) { "addWhiteOutline: zero dimensions — returning un-outlined cut-out" }
+                    return@withContext cutOutPng
+                }
                 val r = if (radiusPx >= 0) radiusPx
                     else maxOf(1, (maxOf(sw, sh) * OUTLINE_RADIUS_FRACTION).toInt())
 
@@ -108,8 +119,17 @@ object StickerImageProcessor {
                     }
                 }
                 val outlinedPng = ImageUtils.encodeArgbToPng(ArgbImage(out, pw, ph))
-                if (maxOf(pw, ph) > STICKER_MAX_DIM) downscaleCutOut(outlinedPng) else outlinedPng
-            }.getOrDefault(cutOutPng)
+                val finalPng = if (maxOf(pw, ph) > STICKER_MAX_DIM) downscaleCutOut(outlinedPng) else outlinedPng
+                Logger.d(tag = TAG) {
+                    "addWhiteOutline: applied r=$r ${sw}x$sh -> ${pw}x$ph (in=${cutOutPng.size}B out=${finalPng.size}B)"
+                }
+                finalPng
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "addWhiteOutline FAILED — returning un-outlined cut-out (in=${cutOutPng.size}B)" }
+                cutOutPng
+            }
         }
 
     /** Source-over composite of [fg] (0xAARRGGBB) onto [bg]. */
