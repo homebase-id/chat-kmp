@@ -701,6 +701,9 @@ fun AppNavHost(
                                 val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow(
                                     "pendingScrollToBottom", false
                                 ).collectAsStateWithLifecycle()
+                                val pendingScrollToMessageId by backStackEntry.savedStateHandle.getStateFlow<String?>(
+                                    "pendingScrollToMessageId", null
+                                ).collectAsStateWithLifecycle()
                                 LaunchedEffect(pendingConversationId) {
                                     pendingConversationId?.let { idStr ->
                                         Uuid.parseOrNull(idStr)?.let {
@@ -708,12 +711,16 @@ fun AppNavHost(
                                                 "ChatList observed pendingConversationId=$idStr, calling selectConversation"
                                             }
                                             conversationListViewModel.selectConversation(
-                                                it, scrollToBottom = pendingScrollToBottom
+                                                it,
+                                                messageId = pendingScrollToMessageId?.let { m -> Uuid.parseOrNull(m) },
+                                                scrollToBottom = pendingScrollToBottom,
                                             )
                                             backStackEntry.savedStateHandle["pendingConversationId"] =
                                                 null
                                             backStackEntry.savedStateHandle["pendingScrollToBottom"] =
                                                 false
+                                            backStackEntry.savedStateHandle["pendingScrollToMessageId"] =
+                                                null
                                         }
                                     }
                                 }
@@ -899,11 +906,22 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ConversationMedia> {
+                        composable<Route.ConversationMedia> { backStackEntry ->
                             if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ConversationMedia>()
                                 ConversationMediaScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToMessage = { messageId ->
+                                        Uuid.parseOrNull(route.conversationId)?.let { convId ->
+                                            navController.selectConversationOnChatList(
+                                                convId, messageId = messageId
+                                            )
+                                            navController.popBackStack(
+                                                Route.ChatList, inclusive = false
+                                            )
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -1280,7 +1298,7 @@ fun AppNavHost(
 
 
 private fun NavHostController.selectConversationOnChatList(
-    conversationId: Uuid, scrollToBottom: Boolean = false
+    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null
 ): Boolean {
     val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
     if (entry == null) {
@@ -1291,6 +1309,7 @@ private fun NavHostController.selectConversationOnChatList(
     }
     entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
     entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+    entry.savedStateHandle["pendingScrollToMessageId"] = messageId?.toString()
     return true
 }
 

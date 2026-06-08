@@ -51,6 +51,7 @@ fun ChatMediaFullScreenHost(
     title: String,
     snackbarHostState: SnackbarHostState,
     onDismiss: () -> Unit,
+    onNavigateToMessage: ((messageId: Uuid) -> Unit)? = null,
 ) {
     if (item == null) return
 
@@ -160,6 +161,7 @@ fun ChatMediaFullScreenHost(
                 },
                 onDelete = { onDismiss() },
                 onDismiss = onDismiss,
+                onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },
                 sharedTransitionScope = this@SharedTransitionLayout,
                 animatedVisibilityScope = this@AnimatedVisibility,
             )

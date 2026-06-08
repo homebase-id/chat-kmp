@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,7 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.chat.conversationsettings.ConversationOverview
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationsettings.DiceRollItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
@@ -54,17 +56,21 @@ import id.homebase.chat.widget.rememberSharedMediaSaver
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
 import id.homebase.core.util.formatMediumDate
+import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
 import id.homebase.resources.conversation_media_album_title
 import id.homebase.resources.conversation_media_empty
+import id.homebase.resources.conversation_media_go_to_message
 import id.homebase.resources.conversation_media_tab_audio
 import id.homebase.resources.conversation_media_tab_dice
 import id.homebase.resources.conversation_media_tab_files
 import id.homebase.resources.conversation_media_tab_locations
 import id.homebase.resources.conversation_media_tab_media
 import id.homebase.resources.menu_back
+import kotlinx.collections.immutable.ImmutableMap
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
 private enum class MediaTab { MEDIA, FILES, AUDIO, DICE, LOCATIONS }
@@ -74,6 +80,7 @@ private enum class MediaTab { MEDIA, FILES, AUDIO, DICE, LOCATIONS }
 fun ConversationMediaScreen(
     viewModel: ConversationMediaViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToMessage: (messageId: Uuid) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -136,14 +143,24 @@ fun ConversationMediaScreen(
 
                     when (selectedTab) {
                         MediaTab.MEDIA -> MediaGridTab(overview.media) { fullScreenItem = it }
-                        MediaTab.FILES -> AttachmentListTab(overview.files, onClick = saveItem)
-                        MediaTab.AUDIO -> AttachmentListTab(overview.audio, onClick = null)
-                        MediaTab.DICE -> DiceTab(overview.diceRolls)
+                        MediaTab.FILES -> AttachmentListTab(
+                            items = overview.files,
+                            onClick = saveItem,
+                            onNavigateToMessage = onNavigateToMessage,
+                        )
+                        MediaTab.AUDIO -> AudioListTab(
+                            items = overview.audio,
+                            decryptedFiles = uiState.decryptedFiles,
+                            onRequestDecrypt = viewModel::requestDecryptedAudio,
+                            onNavigateToMessage = onNavigateToMessage,
+                        )
+                        MediaTab.DICE -> DiceTab(overview.diceRolls, onNavigateToMessage)
                         MediaTab.LOCATIONS -> LocationListTab(
                             items = uiState.locations,
                             hasMore = uiState.hasMoreLocations,
                             isLoading = uiState.isLoadingLocations,
                             onLoadMore = viewModel::loadMoreLocations,
+                            onNavigateToMessage = onNavigateToMessage,
                         )
                     }
                 }
@@ -155,6 +172,10 @@ fun ConversationMediaScreen(
                 title = stringResource(MR.string.conversation_media_album_title),
                 snackbarHostState = snackbarHostState,
                 onDismiss = { fullScreenItem = null },
+                onNavigateToMessage = { messageId ->
+                    fullScreenItem = null
+                    onNavigateToMessage(messageId)
+                },
             )
         }
     }
@@ -193,7 +214,11 @@ private fun MediaGridTab(items: List<SharedMediaItem>, onClick: (SharedMediaItem
 }
 
 @Composable
-private fun AttachmentListTab(items: List<SharedMediaItem>, onClick: ((SharedMediaItem) -> Unit)?) {
+private fun AttachmentListTab(
+    items: List<SharedMediaItem>,
+    onClick: ((SharedMediaItem) -> Unit)?,
+    onNavigateToMessage: (messageId: Uuid) -> Unit,
+) {
     if (items.isEmpty()) {
         EmptyTab()
         return
@@ -204,18 +229,89 @@ private fun AttachmentListTab(items: List<SharedMediaItem>, onClick: ((SharedMed
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(items) { item ->
-            MediaItem(
-                payload = item.payload,
-                fileId = item.fileId,
-                driveId = chatTargetDrive.alias,
-                previewThumbnail = item.previewThumbnail,
-                keyHeader = item.keyHeader,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onClick?.let { { it(item) } },
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MediaItem(
+                    payload = item.payload,
+                    fileId = item.fileId,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = item.previewThumbnail,
+                    keyHeader = item.keyHeader,
+                    modifier = Modifier.weight(1f),
+                    onClick = onClick?.let { { it(item) } },
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                )
+                JumpToMessageButton(onClick = { onNavigateToMessage(item.messageId) })
+            }
         }
+    }
+}
+
+/**
+ * Audio tab: a metadata header (sender · date) plus a jump-to-message affordance,
+ * over the shared [AudioPlayerWidget] (waveform graph + play/seek + duration). Playback
+ * decrypts on first tap via [onRequestDecrypt]; the resulting path arrives back through
+ * [decryptedFiles] as the widget's `audioFile`.
+ */
+@Composable
+private fun AudioListTab(
+    items: List<SharedMediaItem>,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
+    onRequestDecrypt: (SharedMediaItem) -> Unit,
+    onNavigateToMessage: (messageId: Uuid) -> Unit,
+) {
+    if (items.isEmpty()) {
+        EmptyTab()
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        items(items, key = { "${it.fileId}_${it.payload.key}" }) { item ->
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val metaLine = remember(item.senderName, item.date) {
+                        listOfNotNull(
+                            item.senderName.ifBlank { null },
+                            formatMediumDate(item.date),
+                        ).joinToString(" · ")
+                    }
+                    Text(
+                        text = metaLine,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    JumpToMessageButton(onClick = { onNavigateToMessage(item.messageId) })
+                }
+                AudioPlayerWidget(
+                    modifier = Modifier.fillMaxWidth(),
+                    driveId = chatTargetDrive.alias,
+                    fileId = item.fileId,
+                    keyHeader = item.keyHeader,
+                    audioFile = decryptedFiles[DecryptedFileKey(item.fileId, item.payload.key)],
+                    payload = item.payload,
+                    onRequestDecryptedFile = { onRequestDecrypt(item) },
+                )
+            }
+        }
+    }
+}
+
+/** Trailing "open in chat" affordance shared by the overview rows. */
+@Composable
+private fun JumpToMessageButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Chat,
+            contentDescription = stringResource(MR.string.conversation_media_go_to_message),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -226,6 +322,7 @@ private fun LocationListTab(
     hasMore: Boolean,
     isLoading: Boolean,
     onLoadMore: () -> Unit,
+    onNavigateToMessage: (messageId: Uuid) -> Unit,
 ) {
     if (items.isEmpty()) {
         if (isLoading) LoadingListItem() else EmptyTab()
@@ -269,17 +366,20 @@ private fun LocationListTab(
                         formatMediumDate(item.date),
                     ).joinToString(" · ")
                 }
-                LocationListRow(
-                    descriptor = descriptor,
-                    fileId = item.fileId,
-                    driveId = chatTargetDrive.alias,
-                    payloadKey = item.payload.key,
-                    keyHeader = KeyHeader(payloadIv, item.keyHeader.aesKey),
-                    previewThumbnail = item.payload.previewThumbnail?.toEmbeddedThumb()
-                        ?: item.previewThumbnail,
-                    metaLine = metaLine,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LocationListRow(
+                        descriptor = descriptor,
+                        fileId = item.fileId,
+                        driveId = chatTargetDrive.alias,
+                        payloadKey = item.payload.key,
+                        keyHeader = KeyHeader(payloadIv, item.keyHeader.aesKey),
+                        previewThumbnail = item.payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: item.previewThumbnail,
+                        metaLine = metaLine,
+                        modifier = Modifier.weight(1f),
+                    )
+                    JumpToMessageButton(onClick = { onNavigateToMessage(item.messageId) })
+                }
             }
         }
         if (isLoading) {
@@ -291,7 +391,10 @@ private fun LocationListTab(
 private const val LOCATIONS_LOAD_MORE_THRESHOLD = 5
 
 @Composable
-private fun DiceTab(items: List<DiceRollItem>) {
+private fun DiceTab(
+    items: List<DiceRollItem>,
+    onNavigateToMessage: (messageId: Uuid) -> Unit,
+) {
     if (items.isEmpty()) {
         EmptyTab()
         return
@@ -302,7 +405,7 @@ private fun DiceTab(items: List<DiceRollItem>) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(items) { item ->
-            androidx.compose.foundation.layout.Row(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -320,6 +423,7 @@ private fun DiceTab(items: List<DiceRollItem>) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                JumpToMessageButton(onClick = { onNavigateToMessage(item.messageId) })
             }
         }
     }
