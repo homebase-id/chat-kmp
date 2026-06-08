@@ -39,6 +39,8 @@ data class ConversationOverview(
 @Immutable
 data class SharedMediaItem(
     val fileId: Uuid,
+    /** uniqueId of the message this attachment rode on — used to jump back to it in the conversation. */
+    val messageId: Uuid,
     val payload: PayloadDescriptor,
     val keyHeader: KeyHeader,
     val previewThumbnail: EmbeddedThumb?,
@@ -96,6 +98,7 @@ fun collectConversationOverview(
         for (payload in payloads) {
             fun item(isSticker: Boolean = false) = SharedMediaItem(
                 fileId = message.fileId,
+                messageId = message.id,
                 payload = payload,
                 keyHeader = message.keyHeader,
                 previewThumbnail = message.previewThumbnail,
@@ -147,6 +150,7 @@ fun collectLocations(batch: BatchResult<MessageUiModel>): List<SharedMediaItem> 
                 locations.add(
                     SharedMediaItem(
                         fileId = message.fileId,
+                        messageId = message.id,
                         payload = payload,
                         keyHeader = message.keyHeader,
                         previewThumbnail = message.previewThumbnail,
