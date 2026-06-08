@@ -56,6 +56,7 @@ import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
+import id.homebase.resources.conversation_jump_message_unavailable
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -1339,9 +1340,37 @@ class ConversationListViewModel(
                         // newer messages arrived since. The fallback inside
                         // loadConversationAroundMessage covers the case where
                         // the anchor's message has been purged from the DB.
-                        chatMessageStream.loadConversationAroundMessage(conversationId, anchorTarget)
+                        val found = chatMessageStream
+                            .loadConversationAroundMessage(conversationId, anchorTarget)
+                        if (!found && messageIdForScroll != null) {
+                            // Explicit jump to a message that's no longer on disk:
+                            // the window fell back to the latest page, so the
+                            // scroll lookup below can never resolve. Tell the user
+                            // instead of silently landing at the bottom, and stop
+                            // the per-emission retry from waiting forever.
+                            reportJumpTargetUnavailable(conversationId, messageIdForScroll)
+                            messageIdForScrollNullable = null
+                        }
                     } else {
                         chatMessageStream.loadConversation(conversationId)
+                    }
+                } else if (messageIdForScroll != null &&
+                    !chatMessageStream.isMessageInWindow(conversationId, messageIdForScroll)
+                ) {
+                    // Cached, but the jump target lives outside the in-memory
+                    // window (e.g. an album item older than the ~PAGE_SIZE
+                    // window). Reusing the window would never contain it and the
+                    // jump would silently no-op, so re-seed a window centered on
+                    // the target — same machinery as the uncached around-open.
+                    Logger.d(tag = "ChatPaging") {
+                        "open conversationId=$conversationId hasCached=true but target=$messageIdForScroll " +
+                            "outside window → loadAround"
+                    }
+                    val found = chatMessageStream
+                        .loadConversationAroundMessage(conversationId, messageIdForScroll)
+                    if (!found) {
+                        reportJumpTargetUnavailable(conversationId, messageIdForScroll)
+                        messageIdForScrollNullable = null
                     }
                 } else {
                     Logger.d(tag = "ChatPaging") {
@@ -1632,6 +1661,20 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
+    }
+
+    /**
+     * A jump-to-message (album item, search result, cross-conversation link)
+     * resolved to a message that's no longer on disk, so no window could be
+     * centered on it. Surface a snackbar instead of silently landing on the
+     * latest page, and log it so the miss is visible in homebase.log.
+     */
+    private fun reportJumpTargetUnavailable(conversationId: Uuid, messageId: Uuid) {
+        Logger.w(tag = TAG) {
+            "jump-to-message target unavailable id=$conversationId message=$messageId — " +
+                "anchor not in DB, landed on latest page"
+        }
+        sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_unavailable))
     }
 }
 

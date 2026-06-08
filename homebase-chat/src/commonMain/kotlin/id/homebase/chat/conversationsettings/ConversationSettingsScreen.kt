@@ -103,17 +103,22 @@ fun ConversationSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
-            )
+            // Suppress this screen's app bar while the full-screen viewer is open
+            // so the viewer's own top bar doesn't stack under it (see
+            // ChatMediaFullScreenHost / ConversationMediaScreen).
+            if (fullScreenItem == null) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back)
+                            )
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -131,16 +136,28 @@ fun ConversationSettingsUi(
 
                 uiState.conversation?.let { conversation ->
                     val isWithSelf = conversation.isWithSelf
+                    // Larger primary line = resolved full name; smaller line = the
+                    // raw odinId. For a 1:1 the conversation name IS the odinId
+                    // (contact resolution is UI-side), so show the resolved
+                    // contactName above it. Suppress the subtitle when it would
+                    // duplicate the name (unresolved contact, self, or group).
+                    val displayName = if (isWithSelf) {
+                        uiState.ownerSession?.displayName ?: conversation.name
+                    } else {
+                        uiState.contactName ?: conversation.name
+                    }
+                    val subtitle = (if (isWithSelf) {
+                        uiState.ownerSession?.odinId?.domainName
+                    } else {
+                        conversation.name
+                    })?.takeIf { it.isNotBlank() && it != displayName }
                     AvatarNameDisplay(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 16.dp),
-                        displayName = if (isWithSelf) {
-                            uiState.ownerSession?.displayName ?: conversation.name
-                        } else {
-                            conversation.name
-                        },
+                        displayName = displayName,
+                        subtitle = subtitle,
                         avatarModel = conversation.avatarModel,
                         // No drill-in: the overview below already shows everything
                         // ContactInfo would, for this conversation.
