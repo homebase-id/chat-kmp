@@ -20,6 +20,11 @@ import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.StartupState
 import id.homebase.core.util.mapToStartupState
+import id.homebase.resources.MR
+import id.homebase.resources.error_unknown
+import id.homebase.resources.login_error_generic
+import id.homebase.resources.login_error_invalid_id
+import id.homebase.resources.login_error_ping_failed
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
@@ -117,7 +122,7 @@ class LoginViewModel(
         } catch (_: Exception) {
             Logger.w(tag = "LoginViewModel", messageString = "Invalid Homebase ID: $homebaseIdValue")
             _uiState.update {
-                it.copy(errorMessage = "Valid Homebase ID is required")
+                it.copy(error = LoginError.Res(MR.string.login_error_invalid_id))
             }
             return
         }
@@ -128,7 +133,7 @@ class LoginViewModel(
                     homebaseId = homebaseId.domainName,
                     isLoading = true,
                     isPinging = true,
-                    errorMessage = null
+                    error = null
                 )
             }
 
@@ -138,7 +143,7 @@ class LoginViewModel(
                     it.copy(
                         isLoading = false,
                         isPinging = false,
-                        errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
+                        error = LoginError.Res(MR.string.login_error_ping_failed, homebaseId.domainName)
                     )
                 }
 
@@ -166,7 +171,11 @@ class LoginViewModel(
             } catch (e: Exception) {
                 Logger.e(tag = "LoginViewModel", messageString = "authorize() failed: ${e::class.simpleName}: ${e.message}")
                 _uiState.update {
-                    it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")
+                    it.copy(
+                        isLoading = false,
+                        error = e.message?.let { msg -> LoginError.Message(msg) }
+                            ?: LoginError.Res(MR.string.login_error_generic)
+                    )
                 }
             }
         }
@@ -237,7 +246,10 @@ class LoginViewModel(
                 .distinctUntilChanged() // Ensures only unique combined results are emitted
                 .catch { error ->
                     _uiState.update {
-                        it.copy(errorMessage = error.message ?: "Unknown error")
+                        it.copy(
+                            error = error.message?.let { msg -> LoginError.Message(msg) }
+                                ?: LoginError.Res(MR.string.error_unknown)
+                        )
                     }
                 }
                 .collectLatest { authState ->
@@ -267,7 +279,7 @@ class LoginViewModel(
                                 it.copy(
                                     isLoading = false,
                                     isAuthenticated = false,
-                                    errorMessage = authState.message
+                                    error = LoginError.Message(authState.message)
                                 )
                             }
                         }
@@ -289,7 +301,7 @@ class LoginViewModel(
             it.copy(
                 isLoading = false,
                 isAuthenticated = true,
-                errorMessage = null,
+                error = null,
                 uiEvent = LoginUiEvent.NavigateToHome
             )
         }
