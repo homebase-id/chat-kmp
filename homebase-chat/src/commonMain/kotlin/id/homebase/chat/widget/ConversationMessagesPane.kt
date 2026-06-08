@@ -305,6 +305,11 @@ fun ConversationMessagesPane(
                             onSave = { message, key ->
                                 onUiAction(DownloadMedia(message, key))
                             },
+                            onSaveSticker = { message, key ->
+                                onUiAction(
+                                    ConversationListUiAction.SaveStickerFromMessage(message, key)
+                                )
+                            },
                             onDelete = { onUiAction(DeleteMessage(it)) },
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
                             animatedVisibilityScope = this@AnimatedContent,
@@ -350,6 +355,14 @@ fun ConversationMessagesPane(
                             onDrawImage = { conversationId, attachmentId ->
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
+                                        conversationId,
+                                        attachmentId,
+                                    )
+                                )
+                            },
+                            onRemoveBackground = { conversationId, attachmentId ->
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction.RemoveBackgroundAttachment(
                                         conversationId,
                                         attachmentId,
                                     )

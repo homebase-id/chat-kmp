@@ -80,6 +80,7 @@ import id.homebase.resources.chat_dice_battle_action
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
+import id.homebase.resources.chat_save_sticker
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
@@ -604,6 +605,11 @@ fun FullScreenMediaMenu(
     onSave: () -> Unit,
     onDelete: (() -> Unit)? = null,
     onNavigateToMessage: (() -> Unit)? = null,
+    // Only set for payloads whose descriptor is ImageFile(isSticker = true). When
+    // present, adds a "Save sticker" item that copies the sticker into the user's
+    // saved-stickers library. Gated strictly to real stickers so it never appears on
+    // ordinary photos (which would create a non-transparent "sticker").
+    onSaveSticker: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -627,6 +633,14 @@ fun FullScreenMediaMenu(
             leadingIcon = {
                 Icon(imageVector = Icons.Filled.Download, contentDescription = null)
             })
+        if (onSaveSticker != null) {
+            DropdownMenuItem(
+                onClick = onSaveSticker,
+                text = { Text(text = stringResource(MR.string.chat_save_sticker)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
         if (onDelete != null) {
             DropdownMenuItem(
                 onClick = onDelete,

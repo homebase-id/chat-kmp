@@ -22,7 +22,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = false,
                         isAuthenticated = false,
-                        errorMessage = null,
+                        error = null,
                     ),
                     onAction = {},
                 )
@@ -43,7 +43,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = true,
                         isAuthenticated = false,
-                        errorMessage = null,
+                        error = null,
                     ),
                     onAction = {},
                 )
@@ -64,7 +64,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = false,
                         isAuthenticated = true,
-                        errorMessage = null,
+                        error = null,
                     ),
                     onAction = {},
                 )
@@ -83,7 +83,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = false,
                         isAuthenticated = false,
-                        errorMessage = "Invalid identity",
+                        error = LoginError.Message("Invalid identity"),
                     ),
                     onAction = {},
                 )
@@ -105,7 +105,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = false,
                         isAuthenticated = false,
-                        errorMessage = null,
+                        error = null,
                     ),
                     onAction = { action ->
                         if (action is LoginUiAction.CreateAccount) {
@@ -120,6 +120,31 @@ class LoginUiTest {
     }
 
     @Test
+    fun popupBlockedState_showsContinueButtonAndFires() = runComposeUiTest {
+        var continueFired = false
+        setContent {
+            MaterialTheme {
+                LoginUi(
+                    uiState = LoginUiState(
+                        homebaseId = "frodo.dotyou.cloud",
+                        isLoading = true,
+                        isAuthenticated = false,
+                        error = null,
+                    ),
+                    onAction = {},
+                    pendingAuthUrl = "https://frodo.dotyou.cloud/api/owner/v1/youauth/authorize",
+                    onContinueAuth = { continueFired = true },
+                )
+            }
+        }
+        // The blocked-popup prompt takes priority over the loading state.
+        onNodeWithTag("popup_blocked_text").assertExists()
+        onNodeWithTag("loading_text").assertDoesNotExist()
+        onNodeWithTag("continue_auth_button").performClick()
+        assertTrue(continueFired)
+    }
+
+    @Test
     fun loadingWithDriveProgresses_showsDriveNames() = runComposeUiTest {
         setContent {
             MaterialTheme {
@@ -128,7 +153,7 @@ class LoginUiTest {
                         homebaseId = "",
                         isLoading = true,
                         isAuthenticated = false,
-                        errorMessage = null,
+                        error = null,
                         driveProgresses = persistentListOf(
                             DriveProgress(driveId = "1", name = "Chat", completed = true, total = 42, count = 42, progress = 1f),
                             DriveProgress(driveId = "2", name = "Feed", count = 17, total = 17),

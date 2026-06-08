@@ -8,8 +8,10 @@ import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.isIos
 import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.SyncState
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.AppConfig
@@ -18,8 +20,11 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.notifications.NotificationService
-import id.homebase.core.util.StartupState
-import id.homebase.core.util.mapToStartupState
+import id.homebase.resources.MR
+import id.homebase.resources.error_unknown
+import id.homebase.resources.login_error_generic
+import id.homebase.resources.login_error_invalid_id
+import id.homebase.resources.login_error_ping_failed
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
@@ -117,7 +122,7 @@ class LoginViewModel(
         } catch (_: Exception) {
             Logger.w(tag = "LoginViewModel", messageString = "Invalid Homebase ID: $homebaseIdValue")
             _uiState.update {
-                it.copy(errorMessage = "Valid Homebase ID is required")
+                it.copy(error = LoginError.Res(MR.string.login_error_invalid_id))
             }
             return
         }
@@ -128,7 +133,7 @@ class LoginViewModel(
                     homebaseId = homebaseId.domainName,
                     isLoading = true,
                     isPinging = true,
-                    errorMessage = null
+                    error = null
                 )
             }
 
@@ -138,7 +143,7 @@ class LoginViewModel(
                     it.copy(
                         isLoading = false,
                         isPinging = false,
-                        errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
+                        error = LoginError.Res(MR.string.login_error_ping_failed, homebaseId.domainName)
                     )
                 }
 
@@ -166,7 +171,11 @@ class LoginViewModel(
             } catch (e: Exception) {
                 Logger.e(tag = "LoginViewModel", messageString = "authorize() failed: ${e::class.simpleName}: ${e.message}")
                 _uiState.update {
-                    it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")
+                    it.copy(
+                        isLoading = false,
+                        error = e.message?.let { msg -> LoginError.Message(msg) }
+                            ?: LoginError.Res(MR.string.login_error_generic)
+                    )
                 }
             }
         }
@@ -229,51 +238,63 @@ class LoginViewModel(
         didHandleAuthenticated = false
         authStateJob = viewModelScope.launch {
             combine(
+                youAuthFlowManager.authState,
                 authConnectionCoordinator.connectionState,
-                youAuthFlowManager.authState
-            ) { connectionState, authState ->
-                authState.mapToStartupState(connectionState.isConnecting)
+                driveSyncManager.syncState
+            ) { authState, connectionState, syncState ->
+                Triple(authState, connectionState.isConnecting, syncState)
             }
                 .distinctUntilChanged() // Ensures only unique combined results are emitted
                 .catch { error ->
                     _uiState.update {
-                        it.copy(errorMessage = error.message ?: "Unknown error")
+                        it.copy(
+                            error = error.message?.let { msg -> LoginError.Message(msg) }
+                                ?: LoginError.Res(MR.string.error_unknown)
+                        )
                     }
                 }
-                .collectLatest { authState ->
-                    Logger.i(tag = "LoginViewModel", messageString = "AuthState: $authState")
+                .collectLatest { (authState, isConnecting, syncState) ->
+                    Logger.i(
+                        tag = "LoginViewModel",
+                        messageString = "AuthState: ${authState::class.simpleName} " +
+                            "sync=${syncState::class.simpleName} connecting=$isConnecting"
+                    )
                     when (authState) {
-                        is StartupState.Authenticated -> {
-                            handleAuthenticatedUser()
-                        }
-
-                        is StartupState.Unauthenticated -> {
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    isAuthenticated = false
-                                )
+                        is YouAuthState.Authenticated -> {
+                            // Hold the initial loading screen until the drive sync has STOPPED —
+                            // Completed OR Failed (a drive "Stopped" event). A premature churn
+                            // (e.g. network drop) still yields a terminal state, so we close the
+                            // screen and the running client resumes syncing on WS reconnect. If the
+                            // sync can't even start (Idle once the connection has settled), skip the
+                            // loading screen entirely. Identical on every platform — driven only by
+                            // the shared DriveSyncManager.syncState + connection state.
+                            val syncStopped =
+                                syncState is SyncState.Completed || syncState is SyncState.Failed
+                            val syncCannotStart = syncState is SyncState.Idle && !isConnecting
+                            if (syncStopped || syncCannotStart) {
+                                handleAuthenticatedUser()
+                            } else {
+                                _uiState.update { it.copy(isLoading = true) }
                             }
                         }
 
-                        is StartupState.Authenticating -> {
-                            _uiState.update {
-                                it.copy(isLoading = true)
-                            }
+                        is YouAuthState.Authenticating,
+                        is YouAuthState.Initializing -> {
+                            _uiState.update { it.copy(isLoading = true) }
                         }
 
-                        is StartupState.Error -> {
+                        is YouAuthState.Unauthenticated -> {
+                            _uiState.update { it.copy(isLoading = false, isAuthenticated = false) }
+                        }
+
+                        is YouAuthState.Error -> {
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
                                     isAuthenticated = false,
-                                    errorMessage = authState.message
+                                    error = LoginError.Message(authState.message)
                                 )
                             }
-                        }
-
-                        else -> {
-                            // ignore
                         }
                     }
                 }
@@ -289,7 +310,7 @@ class LoginViewModel(
             it.copy(
                 isLoading = false,
                 isAuthenticated = true,
-                errorMessage = null,
+                error = null,
                 uiEvent = LoginUiEvent.NavigateToHome
             )
         }

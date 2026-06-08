@@ -4,19 +4,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlinx.browser.window
 
+private const val POPUP_FEATURES = "width=480,height=720,menubar=no,toolbar=no,location=yes"
+
 /**
- * Web implementation: navigate the popup that [prepareWebAuthPopup] opened on the click gesture to
- * the YouAuth authorize URL. Using the pre-opened popup (rather than opening here) is what keeps
- * the browser from blocking it — by the time this runs, the original user gesture is gone. If the
- * popup is missing (prepare wasn't called, or it was blocked), fall back to opening one now.
+ * Web implementation: open the YouAuth authorize URL in a popup window. A popup (rather than
+ * navigating the top window) keeps the SPA/Wasm app alive so the token exchange can finish in the
+ * opener once the popup posts the callback back (see `BrowserLauncher.web`).
+ *
+ * Identity validation (format + ping) runs *before* this is called, so the popup only opens for a
+ * reachable identity. The trade-off: because the open now happens after an `await`, the browser may
+ * block it when the user-gesture activation has lapsed — `window.open` then returns `null`. We
+ * report that as `false` so the caller can show a "Continue" button that re-opens from a fresh
+ * click (which always carries activation).
  */
 @Composable
-actual fun rememberAuthBrowserLauncher(): (url: String) -> Unit {
+actual fun rememberAuthBrowserLauncher(): (url: String) -> Boolean {
     return remember {
         { url: String ->
-            val popup = authPopup ?: window.open(url, "youauth", "width=480,height=720")
-            authPopup = popup
-            popup?.location?.href = url
+            val popup = window.open(url, "youauth", POPUP_FEATURES)
+            popup != null && !popup.closed
         }
     }
 }

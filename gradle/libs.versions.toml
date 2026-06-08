@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.0"
+agp = "9.2.1"
 android-compileSdk = "36"
 android-minSdk = "28"
 android-targetSdk = "36"
@@ -86,6 +86,7 @@ playPublisher = "4.0.0"
 buildconfig = "6.0.9"
 play-app-update = "2.1.0"
 play-services-location = "21.3.0"
+mlkit-subject-segmentation = "16.0.0-beta1"
 metadataExtractor = "2.19.0"
 
 [libraries]
@@ -215,6 +216,7 @@ composenativewebview = { module = "io.github.kdroidfilter:composewebview", versi
 conveyor-control = { module = "dev.hydraulic.conveyor:conveyor-control", version.ref = "conveyorControl" }
 play-app-update = { module = "com.google.android.play:app-update-ktx", version.ref = "play-app-update" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
+mlkit-subject-segmentation = { module = "com.google.android.gms:play-services-mlkit-subject-segmentation", version.ref = "mlkit-subject-segmentation" }
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
 nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }

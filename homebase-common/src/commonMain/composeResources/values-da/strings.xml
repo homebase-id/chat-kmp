@@ -454,6 +454,29 @@
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
 
+    <!-- Stickers (gemte klistermærker) -->
+    <string name="chat_sticker_share">Klistermærker</string>
+    <string name="chat_save_sticker">Gem klistermærke</string>
+    <string name="chat_sticker_saved">Klistermærke gemt</string>
+    <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
+    <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
+    <string name="chat_sticker_import">Importér klistermærke</string>
+    <string name="chat_sticker_import_not_transparent">Vælg en gennemsigtig PNG for at bruge den som klistermærke</string>
+    <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
+    <string name="chat_sticker_remove">Fjern klistermærke</string>
+    <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
+    <string name="chat_sticker_removed">Klistermærke fjernet</string>
+    <string name="chat_sticker_remove_failed">Kunne ikke fjerne klistermærke</string>
+    <string name="chat_sticker_tray_title">Mine klistermærker</string>
+    <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
+    <string name="cd_import_sticker">Importér et klistermærke</string>
+    <string name="chat_sticker_import_processing">Fjerner baggrund…</string>
+    <string name="chat_sticker_import_title">Brug dette klistermærke?</string>
+    <string name="chat_sticker_import_use">Brug</string>
+    <string name="chat_sticker_import_no_subject">Kunne ikke finde et motiv at skære ud</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Klistermærker</string>
+
     <!-- Dice attachment -->
     <string name="chat_dice_share">Terninger</string>
     <string name="chat_dice_composer_title">Slå terninger</string>
@@ -551,6 +574,9 @@
 
     <string name="crop">Beskær</string>
     <string name="draw">Tegn</string>
+    <string name="chat_remove_background">Fjern baggrund</string>
+    <string name="chat_remove_background_failed">Kunne ikke fjerne baggrunden</string>
+    <string name="chat_removing_background">Fjerner baggrund…</string>
     <string name="send_as_sticker">Send som klistermærke</string>
     <string name="cd_send_as_sticker">Skift send som klistermærke</string>
     <string name="trim_start_handle">Beskær start</string>
