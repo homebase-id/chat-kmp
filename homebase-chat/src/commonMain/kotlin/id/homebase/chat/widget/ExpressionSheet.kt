@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
+import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.GifBox
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.GifBox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -96,10 +100,9 @@ fun ExpressionSheet(
 }
 
 /**
- * Centered icon tab row. The active tab is tinted with the primary color.
- * Icons used: [Icons.Filled.EmojiEmotions] for Emoji (active/inactive filled variant for
- * active, [Icons.Outlined.EmojiEmotions] for inactive); same outlined glyph for Stickers/Gifs
- * as a stand-in until a dedicated sticker icon is available.
+ * Centered icon tab row. The active tab is tinted with the primary color and uses the
+ * filled icon variant; inactive tabs use the outlined variant. Emoji = a smiley, Stickers =
+ * a sticky-note glyph (distinct from the emoji face), Gifs = a GIF box (reserved tab).
  */
 @Composable
 private fun ExpressionTabRow(
@@ -117,10 +120,13 @@ private fun ExpressionTabRow(
             val isSel = tab == selected
             IconButton(onClick = { onSelect(tab) }) {
                 Icon(
-                    imageVector = when {
-                        tab == ExpressionTab.Emoji && isSel -> Icons.Filled.EmojiEmotions
-                        tab == ExpressionTab.Emoji -> Icons.Outlined.EmojiEmotions
-                        else -> Icons.Outlined.EmojiEmotions
+                    imageVector = when (tab) {
+                        ExpressionTab.Emoji ->
+                            if (isSel) Icons.Filled.EmojiEmotions else Icons.Outlined.EmojiEmotions
+                        ExpressionTab.Stickers ->
+                            if (isSel) Icons.AutoMirrored.Filled.StickyNote2 else Icons.AutoMirrored.Outlined.StickyNote2
+                        ExpressionTab.Gifs ->
+                            if (isSel) Icons.Filled.GifBox else Icons.Outlined.GifBox
                     },
                     contentDescription = when (tab) {
                         ExpressionTab.Emoji -> emojiLabel
