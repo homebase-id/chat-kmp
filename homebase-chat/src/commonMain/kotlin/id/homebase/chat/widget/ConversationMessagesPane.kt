@@ -305,6 +305,11 @@ fun ConversationMessagesPane(
                             onSave = { message, key ->
                                 onUiAction(DownloadMedia(message, key))
                             },
+                            onSaveSticker = { message, key ->
+                                onUiAction(
+                                    ConversationListUiAction.SaveStickerFromMessage(message, key)
+                                )
+                            },
                             onDelete = { onUiAction(DeleteMessage(it)) },
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
                             animatedVisibilityScope = this@AnimatedContent,

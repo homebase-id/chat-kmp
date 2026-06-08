@@ -22,6 +22,8 @@ import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
+import id.homebase.chat.services.sticker.StickerService
+import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
@@ -75,6 +77,7 @@ import kotlin.uuid.Uuid
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
+import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentActionService
@@ -133,6 +136,7 @@ val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
+val StickerPermissionQualifier = named("stickerPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
@@ -331,6 +335,8 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Hydrate the saved-stickers tray for the new identity (mirror Vault).
+                get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
             }
         )
     }
@@ -430,6 +436,12 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+
+    // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
+    // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
+    // is NOT in mandatorySyncDrives.
+    singleOf(::StickerStream)
+    singleOf(::StickerService)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -531,6 +543,9 @@ val appModule = module {
             cropResultBus = get(),
             drawResultBus = get(),
             postCreateIntroductionPreflightBus = get(),
+            stickerStream = get(),
+            stickerService = get(),
+            stickerPermissionViewModel = get(StickerPermissionQualifier),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -547,6 +562,19 @@ val appModule = module {
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
     viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModel(MomentsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getMomentsPermissionExtensionConfig()) }
+    // Stickers permission VM — autoCheck=false so the missing-permissions dialog only
+    // surfaces once the user actively enters the sticker feature (opens the tray or
+    // saves/imports a sticker), mirroring Vault's lazy extend-permissions gate rather
+    // than eagerly prompting on app launch.
+    viewModel(StickerPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getStickerPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::MomentComposeViewModel)

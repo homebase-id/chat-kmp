@@ -755,6 +755,29 @@
     <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
     <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
 
+    <!-- Stickers (saved "My Stickers" tray) -->
+    <string name="chat_sticker_share">Stickers</string>
+    <string name="chat_save_sticker">Save sticker</string>
+    <string name="chat_sticker_saved">Sticker saved</string>
+    <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
+    <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
+    <string name="chat_sticker_import">Import sticker</string>
+    <string name="chat_sticker_import_not_transparent">Pick a transparent PNG to use as a sticker</string>
+    <string name="chat_stickers_empty">No saved stickers yet</string>
+    <string name="chat_sticker_remove">Remove sticker</string>
+    <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
+    <string name="chat_sticker_removed">Sticker removed</string>
+    <string name="chat_sticker_remove_failed">Couldn\'t remove sticker</string>
+    <string name="chat_sticker_tray_title">My Stickers</string>
+    <string name="cd_sticker_thumbnail">Saved sticker</string>
+    <string name="cd_import_sticker">Import a sticker</string>
+    <string name="chat_sticker_import_processing">Removing background…</string>
+    <string name="chat_sticker_import_title">Use this sticker?</string>
+    <string name="chat_sticker_import_use">Use</string>
+    <string name="chat_sticker_import_no_subject">Couldn\'t find a subject to cut out</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Stickers</string>
+
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
     <string name="chat_groodle_composer_title">New Groodle</string>

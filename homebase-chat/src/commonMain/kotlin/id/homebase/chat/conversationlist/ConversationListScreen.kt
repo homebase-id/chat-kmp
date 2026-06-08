@@ -58,6 +58,7 @@ import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.chat.widget.StickerImportPreviewDialog
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -135,6 +136,19 @@ fun ConversationListScreen(
         viewModel = extendPermissionViewModel,
         onCancel = { viewModel.onAction(ConversationListUiAction.ClearSelection) },
     )
+    // Optional Stickers-drive extend-permissions dialog. Driven lazily — it only
+    // surfaces once the user enters the sticker feature (opens the tray or saves/imports
+    // a sticker), which calls recheckPermissions() on this VM. Mirrors how Moments
+    // renders ExtendPermissionDialog for its on-demand drive.
+    ExtendPermissionDialog(viewModel = viewModel.stickerExtendPermissionViewModel)
+    val stickerImportPreview by viewModel.stickerImportPreview.collectAsStateWithLifecycle()
+    stickerImportPreview?.let { preview ->
+        StickerImportPreviewDialog(
+            preview = preview,
+            onUse = { viewModel.onAction(ConversationListUiAction.ConfirmStickerImport) },
+            onCancel = { viewModel.onAction(ConversationListUiAction.DismissStickerImport) },
+        )
+    }
     LaunchedEffect(Unit) {
         extendPermissionViewModel.navigateAwayRequest.collect {
             viewModel.onAction(ConversationListUiAction.ClearSelection)

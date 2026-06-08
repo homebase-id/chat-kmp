@@ -158,7 +158,6 @@ import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
-import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
@@ -1547,12 +1546,15 @@ fun ConversationContent(
             Box(
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
-                EmojiSelectorSheet(
+                ExpressionSheet(
+                    visible = showEmojiSheet,
+                    conversationId = conversation.conversation.id,
+                    onUiAction = onUiAction,
+                    onBackSpace = { textFieldState.programmaticBackspace() },
+                    onEmojiSelected = { textFieldState.addTextAfterSelection(it) },
                     modifier = Modifier.fillMaxWidth()
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
-                    visible = showEmojiSheet,
-                    onBackSpace = { textFieldState.programmaticBackspace() },
-                    onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
+                )
             }
 
             Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -1601,8 +1603,7 @@ fun ConversationContent(
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
-                    },
-                    )
+                    })
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
