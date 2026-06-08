@@ -256,6 +256,21 @@ class ConversationListViewModel(
         },
     )
 
+    private val stickerImporter = StickerImporter(
+        scope = viewModelScope,
+        saveSticker = { bytes, contentType ->
+            stickerService.saveSticker(bytes = bytes, contentType = contentType, scope = viewModelScope)
+        },
+        sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
+        awaitDriveGranted = {
+            stickerPermissionViewModel.recheckPermissions()
+            stickerPermissionViewModel.permissionsGranted.first { it }
+        },
+    )
+
+    /** Smart-import confirm dialog state (null = no dialog). Observed by ConversationContent. */
+    val stickerImportPreview: StateFlow<StickerImportPreview?> = stickerImporter.preview
+
     /**
      * Extend-permissions VM for the optional Stickers drive. Exposed so the host
      * ([ConversationListScreen]) can render the shared [ExtendPermissionDialog] for it,
@@ -1062,7 +1077,11 @@ class ConversationListViewModel(
                 stickerHandler.handleSaveStickerFromMessage(action)
 
             is ConversationListUiAction.ImportSticker ->
-                stickerHandler.handleImportSticker(action)
+                stickerImporter.import(action.bytes, action.contentType)
+
+            is ConversationListUiAction.ConfirmStickerImport -> stickerImporter.confirm()
+
+            is ConversationListUiAction.DismissStickerImport -> stickerImporter.dismiss()
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }

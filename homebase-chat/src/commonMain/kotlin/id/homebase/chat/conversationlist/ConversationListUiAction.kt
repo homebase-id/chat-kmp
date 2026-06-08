@@ -322,5 +322,11 @@ sealed interface ConversationListUiAction {
     /** Ensure the optional Stickers drive is mounted (first tray open). */
     data object EnsureStickerDriveMounted : ConversationListUiAction
 
+    /** User tapped "Use" on the smart-import preview. */
+    data object ConfirmStickerImport : ConversationListUiAction
+
+    /** User cancelled / dismissed the smart-import preview. */
+    data object DismissStickerImport : ConversationListUiAction
+
     // endregion
 }

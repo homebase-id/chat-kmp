@@ -4,13 +4,11 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.image.ImageUtils
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.resources.MR
-import id.homebase.resources.chat_sticker_import_not_transparent
 import id.homebase.resources.chat_sticker_remove_failed
 import id.homebase.resources.chat_sticker_removed
 import id.homebase.resources.chat_sticker_save_failed
@@ -110,37 +108,6 @@ internal class StickerHandler(
                 )
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Failed to save sticker from message" }
-                sendEvent(ShowInfoMessage(MR.string.chat_sticker_save_failed))
-            }
-        }
-    }
-
-    fun handleImportSticker(action: ConversationListUiAction.ImportSticker) {
-        scope.launch {
-            try {
-                // Alpha-gate: a sticker must be a transparent cut-out. A fully-opaque
-                // image (ordinary photo / opaque PNG / JPEG) would render with a solid
-                // rectangle on the chat wallpaper, so reject it with a clear message.
-                if (!ImageUtils.hasNonOpaquePixels(action.bytes)) {
-                    sendEvent(ShowInfoMessage(MR.string.chat_sticker_import_not_transparent))
-                    return@launch
-                }
-                // Don't enqueue the upload until the Stickers drive is granted, or the
-                // sync engine would drop it (ungranted drives aren't pushed).
-                awaitDriveGranted()
-                val saved = stickerService.saveSticker(
-                    bytes = action.bytes,
-                    contentType = action.contentType,
-                    scope = scope,
-                )
-                sendEvent(
-                    ShowInfoMessage(
-                        if (saved != null) MR.string.chat_sticker_saved
-                        else MR.string.chat_sticker_save_failed
-                    )
-                )
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Failed to import sticker" }
                 sendEvent(ShowInfoMessage(MR.string.chat_sticker_save_failed))
             }
         }
