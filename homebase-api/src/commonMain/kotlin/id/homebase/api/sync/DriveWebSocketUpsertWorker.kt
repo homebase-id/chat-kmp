@@ -6,11 +6,10 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
+import id.homebase.api.coroutines.supervisedScope
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -55,7 +54,7 @@ class DriveWebSocketUpsertWorker(
     scope: CoroutineScope? = null,
 ) {
     // Network/DB-bound work. Same dispatcher choice as DriveSync.
-    private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = scope ?: supervisedScope("ws-upsert-worker")
 
     private val mutex = Mutex()
     private var job: Job? = null

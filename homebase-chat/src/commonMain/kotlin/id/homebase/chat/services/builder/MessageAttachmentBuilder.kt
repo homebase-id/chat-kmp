@@ -43,18 +43,22 @@ object MessageAttachmentBuilder {
                         // without the opaque bubble backdrop. Detect on the ORIGINAL
                         // source bytes (the generator already read them — no second
                         // read), gated to alpha-capable formats (PNG/WebP). forceSticker
-                        // (future manual toggle) bypasses detection. We store a tiny
-                        // {"isSticker":true} descriptor only when transparent; ordinary
-                        // photos keep the legacy "" so nothing changes for them.
+                        // (the "Send as sticker" toggle) bypasses detection. We store a tiny
+                        // {"isSticker":true,"format":...} descriptor only when transparent;
+                        // ordinary photos keep the legacy "" so nothing changes for them.
+                        val format = ImageFormatDetector.detectFormat(thumbs.sourceBytes)
                         val isSticker = attachment.forceSticker ||
-                            run {
-                                val format = ImageFormatDetector.detectFormat(thumbs.sourceBytes)
-                                (format == "image/png" || format == "image/webp") &&
-                                    ImageUtils.hasNonOpaquePixels(thumbs.sourceBytes)
-                            }
+                            ((format == "image/png" || format == "image/webp") &&
+                                ImageUtils.hasNonOpaquePixels(thumbs.sourceBytes))
                         val descriptorContent =
                             if (isSticker) {
-                                DescriptorContent.descriptorContentFromImage(isSticker = true)
+                                // Carry the detected format so a downloaded sticker is named
+                                // "StickerFile.<ext>" (see PayloadDescriptor.filename()) rather
+                                // than the sender's original filename (e.g. IMG_1234.png).
+                                DescriptorContent.descriptorContentFromImage(
+                                    isSticker = true,
+                                    format = format,
+                                )
                             } else {
                                 ""
                             }

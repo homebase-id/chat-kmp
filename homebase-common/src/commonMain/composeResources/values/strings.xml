@@ -166,6 +166,11 @@
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
+    <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
+    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_generic">Login failed</string>
+    <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
+    <string name="login_continue_button">Continue to sign in</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
@@ -750,6 +755,29 @@
     <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
     <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
 
+    <!-- Stickers (saved "My Stickers" tray) -->
+    <string name="chat_sticker_share">Stickers</string>
+    <string name="chat_save_sticker">Save sticker</string>
+    <string name="chat_sticker_saved">Sticker saved</string>
+    <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
+    <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
+    <string name="chat_sticker_import">Import sticker</string>
+    <string name="chat_sticker_import_not_transparent">Pick a transparent PNG to use as a sticker</string>
+    <string name="chat_stickers_empty">No saved stickers yet</string>
+    <string name="chat_sticker_remove">Remove sticker</string>
+    <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
+    <string name="chat_sticker_removed">Sticker removed</string>
+    <string name="chat_sticker_remove_failed">Couldn\'t remove sticker</string>
+    <string name="chat_sticker_tray_title">My Stickers</string>
+    <string name="cd_sticker_thumbnail">Saved sticker</string>
+    <string name="cd_import_sticker">Import a sticker</string>
+    <string name="chat_sticker_import_processing">Removing background…</string>
+    <string name="chat_sticker_import_title">Use this sticker?</string>
+    <string name="chat_sticker_import_use">Use</string>
+    <string name="chat_sticker_import_no_subject">Couldn\'t find a subject to cut out</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Stickers</string>
+
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
     <string name="chat_groodle_composer_title">New Groodle</string>
@@ -1016,6 +1044,11 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="chat_remove_background">Remove background</string>
+    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_removing_background">Removing background…</string>
+    <string name="send_as_sticker">Send as sticker</string>
+    <string name="cd_send_as_sticker">Toggle send as sticker</string>
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>
