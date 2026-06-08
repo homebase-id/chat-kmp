@@ -1,5 +1,6 @@
 package id.homebase.api.client
 
+import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import java.net.InetAddress
@@ -24,7 +25,18 @@ private class SndBufSocketFactory(
 ) : SocketFactory() {
 
     private fun Socket.capped(): Socket = apply {
-        runCatching { sendBufferSize = sendBufferBytes }
+        // Log requested vs. actually-applied SO_SNDBUF so we can confirm the cap took effect.
+        // Linux typically reports back ~2x the requested value (kernel bookkeeping); what matters
+        // is that it's near our request and NOT the multi-MB autotuned default. If onUpload still
+        // reaches 100% fast while this is small, the bytes genuinely left the wire fast → the
+        // remaining wait is server-side.
+        val applied = runCatching {
+            sendBufferSize = sendBufferBytes
+            sendBufferSize
+        }.getOrElse { -1 }
+        Logger.i(tag = "UploadSndBuf") {
+            "createSocket: requested=$sendBufferBytes appliedSendBuffer=$applied"
+        }
     }
 
     override fun createSocket(): Socket = delegate.createSocket().capped()
