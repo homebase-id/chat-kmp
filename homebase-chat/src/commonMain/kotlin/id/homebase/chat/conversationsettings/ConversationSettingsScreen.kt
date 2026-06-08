@@ -103,17 +103,22 @@ fun ConversationSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
-            )
+            // Suppress this screen's app bar while the full-screen viewer is open
+            // so the viewer's own top bar doesn't stack under it (see
+            // ChatMediaFullScreenHost / ConversationMediaScreen).
+            if (fullScreenItem == null) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { onUiAction(ConversationSettingsUiAction.BackClicked)  }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back)
+                            )
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->

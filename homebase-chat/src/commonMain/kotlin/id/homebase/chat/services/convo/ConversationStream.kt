@@ -2,6 +2,7 @@ package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -60,6 +61,7 @@ private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
+    private val ownerSessionRepository: OwnerSessionRepository,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -364,6 +366,17 @@ class ConversationStream(
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
+
+        // The logged-in user isn't in their own contacts, so contactService
+        // resolves their odinId to the raw domain name. Use the owner session's
+        // resolved display name for own messages instead (falls through to the
+        // contact/domain path until the session's site data has loaded, or when
+        // it carries no displayName).
+        if (author == credentialsManager.requireActiveDomain()) {
+            ownerSessionRepository.user.value?.displayName
+                ?.takeIf { it != author.toString() && it.isNotBlank() }
+                ?.let { return it }
+        }
 
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
