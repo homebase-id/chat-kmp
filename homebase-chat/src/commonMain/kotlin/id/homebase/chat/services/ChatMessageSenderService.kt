@@ -396,6 +396,62 @@ class ChatMessageSenderService(
         val recipients = conversationStream.getRecipients(msg.conversationId)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
+        // If the original create is still queued (never reached the server),
+        // editing must keep it a *create*. Downgrading to an UpdateFile would
+        // delete the pending create (they share uniqueId) and then fail
+        // permanently with "Could not find file" — losing the message. Amend
+        // the queued create in place, preserving its media payloads.
+        val pendingCreate = outboxSync.pendingUploadFileRequest(chatDrive, messageId)
+        if (pendingCreate != null) {
+            val createKey = pendingCreate.keyHeader
+            // First delivery: the recipient never saw a prior version, so this
+            // is not an "edit" — don't stamp isEdited.
+            val createMessageData = msg.messageAppData.copy(
+                deliveryStatus = ChatDeliveryStatus.Sending.value,
+                message = JsonPrimitive(content),
+                isEdited = false
+            )
+            val createBuilt = buildMessageContentAndBundle(
+                preVersionedMessageData = createMessageData,
+                payloadBundle = null,
+                fileOperationsProvider = fileOperationsProvider
+            )
+            val createMetadata = UploadFileMetadata(
+                allowDistribution = !isLocalOnly,
+                isEncrypted = true,
+                // No versionTag — this is a create, not an update.
+                appData = UploadAppFileMetaData(
+                    uniqueId = messageId,
+                    groupId = msg.conversationId,
+                    fileType = ChatProtocol.MessageFileType,
+                    dataType = 0,
+                    userDate = msg.userDate.toEpochMilliseconds(),
+                    content = createBuilt.headerContent,
+                    previewThumbnail = msg.previewThumbnail
+                )
+            )
+            // Re-encrypt the (possibly new) text-overflow payload with the same
+            // aesKey the create's media payloads already use, so everything in
+            // the amended request stays decryptable with one keyHeader.
+            val encryptedOverflow = createBuilt.payloadBundle?.let {
+                payloadBundleEncryptionService.encryptBundle(messageId, it, createKey.aesKey, scope)
+            }?.payloads ?: emptyList()
+            val amended = amendPendingCreate(
+                existingCreate = pendingCreate,
+                encryptedMetadata = createMetadata.encryptContent(createKey),
+                encryptedOverflowPayloads = encryptedOverflow
+            )
+            val enqueued = outboxSync.replaceEnqueue(amended, priority = 1, dependencyUniqueId = null)
+            if (!enqueued) error("Failed to update chat message")
+            optimisticWriter.writeUpdate(
+                driveId = chatDrive,
+                keyHeader = createKey,
+                unecryptedMetadata = createMetadata
+            )
+            Logger.d(tag = TAG) { "updateMessage: coalesced edit into still-pending create uniqueId=$messageId" }
+            return UpdateMessageResult(uniqueId = messageId)
+        }
+
         val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
             message = JsonPrimitive(content),
