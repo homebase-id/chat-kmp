@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.ui.screens.vault
 
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -19,6 +21,8 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.components.VaultEmptyState
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 @Composable
 fun VaultContent(
@@ -35,6 +39,11 @@ fun VaultContent(
     onAddSection: () -> Unit,
     modifier: Modifier = Modifier,
     lazyListState: LazyListState = rememberLazyListState(),
+    // Per-section horizontal scroll states, keyed by sectionId and owned by the
+    // caller (VaultScreen) so they outlive this composable being torn down when
+    // the full-screen overlay opens/closes. Default is a throwaway map for
+    // previews/tests, where surviving the overlay swap is irrelevant.
+    sectionRowStates: MutableMap<Uuid, LazyListState> = mutableMapOf(),
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -63,9 +72,14 @@ fun VaultContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(sections, key = { it.sectionId }) { section ->
+                    // getOrPut on the hoisted map gives each section a stable row
+                    // state that persists across the overlay open/close. Created
+                    // lazily the first time a section is composed.
+                    val rowState = sectionRowStates.getOrPut(section.sectionId) { LazyListState() }
                     VaultSectionCard(
                         section = section,
                         localAttachmentStore = localAttachmentStore,
+                        rowState = rowState,
                         onEntryClick = { onEntryClick(it) },
                         onAddEntry = { onAddEntry(section) },
                         onMoveUp = { onMoveUp(section) },
