@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.chat.services.sticker.toImageData
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.StickerAdd
 import id.homebase.resources.MR
 import id.homebase.resources.cd_import_sticker
 import id.homebase.resources.cd_sticker_thumbnail
@@ -78,7 +78,7 @@ fun StickerTray(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    imageVector = HomebaseIcons.StickerAdd,
                     contentDescription = importDescription,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.sizeIn(maxWidth = 32.dp, maxHeight = 32.dp),
