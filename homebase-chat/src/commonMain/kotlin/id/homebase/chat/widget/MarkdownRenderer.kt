@@ -43,6 +43,7 @@ import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.api.util.markdownToPlainPreview
+import id.homebase.api.util.withChatHardLineBreaks
 
 /**
  * THE single read-only markdown renderer for chat.
@@ -167,54 +168,14 @@ fun ChatMarkdown(
     // without any pointerInput reading the layout result. This single stable node
     // is what keeps the bubble's last-line timestamp tuck reentrancy-free.
     if (!markdownHasBlockElements(content)) {
-        // mikepenz's String overload parses (default GFM flavour, matching the
-        // block Markdown() below), finds the single paragraph/inline run, and
-        // applies the base style's SpanStyle — producing exactly the inline
-        // styling the block path's paragraph would, including the LinkAnnotations
-        // that make a plain Text handle taps natively.
-        //
-        // We build annotatorSettings explicitly rather than via the no-arg
-        // annotatorSettings() default: that default reads LocalMarkdownTypography /
-        // LocalMarkdownColors / LocalReferenceLinkHandler, which mikepenz only
-        // provides INSIDE its Markdown() composable and which `error(...)` when
-        // absent. Here we are outside Markdown(), so we supply the same M3 link
-        // and inline-code styling the block path uses, no reference handler, and
-        // let the default linkInteractionListener open URLs via LocalUriHandler.
-        //
-        // CRITICAL: pass ONLY `style` to TextLinkStyles — no hovered/focused/
-        // pressed variant. Compose's TextLinkScope registers a hover-keyed
-        // StyleAnnotation only to swap between those variants; with a single style
-        // the re-applied AnnotatedString is structurally identical on hover, so
-        // TextAnnotatedStringNode.updateText short-circuits (textChanged=false) and
-        // `onTextLayout` does NOT re-fire on Desktop hover. That is what keeps this
-        // single Text node stable inside the bubble's timestamp-tucking Layout
-        // (same cursor-only hover behaviour the old richeditor renderer had). A
-        // hovered/pressed variant here would mutate the text on hover, re-fire
-        // onTextLayout mid-measure, and resurrect the reentrancy crash.
-        // Same bubble-aware link + inline-code styling the block path uses, so the
-        // single-Text inline render is pixel-equivalent to the block render for the
-        // same inline content. Link = bubble [color], bold + underlined (readable on
-        // sent AND received bubbles; see kdoc). Inline code = monospace [color] text
-        // on a faint [color] tint chip.
-        val linkSpanStyle = TextLinkStyles(
-            style = style.copy(
-                color = color,
-                fontWeight = FontWeight.Bold,
-                textDecoration = TextDecoration.Underline,
-            ).toSpanStyle(),
-        )
-        val inlineCodeStyle = style.copy(
-            color = color,
-            fontFamily = FontFamily.Monospace,
-        ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
-        val annotated = content.buildMarkdownAnnotatedString(
-            style = style,
-            annotatorSettings = annotatorSettings(
-                linkTextSpanStyle = linkSpanStyle,
-                codeSpanStyle = inlineCodeStyle,
-                referenceLinkHandler = null,
-            ),
-        )
+        // Single stable Text over the inline annotated string (bold/italic/strike/
+        // inline-code + native Compose link annotations, with chat soft breaks
+        // promoted to hard breaks). See [buildChatInlineAnnotatedString] for the full
+        // rationale — why the link TextLinkStyles carries a single style (Desktop-hover
+        // reentrancy safety) and why annotatorSettings is built explicitly outside
+        // Markdown(). Keeping this as one stable node is what makes the bubble's
+        // last-line timestamp tuck reentrancy-free.
+        val annotated = buildChatInlineAnnotatedString(content, style, color)
         Text(
             text = annotated,
             modifier = modifier,
@@ -241,6 +202,11 @@ fun ChatMarkdown(
         codeBackground = color.copy(alpha = FENCED_CODE_BG_ALPHA),
         inlineCodeBackground = color.copy(alpha = INLINE_CODE_BG_ALPHA),
         dividerColor = color.copy(alpha = DIVIDER_ALPHA),
+        // Table grid lines already use [dividerColor] (bubble-aware); the cell fill
+        // defaults to a surface role that turns into a grey box on the primary-coloured
+        // sent bubble. Tint it off the bubble [color] like the code surfaces so the
+        // table reads on BOTH bubbles.
+        tableBackground = color.copy(alpha = FENCED_CODE_BG_ALPHA),
     )
     val typography = markdownTypography(
         // Heading ladder. The M3 title/headline scale is too compressed to give a
@@ -280,7 +246,7 @@ fun ChatMarkdown(
     )
 
     Markdown(
-        content = content,
+        content = content.withChatHardLineBreaks(),
         colors = colors,
         typography = typography,
         // Default is fillMaxSize(); a chat bubble must wrap its content.
@@ -329,6 +295,63 @@ fun ChatMarkdown(
                     BubbleCodeContainer(code = code, language = language, style = codeStyle, color = color)
                 }
             },
+        ),
+    )
+}
+
+/**
+ * Builds the single-paragraph inline [AnnotatedString] the inline render path draws:
+ * bold/italic/strike/inline-code plus native Compose link annotations, with chat soft
+ * breaks promoted to hard breaks (so a message typed with single Enters keeps its
+ * lines — see [withChatHardLineBreaks]). Extracted and `internal` so the soft-break and
+ * autolink behaviour are unit-testable without a bubble. Pixel-equivalent to what the
+ * block path renders for the same inline content.
+ *
+ * mikepenz's String overload parses with the default GFM flavour (matching the block
+ * `Markdown()` path), finds the single paragraph/inline run, and applies the base
+ * [style]'s SpanStyle — including the [androidx.compose.ui.text.LinkAnnotation]s that
+ * let a plain Text handle taps natively (opened via `LocalUriHandler` by the default
+ * link interaction listener).
+ *
+ * annotatorSettings is built explicitly (not the no-arg composable default, which reads
+ * LocalMarkdownTypography / LocalMarkdownColors / LocalReferenceLinkHandler — only
+ * present INSIDE mikepenz's `Markdown()`), supplying the same M3 link + inline-code
+ * styling the block path uses, no reference handler.
+ *
+ * CRITICAL: the link [TextLinkStyles] carries ONLY `style` — no hovered/focused/pressed
+ * variant. Compose's TextLinkScope registers a hover-keyed StyleAnnotation only to swap
+ * between those variants; with a single style the re-applied AnnotatedString is
+ * structurally identical on hover, so `TextAnnotatedStringNode.updateText`
+ * short-circuits and `onTextLayout` does NOT re-fire on Desktop hover — which is what
+ * keeps the single Text node stable inside the bubble's timestamp-tucking Layout. A
+ * hovered/pressed variant would mutate the text on hover, re-fire onTextLayout
+ * mid-measure, and resurrect the reentrancy crash. Link = bubble [color], bold +
+ * underlined (readable on sent AND received bubbles); inline code = monospace [color]
+ * on a faint [color] tint chip.
+ */
+@Composable
+internal fun buildChatInlineAnnotatedString(
+    content: String,
+    style: TextStyle,
+    color: Color,
+): AnnotatedString {
+    val linkSpanStyle = TextLinkStyles(
+        style = style.copy(
+            color = color,
+            fontWeight = FontWeight.Bold,
+            textDecoration = TextDecoration.Underline,
+        ).toSpanStyle(),
+    )
+    val inlineCodeStyle = style.copy(
+        color = color,
+        fontFamily = FontFamily.Monospace,
+    ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
+    return content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
+        style = style,
+        annotatorSettings = annotatorSettings(
+            linkTextSpanStyle = linkSpanStyle,
+            codeSpanStyle = inlineCodeStyle,
+            referenceLinkHandler = null,
         ),
     )
 }
