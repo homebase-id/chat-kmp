@@ -1141,18 +1141,24 @@ fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
     state: RichTextState,
     onSmileyClick: () -> Unit,
-    onSendMessage: () -> Unit
+    onSendMessage: () -> Unit,
+    // Mirror the chat composer: the rich-text formatting toolbar is desktop/web-only.
+    // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
+    // are unit-testable without a device.
+    showFormattingToolbar: Boolean = isDesktopOrWeb(),
 ) {
     var hasSent by remember { mutableStateOf(false) }
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
     Column(modifier = modifier) {
-        RichTextEditorButtons(
-            modifier = Modifier.fillMaxWidth(),
-            state = state,
-            enabled = true,
-        )
+        if (showFormattingToolbar) {
+            RichTextEditorButtons(
+                modifier = Modifier.fillMaxWidth().testTag("attachment_formatting_toolbar"),
+                state = state,
+                enabled = true,
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

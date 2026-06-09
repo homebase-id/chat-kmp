@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -60,6 +62,9 @@ fun VaultSectionCard(
     onRenameSection: () -> Unit,
     onDeleteSection: () -> Unit,
     modifier: Modifier = Modifier,
+    // Hoisted by the caller so the row's horizontal scroll survives the
+    // full-screen overlay open/close; defaults to a local state for previews.
+    rowState: LazyListState = rememberLazyListState(),
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -100,6 +105,7 @@ fun VaultSectionCard(
             // Entry cards row
             if (section.entries.isNotEmpty()) {
                 LazyRow(
+                    state = rowState,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(end = 4.dp),
                 ) {
