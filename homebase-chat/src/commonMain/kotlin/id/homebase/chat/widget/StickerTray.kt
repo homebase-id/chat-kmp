@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
@@ -136,12 +137,7 @@ private fun StickerTile(
     // placeholder id). Show a spinner and ignore taps until the outbox confirms it
     // (StickerStream then clears isPending and the real row takes over).
     if (sticker.isPending) {
-        Box(modifier = Modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
-                modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
-                strokeWidth = 2.dp,
-            )
-        }
+        StickerTileSpinner(Modifier.aspectRatio(1f))
         return
     }
     val imageData = sticker.toImageData()
@@ -161,7 +157,23 @@ private fun StickerTile(
                 imageData = imageData,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxWidth().padding(4.dp),
+                // While the thumb is loading — or while its payload is still uploading and the
+                // fetch 404s — show a spinner, not the default broken-image icon. Once the
+                // payload lands the row re-emits and the thumb resolves.
+                placeholder = { StickerTileSpinner(Modifier.fillMaxSize()) },
+                error = { StickerTileSpinner(Modifier.fillMaxSize()) },
             )
         }
+    }
+}
+
+/** Small centered spinner used for a sticker tile that is uploading / loading its thumbnail. */
+@Composable
+private fun StickerTileSpinner(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
+            strokeWidth = 2.dp,
+        )
     }
 }

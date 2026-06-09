@@ -58,7 +58,7 @@ import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
-import id.homebase.chat.widget.StickerImportPreviewDialog
+import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -141,12 +141,13 @@ fun ConversationListScreen(
     // a sticker), which calls recheckPermissions() on this VM. Mirrors how Moments
     // renders ExtendPermissionDialog for its on-demand drive.
     ExtendPermissionDialog(viewModel = viewModel.stickerExtendPermissionViewModel)
-    val stickerImportPreview by viewModel.stickerImportPreview.collectAsStateWithLifecycle()
-    stickerImportPreview?.let { preview ->
-        StickerImportPreviewDialog(
-            preview = preview,
-            onUse = { viewModel.onAction(ConversationListUiAction.ConfirmStickerImport) },
-            onCancel = { viewModel.onAction(ConversationListUiAction.DismissStickerImport) },
+    val stickerCreateState by viewModel.stickerCreateState.collectAsStateWithLifecycle()
+    stickerCreateState?.let { state ->
+        StickerCreatorSheet(
+            state = state,
+            onSelect = { viewModel.onAction(ConversationListUiAction.SelectStickerVariant(it)) },
+            onSend = { viewModel.onAction(ConversationListUiAction.ConfirmStickerCreate) },
+            onCancel = { viewModel.onAction(ConversationListUiAction.DismissStickerCreate) },
         )
     }
     LaunchedEffect(Unit) {

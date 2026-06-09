@@ -300,19 +300,19 @@ sealed interface ConversationListUiAction {
         val payloadKey: String,
     ) : ConversationListUiAction
 
-    /** Import a transparent PNG/WebP picked from disk into the sticker library. */
-    data class ImportSticker(
+    /** Create a sticker from a freshly-picked image, in the given conversation. */
+    data class CreateStickerFromImage(
+        val conversationId: Uuid,
         val bytes: ByteArray,
         val contentType: String,
     ) : ConversationListUiAction {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other !is ImportSticker) return false
-            return contentType == other.contentType && bytes.contentEquals(other.bytes)
-        }
-
-        override fun hashCode(): Int = 31 * bytes.contentHashCode() + contentType.hashCode()
+        override fun equals(other: Any?) = this === other || (other is CreateStickerFromImage &&
+            conversationId == other.conversationId && contentType == other.contentType && bytes.contentEquals(other.bytes))
+        override fun hashCode() = (conversationId.hashCode() * 31 + contentType.hashCode()) * 31 + bytes.contentHashCode()
     }
+    data class SelectStickerVariant(val variant: StickerVariant) : ConversationListUiAction
+    data object ConfirmStickerCreate : ConversationListUiAction
+    data object DismissStickerCreate : ConversationListUiAction
 
     /** Remove a saved sticker from the library (tray long-press). */
     data class RemoveSticker(
@@ -321,12 +321,6 @@ sealed interface ConversationListUiAction {
 
     /** Ensure the optional Stickers drive is mounted (first tray open). */
     data object EnsureStickerDriveMounted : ConversationListUiAction
-
-    /** User tapped "Use" on the smart-import preview. */
-    data object ConfirmStickerImport : ConversationListUiAction
-
-    /** User cancelled / dismissed the smart-import preview. */
-    data object DismissStickerImport : ConversationListUiAction
 
     // endregion
 }
