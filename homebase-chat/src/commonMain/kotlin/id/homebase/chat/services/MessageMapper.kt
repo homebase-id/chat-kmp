@@ -283,6 +283,7 @@ suspend fun mapToMessageData(
             keyHeader = header.keyHeader,
             versionTag = versionTag,
             isPendingSend = isPendingSend,
+            isFailedSend = isFailedSend,
             isStatusMessage = isStatusMessage,
             messageContent = messageContent,
             hasMore = hasMore

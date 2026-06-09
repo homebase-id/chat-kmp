@@ -44,6 +44,10 @@
     <string name="sent">Sent</string>
     <string name="label_sent">App sent: %1$s</string>
     <string name="label_received">Received: %1$s</string>
+    <string name="msg_status_sending">Sending…</string>
+    <string name="msg_status_sent">Sent: %1$s</string>
+    <string name="msg_status_failed_to_send">Failed to send</string>
+    <string name="action_retry">Retry</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
     <string name="label_message_id">ID: %1$s</string>
