@@ -44,6 +44,13 @@ class OutboxWrapper(
             delegate.selectCheckedOut(checkOutStamp).executeAsOneOrNull()
         }
 
+    /** The single pending row for (driveId, uniqueId), or null if nothing is
+     *  queued. Outbox is UNIQUE(driveId, uniqueId), so there is at most one. */
+    suspend fun selectByDriveAndUnique(driveId: Uuid, uniqueId: Uuid): Outbox? =
+        databaseManager.readValue("outbox.selectByDriveAndUnique") {
+            delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
+        }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 

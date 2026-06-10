@@ -947,8 +947,8 @@ class ConversationService(
         } catch (t: Throwable) {
             audit.threw("step2RemoveSelf", t)
             audit.info("ROLLBACK: removing optimistic status message and its outbox row")
+            // removeOptimisticFile now also cancels the queued outbox send.
             optimisticWriter.removeOptimisticFile(chatDrive, messageId)
-            dbm.outbox.deleteBy(chatDrive, messageId)
             audit.finish("ABORTED at STEP 2 — rolled back step 1 message; leave did NOT complete")
             throw t
         }

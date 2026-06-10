@@ -89,6 +89,13 @@ DELETE FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
 
+-- Select the (single, by UNIQUE(driveId,uniqueId)) pending row for a message.
+-- Lets a caller tell a queued create apart from a queued edit before deleting.
+selectByDriveAndUnique:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE driveId = ? AND uniqueId = ?;
+
 -- Select checked out item
 selectCheckedOut:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
