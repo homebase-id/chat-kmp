@@ -8,6 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.toChatDeliveryStatus
@@ -84,10 +85,16 @@ class MessageInfoViewModel(
                             it.copy(
                                 recipients = recipients,
                                 isTransferHistoryLoading = false,
+                                transferHistoryFailed = false,
                             )
                         }
                     } catch (e: Exception) {
-                        _uiState.update { it.copy(isTransferHistoryLoading = false) }
+                        _uiState.update {
+                            it.copy(
+                                isTransferHistoryLoading = false,
+                                transferHistoryFailed = true,
+                            )
+                        }
                     }
                 }
 
@@ -140,6 +147,7 @@ class MessageInfoViewModel(
                 isOwnMessage = isOwn,
                 isPendingSend = message.isPendingSend,
                 isFailedSend = message.isFailedSend,
+                deliveryFailed = message.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value,
                 serverPresence = state.serverPresence,
             )
             state.copy(

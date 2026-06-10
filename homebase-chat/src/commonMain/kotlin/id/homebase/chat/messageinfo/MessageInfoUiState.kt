@@ -22,8 +22,11 @@ data class ReactionUiModel(
 
 /** High-level send status for an *outgoing* (own) message, shown as the single
  *  status row in Message Info. Null for inbound messages (which keep the
- *  sender-sent / we-received rows instead). */
-enum class OutgoingSendState { Sending, Sent, Failed }
+ *  sender-sent / we-received rows instead). [Failed] is a local send failure
+ *  (the file never settled on our server); [DeliveryFailed] is recipient-level
+ *  (the file settled, but ≥1 recipient transfer failed) — distinct wording and
+ *  no retry, matching the bubble's orange failed indicator. */
+enum class OutgoingSendState { Sending, Sent, Failed, DeliveryFailed }
 
 /** What a (future, currently stubbed) retry would do, derived from whether the
  *  file already exists on the server: [Create] = re-upload a never-landed file;
@@ -76,6 +79,9 @@ data class MessageInfoUiState(
     val isServerCheckLoading: Boolean = false,
     /** Status row for own messages; null for inbound. */
     val sendState: OutgoingSendState? = null,
+    /** True when the transfer-history load threw — distinguishes "no
+     *  recipients" from "couldn't load the per-recipient delivery details". */
+    val transferHistoryFailed: Boolean = false,
     /** Intent a retry would carry; null when no retry is offered. */
     val retryMode: RetryMode? = null,
     /** Whether to surface the Retry affordance (currently a no-op stub). */
@@ -94,8 +100,9 @@ data class SendStatusResult(
 )
 
 /**
- * Pure mapping of (own/inbound, local tag state, server presence) → what the
- * Message Info screen shows. See the scenario matrix in the plan.
+ * Pure mapping of (own/inbound, local tag state, delivery state, server
+ * presence) → what the Message Info screen shows. See the scenario matrix in
+ * the plan.
  *
  * - Inbound → no status row (keeps the legacy sent/received rows), no retry.
  * - Failed send (`isFailedSend`) → Failed + retry. Retry intent is Create when
@@ -103,12 +110,20 @@ data class SendStatusResult(
  * - Pending send (`isPendingSend`) → Sent if the server already has it
  *   (the pending tag just hasn't cleared — e.g. opened info too fast),
  *   otherwise Sending. No retry while still in the outbox.
- * - Settled → Sent.
+ * - Settled + `deliveryFailed` → DeliveryFailed: our upload landed but ≥1
+ *   recipient transfer failed (the bubble's orange state). No retry — a
+ *   redistribution is not an outbox re-enqueue.
+ * - Settled otherwise → Sent.
+ *
+ * The local tags win over `deliveryFailed`: they describe whether *our* upload
+ * settled, and an optimistic/pending file has no transfer history anyway
+ * (`MessageAppData.deliveryStatus` defaults to Sent).
  */
 fun deriveSendStatus(
     isOwnMessage: Boolean,
     isPendingSend: Boolean,
     isFailedSend: Boolean,
+    deliveryFailed: Boolean,
     serverPresence: ServerPresence,
 ): SendStatusResult = when {
     !isOwnMessage -> SendStatusResult(null, null, false)
@@ -122,5 +137,6 @@ fun deriveSendStatus(
         ServerPresence.Absent, ServerPresence.Unknown ->
             SendStatusResult(OutgoingSendState.Sending, null, false)
     }
+    deliveryFailed -> SendStatusResult(OutgoingSendState.DeliveryFailed, null, false)
     else -> SendStatusResult(OutgoingSendState.Sent, null, false)
 }
