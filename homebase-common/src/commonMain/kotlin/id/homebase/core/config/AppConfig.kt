@@ -2,6 +2,7 @@ package id.homebase.core.config
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
@@ -10,8 +11,21 @@ import id.homebase.api.youauth.TargetDriveAccessRequest
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
+/**
+ * A drive the app mounts for sync, paired with a human-readable label.
+ *
+ * @param ownerOdinId the **owning identity** when this drive is hosted on a peer (a community
+ *   owner's collaborative drive); null for the logged-in user's own drives. When set, the drive is
+ *   synced/queried/written over peer and gets a per-owner peer websocket instead of riding the
+ *   user's own-host websocket. Nullable with a default so existing serialized registry files (which
+ *   predate this field) still parse as own drives.
+ */
 @Serializable
-data class LabeledDrive(val drive: TargetDrive, val label: String)
+data class LabeledDrive(
+    val drive: TargetDrive,
+    val label: String,
+    val ownerOdinId: OdinId? = null,
+)
 
 /**
  * Central app configuration for authentication, permissions, and drives. Used by both

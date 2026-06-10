@@ -467,31 +467,9 @@ class DriveUploadProvider(
         metadata: UploadFileMetadata,
         sharedSecret: ByteArray,
         transferIv: ByteArray
-    ): ByteArray {
-        // Encrypt the key header using shared secret and transferIv (matches TypeScript
-        // encryptKeyHeader)
-        val sharedSecretEncryptedKeyHeader =
-            EncryptedKeyHeader.encryptKeyHeaderAes(
-                keyHeader ?: KeyHeader.empty(),
-                transferIv,
-                SecureByteArray(sharedSecret)
-            )
-
-        // Create the file descriptor
-        val descriptor =
-            UploadFileDescriptor(
-                encryptedKeyHeader = sharedSecretEncryptedKeyHeader,
-                fileMetadata = metadata
-            )
-
-        // Serialize to JSON (matches TypeScript jsonStringify64)
-        val descriptorJson = OdinSystemSerializer.json.encodeToString(descriptor)
-        val descriptorBytes = descriptorJson.encodeToByteArray()
-
-        // Encrypt the entire descriptor with sharedSecret using transferIv (matches TypeScript
-        // encryptWithSharedSecret)
-        return AesCbc.encrypt(descriptorBytes, sharedSecret, transferIv)
-    }
+    ): ByteArray =
+        // Shared with the over-peer transit-send path — see UploadDescriptorBuilder.kt.
+        buildSharedSecretEncryptedUploadDescriptor(keyHeader, metadata, sharedSecret, transferIv)
 
     /**
      * Builds an encrypted descriptor (UploadFileDescriptor encrypted with sharedSecret). Matches

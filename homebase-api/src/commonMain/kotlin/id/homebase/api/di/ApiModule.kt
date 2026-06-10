@@ -22,6 +22,9 @@ import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.peer.PeerDriveQueryProvider
+import id.homebase.api.client.peer.PeerDriveUploadProvider
+import id.homebase.api.client.peer.PeerNotificationProvider
+import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -88,6 +91,18 @@ val apiModule = module {
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
+    factoryOf(::PeerDriveUploadProvider)
+    factoryOf(::PeerNotificationProvider)
+    // Single: one set of peer (owner-hosted) websocket connections per app session; reset on logout
+    // via AuthConnectionCoordinator.disconnect(). Uses its own internal scope (default ctor arg).
+    single {
+        PeerWebSocketManager(
+            credentialsManager = get(),
+            peerNotificationProvider = get(),
+            eventBus = get(),
+            databaseManager = get(),
+        )
+    }
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
     factoryOf(::IdentityUpgradeProvider)
