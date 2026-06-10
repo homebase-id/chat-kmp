@@ -22,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -52,11 +53,15 @@ import id.homebase.resources.chat_message_info
 import id.homebase.resources.delivered_to
 import id.homebase.resources.details
 import id.homebase.resources.failed
+import id.homebase.resources.action_retry
 import id.homebase.resources.label_edited
 import id.homebase.resources.label_received
 import id.homebase.resources.copy_message_id
 import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
+import id.homebase.resources.msg_status_failed_to_send
+import id.homebase.resources.msg_status_sending
+import id.homebase.resources.msg_status_sent
 import id.homebase.resources.label_size
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
@@ -147,22 +152,80 @@ fun MessageInfoUi(
                     text = stringResource(MR.string.details),
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                Text(
-                    text = stringResource(
-                        MR.string.label_sent,
-                        uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-                Text(
-                    text = stringResource(
-                        MR.string.label_received,
-                        uiState.message?.created?.let { formateDateTime(it) } ?: "",
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                )
+                if (!uiState.isOwnMessage) {
+                    // Inbound: the sender's send-time and our receive-time — both
+                    // meaningful for a message that arrived from someone else.
+                    Text(
+                        text = stringResource(
+                            MR.string.label_sent,
+                            uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                    Text(
+                        text = stringResource(
+                            MR.string.label_received,
+                            uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                } else {
+                    // Outgoing: a single status row reflecting the real send
+                    // outcome — never the misleading "App sent / Received" pair,
+                    // which is stamped from local timestamps regardless of whether
+                    // anything actually left the device.
+                    when (uiState.sendState) {
+                        OutgoingSendState.Sending -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    text = stringResource(MR.string.msg_status_sending),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+
+                        OutgoingSendState.Sent -> {
+                            Text(
+                                text = stringResource(
+                                    MR.string.msg_status_sent,
+                                    uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                        }
+
+                        OutgoingSendState.Failed -> {
+                            Text(
+                                text = stringResource(MR.string.msg_status_failed_to_send),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                        }
+
+                        null -> {}
+                    }
+
+                    if (uiState.canRetry) {
+                        OutlinedButton(
+                            onClick = { onUiAction(MessageInfoUiAction.RetryClicked) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            Text(stringResource(MR.string.action_retry))
+                        }
+                    }
+                }
                 if (uiState.message?.isEdited == true) {
                     Text(
                         text = stringResource(

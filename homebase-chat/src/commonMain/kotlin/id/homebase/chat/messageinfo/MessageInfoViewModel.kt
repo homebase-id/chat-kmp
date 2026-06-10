@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
@@ -34,10 +35,16 @@ class MessageInfoViewModel(
     private val _uiState = MutableStateFlow(MessageInfoUiState())
     val uiState: StateFlow<MessageInfoUiState> = _uiState.asStateFlow()
 
+    // Guards the one-shot server existence check so a session arriving after the
+    // message (or vice-versa) can't kick it twice.
+    private var serverCheckStarted = false
+
     init {
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
+                recomputeSendStatus()
+                startServerCheckIfNeeded()
             }
         }
         viewModelScope.launch {
@@ -51,6 +58,8 @@ class MessageInfoViewModel(
                         isReactionsLoading = true,
                     )
                 }
+                recomputeSendStatus()
+                startServerCheckIfNeeded()
 
                 // Load transfer history
                 viewModelScope.launch {
@@ -118,9 +127,73 @@ class MessageInfoViewModel(
         }
     }
 
+    /**
+     * Recompute the outgoing send-status fields from the current message, owner
+     * session, and server-presence. Cheap and idempotent — safe to call whenever
+     * any of those inputs change (message load, session arrival, server check).
+     */
+    private fun recomputeSendStatus() {
+        _uiState.update { state ->
+            val message = state.message ?: return@update state
+            val isOwn = message.isAuthoredBy(state.ownerSession?.odinId)
+            val result = deriveSendStatus(
+                isOwnMessage = isOwn,
+                isPendingSend = message.isPendingSend,
+                isFailedSend = message.isFailedSend,
+                serverPresence = state.serverPresence,
+            )
+            state.copy(
+                isOwnMessage = isOwn,
+                sendState = result.sendState,
+                retryMode = result.retryMode,
+                canRetry = result.canRetry,
+            )
+        }
+    }
+
+    /**
+     * For an own message that is still pending or has failed to send, confirm
+     * by uniqueId whether the file actually exists on the server. This resolves
+     * the "opened info before the send settled" race (pending + Present ⇒ Sent)
+     * and decides whether a future retry is a Create or an Update. A network
+     * failure leaves presence Unknown — never throws into the UI.
+     */
+    private fun startServerCheckIfNeeded() {
+        if (serverCheckStarted) return
+        val state = _uiState.value
+        val message = state.message ?: return
+        val isOwn = message.isAuthoredBy(state.ownerSession?.odinId)
+        if (!isOwn) return
+        if (!message.isPendingSend && !message.isFailedSend) return
+
+        serverCheckStarted = true
+        viewModelScope.launch {
+            _uiState.update { it.copy(isServerCheckLoading = true) }
+            val presence = resolveServerPresence(
+                existsOnServer = {
+                    driveFileProvider.getFileHeaderByUid(chatTargetDrive.alias, message.id) != null
+                },
+                onError = { e ->
+                    Logger.w(e) { "MessageInfo: server presence check failed for uniqueId=${message.id}" }
+                },
+            )
+            _uiState.update { it.copy(serverPresence = presence, isServerCheckLoading = false) }
+            recomputeSendStatus()
+        }
+    }
+
     fun onUiAction(action: MessageInfoUiAction) {
         when (action) {
             is MessageInfoUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = MessageInfoUiEvent.Back) }
+            // Stub: Layer 1 will re-enqueue the outbox item. retryMode tells it
+            // whether to re-upload a never-landed file (Create) or re-push an
+            // edit against an existing server file (Update).
+            is MessageInfoUiAction.RetryClicked -> {
+                val state = _uiState.value
+                Logger.i {
+                    "MessageInfo: retry requested (stub) uniqueId=${state.message?.id} retryMode=${state.retryMode}"
+                }
+            }
         }
     }
 
