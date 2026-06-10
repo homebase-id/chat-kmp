@@ -301,6 +301,7 @@ val appModule = module {
             databaseManager = get(),
             driveRegistry = get(),
             securityContextProvider = get(),
+            peerWebSocketManager = get(),
             // Start headless only where the OS can cold-wake us in the background
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".

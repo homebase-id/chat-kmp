@@ -5,9 +5,11 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +51,12 @@ class DriveSyncManager(
     // guarantee needed for non-mutex readers (syncDrive, pause, clearStorage).
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
+
+    // Per-remote-drive consecutive-failure counter driving the exponential retry backoff. Only the
+    // single eventBus-collector coroutine touches this (read+write in the Stopped handler), so a
+    // plain map is safe without a lock. Reset to 0 (entry removed) on a Completed round or unmount.
+    private val remoteRetryAttempts = mutableMapOf<Uuid, Int>()
+
     @kotlin.concurrent.Volatile private var _isRunning = false
 
     /**
@@ -110,18 +118,36 @@ class DriveSyncManager(
                         }
                     }
                     is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
-                        is BackendEvent.DriveResult.Completed -> updateState(event.driveId) {
-                            it.copy(state = DriveState.Completed(totalCount = event.totalCount))
+                        is BackendEvent.DriveResult.Completed -> {
+                            // A clean round resets the remote backoff ladder — the owner is reachable
+                            // again, so the next failure should start from the floor, not the ceiling.
+                            remoteRetryAttempts.remove(event.driveId)
+                            updateState(event.driveId) {
+                                it.copy(state = DriveState.Completed(totalCount = event.totalCount))
+                            }
                         }
                         is BackendEvent.DriveResult.Aborted -> {
                             updateState(event.driveId) {
                                 it.copy(state = DriveState.Failed(r.errorMessage))
                             }
+                            // Remote (owner-hosted) drives back off exponentially so an offline owner
+                            // is not polled every second forever; own drives keep the flat 1s retry.
+                            // Reads/writes of remoteRetryAttempts are confined to this single-collector
+                            // coroutine, so the plain map needs no extra lock.
+                            val isRemote = _driveStatuses.value[event.driveId]?.isRemote == true
+                            val delayMs = if (isRemote) {
+                                val attempt = (remoteRetryAttempts[event.driveId] ?: 0) + 1
+                                remoteRetryAttempts[event.driveId] = attempt
+                                nextRemoteBackoffMs(attempt)
+                            } else {
+                                1000L
+                            }
                             Logger.w(tag = "DriveSync") {
-                                "drive ${event.driveId} failed: ${r.errorMessage}, scheduling retry in 1s"
+                                "drive ${event.driveId} failed: ${r.errorMessage}, scheduling retry in ${delayMs}ms" +
+                                    if (isRemote) " (remote, attempt ${remoteRetryAttempts[event.driveId]})" else ""
                             }
                             scope.launch {
-                                delay(1000L)
+                                delay(delayMs)
                                 Logger.i(tag = "DriveSync") { "retrying drive ${event.driveId}" }
                                 driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
@@ -137,6 +163,18 @@ class DriveSyncManager(
                 }
             }
         }
+    }
+
+    /**
+     * Exponential backoff (capped) for a remote drive's nth consecutive failed sync round: 1s, 2s,
+     * 4s, … up to [REMOTE_RETRY_CEILING_MS]. [attempt] is 1-based.
+     */
+    private fun nextRemoteBackoffMs(attempt: Int): Long {
+        // shl on a 1-based attempt: attempt 1 -> 1s, 2 -> 2s, 3 -> 4s … Guard the shift so a long
+        // outage can't overflow into a negative/huge delay before the coerce clamps it.
+        val exp = (attempt - 1).coerceIn(0, 16)
+        val raw = REMOTE_RETRY_BASE_MS shl exp
+        return raw.coerceIn(REMOTE_RETRY_BASE_MS, REMOTE_RETRY_CEILING_MS)
     }
 
     private fun updateState(driveId: Uuid, transform: (DriveStatus) -> DriveStatus) {
@@ -217,9 +255,16 @@ class DriveSyncManager(
             }
             return
         }
-        val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
-        val jobs = snapshot.mapNotNull { it.sync() }
-        jobs.joinAll()
+        val snapshot = driveSyncsMutex.withLock { driveSyncs.toList() }
+        // Kick every drive, but only barrier on the user's OWN drives. A remote (owner-hosted) drive
+        // whose owner is offline/slow must not stall the aggregate round via joinAll — its sync is
+        // launched fire-and-forget and reconciled independently through the Stopped/backoff path.
+        val ownJobs = mutableListOf<Job>()
+        for ((driveId, sync) in snapshot) {
+            val job = sync.sync() ?: continue
+            if (_driveStatuses.value[driveId]?.isRemote != true) ownJobs.add(job)
+        }
+        ownJobs.joinAll()
     }
 
     suspend fun syncAllFailed() {
@@ -290,7 +335,7 @@ class DriveSyncManager(
      *   calls (e.g. from a ViewModel reacting to driveStatuses) must NOT cause
      *   a reconnect, or they will tear down an in-flight WS handshake.
      */
-    suspend fun mountDrive(driveId: Uuid, label: String): Boolean {
+    suspend fun mountDrive(driveId: Uuid, label: String, ownerOdinId: OdinId? = null): Boolean {
         // getActiveCredentials() instead of requireActiveCredentials() — a logout
         // race during add-on activation should be a deferred mount, not a crash.
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: run {
@@ -328,6 +373,7 @@ class DriveSyncManager(
                     scope = scope,
                     expectFreshCursor = freshLogin,
                     policy = driveSyncPolicies[driveId] ?: DriveSyncPolicy(),
+                    ownerOdinId = ownerOdinId,
                 )
             } catch (e: CancellationException) {
                 // Don't swallow cancellation — let the caller's scope tear down cleanly.
@@ -345,7 +391,9 @@ class DriveSyncManager(
             }
             newSync
         }
-        _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
+        _driveStatuses.update {
+            it + (driveId to DriveStatus(driveId, label, DriveState.Initialized, ownerOdinId = ownerOdinId))
+        }
 
         // Defer the network kick if the manager isn't running yet — start()'s
         // catch-up loop will pick it up when isRunning flips true.
@@ -365,6 +413,7 @@ class DriveSyncManager(
             s
         } ?: return
         sync.cancel()
+        remoteRetryAttempts.remove(driveId)
         _driveStatuses.update { it - driveId }
         Logger.i(tag = "DriveSync") { "unmountDrive($driveId)" }
     }
@@ -392,5 +441,12 @@ class DriveSyncManager(
 
         // Signal the next start() that any cursor it finds is a bug.
         expectFreshCursors = true
+    }
+
+    companion object {
+        /** Floor of the remote-drive retry backoff (first failure waits this long). */
+        private const val REMOTE_RETRY_BASE_MS = 1_000L
+        /** Ceiling of the remote-drive retry backoff — an offline owner is polled at most this often. */
+        private const val REMOTE_RETRY_CEILING_MS = 60_000L
     }
 }

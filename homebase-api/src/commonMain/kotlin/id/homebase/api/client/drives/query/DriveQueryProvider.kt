@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.query
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
@@ -43,18 +44,35 @@ class DriveQueryProvider(
         return deserialize(response.body)
     }
 
+    /**
+     * Query a batch of files from a drive.
+     *
+     * @param ownerOdinId when null (the default) the query targets the logged-in user's own host
+     *   (`creds.domain`) at `/drives/$driveId/files/query-batch`. When set, the query is brokered
+     *   over peer to the drive's owning identity at
+     *   `/peer/$ownerOdinId/drives/$driveId/files/query-batch` — the user's own host proxies the
+     *   call server-side and returns headers re-encrypted under the caller's own shared secret, so
+     *   the response decode path is identical. Mirrors the `/peer/$peer/…` broker convention already
+     *   used by [id.homebase.api.client.peer.PeerDriveQueryProvider].
+     */
     suspend fun queryBatch(
         driveId: Uuid,
         request: QueryBatchRequest,
+        ownerOdinId: OdinId? = null,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
 
         val creds = requireCreds()
-        val url = apiUrl(
-            creds.domain,
+        val path = if (ownerOdinId == null) {
             "/drives/$driveId/files/query-batch"
-        )
+        } else {
+            // Over-peer query-batch is a DRIVE-level route (no /files segment, unlike the per-file
+            // peer routes /files/{fileId}/header etc.). Verified against the V2 backend: this returns
+            // 403 unauthenticated (route exists) whereas /files/query-batch returns 404.
+            "/peer/$ownerOdinId/drives/$driveId/query-batch"
+        }
+        val url = apiUrl(creds.domain, path)
 
         val jsonRequest = OdinSystemSerializer.serialize(request)
 
@@ -67,14 +85,26 @@ class DriveQueryProvider(
 
         throwForFailure(apiResponse)
 
-        val internal = deserialize<QueryBatchResponseInternalRaw>(apiResponse.body)
+        return mapQueryBatchResponse(apiResponse.body, creds.secret)
+    }
+
+    /**
+     * Decode a query-batch response body into a [QueryBatchResponse], salvaging individually
+     * corrupt file metadata rather than failing the whole batch. Shared by the own-host and
+     * over-peer query paths — both receive headers encrypted under the caller's [secret].
+     */
+    private suspend fun mapQueryBatchResponse(
+        body: String,
+        secret: SecureByteArray,
+    ): QueryBatchResponse {
+        val internal = deserialize<QueryBatchResponseInternalRaw>(body)
 
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
         val files = internal.searchResults.map { serverFileJson ->
-            createServerFileWithSafeMetadata(serverFileJson, creds.secret)
+            createServerFileWithSafeMetadata(serverFileJson, secret)
         }
 
         return QueryBatchResponse(
@@ -111,7 +141,7 @@ class DriveQueryProvider(
             fileSystemType = serverFileWithRawMetadata.fileSystemType,
             sharedSecretEncryptedKeyHeader = serverFileWithRawMetadata.sharedSecretEncryptedKeyHeader,
             fileMetadata = fileMetadata,
-            serverMetadata = serverFileWithRawMetadata.serverMetadata,
+            serverMetadata = serverFileWithRawMetadata.serverMetadata ?: ServerMetadata(),
             priority = serverFileWithRawMetadata.priority,
             fileByteCount = serverFileWithRawMetadata.fileByteCount
         )
@@ -159,7 +189,10 @@ data class ServerFileWithRawMetadata(
     val fileSystemType: FileSystemType,
     val sharedSecretEncryptedKeyHeader: EncryptedKeyHeader,
     val fileMetadata: JsonObject, // This is the key difference - keep it as JsonObject
-    val serverMetadata: ServerMetadata,
+    // Over peer the broker returns serverMetadata=null (it's the owner's private server-side
+    // bookkeeping; a member doesn't receive it). Nullable + default so the peer query decodes —
+    // createServerFileWithSafeMetadata substitutes an empty ServerMetadata() downstream.
+    val serverMetadata: ServerMetadata? = null,
     val priority: Int = 0,
     val fileByteCount: Long = 0
 )

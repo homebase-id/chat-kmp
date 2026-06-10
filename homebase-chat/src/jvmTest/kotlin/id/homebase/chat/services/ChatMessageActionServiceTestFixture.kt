@@ -406,6 +406,7 @@ class ChatMessageActionServiceTestFixture(
         userDateMs: Long = 100L,
         id: Uuid = Uuid.random(),
         fileId: Uuid = Uuid.random(),
+        isPendingSend: Boolean = false,
     ): Uuid {
         // 1) FakeMessageLookup record (so getMessage(id) returns non-null).
         seedMessage(
@@ -414,7 +415,13 @@ class ChatMessageActionServiceTestFixture(
             userDateMs = userDateMs,
             id = id,
             fileId = fileId,
+            isPendingSend = isPendingSend,
         )
+
+        // A still-pending message carries isPendingSendTag in localAppData (same as
+        // the optimistic send path), so removeOptimisticFile recognises and drops it.
+        val localAppDataJson =
+            if (isPendingSend) """{"tags": ["${ChatProtocol.isPendingSendTag}"]}""" else "null"
 
         // 2) Real DriveMainIndex row keyed by uniqueId=id so requireFileId(id) finds it.
         val now = Clock.System.now().epochSeconds
@@ -449,7 +456,7 @@ class ChatMessageActionServiceTestFixture(
                   "previewThumbnail": null,
                   "archivalStatus": 0
                 },
-                "localAppData": null,
+                "localAppData": $localAppDataJson,
                 "referencedFile": null,
                 "reactionPreview": null,
                 "versionTag": "${Uuid.random()}",
