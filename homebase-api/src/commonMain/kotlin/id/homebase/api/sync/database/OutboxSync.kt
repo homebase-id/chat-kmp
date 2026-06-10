@@ -280,9 +280,14 @@ class OutboxSync(
                     e
                 )
 
+                // nextRunTime is a MILLISECONDS epoch — checkout/nextScheduled
+                // compare it against UnixTimeUtc.now().milliseconds. Storing
+                // `.seconds` here (the pre-fix bug) made every backoff deadline
+                // a ~1970s-era value, so failed rows were immediately
+                // re-eligible and the 30s→4h backoff was never enforced.
                 databaseManager.outbox.checkInFailed(
                     outboxRecord.checkOutStamp!!,
-                    UnixTimeUtc.now().addSeconds(n).seconds
+                    UnixTimeUtc.now().addSeconds(n).milliseconds
                 )
 
                 eventBus.emit(
@@ -471,6 +476,46 @@ class OutboxSync(
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
         if (row.uploadType != DriveOutboxUploader.UploadNewFile) return null
         return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+    }
+
+    /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
+     *  what Message Info needs to render "still sending, next attempt in ~N min"
+     *  without deserializing the request json. */
+    public data class PendingRowSnapshot(
+        /** Milliseconds epoch of the next attempt (0 / sentinel = "shortly").
+         *  Rows written before the checkInFailed unit fix may carry a
+         *  seconds-epoch value — display code must normalize. */
+        val nextRunTime: Long,
+        val checkOutCount: Long,
+        /** True when an upload worker currently holds the row. */
+        val isCheckedOut: Boolean,
+        val uploadType: Long,
+    )
+
+    public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        return PendingRowSnapshot(
+            nextRunTime = row.nextRunTime,
+            checkOutCount = row.checkOutCount,
+            isCheckedOut = row.checkOutStamp != null,
+            uploadType = row.uploadType,
+        )
+    }
+
+    /**
+     * Force a queued (backed-off) row to be eligible immediately and kick the
+     * send loop — the "Try now" button. Returns false when nothing changed:
+     * the row is gone (already sent/dropped) or currently checked out (the
+     * upload is literally running — a harmless no-op either way). A row with
+     * an unresolved dependency gets its time reset but still waits for the
+     * dependency to drain (the checkout SQL's NOT EXISTS guard).
+     */
+    public suspend fun runNow(driveId: Uuid, uniqueId: Uuid): Boolean {
+        val changed = databaseManager.outbox.setNextRunTime(driveId, uniqueId, 0L)
+        if (changed > 0) {
+            scope.launch { send() }
+        }
+        return changed > 0
     }
 
     public suspend fun tryEnqueue(

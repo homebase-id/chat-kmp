@@ -64,10 +64,14 @@ import id.homebase.resources.copy_message_id
 import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
 import id.homebase.resources.error_delivery_failed
+import id.homebase.resources.action_try_now
+import id.homebase.resources.msg_next_attempt_minutes
+import id.homebase.resources.msg_next_attempt_shortly
 import id.homebase.resources.msg_status_delivery_details_unavailable
 import id.homebase.resources.msg_status_failed_to_send
 import id.homebase.resources.msg_status_sending
 import id.homebase.resources.msg_status_sent
+import id.homebase.resources.msg_still_in_outbox
 import id.homebase.resources.label_size
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
@@ -217,6 +221,40 @@ fun MessageInfoUi(
                                     text = stringResource(MR.string.msg_status_sending),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
+                            }
+                        }
+
+                        OutgoingSendState.Queued -> {
+                            // Still in the outbox: it WILL be sent (after its
+                            // backoff). Honest copy + a Try-now escape hatch
+                            // instead of an indefinite "Sending…" spinner.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                val minutes = uiState.nextAttemptInMinutes
+                                val attemptText = if (minutes == null || minutes <= 0L) {
+                                    stringResource(MR.string.msg_next_attempt_shortly)
+                                } else {
+                                    stringResource(MR.string.msg_next_attempt_minutes, minutes)
+                                }
+                                Text(
+                                    text = stringResource(MR.string.msg_still_in_outbox, attemptText),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            if (uiState.canTryNow) {
+                                OutlinedButton(
+                                    onClick = { onUiAction(MessageInfoUiAction.TryNowClicked) },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(MR.string.action_try_now))
+                                }
                             }
                         }
 
