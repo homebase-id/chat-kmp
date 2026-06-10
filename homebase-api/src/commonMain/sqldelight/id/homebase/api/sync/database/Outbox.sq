@@ -70,6 +70,14 @@ SET checkOutStamp=NULL,
     nextRunTime=:nextRunTime
 WHERE checkOutStamp=:checkOutStamp;
 
+-- Force a queued row's next attempt (e.g. "Try now" resetting a backed-off
+-- item to run immediately). Guarded on checkOutStamp IS NULL: an in-flight
+-- row's nextRunTime is owned by checkInFailed and must not be raced.
+setNextRunTime:
+UPDATE Outbox
+SET nextRunTime = :nextRunTime
+WHERE driveId = :driveId AND uniqueId = :uniqueId AND checkOutStamp IS NULL;
+
 -- When the app starts, clear all checked out items
 clearCheckedOut:
 UPDATE Outbox
