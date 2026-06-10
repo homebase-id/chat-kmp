@@ -480,6 +480,72 @@ class DriveFileProviderCached(
         }
     }
 
+    // =======================================================
+    // -------------------- CACHE SEEDING --------------------
+    // =======================================================
+
+    /**
+     * Seed the payload disk cache with already-encrypted bytes the client
+     * produced locally (e.g. at optimistic send time, before the server has
+     * the file). The bytes must be exactly what the server would return for
+     * `GET payload` — AES-CBC encrypted with the file's [KeyHeader] — so that
+     * [getPayloadBytesRaw]/[getPayloadBytesDecrypted] serve them
+     * transparently. Clears any stale 404 marker for the key so a pre-send
+     * lookup can't shadow the seeded entry.
+     */
+    suspend fun cachePayloadBytesEncrypted(
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            bytes: ByteArray,
+            contentType: String
+    ) {
+        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
+        seedCache(payloadDiskCache, cacheKey, "PayloadIO", bytes, contentType)
+    }
+
+    /**
+     * Thumbnail analog of [cachePayloadBytesEncrypted]. `lastModified` defaults
+     * to null to line up with the read path's default for files that have not
+     * synced back from the server yet.
+     */
+    suspend fun cacheThumbBytesEncrypted(
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            width: Int,
+            height: Int,
+            bytes: ByteArray,
+            contentType: String,
+            lastModified: Long? = null
+    ) {
+        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
+        seedCache(thumbDiskCache, cacheKey, "ThumbIO", bytes, contentType)
+    }
+
+    private suspend fun seedCache(
+            cache: DiskCache,
+            cacheKey: String,
+            logTag: String,
+            bytes: ByteArray,
+            contentType: String
+    ) {
+        writeToDiskCache(
+                cache,
+                cacheKey,
+                logTag,
+                ByteApiResponse(
+                        status = 200,
+                        // The payloadencrypted bit is load-bearing: decrypt-on-read
+                        // consults it to know the cached bytes need AES-CBC.
+                        headers = Headers.build { append("payloadencrypted", "true") },
+                        bytes = bytes,
+                        contentType = contentType
+                )
+        )
+        notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+    }
+
     // ====================================================
     // -------------------- CACHE KEYS --------------------
     // ====================================================

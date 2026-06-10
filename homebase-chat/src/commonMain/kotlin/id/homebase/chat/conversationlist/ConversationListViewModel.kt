@@ -40,9 +40,11 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -54,6 +56,7 @@ import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
+import id.homebase.resources.conversation_jump_message_unavailable
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -129,6 +132,9 @@ class ConversationListViewModel(
     private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
     private val drawResultBus: id.homebase.imageeditor.ui.DrawResultBus,
     private val postCreateIntroductionPreflightBus: id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus,
+    private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
+    private val stickerService: id.homebase.chat.services.sticker.StickerService,
+    private val stickerPermissionViewModel: ExtendPermissionViewModel,
 ) : ViewModel() {
 
     companion object {
@@ -236,7 +242,81 @@ class ConversationListViewModel(
         dispatch = ::onAction,
     )
 
+    private val stickerHandler = StickerHandler(
+        scope = viewModelScope,
+        messagesUiState = _messagesUiState,
+        stickerService = stickerService,
+        chatMessageActionService = chatMessageActionService,
+        sendEvent = ::sendEvent,
+        addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
+        // drive is granted. Instant once granted; on first use it waits for the user to
+        // complete the flow so the upload isn't enqueued to an ungranted (unsynced) drive.
+        awaitDriveGranted = {
+            stickerPermissionViewModel.recheckPermissions()
+            stickerPermissionViewModel.permissionsGranted.first { it }
+        },
+    )
+
+    private val stickerCreator = StickerCreator(
+        scope = viewModelScope,
+        saveSticker = { bytes, contentType ->
+            stickerService.saveSticker(bytes = bytes, contentType = contentType, scope = viewModelScope)
+        },
+        sendSticker = { conversationId, bytes, contentType ->
+            val suffix = when (contentType) {
+                "image/jpeg" -> ".jpg"
+                "image/webp" -> ".webp"
+                else -> ".png"
+            }
+            val path = fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_editor_", suffix)
+            messageActionsHandler.addMessageWithFiles(
+                conversationId, "",
+                listOf(AttachmentPendingFile.FileImage(
+                    id = Uuid.generateV7(),
+                    file = platformFileFromPath(path),
+                    forceSticker = true,
+                )),
+            )
+        },
+        sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
+        awaitDriveGranted = {
+            stickerPermissionViewModel.recheckPermissions()
+            stickerPermissionViewModel.permissionsGranted.first { it }
+        },
+    )
+
+    /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
+    val stickerCreateState: StateFlow<StickerCreateState?> = stickerCreator.state
+
+    /**
+     * Extend-permissions VM for the optional Stickers drive. Exposed so the host
+     * ([ConversationListScreen]) can render the shared [ExtendPermissionDialog] for it,
+     * exactly like Moments exposes [MomentsViewModel.momentsExtendPermissionViewModel].
+     * The drive is requested via this gate (ask-permission / extend-permissions flow)
+     * rather than silently mounted, so a not-yet-granted Stickers drive surfaces the
+     * owner-console permission prompt instead of failing.
+     */
+    val stickerExtendPermissionViewModel: ExtendPermissionViewModel
+        get() = stickerPermissionViewModel
+
     init {
+        // Mirror MomentsViewModel: once the Stickers drive is authorized (the user
+        // completed the extend-permissions flow, or it was already granted), hot-mount
+        // it so the sync engine begins pulling saved stickers. Mounting is idempotent in
+        // AuthConnectionCoordinator, so a repeated grant is a no-op.
+        viewModelScope.launch {
+            stickerPermissionViewModel.permissionsGranted
+                .filter { it }
+                .collect {
+                    runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
+                        .onFailure { e ->
+                            Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
+                        }
+                    stickerStream.start()
+                }
+        }
+
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
@@ -976,7 +1056,11 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyDrawResult -> attachmentHandler.handleApplyDrawResult(action)
 
+            is ConversationListUiAction.RemoveBackgroundAttachment -> attachmentHandler.handleRemoveBackground(action)
+
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
+
+            is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 
             is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()
 
@@ -989,6 +1073,34 @@ class ConversationListViewModel(
             is ConversationListUiAction.BlockUser -> conversationLifecycleHandler.handleBlockUser(action)
 
             is ConversationListUiAction.ReportContent -> conversationLifecycleHandler.handleReportContent()
+
+            /* Stickers */
+            // Entry point into the sticker feature (tray open / save / import): run the
+            // extend-permissions gate. If the optional Stickers drive isn't granted yet,
+            // ExtendPermissionViewModel flips to ShowDialog and the host renders the shared
+            // ExtendPermissionDialog (ask-permission flow, mirroring Moments). If it is
+            // already granted, permissionsGranted emits true and the init observer
+            // hot-mounts the drive. Either way no silent mount of an ungranted drive.
+            is ConversationListUiAction.EnsureStickerDriveMounted ->
+                stickerPermissionViewModel.recheckPermissions()
+
+            is ConversationListUiAction.SendSavedSticker -> stickerHandler.handleSendSavedSticker(action)
+
+            // Saving/importing a sticker needs the Stickers drive granted+mounted so the
+            // new sticker syncs back to the tray. The handler awaits that grant (via
+            // [StickerHandler.awaitDriveGranted], which surfaces the extend-permissions
+            // dialog when not yet granted) BEFORE enqueuing the upload, so we never write
+            // to an ungranted drive that the sync engine would silently drop.
+            is ConversationListUiAction.SaveStickerFromMessage ->
+                stickerHandler.handleSaveStickerFromMessage(action)
+
+            is ConversationListUiAction.CreateStickerFromImage ->
+                stickerCreator.create(action.bytes, action.contentType, action.conversationId)
+            is ConversationListUiAction.SelectStickerVariant -> stickerCreator.selectVariant(action.variant)
+            is ConversationListUiAction.ConfirmStickerCreate -> stickerCreator.confirm()
+            is ConversationListUiAction.DismissStickerCreate -> stickerCreator.dismiss()
+
+            is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
         }
     }
 
@@ -1228,9 +1340,37 @@ class ConversationListViewModel(
                         // newer messages arrived since. The fallback inside
                         // loadConversationAroundMessage covers the case where
                         // the anchor's message has been purged from the DB.
-                        chatMessageStream.loadConversationAroundMessage(conversationId, anchorTarget)
+                        val found = chatMessageStream
+                            .loadConversationAroundMessage(conversationId, anchorTarget)
+                        if (!found && messageIdForScroll != null) {
+                            // Explicit jump to a message that's no longer on disk:
+                            // the window fell back to the latest page, so the
+                            // scroll lookup below can never resolve. Tell the user
+                            // instead of silently landing at the bottom, and stop
+                            // the per-emission retry from waiting forever.
+                            reportJumpTargetUnavailable(conversationId, messageIdForScroll)
+                            messageIdForScrollNullable = null
+                        }
                     } else {
                         chatMessageStream.loadConversation(conversationId)
+                    }
+                } else if (messageIdForScroll != null &&
+                    !chatMessageStream.isMessageInWindow(conversationId, messageIdForScroll)
+                ) {
+                    // Cached, but the jump target lives outside the in-memory
+                    // window (e.g. an album item older than the ~PAGE_SIZE
+                    // window). Reusing the window would never contain it and the
+                    // jump would silently no-op, so re-seed a window centered on
+                    // the target — same machinery as the uncached around-open.
+                    Logger.d(tag = "ChatPaging") {
+                        "open conversationId=$conversationId hasCached=true but target=$messageIdForScroll " +
+                            "outside window → loadAround"
+                    }
+                    val found = chatMessageStream
+                        .loadConversationAroundMessage(conversationId, messageIdForScroll)
+                    if (!found) {
+                        reportJumpTargetUnavailable(conversationId, messageIdForScroll)
+                        messageIdForScrollNullable = null
                     }
                 } else {
                     Logger.d(tag = "ChatPaging") {
@@ -1521,6 +1661,20 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
+    }
+
+    /**
+     * A jump-to-message (album item, search result, cross-conversation link)
+     * resolved to a message that's no longer on disk, so no window could be
+     * centered on it. Surface a snackbar instead of silently landing on the
+     * latest page, and log it so the miss is visible in homebase.log.
+     */
+    private fun reportJumpTargetUnavailable(conversationId: Uuid, messageId: Uuid) {
+        Logger.w(tag = TAG) {
+            "jump-to-message target unavailable id=$conversationId message=$messageId — " +
+                "anchor not in DB, landed on latest page"
+        }
+        sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_unavailable))
     }
 }
 

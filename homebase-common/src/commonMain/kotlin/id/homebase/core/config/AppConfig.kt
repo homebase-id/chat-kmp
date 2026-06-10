@@ -2,6 +2,7 @@ package id.homebase.core.config
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
@@ -10,8 +11,21 @@ import id.homebase.api.youauth.TargetDriveAccessRequest
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
+/**
+ * A drive the app mounts for sync, paired with a human-readable label.
+ *
+ * @param ownerOdinId the **owning identity** when this drive is hosted on a peer (a community
+ *   owner's collaborative drive); null for the logged-in user's own drives. When set, the drive is
+ *   synced/queried/written over peer and gets a per-owner peer websocket instead of riding the
+ *   user's own-host websocket. Nullable with a default so existing serialized registry files (which
+ *   predate this field) still parse as own drives.
+ */
 @Serializable
-data class LabeledDrive(val drive: TargetDrive, val label: String)
+data class LabeledDrive(
+    val drive: TargetDrive,
+    val label: String,
+    val ownerOdinId: OdinId? = null,
+)
 
 /**
  * Central app configuration for authentication, permissions, and drives. Used by both
@@ -94,6 +108,23 @@ val vaultLabeledDrive = LabeledDrive(
         type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"),
     ),
     label = "Vault",
+)
+
+// Stickers drive — modeled exactly on [vaultLabeledDrive] (alias + distinct type
+// GUID). The user's saved "My Stickers" tray is one HomebaseFile per sticker on this
+// dedicated, synced drive, so the library follows the user across devices via the
+// existing sync engine. Like Vault/Moments this is an optional drive (not in
+// [mandatorySyncDrives]); it is requested via the extend-permissions flow and mounted
+// on demand the first time the user opens the sticker tray or saves a sticker.
+//
+// The alias is a stable random GUID; the type is the server-provisioned Stickers
+// drive type GUID (matches the slot Vault uses for its drive type).
+val stickerLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e"),
+        type = Uuid.parse("a8c64b10-7434-494b-8b8c-a2284bd643c8"),
+    ),
+    label = "Stickers",
 )
 
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
@@ -271,5 +302,29 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = vaultTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl
+    )
+}
+
+// Stickers-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Vault/Moments optional-drive permission shape; the Stickers drive is
+// mounted on demand (not in [mandatorySyncDrives]) the first time the user opens the
+// sticker tray or saves a sticker.
+val stickerTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = stickerLabeledDrive.drive.alias.toString(),
+        type = stickerLabeledDrive.drive.type.toString(),
+        name = stickerLabeledDrive.label,
+        description = "Drive to store your saved stickers",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = stickerTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
     )
 }

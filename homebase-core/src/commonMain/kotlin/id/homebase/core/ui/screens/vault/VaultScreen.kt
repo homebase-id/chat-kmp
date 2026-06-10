@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import id.homebase.core.HomebaseConstants
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -83,6 +86,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -105,6 +109,16 @@ fun VaultScreen(
     val vaultListState = rememberLazyListState()
     var savedScrollIndex by remember { mutableIntStateOf(0) }
     var savedScrollOffset by remember { mutableIntStateOf(0) }
+
+    // Per-section horizontal scroll positions, hoisted ABOVE the AnimatedContent
+    // (grid <-> gallery) so they survive the grid being disposed while the
+    // full-screen overlay is open. Without this every section's LazyRow resets to
+    // 0 on close, so the tile the close hero must fly back to is at the wrong x —
+    // or not composed at all (a LazyRow only composes visible items) — and the
+    // shared-element transition snaps instead of flying home. Mirrors the
+    // vertical vaultListState hoist above; keyed by sectionId. Stale entries for
+    // deleted sections are harmless (sections are few).
+    val sectionRowStates = remember { mutableMapOf<Uuid, LazyListState>() }
 
     LaunchedEffect(uiState.fullScreenOverlay) {
         if (uiState.fullScreenOverlay != null) {
@@ -263,6 +277,24 @@ fun VaultScreen(
                 HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
 
             SharedTransitionLayout {
+                // Opaque dark floor beneath the cross-fade, present only while a gallery
+                // overlay is the target. The gallery destination is dark (its
+                // BottomSheetScaffold paints colorScheme.scrim) but the outer Scaffold's
+                // floor is the light colorScheme.background. Without this backdrop, at the
+                // cross-fade midpoint both the outgoing grid and incoming dark gallery sit
+                // at ~0.5 alpha, so the light Scaffold floor shows through the half-faded
+                // gallery = a whole-screen brightness flash. Painting the same scrim
+                // beneath the AnimatedContent makes the floor match the gallery, so the
+                // fade reveals dark-on-dark with no contrast (mirrors chat's frame-0
+                // opaque .background(surface) in FullScreenMediaViewer). Gated on
+                // overlay != null so the grid/home appearance is unchanged when closed.
+                if (uiState.fullScreenOverlay != null) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim),
+                    )
+                }
                 AnimatedContent(
                     targetState = uiState.fullScreenOverlay,
                     transitionSpec = {
@@ -294,6 +326,7 @@ fun VaultScreen(
                             onAddSection = { showNewSectionSheet = true },
                             modifier = contentModifier,
                             lazyListState = vaultListState,
+                            sectionRowStates = sectionRowStates,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,
                         )

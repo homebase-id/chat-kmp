@@ -94,6 +94,30 @@ fun buildUploadFormData(
     )
 }
 
+/**
+ * Builds the multipart body for an over-peer transit send. Identical wire layout to
+ * [buildUploadFormData] (instructions + encrypted metadata + streamed payloads/thumbnails); only the
+ * `instructions` part differs — a [TransitInstructionSet] instead of an [UploadInstructionSet].
+ */
+fun buildTransitFormData(
+    instructionSet: TransitInstructionSet,
+    sharedSecretEncryptedDescriptor: ByteArray? = null,
+    payloads: List<PayloadFile>? = null,
+    thumbnails: List<ThumbnailFile>? = null,
+    fileOperationsProvider: FileOperationsProvider,
+): MultiPartFormDataContent {
+
+    val runtimePayloads =
+        payloads?.map { it.toRuntime { path -> fileOperationsProvider.openFileInput(path) } }
+
+    return buildFormDataInternal(
+        instructionSet = instructionSet,
+        sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
+        payloads = runtimePayloads,
+        thumbnails = thumbnails
+    )
+}
+
 suspend fun calculateUploadSize(
     payloads: List<PayloadFile>?,
     thumbnails: List<ThumbnailFile>?,

@@ -209,7 +209,14 @@ sealed class MessageListContentModel(val id: String) {
     data class Message(
         val message: MessageUiModel,
         val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
-    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+    // NOTE: do NOT add message.hasMore to this key. When "Read more" downloads a
+    // spilled body, hasMore flips true->false; if it were in the key the LazyColumn
+    // item would be recreated mid-tap, resetting the bubble's bodyExpanded state and
+    // re-showing "Read more" on the now-full body (a double "Read more"). The body
+    // already refreshes on download because textState is remember(message.content)
+    // (MessageBubbleRaw) — the historical hasMore-in-key reset (commit 297c4830) was
+    // only needed back when RichTextState was keyless.
+    ) : MessageListContentModel(message.id.toString() + message.versionTag.toString())
 
     data object UnreadSeparator : MessageListContentModel("unread-separator")
 
@@ -259,6 +266,15 @@ sealed interface FullScreenOverlay {
         val conversationTitle: String,
         val conversationId: Uuid,
         val attachments: List<AttachmentPendingFile>,
+        /**
+         * Attachment ids whose background removal is currently running. The editor's
+         * "Remove background" tool shows a spinner and disables itself for these, so the
+         * multi-hundred-ms (first call: model download / warm-up) on-device segmentation
+         * pass doesn't read as a dead button. Keyed by id so the spinner follows the
+         * specific image across pager swipes. Added/removed (in a `finally`) by
+         * [AttachmentHandler.handleRemoveBackground].
+         */
+        val processingAttachmentIds: Set<Uuid> = emptySet(),
     ) : FullScreenOverlay
 
     @Immutable
@@ -280,12 +296,24 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
      * @param includeLocation Per-image opt-in for embedding GPS coordinates in the
      *   eventual post. Date / camera / dimensions always travel when known —
      *   only the privacy-sensitive bit is gated. Defaults false.
+     * @param forceSticker Per-image opt-in to send as a sticker (transparent
+     *   cut-out render), threaded into [id.homebase.chat.services.builder.AttachmentInput.forceSticker]
+     *   at send time so it skips the auto alpha probe. Set true by the
+     *   background-remover tool so intent survives a re-encode that flattens
+     *   fringe alpha; also the carrier for the manual "Send as sticker" toggle.
+     *   Ephemeral editor state, like [includeLocation]. Defaults false.
      */
     data class FileImage(
         val id: Uuid,
         val file: PlatformFile,
         val metadata: ImageMetadata? = null,
         val includeLocation: Boolean = false,
+        /**
+         * Force this image to be sent as a sticker (transparent cut-out render),
+         * bypassing the automatic alpha probe. Set when re-staging a saved sticker
+         * from the tray; threaded into [AttachmentInput.forceSticker] at send time.
+         */
+        val forceSticker: Boolean = false,
     ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,
@@ -300,7 +328,12 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         val playablePath: String? = null,
     ) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
-    data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
+    data class Gallery(
+        val id: Uuid,
+        val image: GalleryImage,
+        /** See [FileImage.forceSticker]. */
+        val forceSticker: Boolean = false,
+    ) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
 }
 

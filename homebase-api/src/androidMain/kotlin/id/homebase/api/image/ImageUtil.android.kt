@@ -292,6 +292,59 @@ actual object ImageUtils {
         return ImageSize(options.outWidth, options.outHeight)
     }
 
+    actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
+        var bitmap: Bitmap? = null
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            bitmap = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options)
+                ?: return false
+            // Fast path: the bitmap has no alpha channel at all → fully opaque.
+            if (!bitmap.hasAlpha()) return false
+
+            val w = bitmap.width
+            val h = bitmap.height
+            if (w <= 0 || h <= 0) return false
+
+            // Coarse grid (≤ ~ALPHA_PROBE_MAX_SAMPLES) so a huge image stays cheap.
+            val cols = minOf(w, ALPHA_PROBE_GRID)
+            val rows = minOf(h, ALPHA_PROBE_GRID)
+            for (gy in 0 until rows) {
+                val y = (gy.toLong() * (h - 1) / maxOf(1, rows - 1)).toInt()
+                for (gx in 0 until cols) {
+                    val x = (gx.toLong() * (w - 1) / maxOf(1, cols - 1)).toInt()
+                    if ((bitmap.getPixel(x, y) ushr 24) < ALPHA_OPAQUE_THRESHOLD) return true
+                }
+            }
+            // Always include the 4 corners + centre — where cut-out stickers
+            // carry their transparency — in case the grid stepped over them.
+            val probes = intArrayOf(
+                bitmap.getPixel(0, 0),
+                bitmap.getPixel(w - 1, 0),
+                bitmap.getPixel(0, h - 1),
+                bitmap.getPixel(w - 1, h - 1),
+                bitmap.getPixel(w / 2, h / 2),
+            )
+            probes.any { (it ushr 24) < ALPHA_OPAQUE_THRESHOLD }
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = "hasNonOpaquePixels") { "Android alpha probe failed" }
+            false
+        } finally {
+            bitmap?.recycle()
+        }
+    }
+
+    /**
+     * Alpha below this counts as non-opaque. 250 (not 255) tolerates the
+     * compression fringe that WebP/PNG lossy re-encode adds to near-opaque
+     * photos, so an ordinary photo isn't misdetected as a transparent sticker.
+     */
+    private const val ALPHA_OPAQUE_THRESHOLD: Int = 250
+
+    /** Grid side length → ALPHA_PROBE_GRID² ≤ ~4096 samples regardless of image size. */
+    private const val ALPHA_PROBE_GRID: Int = 64
+
     @RequiresApi(Build.VERSION_CODES.R)
     actual fun warpAffine(
         srcBytes: ByteArray,
@@ -419,6 +472,33 @@ actual object ImageUtils {
             naturalSize = ImageSize(w, h),
             size = ImageSize(w, h),
         )
+    }
+
+    actual fun decodeToArgb(srcBytes: ByteArray): ArgbImage? {
+        // Decode straight (non-premultiplied) alpha so the round-trip is lossless, matching
+        // the Skia actual (which uses Codec for the same reason). BitmapFactory premultiplies
+        // by default: alpha-0 pixels lose their RGB entirely and partial-alpha RGB drifts on
+        // the premul→getPixels(un-premul) round-trip. inPremultiplied=false stores straight
+        // alpha, so getPixels returns every channel exactly as encoded. We only read pixels
+        // here (never draw the bitmap), so the no-hardware-draw constraint on non-premultiplied
+        // bitmaps doesn't apply.
+        val opts = BitmapFactory.Options().apply { inPremultiplied = false }
+        val bmp = BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, opts) ?: return null
+        val argb = if (bmp.config == Bitmap.Config.ARGB_8888) bmp
+            else bmp.copy(Bitmap.Config.ARGB_8888, false).also { bmp.recycle() }
+        val w = argb.width; val h = argb.height
+        val pixels = IntArray(w * h)
+        argb.getPixels(pixels, 0, w, 0, 0, w, h)
+        argb.recycle()
+        return ArgbImage(pixels, w, h)
+    }
+
+    actual fun encodeArgbToPng(image: ArgbImage): ByteArray {
+        val bmp = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        bmp.recycle()
+        return out.toByteArray()
     }
 
     private fun blurAndroidBitmap(src: Bitmap, radius: Int): Bitmap {

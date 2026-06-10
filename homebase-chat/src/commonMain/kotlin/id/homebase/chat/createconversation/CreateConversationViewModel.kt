@@ -4,9 +4,12 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +24,8 @@ import kotlinx.coroutines.launch
 class CreateConversationViewModel(
     private val contactService: ContactService,
     private val conversationWriterService: ConversationService,
+    private val connectionService: ConnectionService,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -52,6 +57,7 @@ class CreateConversationViewModel(
     fun onUiAction(action: CreateConversationUiAction) {
         when (action) {
             is CreateConversationUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.Back) }
+            is CreateConversationUiAction.RefreshClicked -> onRefreshClicked()
             is CreateConversationUiAction.CreateNewGroup -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.ShowCreateGroupScreen) }
             is CreateConversationUiAction.CreateSelfConversation -> {
                 _uiState.update {
@@ -81,6 +87,26 @@ class CreateConversationViewModel(
                         sendEvent(CreateConversationUiEvent.ShowErrorMessage("Failed to create conversation: ${e.message}"))
                     }
                 }
+            }
+        }
+    }
+
+    private fun onRefreshClicked() {
+        if (uiState.value.isRefreshing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            try {
+                // Re-mount the contact drive in case a prior 403 unmounted it this
+                // session, then pull it from the server. The contact list updates
+                // itself when the sync completes (ContactService observes the drive
+                // event). Connections are fetched directly from the server.
+                driveSyncManager.ensureMandatoryMounted()
+                driveSyncManager.syncDrive(SystemDriveConstants.contactDrive.alias)
+                connectionService.refresh()
+            } catch (e: Exception) {
+                sendEvent(CreateConversationUiEvent.ShowErrorMessage(e.message ?: "Refresh failed"))
+            } finally {
+                _uiState.update { it.copy(isRefreshing = false) }
             }
         }
     }

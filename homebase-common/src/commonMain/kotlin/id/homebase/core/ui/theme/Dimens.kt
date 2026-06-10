@@ -166,6 +166,11 @@ object Dimens {
         val pageItemWidth = 72.dp
         val previewStickerSize = 96.dp
         val previewGutterSize = 16.dp
+
+        // Max edge of a sticker rendered in a chat bubble. Comparable to the emoji-only
+        // big glyph size (and well under Signal's 512 logical-px sticker) so the bare
+        // image floats on the wallpaper without dominating the column.
+        val maxSize = 160.dp
     }
 
     // Tooltip

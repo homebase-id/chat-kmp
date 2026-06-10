@@ -33,9 +33,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.feed.share.ShareShortcutAvatarLoader
 import id.homebase.feed.share.ShareShortcutPublisher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import id.homebase.api.coroutines.supervisedScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
@@ -164,7 +162,7 @@ class MainApplication : Application(), KoinComponent {
         })
     }
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val appScope = supervisedScope("android-app")
 
     private fun initShareShortcuts() {
         val conversationStream = get<ConversationStream>()

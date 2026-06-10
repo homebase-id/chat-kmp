@@ -120,8 +120,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
               return
           }
       default:
-          // Default tap — handled by NotifierManager.onNotificationClicked
-          NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
+          // Default tap (UNNotificationDefaultActionIdentifier): route to the
+          // shared tap handler so NotificationService.handleNotificationClicked
+          // runs — it sets PendingNotificationTap and emits the OpenConversation /
+          // OpenMoment navigation event that ConversationListViewModel / AppNavHost
+          // act on. This previously called onApplicationDidReceiveRemoteNotification,
+          // which is the push-ARRIVAL entry (re-displays + background-syncs) and
+          // never emits a navigation event — so chat-message taps opened nothing.
+          // Build the payload the same way the arrival path does: skip the "aps"
+          // envelope; the "data" key holds the JSON the handler deserialises.
+          var data: [String: Any] = [:]
+          for (k, v) in userInfo {
+              guard let key = k as? String, key != "aps" else { continue }
+              if let str = v as? String { data[key] = str }
+          }
+          NotificationEntry.companion.fromKoin().onNotificationTappedAsync(payload: data) {}
       }
 
       completionHandler()
@@ -195,7 +208,11 @@ struct iOSApp: App {
     private func handleIncomingURL(_ url: URL) {
         switch url.scheme {
         case "homebase-share":
-            handleShareURL(url)
+            if url.host == "moment" {
+                ShareHandlerBridge.shared.handleIncomingMomentShare()
+            } else {
+                handleShareURL(url)
+            }
         case "homebase-fchat":
             switch url.host {
             case "permission-callback":

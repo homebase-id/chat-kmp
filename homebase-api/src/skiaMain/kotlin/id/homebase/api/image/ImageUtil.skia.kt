@@ -9,10 +9,12 @@ import id.homebase.api.image.draw.StrokeKind
 import id.homebase.api.image.draw.stackBlur
 import id.homebase.api.lib.image.ImageFormatDetector
 import org.jetbrains.skia.Bitmap as SkiaBitmap
+import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorInfo
 import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.Data
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
@@ -229,6 +231,71 @@ actual object ImageUtils {
         return ImageSize(img.width, img.height)
     }
 
+    actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
+        return try {
+            val image = decodeImage(srcBytes)
+            // Fast path: the decoded image declares itself fully opaque.
+            if (image.imageInfo.colorInfo.alphaType == ColorAlphaType.OPAQUE) return false
+
+            val w = image.width
+            val h = image.height
+            if (w <= 0 || h <= 0) return false
+
+            // Read every pixel into a BGRA_8888 buffer (alpha = high byte at
+            // offset 3 of each 4-byte pixel) — same layout the blur path uses.
+            val info = ImageInfo(
+                colorInfo = ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB),
+                width = w,
+                height = h,
+            )
+            val rowBytes = w * 4
+            val bitmap = SkiaBitmap()
+            if (!bitmap.allocPixels(info)) return false
+            try {
+                if (!image.readPixels(bitmap)) return false
+                val bytes = bitmap.readPixels(info, rowBytes, 0, 0) ?: return false
+
+                // Coarse grid (≤ ~ALPHA_PROBE_GRID² samples) so a huge image stays cheap.
+                val cols = minOf(w, ALPHA_PROBE_GRID)
+                val rows = minOf(h, ALPHA_PROBE_GRID)
+                for (gy in 0 until rows) {
+                    val y = (gy.toLong() * (h - 1) / maxOf(1, rows - 1)).toInt()
+                    for (gx in 0 until cols) {
+                        val x = (gx.toLong() * (w - 1) / maxOf(1, cols - 1)).toInt()
+                        val alpha = bytes[(y * w + x) * 4 + 3].toInt() and 0xFF
+                        if (alpha < ALPHA_OPAQUE_THRESHOLD) return true
+                    }
+                }
+                // Always include the 4 corners + centre — where cut-out stickers
+                // carry their transparency — in case the grid stepped over them.
+                val corners = listOf(
+                    0 to 0,
+                    (w - 1) to 0,
+                    0 to (h - 1),
+                    (w - 1) to (h - 1),
+                    (w / 2) to (h / 2),
+                )
+                corners.any { (x, y) ->
+                    (bytes[(y * w + x) * 4 + 3].toInt() and 0xFF) < ALPHA_OPAQUE_THRESHOLD
+                }
+            } finally {
+                bitmap.close()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Alpha below this counts as non-opaque. 250 (not 255) tolerates the
+     * compression fringe that WebP/PNG re-encode adds to near-opaque photos,
+     * so an ordinary photo isn't misdetected as a transparent sticker.
+     */
+    private const val ALPHA_OPAQUE_THRESHOLD: Int = 250
+
+    /** Grid side length → ALPHA_PROBE_GRID² ≤ ~4096 samples regardless of image size. */
+    private const val ALPHA_PROBE_GRID: Int = 64
+
     actual fun warpAffine(
         srcBytes: ByteArray,
         matrix9: FloatArray,
@@ -370,6 +437,37 @@ actual object ImageUtils {
         )
     }
 
+    actual fun decodeToArgb(srcBytes: ByteArray): ArgbImage? {
+        return try {
+            // Use Codec to decode straight into an UNPREMUL bitmap, bypassing
+            // the premultiplied raster that Image.makeFromEncoded produces.
+            // Image.makeFromEncoded → readPixels(UNPREMUL) is lossy: partial-alpha
+            // pixels drift and alpha-0 pixels lose their RGB entirely. Codec skips
+            // that premul round-trip and preserves every channel exactly.
+            val codec = Codec.makeFromData(Data.makeFromBytes(srcBytes))
+            val w = codec.width; val h = codec.height
+            val info = bgraInfo(w, h)
+            val bitmap = SkiaBitmap().apply { allocPixels(info) }
+            codec.readPixels(bitmap)
+            codec.close()
+            val bgra = bitmap.readPixels(info, info.minRowBytes, 0, 0) ?: return null
+            bitmap.close()
+            ArgbImage(bgraToArgb(bgra), w, h)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    actual fun encodeArgbToPng(image: ArgbImage): ByteArray {
+        val w = image.width; val h = image.height
+        val info = bgraInfo(w, h)
+        val bgra = argbToBgra(image.pixels)
+        val skImage = Image.makeRaster(info, bgra, info.minRowBytes)
+        val data = skImage.encodeToData(EncodedImageFormat.PNG)
+            ?: error("PNG encode failed")
+        return data.bytes
+    }
+
     /**
      * Run [stackBlur] on [src]'s pixels and wrap the result back into a
      * Skia [org.jetbrains.skia.Image]. The caller owns the returned Image
@@ -377,39 +475,55 @@ actual object ImageUtils {
      */
     private fun blurSkiaImage(src: org.jetbrains.skia.Image, radius: Int): org.jetbrains.skia.Image {
         val w = src.width; val h = src.height
-        val info = ImageInfo(
-            colorInfo = ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB),
-            width = w,
-            height = h,
-        )
-        val rowBytes = w * 4
+        val info = bgraInfo(w, h)
         val readBitmap = SkiaBitmap()
         check(readBitmap.allocPixels(info)) { "Skia bitmap alloc failed" }
         check(src.readPixels(readBitmap)) { "Skia readPixels failed" }
-        val bytes = readBitmap.readPixels(info, rowBytes, 0, 0)
+        val bytes = readBitmap.readPixels(info, info.minRowBytes, 0, 0)
             ?: throw IllegalStateException("Skia bitmap readPixels returned null")
         readBitmap.close()
-        val pixels = IntArray(w * h)
-        // BGRA_8888 → packed ARGB int (0xAARRGGBB)
-        for (i in 0 until w * h) {
-            val b0 = bytes[i * 4].toInt() and 0xFF
-            val g0 = bytes[i * 4 + 1].toInt() and 0xFF
-            val r0 = bytes[i * 4 + 2].toInt() and 0xFF
-            val a0 = bytes[i * 4 + 3].toInt() and 0xFF
-            pixels[i] = (a0 shl 24) or (r0 shl 16) or (g0 shl 8) or b0
-        }
+        val pixels = bgraToArgb(bytes)
         stackBlur(pixels, w, h, radius)
-        for (i in 0 until w * h) {
-            val px = pixels[i]
-            bytes[i * 4]     = (px and 0xFF).toByte()                 // B
-            bytes[i * 4 + 1] = ((px shr 8) and 0xFF).toByte()         // G
-            bytes[i * 4 + 2] = ((px shr 16) and 0xFF).toByte()        // R
-            bytes[i * 4 + 3] = ((px ushr 24) and 0xFF).toByte()       // A
-        }
-        return org.jetbrains.skia.Image.makeRaster(info, bytes, rowBytes)
+        return org.jetbrains.skia.Image.makeRaster(info, argbToBgra(pixels), info.minRowBytes)
     }
 
     private const val BLUR_RADIUS: Int = 25
+
+    // ── BGRA ↔ ARGB helpers ────────────────────────────────────────────────
+    // Used by decodeToArgb, encodeArgbToPng, and blurSkiaImage to avoid
+    // duplicating the byte-shuffle loop in three places.
+
+    /** Canonical BGRA_8888 UNPREMUL sRGB [ImageInfo] for a given size. */
+    private fun bgraInfo(w: Int, h: Int): ImageInfo = ImageInfo(
+        colorInfo = ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB),
+        width = w,
+        height = h,
+    )
+
+    /** Convert a flat BGRA byte array to a packed 0xAARRGGBB int array. */
+    private fun bgraToArgb(bgra: ByteArray): IntArray {
+        val n = bgra.size / 4
+        return IntArray(n) { i ->
+            val b = bgra[i * 4].toInt() and 0xFF
+            val g = bgra[i * 4 + 1].toInt() and 0xFF
+            val r = bgra[i * 4 + 2].toInt() and 0xFF
+            val a = bgra[i * 4 + 3].toInt() and 0xFF
+            (a shl 24) or (r shl 16) or (g shl 8) or b
+        }
+    }
+
+    /** Convert a packed 0xAARRGGBB int array to a flat BGRA byte array. */
+    private fun argbToBgra(pixels: IntArray): ByteArray {
+        val out = ByteArray(pixels.size * 4)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            out[i * 4]     = (p and 0xFF).toByte()               // B
+            out[i * 4 + 1] = ((p ushr 8) and 0xFF).toByte()      // G
+            out[i * 4 + 2] = ((p ushr 16) and 0xFF).toByte()     // R
+            out[i * 4 + 3] = ((p ushr 24) and 0xFF).toByte()     // A
+        }
+        return out
+    }
 
     actual suspend fun rasterizeSvg(
         svgBytes: ByteArray,

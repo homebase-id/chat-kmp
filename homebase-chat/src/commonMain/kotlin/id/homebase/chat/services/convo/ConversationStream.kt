@@ -2,6 +2,7 @@ package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -24,6 +25,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.share.ShareCacheStorage
+import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +61,7 @@ private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
+    private val ownerSessionRepository: OwnerSessionRepository,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -67,6 +70,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val momentsPreferences: MomentsPreferences,
 ) : ConversationLoader, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
@@ -362,6 +366,17 @@ class ConversationStream(
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
+
+        // The logged-in user isn't in their own contacts, so contactService
+        // resolves their odinId to the raw domain name. Use the owner session's
+        // resolved display name for own messages instead (falls through to the
+        // contact/domain path until the session's site data has loaded, or when
+        // it carries no displayName).
+        if (author == credentialsManager.requireActiveDomain()) {
+            ownerSessionRepository.user.value?.displayName
+                ?.takeIf { it != author.toString() && it.isNotBlank() }
+                ?.let { return it }
+        }
 
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
@@ -1458,7 +1473,7 @@ class ConversationStream(
                 )
             }
             _shareableConversations.value = shareable
-            shareCacheWriter.updateCache(shareable, domain)
+            shareCacheWriter.updateCache(shareable, domain, momentsPreferences.activated.value)
 
             // Pre-cache group avatar images for the iOS share extension
             for (convo in conversations) {

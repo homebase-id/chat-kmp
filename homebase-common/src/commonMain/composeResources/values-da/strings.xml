@@ -40,6 +40,7 @@
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="show_more">Vis mere</string>
+    <string name="chat_message_read_more">Læs mere</string>
     <string name="slide_to_cancel">&lt; Træk for at annullere</string>
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
@@ -67,6 +68,17 @@
     <string name="reactions">Reaktioner</string>
     <string name="label_sent">App sendte: %1$s</string>
     <string name="label_received">Modtaget: %1$s</string>
+    <string name="msg_status_sending">Sender…</string>
+    <string name="msg_status_sent">Sendt: %1$s</string>
+    <string name="msg_status_failed_to_send">Kunne ikke sendes</string>
+    <string name="msg_status_delivery_details_unavailable">Leveringsdetaljer kunne ikke indlæses</string>
+    <string name="action_retry">Prøv igen</string>
+    <string name="msg_retry_media_unavailable">Vedhæftningen er ikke længere tilgængelig — den kan ikke sendes igen</string>
+    <string name="msg_retry_failed">Kunne ikke prøve igen — tjek din forbindelse</string>
+    <string name="msg_still_in_outbox">Sender stadig — næste forsøg %1$s</string>
+    <string name="msg_next_attempt_minutes">om ca. %1$d min.</string>
+    <string name="msg_next_attempt_shortly">om lidt</string>
+    <string name="action_try_now">Prøv nu</string>
     <string name="label_edited">Redigeret: %1$s</string>
     <string name="label_size">Størrelse: %1$s</string>
     <string name="label_message_id">ID: %1$s</string>
@@ -298,6 +310,8 @@
     <string name="chat_next_result">Næste resultat</string>
     <string name="chat_no_gallery_items">Ingen elementer</string>
     <string name="chat_select_more_photos">Vælg flere billeder</string>
+    <string name="chat_gallery_selection_index">%1$d</string>
+    <string name="chat_gallery_send_count">Send (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">Ny samtale</string>
@@ -444,11 +458,35 @@
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
 
     <string name="chat_message_image">Billede</string>
+    <string name="chat_preview_sticker">Klistermærke</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
+
+    <!-- Stickers (gemte klistermærker) -->
+    <string name="chat_sticker_share">Klistermærker</string>
+    <string name="chat_save_sticker">Gem klistermærke</string>
+    <string name="chat_sticker_saved">Klistermærke gemt</string>
+    <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
+    <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
+    <string name="chat_sticker_import">Importér klistermærke</string>
+    <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
+    <string name="chat_sticker_remove">Fjern klistermærke</string>
+    <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
+    <string name="chat_sticker_removed">Klistermærke fjernet</string>
+    <string name="chat_sticker_remove_failed">Kunne ikke fjerne klistermærke</string>
+    <string name="chat_sticker_tray_title">Mine klistermærker</string>
+    <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
+    <string name="cd_import_sticker">Importér et klistermærke</string>
+    <string name="chat_sticker_choose_title">Opret klistermærke</string>
+    <string name="chat_sticker_variant_cutout">Udklip</string>
+    <string name="chat_sticker_variant_original">Original</string>
+    <string name="cd_sticker_variant_cutout">Udklips-version</string>
+    <string name="cd_sticker_variant_original">Original foto-version</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Klistermærker</string>
 
     <!-- Dice attachment -->
     <string name="chat_dice_share">Terninger</string>
@@ -510,6 +548,19 @@
     <string name="chat_message_emoji">Emoji</string>
     <string name="chat_message_location">Placering</string>
 
+    <!-- Markdown-værktøjslinje (tilgængelighedsetiketter) og link-dialog -->
+    <string name="chat_markdown_heading">Overskrift</string>
+    <string name="chat_markdown_blockquote">Citat</string>
+    <string name="chat_markdown_inline_code">Indlejret kode</string>
+    <string name="chat_markdown_code_block">Kodeblok</string>
+    <string name="chat_markdown_link">Indsæt link</string>
+    <string name="chat_markdown_nested_list">Indryk liste</string>
+    <string name="chat_markdown_link_dialog_title">Indsæt link</string>
+    <string name="chat_markdown_link_dialog_text">Tekst</string>
+    <string name="chat_markdown_link_dialog_url">URL</string>
+    <string name="chat_markdown_link_dialog_insert">Indsæt</string>
+    <string name="chat_markdown_link_dialog_cancel">Annullér</string>
+
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>
     <string name="chat_message_report">Rapportér</string>
@@ -534,6 +585,11 @@
 
     <string name="crop">Beskær</string>
     <string name="draw">Tegn</string>
+    <string name="chat_remove_background">Fjern baggrund</string>
+    <string name="chat_remove_background_failed">Kunne ikke fjerne baggrunden</string>
+    <string name="chat_removing_background">Fjerner baggrund…</string>
+    <string name="send_as_sticker">Send som klistermærke</string>
+    <string name="cd_send_as_sticker">Skift send som klistermærke</string>
     <string name="trim_start_handle">Beskær start</string>
     <string name="trim_end_handle">Beskær slut</string>
     <string name="trim_position">Afspilningsposition</string>
@@ -630,5 +686,9 @@
     <string name="feed_error_title">Kunne ikke indlæse feed</string>
     <string name="feed_error_retry">Prøv igen</string>
     <string name="feed_loading">Indlæser feed…</string>
+
+    <!-- Moments push notifications -->
+    <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
+    <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
 
 </resources>

@@ -65,6 +65,15 @@ data class MessageUiModel(
      * was optimistically written but not yet sent */
     val isPendingSend: Boolean,
 
+    /**
+     * True when this message's outbox send was permanently dropped
+     * (`ChatProtocol.isFailedSendTag`). Distinct from a `Failed`
+     * [MessageAppData.deliveryStatus] caused by a server-side per-recipient
+     * failure: this one means the local send never settled. Drives the
+     * "Failed to send" status + retry affordance in Message Info.
+     */
+    val isFailedSend: Boolean = false,
+
     /** Indicates if this was created by the app/system and should be rendered differently **/
     val isStatusMessage: Boolean = false,
 

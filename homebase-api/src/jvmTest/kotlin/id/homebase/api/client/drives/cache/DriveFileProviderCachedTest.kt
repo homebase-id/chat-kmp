@@ -31,6 +31,7 @@ import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -328,6 +329,68 @@ class DriveFileProviderCachedTest {
             CacheStats.UNAVAILABLE, thumb.sizeBytes,
             "broken thumb cache must be marked unavailable via the sentinel"
         )
+    }
+
+    /**
+     * Seed-on-send round-trip: bytes written via [DriveFileProviderCached.cachePayloadBytesEncrypted]
+     * must be served by the read path with NO network — this is what makes a
+     * never-sent (failed) message's media retrievable for retry. The mock
+     * engine throws on any request to prove the network is never touched.
+     */
+    @Test
+    fun `seeded payload bytes are served from cache without touching the network`() = runTest {
+        nextException = IOException("network must not be reached for a seeded payload")
+        val bytes = ByteArray(64) { it.toByte() }
+
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+        val result = provider.getPayloadBytesRaw(driveId, fileId, key)
+
+        assertEquals(0, requestCount, "seeded read must not hit the network")
+        assertEquals(200, result.status)
+        assertContentEquals(bytes, result.bytes)
+        assertEquals("image/jpeg", result.contentType)
+        assertEquals(
+            "true", result.headers["payloadencrypted"],
+            "the encrypted bit must round-trip — decrypt-on-read depends on it"
+        )
+    }
+
+    @Test
+    fun `seeded thumb bytes are served from cache without touching the network`() = runTest {
+        nextException = IOException("network must not be reached for a seeded thumb")
+        val bytes = ByteArray(32) { (it * 3).toByte() }
+
+        provider.cacheThumbBytesEncrypted(driveId, fileId, key, 100, 100, bytes, "image/webp")
+        val result = provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+
+        assertEquals(0, requestCount, "seeded read must not hit the network")
+        assertEquals(200, result.status)
+        assertContentEquals(bytes, result.bytes)
+        assertEquals("true", result.headers["payloadencrypted"])
+    }
+
+    /**
+     * A pre-send 404 lookup (e.g. a bubble probing a payload before the seed
+     * landed) must not shadow the seeded entry: seeding clears the in-memory
+     * notFound marker for the key.
+     */
+    @Test
+    fun `seeding clears a prior 404 marker for the key`() = runTest {
+        nextStatus = HttpStatusCode.NotFound
+        assertFailsWith<NotFoundException> {
+            provider.getPayloadBytesRaw(driveId, fileId, key)
+        }
+        val countAfter404 = requestCount
+
+        val bytes = ByteArray(16) { 0x42 }
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+
+        nextException = IOException("network must not be reached after seeding")
+        val result = provider.getPayloadBytesRaw(driveId, fileId, key)
+
+        assertEquals(countAfter404, requestCount, "read after seeding must not hit the network")
+        assertEquals(200, result.status, "the 404 marker must not shadow the seeded bytes")
+        assertContentEquals(bytes, result.bytes)
     }
 
     /**

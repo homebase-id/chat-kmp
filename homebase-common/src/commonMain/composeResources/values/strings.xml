@@ -44,6 +44,17 @@
     <string name="sent">Sent</string>
     <string name="label_sent">App sent: %1$s</string>
     <string name="label_received">Received: %1$s</string>
+    <string name="msg_status_sending">Sending…</string>
+    <string name="msg_status_sent">Sent: %1$s</string>
+    <string name="msg_status_failed_to_send">Failed to send</string>
+    <string name="msg_status_delivery_details_unavailable">Couldn’t load delivery details</string>
+    <string name="action_retry">Retry</string>
+    <string name="msg_retry_media_unavailable">The attachment is no longer available — it can’t be resent</string>
+    <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
+    <string name="msg_still_in_outbox">Still sending — next attempt %1$s</string>
+    <string name="msg_next_attempt_minutes">in about %1$d min</string>
+    <string name="msg_next_attempt_shortly">shortly</string>
+    <string name="action_try_now">Try now</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
     <string name="label_message_id">ID: %1$s</string>
@@ -70,6 +81,7 @@
     <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
+    <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
@@ -165,6 +177,11 @@
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
+    <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
+    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_generic">Login failed</string>
+    <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
+    <string name="login_continue_button">Continue to sign in</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
@@ -324,6 +341,7 @@
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>
+    <string name="moments_home_subtitle">Photos, clips and notes worth keeping</string>
     <string name="moments_onboarding_title">Moments worth remembering</string>
     <string name="moments_onboarding_body_1">Moments is your private space for the photos, clips and notes you want to keep close.</string>
     <string name="moments_onboarding_body_2">Set it up to mount the Moments drive on this device and start saving memories.</string>
@@ -335,6 +353,8 @@
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
+    <string name="moments_push_new_post">A moment has been shared with you...</string>
+    <string name="moments_push_new_comment">Commented on a moment you\'re in</string>
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
@@ -363,6 +383,7 @@
     <string name="moments_detail_menu_more">More options</string>
     <string name="moments_detail_menu_delete">Delete</string>
     <string name="moments_detail_menu_save_current">Save current</string>
+    <string name="moments_detail_menu_share">Share</string>
     <string name="moments_detail_menu_info">Info</string>
     <string name="moments_detail_menu_add_people">Add people</string>
     <string name="moments_add_people_title">Add people</string>
@@ -479,6 +500,8 @@
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
+    <string name="chat_gallery_selection_index">%1$d</string>
+    <string name="chat_gallery_send_count">Send (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
@@ -643,11 +666,14 @@
     <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_moment">New Moment</string>
+    <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
     <string name="chat_message_deleted">🚫 This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
+    <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
@@ -740,6 +766,29 @@
     <string name="chat_dice_mode_oe_label">1d100OE (open-ended)</string>
     <string name="chat_dice_mode_oe_hint">2d10 read as percentile. 96+ rolls again up, 04- rolls again down.</string>
 
+    <!-- Stickers (saved "My Stickers" tray) -->
+    <string name="chat_sticker_share">Stickers</string>
+    <string name="chat_save_sticker">Save sticker</string>
+    <string name="chat_sticker_saved">Sticker saved</string>
+    <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
+    <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
+    <string name="chat_sticker_import">Import sticker</string>
+    <string name="chat_stickers_empty">No saved stickers yet</string>
+    <string name="chat_sticker_remove">Remove sticker</string>
+    <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
+    <string name="chat_sticker_removed">Sticker removed</string>
+    <string name="chat_sticker_remove_failed">Couldn\'t remove sticker</string>
+    <string name="chat_sticker_tray_title">My Stickers</string>
+    <string name="cd_sticker_thumbnail">Saved sticker</string>
+    <string name="cd_import_sticker">Import a sticker</string>
+    <string name="chat_sticker_choose_title">Create sticker</string>
+    <string name="chat_sticker_variant_cutout">Cut-out</string>
+    <string name="chat_sticker_variant_original">Original</string>
+    <string name="cd_sticker_variant_cutout">Cut-out version</string>
+    <string name="cd_sticker_variant_original">Original photo version</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Stickers</string>
+
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
     <string name="chat_groodle_composer_title">New Groodle</string>
@@ -801,6 +850,20 @@
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
+
+    <!-- Markdown composer toolbar (accessibility labels) and link dialog -->
+    <string name="chat_markdown_heading">Heading</string>
+    <string name="chat_markdown_blockquote">Block quote</string>
+    <string name="chat_markdown_inline_code">Inline code</string>
+    <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_link">Insert link</string>
+    <string name="chat_markdown_nested_list">Indent list</string>
+    <string name="chat_markdown_link_dialog_title">Insert link</string>
+    <string name="chat_markdown_link_dialog_text">Text</string>
+    <string name="chat_markdown_link_dialog_url">URL</string>
+    <string name="chat_markdown_link_dialog_insert">Insert</string>
+    <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
     <string name="chat_reactions_tap_to_remove">Tap to remove</string>
@@ -992,6 +1055,11 @@
     <string name="pending_attachment_many">%1$d attachments</string>
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
+    <string name="chat_remove_background">Remove background</string>
+    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_removing_background">Removing background…</string>
+    <string name="send_as_sticker">Send as sticker</string>
+    <string name="cd_send_as_sticker">Toggle send as sticker</string>
     <string name="trim_start_handle">Trim start</string>
     <string name="trim_end_handle">Trim end</string>
     <string name="trim_position">Playback position</string>
@@ -1090,6 +1158,23 @@
     <!-- Storage warnings -->
     <string name="storage_orphan_coil_title">Orphan Coil disk cache detected</string>
     <string name="storage_orphan_coil_body">%1$s in cache/coil3_disk_cache. Coil's default disk cache should be off — this directory means something is bypassing the Homebase cache layer. Tap \"Clear caches\" to delete it.</string>
+
+    <!-- Contact info / chat overview -->
+    <string name="contact_info_recent_media">Recent media</string>
+    <string name="conversation_chatting_since">Chatting since %1$s</string>
+
+    <!-- Conversation media album + groups in common -->
+    <string name="conversation_media_see_all">See all</string>
+    <string name="conversation_groups_in_common">Groups in common</string>
+    <string name="conversation_media_album_title">Shared media</string>
+    <string name="conversation_media_empty">Nothing here yet</string>
+    <string name="conversation_media_tab_media">Media</string>
+    <string name="conversation_media_tab_files">Files</string>
+    <string name="conversation_media_tab_audio">Audio</string>
+    <string name="conversation_media_tab_dice">Dice rolls</string>
+    <string name="conversation_media_tab_locations">Locations</string>
+    <string name="conversation_media_go_to_message">Go to message</string>
+    <string name="conversation_jump_message_unavailable">That message is no longer available</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>

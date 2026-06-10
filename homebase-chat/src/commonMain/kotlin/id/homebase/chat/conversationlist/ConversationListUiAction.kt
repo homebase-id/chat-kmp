@@ -259,6 +259,16 @@ sealed interface ConversationListUiAction {
         val paintedBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /**
+     * User tapped the "Remove background" tool on an image attachment. The handler
+     * runs on-device segmentation off the main thread and, on success, swaps the
+     * attachment for a transparent-PNG cut-out tagged as a sticker.
+     */
+    data class RemoveBackgroundAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
     /** Inline trim scrubber moved — store the chosen range, or null to clear. */
     data class ApplyTrimResult(
         val conversationId: Uuid,
@@ -267,6 +277,50 @@ sealed interface ConversationListUiAction {
         val trimEndMs: Long?,
     ) : ConversationListUiAction
 
+    /** User toggled Send-as-sticker on an image attachment. */
+    data class ToggleStickerAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
+
+    // region Stickers
+
+    /** Tapping a saved sticker in the tray — re-stage its bytes and send immediately. */
+    data class SendSavedSticker(
+        val conversationId: Uuid,
+        val sticker: id.homebase.chat.services.sticker.SavedSticker,
+    ) : ConversationListUiAction
+
+    /** Long-press "Save sticker" on a received/sent sticker bubble or full-screen viewer. */
+    data class SaveStickerFromMessage(
+        val messageId: Uuid,
+        val payloadKey: String,
+    ) : ConversationListUiAction
+
+    /** Create a sticker from a freshly-picked image, in the given conversation. */
+    data class CreateStickerFromImage(
+        val conversationId: Uuid,
+        val bytes: ByteArray,
+        val contentType: String,
+    ) : ConversationListUiAction {
+        override fun equals(other: Any?) = this === other || (other is CreateStickerFromImage &&
+            conversationId == other.conversationId && contentType == other.contentType && bytes.contentEquals(other.bytes))
+        override fun hashCode() = (conversationId.hashCode() * 31 + contentType.hashCode()) * 31 + bytes.contentHashCode()
+    }
+    data class SelectStickerVariant(val variant: StickerVariant) : ConversationListUiAction
+    data object ConfirmStickerCreate : ConversationListUiAction
+    data object DismissStickerCreate : ConversationListUiAction
+
+    /** Remove a saved sticker from the library (tray long-press). */
+    data class RemoveSticker(
+        val sticker: id.homebase.chat.services.sticker.SavedSticker,
+    ) : ConversationListUiAction
+
+    /** Ensure the optional Stickers drive is mounted (first tray open). */
+    data object EnsureStickerDriveMounted : ConversationListUiAction
+
+    // endregion
 }

@@ -119,4 +119,24 @@ class VaultEntryImageDataTest {
 
         assertNull(entry.imageDataFor(descriptor, loadFullPayload = true))
     }
+
+    @Test
+    fun `threads the descriptor content type as the payload content type`() {
+        // A GIF's preview thumbnail is a tiny WebP, so the only way the loader
+        // can tell it is a thumbless format is the real payload content type
+        // carried here. Without it the grid thumbnail request would chase a
+        // server thumbnail that was never generated for a GIF (NotFound).
+        val entry = vaultEntry()
+        val descriptor = PayloadDescriptor(
+            key = "vlt_pg_00",
+            contentType = "image/gif",
+            iv = Base64.encode(ByteArray(16)),
+        )
+
+        val data = assertNotNull(entry.imageDataFor(descriptor, loadFullPayload = false))
+
+        assertEquals("image/gif", data.payloadContentType)
+        // effectiveContentType prefers the payload type over the (absent) preview.
+        assertEquals("image/gif", data.effectiveContentType)
+    }
 }

@@ -19,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
@@ -178,20 +179,14 @@ private fun MemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        // Render the contact avatar the same way chat does: resolve the
+        // public profile image from the odinId via PublicAvatar (see
+        // ConversationAvatar.kt / PublicAvatar.kt).
+        PublicAvatar(
+            odinId = contact.odinId,
+            initials = contact.avatarInitials,
+            options = AvatarOptions(size = 40.dp),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.displayName,

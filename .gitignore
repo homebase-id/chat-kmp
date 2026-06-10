@@ -41,3 +41,6 @@ replay_pid*.log
 # rapid version swaps during ffmpeg-kit upgrades; they don't belong
 # in the repo (124 MB of binary cruft if committed).
 gradle/local-repo/id/homebase/libs/ffmpeg-kit/1.0/ffmpeg-kit-1.0.aar.*.bak
+
+# Brainstorming visual-companion mockups (local only)
+.superpowers/

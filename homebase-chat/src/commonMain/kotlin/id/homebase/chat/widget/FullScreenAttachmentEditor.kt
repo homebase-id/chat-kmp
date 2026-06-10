@@ -25,17 +25,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -55,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -63,6 +69,7 @@ import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.services.image.isBackgroundRemovalSupported
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
@@ -72,10 +79,13 @@ import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_image_attachment
 import id.homebase.resources.cd_pause_video
 import id.homebase.resources.cd_play_video
+import id.homebase.resources.cd_send_as_sticker
 import id.homebase.resources.cd_send_to
 import id.homebase.resources.cd_video_thumbnail
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
+import id.homebase.resources.chat_remove_background
+import id.homebase.resources.chat_removing_background
 import id.homebase.resources.crop
 import id.homebase.resources.draw
 import id.homebase.resources.menu_back
@@ -103,7 +113,9 @@ fun FullScreenAttachmentEditor(
     onDismiss: () -> Unit,
     onCropImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
     onDrawImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
+    onRemoveBackground: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
     onTrimChange: (conversationId: Uuid, attachmentId: Uuid, startMs: Long?, endMs: Long?) -> Unit = { _, _, _, _ -> },
+    onToggleSticker: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -495,6 +507,10 @@ fun FullScreenAttachmentEditor(
         // attachment — crop (image only), download. Future tools (filters,
         // markup) would join this row.
         val currentAttachment = data.attachments.getOrNull(pagerState.currentPage)
+        // Capability probe is a cheap, constant per-platform check (GMS present on
+        // Android, true on iOS, false on Desktop/Web); hold it so the tool button
+        // shows no dead control where removeBackground always returns null.
+        val backgroundRemovalSupported = remember { isBackgroundRemovalSupported() }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -525,6 +541,57 @@ fun FullScreenAttachmentEditor(
                     Icon(
                         imageVector = Icons.Default.Draw,
                         contentDescription = stringResource(MR.string.draw),
+                    )
+                }
+                // Background remover — hidden on platforms where the on-device
+                // segmenter is unavailable (Desktop/Web) so there's no dead control.
+                if (backgroundRemovalSupported) {
+                    // Per-attachment so the spinner follows this image across pager swipes.
+                    val isRemovingBackground =
+                        currentAttachment.attachmentId in data.processingAttachmentIds
+                    IconButton(
+                        onClick = { onRemoveBackground(data.conversationId, currentAttachment.attachmentId) },
+                        enabled = !isRemovingBackground,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
+                    ) {
+                        if (isRemovingBackground) {
+                            // First call can take ~1s (model download / warm-up); a spinner
+                            // keeps the wand from reading as a dead button.
+                            val removingDescription =
+                                stringResource(MR.string.chat_removing_background)
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .semantics { contentDescription = removingDescription },
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AutoFixHigh,
+                                contentDescription = stringResource(MR.string.chat_remove_background),
+                            )
+                        }
+                    }
+                }
+                // Send-as-sticker: render this image as a bare transparent cut-out
+                // (no rounded-card bubble) on the receiver. Always available — the
+                // source-of-truth is the per-image forceSticker flag on the model, so
+                // the checked state survives page swipes in the pager.
+                val isSticker = when (currentAttachment) {
+                    is AttachmentPendingFile.FileImage -> currentAttachment.forceSticker
+                    is AttachmentPendingFile.Gallery -> currentAttachment.forceSticker
+                }
+                FilledIconToggleButton(
+                    checked = isSticker,
+                    onCheckedChange = {
+                        onToggleSticker(data.conversationId, currentAttachment.attachmentId)
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = stringResource(MR.string.cd_send_as_sticker),
                     )
                 }
             }

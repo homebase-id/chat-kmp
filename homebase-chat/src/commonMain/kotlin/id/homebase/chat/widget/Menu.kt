@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
@@ -79,9 +80,11 @@ import id.homebase.resources.chat_dice_battle_action
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
+import id.homebase.resources.chat_save_sticker
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
+import id.homebase.resources.conversation_media_go_to_message
 import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.search
@@ -601,18 +604,43 @@ fun FullScreenMediaMenu(
     dismissMenu: () -> Unit,
     onSave: () -> Unit,
     onDelete: (() -> Unit)? = null,
+    onNavigateToMessage: (() -> Unit)? = null,
+    // Only set for payloads whose descriptor is ImageFile(isSticker = true). When
+    // present, adds a "Save sticker" item that copies the sticker into the user's
+    // saved-stickers library. Gated strictly to real stickers so it never appears on
+    // ordinary photos (which would create a non-transparent "sticker").
+    onSaveSticker: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
+        if (onNavigateToMessage != null) {
+            DropdownMenuItem(
+                onClick = onNavigateToMessage,
+                text = { Text(text = stringResource(MR.string.conversation_media_go_to_message)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = null,
+                    )
+                })
+        }
         DropdownMenuItem(
             onClick = onSave,
             text = { Text(text = stringResource(MR.string.save)) },
             leadingIcon = {
                 Icon(imageVector = Icons.Filled.Download, contentDescription = null)
             })
+        if (onSaveSticker != null) {
+            DropdownMenuItem(
+                onClick = onSaveSticker,
+                text = { Text(text = stringResource(MR.string.chat_save_sticker)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
         if (onDelete != null) {
             DropdownMenuItem(
                 onClick = onDelete,

@@ -57,3 +57,65 @@ class MetalLayerNudger: TextRenderingNudger {
         }
     }
 }
+
+// MARK: - Blank-text diagnostics marker (device shake)
+
+extension Notification.Name {
+    /// Posted by `UIWindow.motionEnded` below when the user shakes the device.
+    static let deviceDidShake = Notification.Name("id.homebase.feed.deviceDidShake")
+}
+
+extension UIWindow {
+    /// Canonical SwiftUI shake-detection hook: UIKit delivers the shake motion up the responder
+    /// chain to the key window, so catching it here works app-wide without stealing first-responder
+    /// status from Compose text fields. We only post a Notification; ContentView observes it.
+    open override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        if motion == .motionShake {
+            NotificationCenter.default.post(name: .deviceDidShake, object: nil)
+        }
+    }
+}
+
+/// Blank-text recovery EXPERIMENT, fired by a device shake. When the bug strikes every label is
+/// unreadable, so the user can't tap an on-screen control — a physical shake works regardless.
+///
+/// We read the (read-only) CAMetalLayer state from the view hierarchy and hand it to Kotlin
+/// `onBlankTextShake`, which logs the font-cache state to homebase.log BEFORE, attempts a recovery
+/// (purge Skia caches + force a full Compose re-composition so glyphs re-rasterize), and logs the
+/// font-cache state again ~1.5s later. The before/after counts tell us whether the recovery worked.
+/// Passing the CAMetalLayer fields means the GPU-surface state lands in the shareable homebase.log
+/// too (Kotlin can't read Compose's Metal view).
+func captureAndRecoverOnShake() {
+    os_log("BLANK-TEXT shake — capturing state + attempting recovery", log: textRenderLog, type: .error)
+
+    var count = 0
+    var devicePresent = false
+    var drawableW = 0.0
+    var drawableH = 0.0
+    if let view = MainViewControllerRef.shared.instance?.view {
+        view.layoutIfNeeded()
+        collectMetalState(in: view, count: &count, devicePresent: &devicePresent, drawableW: &drawableW, drawableH: &drawableH)
+    } else {
+        os_log("shake: MainViewControllerRef.instance is nil", log: textRenderLog, type: .fault)
+    }
+
+    IosGpuTextDiagnosticsKt.onBlankTextShake(
+        metalLayerCount: Int32(count),
+        metalDevicePresent: devicePresent,
+        drawableWidth: drawableW,
+        drawableHeight: drawableH
+    )
+}
+
+/// Read-only walk: collect CAMetalLayer state without touching it (no `setNeedsDisplay`).
+private func collectMetalState(in view: UIView, count: inout Int, devicePresent: inout Bool, drawableW: inout Double, drawableH: inout Double) {
+    if let metalLayer = view.layer as? CAMetalLayer {
+        count += 1
+        if metalLayer.device != nil { devicePresent = true }
+        drawableW = Double(metalLayer.drawableSize.width)
+        drawableH = Double(metalLayer.drawableSize.height)
+    }
+    for subview in view.subviews {
+        collectMetalState(in: subview, count: &count, devicePresent: &devicePresent, drawableW: &drawableW, drawableH: &drawableH)
+    }
+}

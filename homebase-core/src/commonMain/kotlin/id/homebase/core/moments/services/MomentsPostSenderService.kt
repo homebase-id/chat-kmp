@@ -37,6 +37,11 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.notifications.MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.resources.MR
+import id.homebase.resources.moments_push_new_comment
+import id.homebase.resources.moments_push_new_post
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -345,11 +350,17 @@ class MomentsPostSenderService(
                     sendContents = SendContents.All,
                     useAppNotification = !isLocalOnly,
                     appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                        appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
+                        // Must stay on the chat appId — this IS the chat app and the
+                        // backend rejects a push whose appId isn't the registered app.
+                        // typeId == tagId == momentId marks this as a moment *post* (vs a
+                        // comment, which uses MOMENT_COMMENT_TAG_SENTINEL for tagId); a
+                        // chat message always has distinct conversationId/messageId. See
+                        // NotificationService.resolveMomentsTap.
+                        appId = ChatProtocol.ChatAppId.toString(),
                         typeId = momentUniqueId.toString(),
                         tagId = momentUniqueId.toString(),
                         silent = false,
-                        unEncryptedMessage = "New moment posted",
+                        unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_post),
                     ),
                 ),
                 payloads = encrypted.payloads,
@@ -977,13 +988,19 @@ class MomentsPostSenderService(
                 sendContents = SendContents.All,
                 useAppNotification = !isLocalOnly,
                 appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                    appId = ChatProtocol.ChatAppId.toString(), // MomentsProtocol.MomentsAppId.toString(),
-                    typeId = commentUniqueId.toString(),
-                    // tagId = momentId so the OS coalesces a noisy comment
-                    // thread under one notification group per moment.
-                    tagId = momentId.toString(),
+                    // Must stay on the chat appId — the backend rejects a push whose
+                    // appId isn't the registered (chat) app. typeId = momentId so the
+                    // tap opens the commented-on moment and comments coalesce per moment
+                    // (one notification per moment via typeId.hashCode()); tagId is the
+                    // well-known comment sentinel so the recipient's tap router knows
+                    // this is a comment (vs a post, where tagId == typeId) and opens the
+                    // moment with the comment thread expanded. A chat message's tagId is
+                    // a random messageId, so it can't collide with the sentinel.
+                    appId = ChatProtocol.ChatAppId.toString(),
+                    typeId = momentId.toString(),
+                    tagId = MOMENT_COMMENT_TAG_SENTINEL,
                     silent = false,
-                    unEncryptedMessage = "New comment",
+                    unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_comment),
                 ),
             ),
             payloads = encrypted.payloads,

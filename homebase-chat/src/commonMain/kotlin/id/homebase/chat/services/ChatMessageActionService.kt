@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -271,6 +272,26 @@ class ChatMessageActionService(
         deleteForEveryone: Boolean
     ) {
         val msg = messageLookup.getMessage(messageId) ?: return
+
+        // What's queued for this message decides whether the server even knows
+        // about it. A pending *create* (UploadNewFile) means it never reached the
+        // server; a pending *edit* (UpdateFile) means it did. We can't use
+        // msg.isPendingSend for this — an edit re-stamps isPendingSendTag, so a
+        // sent-then-edited message looks "pending" yet still needs a server delete.
+        val pendingUploadType =
+            dbm.outbox.selectByDriveAndUnique(chatDrive, messageId)?.uploadType
+
+        if (pendingUploadType == DriveOutboxUploader.UploadNewFile) {
+            // Never reached the server: cancel the queued send and drop it
+            // locally. No server delete — recipients never received it, and there
+            // is no remote file to remove. (Narrow race: if the send confirms
+            // between the lookup and here, removeOptimisticFile self-guards on
+            // isPendingSendTag and no-ops; a second delete then takes the path
+            // below.)
+            optimisticWriter.removeOptimisticFile(chatDrive, messageId)
+            return
+        }
+
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         // msg.fileId is already populated by messageLookup.getMessage above —
         // an extra requireFileId(messageId) here would issue a second
@@ -286,6 +307,11 @@ class ChatMessageActionService(
         } else {
             null
         }
+
+        // Cancel any queued *edit* before deleting — its content is moot, and
+        // leaving it would race the delete against the server. No-op when nothing
+        // is queued (a normally-sent message).
+        dbm.outbox.deleteBy(chatDrive, messageId)
 
         val original = optimisticWriter.writeDelete(chatDrive, messageId)
 

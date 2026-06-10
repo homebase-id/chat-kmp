@@ -21,6 +21,9 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.conversationmedia.ConversationMediaViewModel
+import id.homebase.chat.services.sticker.StickerService
+import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
@@ -74,6 +77,7 @@ import kotlin.uuid.Uuid
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
+import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentActionService
@@ -85,7 +89,9 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
-import id.homebase.core.moments.services.MomentsRecipientMruStore
+import id.homebase.api.sync.database.OutboxSync
+import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -132,18 +138,22 @@ val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
+val StickerPermissionQualifier = named("stickerPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
-    // MRU store mirrors DriveRegistry's wiring — narrow lambda deps for the
-    // write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
-    // for uploadFile/updateFileByUniqueId) so tests can swap in fakes.
+    // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
+    // the write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
+    // for the MRU lane; OptimisticWriter + OutboxSync for the watermark lane) so
+    // tests can swap in fakes.
     single {
         val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
         val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
-        MomentsRecipientMruStore(
+        val optimisticWriter = get<OptimisticWriter>()
+        val outboxSync = get<OutboxSync>()
+        MomentsUserStateStore(
             credentialsManager = get(),
             databaseManager = get(),
             getFileHeaderByUid = { driveId, uniqueId ->
@@ -151,6 +161,14 @@ val appModule = module {
             },
             uploadFile = { request -> uploader.uploadFile(request) },
             updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
+            stampLocalAppData = { uniqueId, content ->
+                optimisticWriter.stampLocalAppDataContent(
+                    driveId = momentsLabeledDrive.drive.alias,
+                    uniqueId = uniqueId,
+                    content = content,
+                )
+            },
+            enqueueOutbox = { request -> outboxSync.tryEnqueue(request) },
             eventBus = get(),
             scope = get(),
         )
@@ -282,6 +300,8 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             driveRegistry = get(),
+            securityContextProvider = get(),
+            peerWebSocketManager = get(),
             // Start headless only where the OS can cold-wake us in the background
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
@@ -296,7 +316,7 @@ val appModule = module {
                 // MRU store before lookup: lookup's combine() reads
                 // mruStore.stableKeys, and started-first means the cold-load
                 // emits before the lookup builds its first list.
-                get<MomentsRecipientMruStore>().start()
+                get<MomentsUserStateStore>().start()
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
@@ -329,6 +349,8 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Hydrate the saved-stickers tray for the new identity (mirror Vault).
+                get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
             }
         )
     }
@@ -428,6 +450,12 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+
+    // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
+    // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
+    // is NOT in mandatorySyncDrives.
+    singleOf(::StickerStream)
+    singleOf(::StickerService)
 
     single<DefragSource> {
         // Probe for the Defragmenter's classifier: detects whether a
@@ -529,6 +557,9 @@ val appModule = module {
             cropResultBus = get(),
             drawResultBus = get(),
             postCreateIntroductionPreflightBus = get(),
+            stickerStream = get(),
+            stickerService = get(),
+            stickerPermissionViewModel = get(StickerPermissionQualifier),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -538,12 +569,26 @@ val appModule = module {
     viewModelOf(::MessageInfoViewModel)
     viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
+    viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
     viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModel(MomentsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getMomentsPermissionExtensionConfig()) }
+    // Stickers permission VM — autoCheck=false so the missing-permissions dialog only
+    // surfaces once the user actively enters the sticker feature (opens the tray or
+    // saves/imports a sticker), mirroring Vault's lazy extend-permissions gate rather
+    // than eagerly prompting on app launch.
+    viewModel(StickerPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getStickerPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::MomentComposeViewModel)

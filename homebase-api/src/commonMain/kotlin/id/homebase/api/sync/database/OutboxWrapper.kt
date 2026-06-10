@@ -44,6 +44,13 @@ class OutboxWrapper(
             delegate.selectCheckedOut(checkOutStamp).executeAsOneOrNull()
         }
 
+    /** The single pending row for (driveId, uniqueId), or null if nothing is
+     *  queued. Outbox is UNIQUE(driveId, uniqueId), so there is at most one. */
+    suspend fun selectByDriveAndUnique(driveId: Uuid, uniqueId: Uuid): Outbox? =
+        databaseManager.readValue("outbox.selectByDriveAndUnique") {
+            delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
+        }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 
@@ -77,8 +84,26 @@ class OutboxWrapper(
         checkOutStamp: Long,
         nextRunTime: Long,
     ): Long {
+        // Named args are load-bearing: the generated query's parameter order is
+        // (nextRunTime, checkOutStamp) — SQL appearance order, both Long. The
+        // original positional call had them SWAPPED, so the WHERE never matched:
+        // failed rows stayed checked out (zombies) until the next app start's
+        // clearCheckedOut, and in-session retry/backoff never actually ran.
         return databaseManager.withWriteValue {
-            delegate.checkInFailed(checkOutStamp, nextRunTime).value
+            delegate.checkInFailed(nextRunTime = nextRunTime, checkOutStamp = checkOutStamp).value
+        }
+    }
+
+    /** Reset a queued row's next-attempt time (ms epoch). Returns the number of
+     *  rows changed: 0 when the row is missing or currently checked out — an
+     *  in-flight row's nextRunTime is owned by [checkInFailed]. */
+    suspend fun setNextRunTime(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        nextRunTime: Long,
+    ): Long {
+        return databaseManager.withWriteValue {
+            delegate.setNextRunTime(nextRunTime = nextRunTime, driveId = driveId, uniqueId = uniqueId).value
         }
     }
 

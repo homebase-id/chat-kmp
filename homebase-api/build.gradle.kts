@@ -164,6 +164,7 @@ kotlin {
         "id.homebase.api.sync.database.DriveTagIndexTest",
         "id.homebase.api.sync.database.FileStateFilterTest",
         "id.homebase.api.sync.database.MainIndexMetaTest",
+        "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
         "id.homebase.api.sync.database.OutboxTest",
         "id.homebase.api.sync.DriveSyncManagerTest",
@@ -216,6 +217,10 @@ kotlin {
             implementation(libs.kotlinx.immutableCollections)
             implementation(libs.coil3)
             implementation(libs.okio)
+            // CommonMark AST parser for markdownToPlainPreview (MarkdownPlain.kt).
+            // Same engine the chat renderer (mikepenz) and editor (richeditor)
+            // use, so the preview strip grammar mirrors the rendered output.
+            implementation(libs.jetbrains.markdown)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

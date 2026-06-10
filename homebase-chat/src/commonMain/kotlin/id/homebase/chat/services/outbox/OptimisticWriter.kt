@@ -60,6 +60,12 @@ class OptimisticWriter(
             reactionToggleLocks.getOrPut(driveId to uniqueId) { Mutex() }
         }
 
+    /**
+     * @param fileId the optimistic (client-minted) fileId for the local record.
+     *   Returned so the send path can key per-file side effects (e.g. seeding
+     *   the payload cache) to the same id the local record carries until the
+     *   server-assigned file syncs back.
+     */
     suspend fun writeNewFile(
         driveId: Uuid,
         keyHeader: KeyHeader,
@@ -67,14 +73,15 @@ class OptimisticWriter(
         originalRecipientCount: Int,
         fileSystemType: FileSystemType,
         payloadDescriptors: List<PayloadDescriptor>? = null,
-    ) {
+        fileId: Uuid = Uuid.random(),
+    ): Uuid {
 
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
         val created = UnixTimeUtc.now()
 
         val file = HomebaseFile(
-            fileId = Uuid.random(),
+            fileId = fileId,
             driveId = driveId,
             serverFileIsEncrypted = unecryptedMetadata.isEncrypted,
             fileState = FileState.Active,
@@ -137,6 +144,8 @@ class OptimisticWriter(
             Logger.e(throwable = e, tag = TAG) { "Optimistic insert failed for uniqueId=${unecryptedMetadata.appData.uniqueId} groupId=${unecryptedMetadata.appData.groupId}" }
             throw e
         }
+
+        return fileId
     }
 
     /**
@@ -422,8 +431,16 @@ class OptimisticWriter(
         }
     }
 
-    /** Removes an optimistic file from the local DB. Call when the send fails so the
-     *  pending message is not left stranded in the conversation list. */
+    /**
+     * Removes a still-pending optimistic file from the local DB **and cancels its
+     * queued outbox send**. Call when a pending message must not ship — a failed
+     * send rollback, or the user deleting a message before it left the device.
+     *
+     * The local file and its outbox row share the same uniqueId; dropping the
+     * file without cancelling the row would still upload the message we just
+     * removed (the "deleted message still gets sent" bug). Only acts while the
+     * file is still pending (`isPendingSendTag`) — a no-op once the send confirms.
+     */
     suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid) {
         val credentials = credentialsManager.requireActiveCredentials()
 
@@ -438,6 +455,11 @@ class OptimisticWriter(
         if (!isPending) return
 
         try {
+            // Cancel the queued send FIRST. The create/edit row is keyed by this
+            // uniqueId; leaving it would re-upload the file we're about to drop.
+            // Ordered before the local delete so a failure can't leave a message
+            // that's gone locally but still queued to send.
+            dbm.outbox.deleteBy(driveId, uniqueId)
             fileProcessor.deleteEntryDriveMainIndex(
                 identityId = credentials.getIdentityId(),
                 driveId = driveId,
@@ -652,6 +674,35 @@ class OptimisticWriter(
             )
         }
 
+    /**
+     * Generic sibling of [stampConversationLastReadTime] for non-chat callers
+     * (e.g. the moments feed "last viewed" watermark, which has no
+     * [ConversationLocalAppDataJson] of its own): optimistically writes the
+     * already-serialized [content] into [uniqueId]'s `localAppData.content`,
+     * emits a `BatchReceived` so live readers converge, and returns the outbox
+     * request that pushes it to the server. Returns null when the target file
+     * isn't present locally (same contract as the chat path — the caller
+     * leaves its state pending and retries). The caller enqueues the returned
+     * request via `OutboxSync`.
+     */
+    suspend fun stampLocalAppDataContent(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        content: String,
+        opName: String = "stampLocalAppDataContent",
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: run {
+            Logger.d(tag = TAG) {
+                "OptimisticWriter.$opName: uniqueId=$uniqueId NOT FOUND in DriveMainIndex — skipping"
+            }
+            return null
+        }
+        return pushLocalAppDataContent(existingFile, driveId, content, opName)
+    }
+
     @OptIn(ExperimentalEncodingApi::class)
     private suspend fun stampConversationLocalAppData(
         driveId: Uuid,
@@ -678,6 +729,25 @@ class OptimisticWriter(
         }
         val updatedLocalAppData = mutate(existing ?: ConversationLocalAppDataJson())
         val content = OdinSystemSerializer.serialize(updatedLocalAppData)
+
+        return pushLocalAppDataContent(existingFile, driveId, content, opName)
+    }
+
+    /**
+     * Shared tail of the localAppData-content write path: stamp [content] onto
+     * [existingFile]'s `localAppData`, optimistically upsert + emit, and return
+     * the (pre-encrypted) outbox request. Extracted verbatim from
+     * [stampConversationLocalAppData] so chat and non-chat callers share one
+     * encryption/upsert contract.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun pushLocalAppDataContent(
+        existingFile: HomebaseFile,
+        driveId: Uuid,
+        content: String,
+        opName: String,
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
         val updatedFile = existingFile.copy(
@@ -721,7 +791,7 @@ class OptimisticWriter(
                 )
             )
             Logger.d(tag = "MarkAsRead") {
-                "OptimisticWriter.$opName: optimistic local upsert ok convo=$conversationId fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
+                "OptimisticWriter.$opName: optimistic local upsert ok fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
             }
             UpdateLocalAppdataContentOutboxRequest(
                 driveId = driveId,
@@ -731,8 +801,8 @@ class OptimisticWriter(
                 iv = ivBase64
             )
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "$opName failed for conversationId=$conversationId" }
-            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED convo=$conversationId" }
+            Logger.e(throwable = e, tag = TAG) { "$opName failed for fileId=${existingFile.fileId}" }
+            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED fileId=${existingFile.fileId}" }
             null
         }
     }

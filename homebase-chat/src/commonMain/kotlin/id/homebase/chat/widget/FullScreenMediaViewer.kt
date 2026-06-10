@@ -51,10 +51,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
@@ -66,7 +64,6 @@ import id.homebase.core.media.MediaRailItem
 import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
-import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
@@ -79,7 +76,7 @@ import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalRichTextApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
@@ -87,8 +84,12 @@ fun FullScreenMediaViewer(
     isDownloading: Boolean = false,
     onShare: (messageId: Uuid, payloadKey: String) -> Unit,
     onSave: (messageId: Uuid, payloadKey: String) -> Unit,
+    // Save a viewed sticker into the user's library. Default no-op for non-chat hosts
+    // (Moments) that have no sticker library; the chat pane passes a real handler.
+    onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
     onDelete: (messageId: Uuid) -> Unit,
     onDismiss: () -> Unit,
+    onNavigateToMessage: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -108,12 +109,12 @@ fun FullScreenMediaViewer(
 
     val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
 
-    // See ConversationItem.kt ConversationMessagePreview for why remember is required here
-    val textState = remember(data.content) {
-        RichTextState().applyDefaultStyling().also { it.setMarkdown(data.content) }
-    }
-
     BoxWithConstraints(
+        // Deliberate divergence from the chat bubble: the bubble renders stickers
+        // transparently (no backdrop), but the full-screen viewer keeps a solid
+        // surface backdrop for all media — including stickers — so a maximised
+        // cut-out image sits on a clean, predictable surface rather than whatever
+        // is behind the viewer.
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
@@ -248,6 +249,13 @@ fun FullScreenMediaViewer(
                                 contentDescription = stringResource(MR.string.chat_options)
                             )
                         }
+                        // Offer "Save sticker" only when the current payload is a real
+                        // transparent sticker (descriptor ImageFile(isSticker = true)),
+                        // never on an ordinary photo.
+                        val currentIsSticker = data.payloads
+                            .firstOrNull { it.key == currentPayloadKey }
+                            ?.descriptorInfo()
+                            ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
                         FullScreenMediaMenu(
                             showMenu = showMenu,
                             dismissMenu = { showMenu = false },
@@ -255,10 +263,22 @@ fun FullScreenMediaViewer(
                                 showMenu = false
                                 onSave(data.messageId, currentPayloadKey)
                             },
+                            onSaveSticker = if (currentIsSticker) {
+                                {
+                                    showMenu = false
+                                    onSaveSticker(data.messageId, currentPayloadKey)
+                                }
+                            } else null,
                             onDelete = {
                                 showMenu = false
                                 onDelete(data.messageId)
-                            }
+                            },
+                            onNavigateToMessage = onNavigateToMessage?.let {
+                                {
+                                    showMenu = false
+                                    it()
+                                }
+                            },
                         )
                     }
                 },
@@ -284,9 +304,10 @@ fun FullScreenMediaViewer(
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {
-                    RichText(
-                        state = textState,
+                    ChatMarkdown(
+                        content = data.content,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = maxCaptionHeight)
@@ -329,6 +350,10 @@ fun FullScreenMediaViewer(
                                 payloadKey = payload.key,
                                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                                 lastModified = payload.lastModified,
+                                // Real payload type so a GIF rail thumbnail loads
+                                // the animated original instead of a never-generated
+                                // server thumbnail (its preview thumb is WebP).
+                                payloadContentType = payload.contentType,
                                 keyHeader = KeyHeader(
                                     iv = railIv,
                                     aesKey = data.keyHeader.aesKey

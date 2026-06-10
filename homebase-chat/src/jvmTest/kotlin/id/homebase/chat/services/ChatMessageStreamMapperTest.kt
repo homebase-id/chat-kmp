@@ -186,6 +186,7 @@ class ChatMessageStreamMapperTest {
 
         assertNotNull(result)
         assertTrue(result.isPendingSend, "pending tag → spinner")
+        assertEquals(false, result.isFailedSend, "pending is not a permanent failure")
     }
 
     @Test
@@ -199,6 +200,7 @@ class ChatMessageStreamMapperTest {
 
         assertNotNull(result)
         assertEquals(false, result.isPendingSend, "failed send must not show the spinner")
+        assertTrue(result.isFailedSend, "failed tag → isFailedSend drives the Message Info status row")
         assertEquals(
             ChatDeliveryStatus.Failed.value,
             result.messageAppData.deliveryStatus,
@@ -220,7 +222,22 @@ class ChatMessageStreamMapperTest {
 
         assertNotNull(result)
         assertEquals(false, result.isPendingSend, "failed wins over pending")
+        assertTrue(result.isFailedSend, "failed tag present → isFailedSend true even alongside pending")
         assertEquals(ChatDeliveryStatus.Failed.value, result.messageAppData.deliveryStatus)
+    }
+
+    @Test
+    fun mapToMessageData_noSendTags_neitherPendingNorFailed() = runTest {
+        // A normally-synced message (no local send tags) is neither pending nor
+        // a failed send — Message Info shows a plain "Sent" status, no retry.
+        val cm = createTestCredentialsManager()
+        val header = buildChatMessageHeader(localAppDataJson = """{"tags": []}""")
+
+        val result = mapToMessageData(header, cm)
+
+        assertNotNull(result)
+        assertEquals(false, result.isPendingSend)
+        assertEquals(false, result.isFailedSend)
     }
 
     // endregion

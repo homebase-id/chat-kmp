@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -42,6 +44,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -65,6 +69,7 @@ import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
@@ -98,6 +103,7 @@ import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -164,6 +170,8 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val momentsFeedService = koinInject<MomentsFeedService>()
+    val momentsUnseenCount by momentsFeedService.unseenCount.collectAsStateWithLifecycle()
     val momentsViewModel: MomentsViewModel = koinViewModel()
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
@@ -333,6 +341,71 @@ fun AppNavHost(
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
+
+                is NotificationNavigationEvent.OpenMoment -> {
+                    val momentId = Uuid.parseOrNull(event.momentId)
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMoment received: id=$momentId openComments=${event.openComments} " +
+                                "activated=${momentsPreferences.activated.value}"
+                    }
+                    // Only route when Moments is activated (receiving a moment push
+                    // implies the moments drive is subscribed, so this normally holds).
+                    if (momentId != null && momentsPreferences.activated.value) {
+                        // Cold-start safety: a tap can arrive while the NavHost is
+                        // still on Route.AppLoading (startDestination). AppLoadingScreen
+                        // finishes by navigating to ChatList with
+                        // popUpTo(AppLoading, inclusive = true) — so anything we push
+                        // *during* loading (Moments/MomentDetail) gets popped off with
+                        // AppLoading and the user lands on ChatList. Gate on ChatList
+                        // being present (returns immediately when warm; on cold start
+                        // resolves the instant AppLoading→ChatList completes, by which
+                        // point AppLoading is already gone) before pushing. Mirrors the
+                        // OpenConversation gate above.
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        // Push Moments first so back-press from the reels detail lands
+                        // on the feed, then open the detail pager on the tapped moment.
+                        // The pager resolves the moment from MomentsFeedService's live
+                        // feed, which is already syncing post-auth (and waits for it).
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(
+                            Route.MomentDetail(
+                                momentId = momentId.toString(),
+                                openComments = event.openComments,
+                            )
+                        )
+                    }
+                    TextRenderingHelper.nudge()
+                }
+
+                is NotificationNavigationEvent.OpenMomentCompose -> {
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenMomentCompose received: activated=${momentsPreferences.activated.value}"
+                    }
+                    // The share flow seeded MomentCreateFlowState before launching
+                    // us; MomentComposeViewModel reads that draft on init. Gate on
+                    // Moments being activated (the share picker only offers "New
+                    // Moment" when it is) and mirror the OpenMoment back-stack
+                    // handling: push Moments first so back-press from the composer
+                    // lands on the feed, then open the composer.
+                    if (momentsPreferences.activated.value) {
+                        navController.currentBackStack.firstContaining {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                        navController.navigate(Route.Moments) {
+                            popUpTo(Route.ChatList) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        navController.navigate(Route.MomentCompose)
+                    }
+                    TextRenderingHelper.nudge()
+                }
             }
         }
     }
@@ -370,12 +443,19 @@ fun AppNavHost(
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
                             icon = {
-                                Icon(
-                                    topLevelRoute.icon,
-                                    contentDescription = stringResource(topLevelRoute.labelRes)
+                                TopLevelNavIcon(
+                                    topLevelRoute = topLevelRoute,
+                                    showMomentsBadge = momentsUnseenCount > 0,
                                 )
                             },
-                            label = { Text(stringResource(topLevelRoute.labelRes)) },
+                            label = {
+                                Text(
+                                    stringResource(topLevelRoute.labelRes),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                )
+                            },
                             selected = currentDestination?.hasRoute(
                                 topLevelRoute.route::class
                             ) == true,
@@ -406,9 +486,9 @@ fun AppNavHost(
                         topLevelRoutes.forEach { topLevelRoute ->
                             NavigationRailItem(
                                 icon = {
-                                    Icon(
-                                        topLevelRoute.icon,
-                                        contentDescription = stringResource(topLevelRoute.labelRes)
+                                    TopLevelNavIcon(
+                                        topLevelRoute = topLevelRoute,
+                                        showMomentsBadge = momentsUnseenCount > 0,
                                     )
                                 },
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
@@ -590,6 +670,7 @@ fun AppNavHost(
                                 HomeScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
+                                    onNavigateToMoments = openMoments,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
@@ -620,6 +701,9 @@ fun AppNavHost(
                                 val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow(
                                     "pendingScrollToBottom", false
                                 ).collectAsStateWithLifecycle()
+                                val pendingScrollToMessageId by backStackEntry.savedStateHandle.getStateFlow<String?>(
+                                    "pendingScrollToMessageId", null
+                                ).collectAsStateWithLifecycle()
                                 LaunchedEffect(pendingConversationId) {
                                     pendingConversationId?.let { idStr ->
                                         Uuid.parseOrNull(idStr)?.let {
@@ -627,12 +711,16 @@ fun AppNavHost(
                                                 "ChatList observed pendingConversationId=$idStr, calling selectConversation"
                                             }
                                             conversationListViewModel.selectConversation(
-                                                it, scrollToBottom = pendingScrollToBottom
+                                                it,
+                                                messageId = pendingScrollToMessageId?.let { m -> Uuid.parseOrNull(m) },
+                                                scrollToBottom = pendingScrollToBottom,
                                             )
                                             backStackEntry.savedStateHandle["pendingConversationId"] =
                                                 null
                                             backStackEntry.savedStateHandle["pendingScrollToBottom"] =
                                                 false
+                                            backStackEntry.savedStateHandle["pendingScrollToMessageId"] =
+                                                null
                                         }
                                     }
                                 }
@@ -807,8 +895,32 @@ fun AppNavHost(
                                 ConversationSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ConversationMedia> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ConversationMedia>()
+                                ConversationMediaScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToMessage = { messageId ->
+                                        Uuid.parseOrNull(route.conversationId)?.let { convId ->
+                                            navController.selectConversationOnChatList(
+                                                convId, messageId = messageId
+                                            )
+                                            navController.popBackStack(
+                                                Route.ChatList, inclusive = false
+                                            )
+                                        }
                                     },
                                 )
                             }
@@ -1186,7 +1298,7 @@ fun AppNavHost(
 
 
 private fun NavHostController.selectConversationOnChatList(
-    conversationId: Uuid, scrollToBottom: Boolean = false
+    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null
 ): Boolean {
     val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
     if (entry == null) {
@@ -1197,6 +1309,7 @@ private fun NavHostController.selectConversationOnChatList(
     }
     entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
     entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+    entry.savedStateHandle["pendingScrollToMessageId"] = messageId?.toString()
     return true
 }
 
@@ -1226,4 +1339,29 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+}
+
+/**
+ * Bottom-nav / rail icon for a top-level destination. Draws a small dot badge
+ * over the Moments icon when there are unseen moments ([showMomentsBadge]) —
+ * a "there's something new" indicator, intentionally count-less to keep the
+ * chip small (swap `Badge()` for `Badge { Text(stringResource(...)) }` with a
+ * `%1$d` resource if a number is wanted later).
+ */
+@Composable
+private fun TopLevelNavIcon(
+    topLevelRoute: TopLevelRoute,
+    showMomentsBadge: Boolean,
+) {
+    val icon: @Composable () -> Unit = {
+        Icon(
+            topLevelRoute.icon,
+            contentDescription = stringResource(topLevelRoute.labelRes),
+        )
+    }
+    if (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) {
+        BadgedBox(badge = { Badge() }) { icon() }
+    } else {
+        icon()
+    }
 }

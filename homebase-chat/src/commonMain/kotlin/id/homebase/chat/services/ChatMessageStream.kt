@@ -3,6 +3,7 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -38,6 +39,7 @@ import kotlin.uuid.Uuid
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
+    private val ownerSessionRepository: OwnerSessionRepository,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -251,20 +253,35 @@ class ChatMessageStream(
     }
 
     /**
+     * True when [messageId] is present in the cached in-memory window for
+     * [conversationId]. Lets a jump-to-message caller decide whether it needs a
+     * re-seeded (centered) window — see [loadConversationAroundMessage] — or can
+     * reuse the existing one. Returns false when the conversation has no window
+     * cached at all.
+     */
+    fun isMessageInWindow(conversationId: Uuid, messageId: Uuid): Boolean =
+        paginatedState.getWindow(conversationId)?.messages?.any { it.id == messageId } == true
+
+    /**
      * Load a centered page of messages around [messageUniqueId]. Used to
      * restore scroll position on conversation open and to jump to a search
-     * result that's outside the current window. If the target message
-     * isn't in the local DB (purged, never synced), falls back to
+     * result (or album item) that's outside the current window. If the target
+     * message isn't in the local DB (purged, never synced), falls back to
      * [loadConversation].
+     *
+     * Returns true when the anchor was found and a window centered on it was
+     * built, false when it fell back to the latest page. Callers performing an
+     * explicit jump use the false result to tell the user the target is gone,
+     * rather than silently landing on the latest page.
      */
-    suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid) {
+    suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid): Boolean {
         val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
             Logger.d(tag = "ChatPaging") {
                 "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
             }
             loadConversation(conversationId)
-            return
+            return false
         }
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
         val olderHalfCursor = QueryBatchCursor(
@@ -299,6 +316,7 @@ class ChatMessageStream(
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
+        return true
     }
 
     /**
@@ -435,6 +453,13 @@ class ChatMessageStream(
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null,
         sortOrder: QueryBatchSortOrder = QueryBatchSortOrder.NewestFirst,
+        /**
+         * Optional header-level dataType filter (e.g. [ChatProtocol.ChatLocationMessageDataType]).
+         * When set, the SQL query returns only messages stamped with one of these
+         * dataTypes — lets callers page a single message kind (locations, dice…)
+         * straight from the index instead of scanning every message client-side.
+         */
+        datatypesAnyOf: List<Int>? = null,
     ): BatchResult<MessageUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
@@ -461,6 +486,7 @@ class ChatMessageStream(
                 fileSystemType = 0,
                 fileState = fileStateFilter,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                datatypesAnyOf = datatypesAnyOf,
                 groupIdAnyOf = listOf(conversationId)
             )
         val queryElapsed = queryStart.elapsedNow()
@@ -650,6 +676,17 @@ class ChatMessageStream(
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
+
+        // The logged-in user isn't in their own contacts, so contactService
+        // resolves their odinId to the raw domain name. Use the owner session's
+        // resolved display name for own messages instead (falls through to the
+        // contact/domain path until the session's site data has loaded, or when
+        // it carries no displayName).
+        if (author == credentialsManager.requireActiveDomain()) {
+            ownerSessionRepository.user.value?.displayName
+                ?.takeIf { it != author.toString() && it.isNotBlank() }
+                ?.let { return it }
+        }
 
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }

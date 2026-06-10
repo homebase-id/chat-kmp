@@ -20,13 +20,13 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.*
 import kotlin.uuid.Uuid
 
@@ -48,6 +48,19 @@ private fun uploadTypeName(t: Long): String = when (t) {
 
 private fun Outbox.uploadTypeLabel(): String = "${uploadTypeName(uploadType)}($uploadType)"
 
+/**
+ * True when enqueuing [incomingUploadType] over an existing pending
+ * [existingUploadType] would strand a not-yet-sent create. An `UpdateFile`
+ * must not replace a pending `UploadNewFile`: the two share
+ * `(driveId, uniqueId)`, so the replace deletes the create that never reached
+ * the server, and the update then fails permanently ("Could not find file with
+ * uniqueId") — losing the message. The caller must instead re-enqueue the edit
+ * AS a create (see `ChatMessageSenderService.updateMessage`). Pure + testable.
+ */
+internal fun wouldStrandPendingCreate(existingUploadType: Long?, incomingUploadType: Long): Boolean =
+    incomingUploadType == DriveOutboxUploader.UpdateFile &&
+        existingUploadType == DriveOutboxUploader.UploadNewFile
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -55,7 +68,7 @@ class OutboxSync(
     scope: CoroutineScope? = null
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
-    private val scope = scope ?: CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
     @kotlin.concurrent.Volatile
     private var isOnline = false
 
@@ -267,9 +280,14 @@ class OutboxSync(
                     e
                 )
 
+                // nextRunTime is a MILLISECONDS epoch — checkout/nextScheduled
+                // compare it against UnixTimeUtc.now().milliseconds. Storing
+                // `.seconds` here (the pre-fix bug) made every backoff deadline
+                // a ~1970s-era value, so failed rows were immediately
+                // re-eligible and the 30s→4h backoff was never enforced.
                 databaseManager.outbox.checkInFailed(
                     outboxRecord.checkOutStamp!!,
-                    UnixTimeUtc.now().addSeconds(n).seconds
+                    UnixTimeUtc.now().addSeconds(n).milliseconds
                 )
 
                 eventBus.emit(
@@ -419,6 +437,87 @@ class OutboxSync(
         return enqueued
     }
 
+    /** Replace any pending row for this message with a fresh create. Used to
+     *  coalesce an edit into a still-queued (not-yet-sent) create so the edit
+     *  doesn't downgrade it to an UpdateFile and strand it. */
+    public suspend fun replaceEnqueue(
+        request: UploadFileRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = replaceEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            scope.launch { send() }
+        }
+
+        return enqueued
+    }
+
+    /** Upload type of the pending row for (driveId, uniqueId), or null if none
+     *  is queued. Lets a caller branch on create-vs-update before enqueuing. */
+    public suspend fun pendingUploadType(driveId: Uuid, uniqueId: Uuid): Long? =
+        databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)?.uploadType
+
+    /** The pending row deserialized as an [UploadFileRequest], or null when there
+     *  is no pending row or it isn't an `UploadNewFile`. Lets an edit amend a
+     *  still-queued create in place — preserving its media payloads — rather than
+     *  replacing it with an update the server can't apply. */
+    public suspend fun pendingUploadFileRequest(driveId: Uuid, uniqueId: Uuid): UploadFileRequest? {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        if (row.uploadType != DriveOutboxUploader.UploadNewFile) return null
+        return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+    }
+
+    /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
+     *  what Message Info needs to render "still sending, next attempt in ~N min"
+     *  without deserializing the request json. */
+    public data class PendingRowSnapshot(
+        /** Milliseconds epoch of the next attempt (0 / sentinel = "shortly").
+         *  Rows written before the checkInFailed unit fix may carry a
+         *  seconds-epoch value — display code must normalize. */
+        val nextRunTime: Long,
+        val checkOutCount: Long,
+        /** True when an upload worker currently holds the row. */
+        val isCheckedOut: Boolean,
+        val uploadType: Long,
+    )
+
+    public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        return PendingRowSnapshot(
+            nextRunTime = row.nextRunTime,
+            checkOutCount = row.checkOutCount,
+            isCheckedOut = row.checkOutStamp != null,
+            uploadType = row.uploadType,
+        )
+    }
+
+    /**
+     * Force a queued (backed-off) row to be eligible immediately and kick the
+     * send loop — the "Try now" button. Returns false when nothing changed:
+     * the row is gone (already sent/dropped) or currently checked out (the
+     * upload is literally running — a harmless no-op either way). A row with
+     * an unresolved dependency gets its time reset but still waits for the
+     * dependency to drain (the checkout SQL's NOT EXISTS guard).
+     */
+    public suspend fun runNow(driveId: Uuid, uniqueId: Uuid): Boolean {
+        val changed = databaseManager.outbox.setNextRunTime(driveId, uniqueId, 0L)
+        if (changed > 0) {
+            scope.launch { send() }
+        }
+        return changed > 0
+    }
+
     public suspend fun tryEnqueue(
         request: UpdateLocalMetadataTagsOutboxRequest,
         driveId: Uuid,
@@ -548,6 +647,18 @@ class OutboxSync(
         uploadType: Long,
         json: String
     ): Boolean {
+        // Defense in depth: never silently downgrade a pending create to an
+        // update. Chat's edit path coalesces into a create before reaching here
+        // (see ChatMessageSenderService.updateMessage); this guard ensures no
+        // current or future caller can strand a not-yet-sent message instead.
+        val existing = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        if (wouldStrandPendingCreate(existing?.uploadType, uploadType)) {
+            Logger.w(
+                "OutboxSync: refusing to replace a pending UploadNewFile with an UpdateFile " +
+                    "for uniqueId=$uniqueId — would strand the un-sent create."
+            )
+            return false
+        }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
     }

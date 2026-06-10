@@ -6,15 +6,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 class ConversationSettingsViewModel(
@@ -22,6 +29,8 @@ class ConversationSettingsViewModel(
     val conversationService: ConversationService,
     private val conversationStream: ConversationStream,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val chatMessageStream: ChatMessageStream,
+    private val contactService: ContactService,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -30,13 +39,13 @@ class ConversationSettingsViewModel(
 
     init {
         loadData()
+        loadOverview()
     }
 
 
     fun onUiAction(action: ConversationSettingsUiAction) {
         when (action) {
             is ConversationSettingsUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.Back)}
-            is ConversationSettingsUiAction.ShowContactInfo -> _uiState.update { it.copy(uiEvent = ConversationSettingsUiEvent.ShowContactInfo(action.odinId.toString()))}
         }
     }
 
@@ -55,13 +64,20 @@ class ConversationSettingsViewModel(
                         it.copy(
                             conversation = conversation,
                             ownerSession = owner,
-                            isLoading = false
+                            isLoading = false,
                         )
                     }
                 } else {
                     val conversation = conversationService.getConversation(conversationId)
                     if (conversation != null) {
-                        _uiState.update { it.copy(conversation = conversation, isLoading = false) }
+                        _uiState.update {
+                            it.copy(
+                                conversation = conversation,
+                                contactName = resolveContactName(conversation),
+                                groupsInCommon = groupsInCommonWith(conversation),
+                                isLoading = false,
+                            )
+                        }
                     } else {
                         Logger.d("Failed to load contact for conversation")
                         _uiState.update { it.copy(isLoading = false) }
@@ -72,5 +88,77 @@ class ConversationSettingsViewModel(
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    /**
+     * Resolved full name of the 1:1 contact, or null to fall back to the raw
+     * odinId in [ConversationUiModel.name]. The mapper deliberately stores the
+     * odinId as the conversation name (contact resolution is a UI-layer concern,
+     * see ConversationMapper), so we resolve it here against the contact list —
+     * mirroring EnrichedConversationUiModel.getDisplayName for the list. Null for
+     * groups, and when the contact carries no display name (resolves back to the
+     * odinId), so the header doesn't render the same string twice.
+     */
+    private fun resolveContactName(conversation: ConversationUiModel): String? {
+        if (conversation.isGroupConversation) return null
+        val self = ownerSessionRepository.user.value?.odinId
+        val contact = conversation.participants.firstOrNull { it != self } ?: return null
+        val resolved = contactService.resolveByOdinId(contact)?.name
+        return resolved?.takeIf { it.isNotBlank() && it != contact.domainName }
+    }
+
+    /**
+     * Group conversations that both the current identity and this 1:1's contact
+     * belong to. The contact is the participant that isn't us; matching excludes
+     * this conversation itself (which is 1:1, not a group, so it never matches).
+     */
+    private fun groupsInCommonWith(conversation: ConversationUiModel) =
+        try {
+            val self = ownerSessionRepository.user.value?.odinId
+            val contact = conversation.participants.firstOrNull { it != self }
+            if (contact == null) {
+                persistentListOf()
+            } else {
+                conversationStream.conversations.value.items
+                    .filter { it.isGroupConversation && it.participants.any { p -> p == contact } }
+                    .map { GroupInCommonItem(it.id, it.name, it.avatarModel) }
+                    .toImmutableList()
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to compute groups in common", e)
+            persistentListOf()
+        }
+
+    /**
+     * Loads the media/files/audio/dice/location overview of this conversation.
+     * Runs independently of [loadData] so the header paints before the (heavier)
+     * message scan finishes.
+     */
+    private fun loadOverview() {
+        val conversationId = Uuid.parse(route.conversationId)
+        viewModelScope.launch {
+            try {
+                val batch = chatMessageStream.fetchMessages(
+                    conversationId = conversationId,
+                    limit = SUMMARY_MESSAGE_CAP,
+                )
+                val overview = withContext(Dispatchers.Default) {
+                    collectConversationOverview(batch)
+                }
+                _uiState.update { it.copy(overview = overview, isOverviewLoading = false) }
+            } catch (e: Exception) {
+                Logger.e("Failed to load conversation overview", e)
+                _uiState.update { it.copy(isOverviewLoading = false) }
+            }
+        }
+    }
+
+    companion object {
+        /**
+         * Upper bound on messages scanned for the conversation overview. Every
+         * photo/video within these is surfaced in the media strip — the strip is
+         * a LazyRow, so it only ever composes/loads the thumbnails on screen.
+         */
+        const val SUMMARY_MESSAGE_CAP = 1000
     }
 }

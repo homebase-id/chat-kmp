@@ -22,7 +22,10 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respondError
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -79,7 +82,20 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
     lateinit var optimisticWriter: OptimisticWriter
         private set
 
-    suspend fun build(scope: CoroutineScope = TestScope()): ChatMessageSenderService {
+    /**
+     * @param messageLookup override for tests that need `getMessage`/`getMessageFile`
+     *   to return real data (e.g. the resend tests' DB-backed lookup).
+     * @param engineHandler override for the [MockEngine] backing [DriveFileProvider] —
+     *   the default 500s everything (send-path tests never reach it); resend tests
+     *   script the by-uid server check with it.
+     */
+    suspend fun build(
+        scope: CoroutineScope = TestScope(),
+        messageLookup: ((DatabaseManager) -> MessageLookup)? = null,
+        engineHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
+            respondError(HttpStatusCode.InternalServerError)
+        },
+    ): ChatMessageSenderService {
         dbm = createInMemoryDbm()
         credentialsManager = createCredentialsManager(testDomain)
         eventBus = EventBus()
@@ -100,11 +116,9 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             eventBus = eventBus,
         )
 
-        // Real DriveFileProvider with an HTTP client that 500s every request.
-        // The send path doesn't call into it; this is just to satisfy the ctor.
-        val httpClient = HttpClient(MockEngine { _ ->
-            respondError(HttpStatusCode.InternalServerError)
-        })
+        // Real DriveFileProvider with a scriptable mock engine (default: 500s
+        // every request — the send path doesn't call into it).
+        val httpClient = HttpClient(MockEngine { request -> engineHandler(request) })
         val driveCache = DriveFileProviderCached(
             httpClient,
             credentialsManager,
@@ -117,7 +131,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             conversationStream = conversationLookup,
             payloadBundleEncryptionService = payloadEncryptor,
             scope = scope,
-            chatMessageStream = FakeMessageLookup(),
+            chatMessageStream = messageLookup?.invoke(dbm) ?: FakeMessageLookup(),
             optimisticWriter = optimisticWriter,
             fileOperationsProvider = SenderNoopFileOperationsProvider(),
             driveFileProvider = driveFileProvider,

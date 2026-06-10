@@ -4,12 +4,17 @@ import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.websockets.OdinWebSocketClient
+import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.LabeledDrive
@@ -29,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
@@ -41,6 +47,8 @@ class AuthConnectionCoordinator(
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
+    private val securityContextProvider: SecurityContextProvider,
+    private val peerWebSocketManager: PeerWebSocketManager,
     private val onPostAuthenticated: () -> Unit = {},
     /**
      * Initial value of [headless]. True only on platforms that can cold-wake the
@@ -65,6 +73,12 @@ class AuthConnectionCoordinator(
         }
     )
     private var wsClient: OdinWebSocketClient? = null
+
+    // Peer (owner-hosted) drives mounted this session, alias -> (owner, drive). Lets [unmountDrive]
+    // tear down the right per-owner peer websocket given only a driveId. Guarded by [peerOwnersMutex]
+    // because mounts arrive from both the Authenticated branch and the registry observer coroutine.
+    private val peerDriveOwners = mutableMapOf<Uuid, Pair<OdinId, TargetDrive>>()
+    private val peerOwnersMutex = kotlinx.coroutines.sync.Mutex()
 
     // Coalesces bursts of mountDrive/unmountDrive calls into a single WebSocket reconnect.
     // [OdinWebSocketClient] freezes its drive-subscription list at construction time, so we
@@ -105,6 +119,14 @@ class AuthConnectionCoordinator(
      * mounted. Null until the first Authenticated lands.
      */
     @Volatile private var lastAuthenticatedDrives: List<LabeledDrive>? = null
+
+    /**
+     * Normalized (lowercased, hyphen-stripped) aliases of the drives this app token can READ,
+     * resolved from the security context on each Authenticated transition. Null when unknown
+     * (security-context fetch failed) — in that case [retainGrantedDrives] does not filter, so a
+     * transient fetch failure degrades to the pre-existing behaviour rather than hiding drives.
+     */
+    @Volatile private var grantedDriveAliases: Set<String>? = null
     // endregion
 
     /**
@@ -171,16 +193,28 @@ class AuthConnectionCoordinator(
                 // subscribes to the full set — no late observer-driven reconnect.
                 // Unconditional: BG sync's syncAll() needs the drive list.
                 val initialDrives = driveRegistry.bootstrap()
-                // Pre-mount optional drives so they're in driveSyncs when
-                // onConnected fires start() + syncAll(). mountDrive() defers
-                // the network kick while isRunning is false; syncAll() picks
-                // them up alongside the mandatory drives.
-                for (drive in initialDrives) {
-                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                // Resolve which optional drives this app token can actually READ before mounting
+                // anything. The registry is the cross-device "activated" list and is NOT
+                // permission-aware: a drive activated on another device (or before a permission
+                // change) can appear here without this app holding a read grant. Mounting such a
+                // drive makes the server 403 the REST query-batch AND close the whole notify
+                // WebSocket — one unauthorized drive in EstablishConnectionRequest tears down the
+                // socket, which surfaced as a dropped initial handshake + premature "connected".
+                refreshGrantedDriveAliases()
+
+                // Pre-mount the granted optional drives so they're in driveSyncs when
+                // onConnected fires start() + syncAll(). mountDrive() defers the network kick
+                // while isRunning is false; syncAll() picks them up alongside the mandatory drives.
+                // ownerOdinId is set for owner-hosted (peer/community) drives, null for own drives.
+                for (drive in initialDrives.retainGrantedDrives()) {
+                    driveSyncManager.mountDrive(drive.drive.alias, drive.label, drive.ownerOdinId)
                 }
                 logLifecycleSnapshot("drives mounted")
 
-                // Stash for [promoteToForeground] replay if we're headless.
+                // Stash the FULL registry list: it's the baseline for the registry-change observer
+                // (an intentionally-skipped ungranted drive must not look like a brand-new mount)
+                // and the replay source for promoteToForeground. connect() re-applies the grant
+                // filter for the WebSocket subscription itself.
                 lastAuthenticatedDrives = initialDrives
 
                 if (headless) {
@@ -192,6 +226,9 @@ class AuthConnectionCoordinator(
                 }
 
                 connect(extraDrives = initialDrives)
+                // Owner-hosted (peer) drives don't ride the own-host WebSocket — open a per-owner
+                // peer websocket for each so live community updates arrive over the owner's host.
+                startPeerConnections(initialDrives)
                 // Observe cross-device registry changes. We seed the diff baseline with the
                 // bootstrap result so the chat-drive sync that later writes the same file
                 // into the local index doesn't trigger a spurious onMount for drives that
@@ -263,6 +300,7 @@ class AuthConnectionCoordinator(
         scope.launch {
             onPostAuthenticated()
             connect(extraDrives = drives)
+            startPeerConnections(drives)
             driveRegistry.start(
                 onMount = { drive -> mountDrive(drive, persist = false) },
                 onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
@@ -338,7 +376,10 @@ class AuthConnectionCoordinator(
             return
         }
 
-        val optionalDrives = extraDrives ?: driveRegistry.loadDrives()
+        // Filter to drives this app token can read — covers reconnects (extraDrives == null →
+        // loadDrives()) and the login/promote paths, so an ungranted drive is never put on the
+        // WebSocket subscription where it would make the server close the socket.
+        val optionalDrives = (extraDrives ?: driveRegistry.loadDrives()).retainGrantedDrives()
         _connectionState.update { it.copy(isConnecting = true) }
         wsClient =
             OdinWebSocketClient(
@@ -347,7 +388,10 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                drives = (mandatorySyncDrives + optionalDrives).map { it.drive },
+                // Own-host WebSocket subscribes to own drives only. Peer (owner-hosted) drives get
+                // their own per-owner connection via [startPeerConnections] / [PeerWebSocketManager].
+                drives = (mandatorySyncDrives + optionalDrives.filter { it.ownerOdinId == null })
+                    .map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
                 // background coroutine:
@@ -434,7 +478,8 @@ class AuthConnectionCoordinator(
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
         if (persist) driveRegistry.addDrive(drive)
-        val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+        val owner = drive.ownerOdinId
+        val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label, owner)
         if (!newlyMounted) {
             // Redundant mount — drive was already in DSM. Skipping the refresh
             // trigger is critical: refreshWsSubscription.trigger() would close
@@ -448,7 +493,38 @@ class AuthConnectionCoordinator(
             }
             return
         }
-        refreshWsSubscription.trigger()
+        if (owner != null) {
+            // Peer drive: open/extend the per-owner peer websocket instead of reconnecting the
+            // own-host socket (the community drive isn't hosted on creds.domain).
+            peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
+            peerWebSocketManager.mount(owner, drive.drive)
+        } else {
+            refreshWsSubscription.trigger()
+        }
+    }
+
+    /**
+     * Mount a community drive hosted on another identity ([ownerOdinId]) directly. Part 1 transport
+     * affordance for exercising the validation gate against a real existing community before the
+     * Part 2 feature (and its registry entries) exists. Defaults to `persist = false` so it doesn't
+     * write the cross-device registry.
+     */
+    suspend fun mountPeerDrive(
+        ownerOdinId: OdinId,
+        communityDrive: TargetDrive,
+        label: String,
+        persist: Boolean = false,
+    ) {
+        mountDrive(LabeledDrive(communityDrive, label, ownerOdinId), persist = persist)
+    }
+
+    /** Open a peer websocket for every owner-hosted drive in [drives]. No-op for own drives. */
+    private suspend fun startPeerConnections(drives: List<LabeledDrive>) {
+        for (drive in drives) {
+            val owner = drive.ownerOdinId ?: continue
+            peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
+            peerWebSocketManager.mount(owner, drive.drive)
+        }
     }
 
     /**
@@ -466,7 +542,13 @@ class AuthConnectionCoordinator(
     suspend fun unmountDrive(driveId: Uuid, persist: Boolean = true) {
         if (persist) driveRegistry.removeDrive(driveId)
         driveSyncManager.unmountDrive(driveId)
-        refreshWsSubscription.trigger()
+        val peer = peerOwnersMutex.withLock { peerDriveOwners.remove(driveId) }
+        if (peer != null) {
+            // Peer drive: tear down its per-owner websocket rather than reconnecting the own-host one.
+            peerWebSocketManager.unmount(peer.first, peer.second)
+        } else {
+            refreshWsSubscription.trigger()
+        }
     }
 
     // Close the current WebSocket and open a new one. [connect] reads the DriveRegistry
@@ -487,6 +569,10 @@ class AuthConnectionCoordinator(
         }
         refreshWsSubscription.cancel()
         driveRegistry.stop()
+        // Close every per-owner peer websocket so a second login doesn't inherit the first user's
+        // community connections.
+        peerWebSocketManager.reset()
+        peerOwnersMutex.withLock { peerDriveOwners.clear() }
         outboxSync.setOnline(false)
         // Keep isConnecting = true so the next login cycle correctly starts in
         // StartupState.Loading.  While logged out the auth state is Unauthenticated,
@@ -498,6 +584,51 @@ class AuthConnectionCoordinator(
         Logger.i(tag = "AuthLifecycle") { "AuthCC: disconnect() end (wsClient nulled)" }
         logLifecycleSnapshot("disconnect end")
     }
+
+    /**
+     * Refresh [grantedDriveAliases] from the security context. Called once per Authenticated
+     * transition, before any optional drive is mounted/subscribed. On failure it leaves the
+     * filter disabled (null) so we degrade to mounting everything rather than hiding a granted
+     * drive on a transient fetch error.
+     */
+    private suspend fun refreshGrantedDriveAliases() {
+        val ctx = securityContextProvider.getSecurityContext()
+        if (ctx == null) {
+            Logger.w(tag = "AuthLifecycle") {
+                "AuthCC: security context unavailable — drive-grant filter disabled this cycle"
+            }
+            grantedDriveAliases = null
+            return
+        }
+        val readable = ctx.permissionContext.permissionGroups
+            .flatMap { it.driveGrants ?: emptyList() }
+            .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }
+            .mapTo(mutableSetOf()) { normalizeAlias(it.permissionedDrive.drive.alias) }
+        grantedDriveAliases = readable
+        Logger.i(tag = "AuthLifecycle") { "AuthCC: readable drive grants resolved (count=${readable.size})" }
+    }
+
+    /**
+     * Drop drives this app token has no read grant for (see [grantedDriveAliases]). No-op when the
+     * grant set is unknown. Applied to optional/registry drives only — mandatory drives are always
+     * required and are never filtered here.
+     */
+    private fun List<LabeledDrive>.retainGrantedDrives(): List<LabeledDrive> {
+        val granted = grantedDriveAliases ?: return this
+        return filter { ld ->
+            val ok = normalizeAlias(ld.drive.alias.toString()) in granted
+            if (!ok) {
+                Logger.w(tag = "AuthLifecycle") {
+                    "AuthCC: skipping drive '${ld.label}' (${ld.drive.alias}) — app token has no read " +
+                        "grant; not mounting/subscribing it (avoids server WS close + REST 403)"
+                }
+            }
+            ok
+        }
+    }
+
+    // Match compareStringUuId's normalization so aliases compare regardless of hyphen/case format.
+    private fun normalizeAlias(alias: String): String = alias.lowercase().replace("-", "")
 
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L

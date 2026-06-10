@@ -165,6 +165,18 @@ fun MomentsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Clear the unseen-moments nav badge: while this screen is composed (i.e.
+    // the user is on the Moments tab), advance the "last viewed" watermark to
+    // the newest moment received from someone else. Re-runs when a newer one
+    // arrives mid-view; cancels when the user leaves the tab (composition
+    // exits), so it never clears the badge for moments seen on another screen.
+    val newestReceivedMs = remember(uiState.moments) {
+        uiState.moments.filter { it.senderOdinId != null }.maxOfOrNull { it.createdMs }
+    }
+    LaunchedEffect(newestReceivedMs) {
+        newestReceivedMs?.let { viewModel.markFeedViewed(it) }
+    }
+
     // Permission-drift detection: re-check on every screen entry. The
     // moments-qualified ExtendPermissionViewModel runs an initial check on
     // construction, but its result is cached for the lifetime of the VM.
@@ -197,6 +209,15 @@ fun MomentsScreen(
             WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
         )
 
+    // Reels is omitted from the desktop view menu; coerce a persisted/synced Reels
+    // preference to Timeline on desktop (wide or narrow window) so a pointer user
+    // never lands in the touch-first reels view with no menu entry to leave it.
+    val effectiveViewMode = if (isDesktop() && uiState.viewMode == MomentsViewMode.Reels) {
+        MomentsViewMode.Timeline
+    } else {
+        uiState.viewMode
+    }
+
     if (isWide) {
         WideMomentsLayout(
             moments = uiState.moments,
@@ -206,7 +227,7 @@ fun MomentsScreen(
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
             hasDriveError = uiState.hasDriveError,
-            viewMode = uiState.viewMode,
+            viewMode = effectiveViewMode,
             onViewModeChange = viewModel::setViewMode,
             albumZoom = uiState.albumZoom,
             onAlbumZoomChange = viewModel::setAlbumZoom,
@@ -225,7 +246,7 @@ fun MomentsScreen(
             connectionStatus = uiState.connectionStatus,
             driveIsSyncing = uiState.driveIsSyncing,
             hasDriveError = uiState.hasDriveError,
-            viewMode = uiState.viewMode,
+            viewMode = effectiveViewMode,
             onViewModeChange = viewModel::setViewMode,
             albumZoom = uiState.albumZoom,
             onAlbumZoomChange = viewModel::setAlbumZoom,
@@ -609,7 +630,13 @@ private fun MomentsFeedList(
     // equality, so no extra distinctUntilChanged — emissions only happen
     // when the active key actually changes (see CLAUDE.md note on the
     // double-equality-check trap).
-    LaunchedEffect(listState, videoMomentIds) {
+    //
+    // Disabled on desktop: on a pointer-driven window the feed shouldn't start
+    // playing videos on its own as the user scrolls — playback stays manual
+    // (tap a card's play button, which sets playingMomentId via onToggleVideoPlay).
+    val feedAutoplayEnabled = !isDesktop()
+    LaunchedEffect(listState, videoMomentIds, feedAutoplayEnabled) {
+        if (!feedAutoplayEnabled) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             if (info.visibleItemsInfo.isEmpty() || videoMomentIds.isEmpty()) return@snapshotFlow null
@@ -1478,15 +1505,19 @@ private fun MomentsViewModeMenu(
                     onSelect(MomentsViewMode.Album)
                 },
             )
-            MomentsViewModeMenuItem(
-                label = stringResource(MR.string.moments_view_reels),
-                icon = Icons.Outlined.Slideshow,
-                isSelected = selected == MomentsViewMode.Reels,
-                onClick = {
-                    expanded = false
-                    onSelect(MomentsViewMode.Reels)
-                },
-            )
+            // Reels is a touch-first, full-screen vertical-swipe mode — omit it
+            // from the desktop menu so pointer users only see Timeline / Album.
+            if (!isDesktop()) {
+                MomentsViewModeMenuItem(
+                    label = stringResource(MR.string.moments_view_reels),
+                    icon = Icons.Outlined.Slideshow,
+                    isSelected = selected == MomentsViewMode.Reels,
+                    onClick = {
+                        expanded = false
+                        onSelect(MomentsViewMode.Reels)
+                    },
+                )
+            }
         }
     }
 }

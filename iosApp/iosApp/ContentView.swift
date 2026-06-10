@@ -36,11 +36,14 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            os_log("onAppear fired — scheduling cold-start Metal nudge (150ms)", log: textRenderLog, type: .info)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                os_log("Cold-start nudge firing at 150ms", log: textRenderLog, type: .info)
-                nudgeMetalLayer(trigger: "onAppear")
-            }
+            os_log("onAppear fired", log: textRenderLog, type: .info)
+            // DISABLED for the blank-text recovery experiment — the cold-start 150ms Metal nudge is a
+            // bare setNeedsDisplay (replays cached blobs) that hasn't reliably fixed the bug and would
+            // confound attribution of the shake-triggered purge+recompose recovery. Re-enable to restore.
+            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            //     os_log("Cold-start nudge firing at 150ms", log: textRenderLog, type: .info)
+            //     nudgeMetalLayer(trigger: "onAppear")
+            // }
         }
         .onChange(of: scenePhase) { _, newPhase in
             os_log("scenePhase changed to %{public}@", log: textRenderLog, type: .info, String(describing: newPhase))
@@ -55,16 +58,23 @@ struct ContentView: View {
                 withAnimation(.easeOut(duration: 0.15)) {
                     showPrivacyOverlay = false
                 }
-                nudgeMetalLayer(trigger: "scenePhase→active")
+                // DISABLED for the experiment (see onAppear): the foreground nudge would mask the blank
+                // and confound the shake recovery. nudgeMetalLayer(trigger: "scenePhase→active")
             default:
                 break
             }
         }
         .onChange(of: colorScheme) { _, newScheme in
             os_log("colorScheme changed to %{public}@", log: textRenderLog, type: .info, String(describing: newScheme))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                nudgeMetalLayer(trigger: "colorScheme→\(newScheme)")
-            }
+            // DISABLED for the experiment (see onAppear):
+            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            //     nudgeMetalLayer(trigger: "colorScheme→\(newScheme)")
+            // }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+            // Blank-text recovery experiment: log cache state, purge Skia caches + force a full
+            // re-composition, then log again ~1.5s later. See captureAndRecoverOnShake.
+            captureAndRecoverOnShake()
         }
     }
 }
