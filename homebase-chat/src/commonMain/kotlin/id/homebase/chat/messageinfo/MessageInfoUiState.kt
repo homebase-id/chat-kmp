@@ -90,6 +90,9 @@ data class MessageInfoUiState(
 
 sealed interface MessageInfoUiEvent {
     object Back : MessageInfoUiEvent
+
+    /** Retry could not be enqueued — surface [messageRes] as a snackbar. */
+    data class RetryFailed(val messageRes: StringResource) : MessageInfoUiEvent
 }
 
 /** Derived send-status fields for the Message Info status row + retry stub. */

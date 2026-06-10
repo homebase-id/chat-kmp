@@ -10,17 +10,23 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ResendOutcome
 import id.homebase.chat.services.toChatDeliveryStatus
 import id.homebase.chat.services.toErrorDetailRes
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
+import id.homebase.resources.MR
+import id.homebase.resources.msg_retry_failed
+import id.homebase.resources.msg_retry_media_unavailable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
 
 class MessageInfoViewModel(
@@ -30,6 +36,7 @@ class MessageInfoViewModel(
     private val driveFileProvider: DriveFileProvider,
     private val contactService: ContactService,
     private val chatMessageActionService: ChatMessageActionService,
+    private val chatMessageSenderService: ChatMessageSenderService,
 ) : ViewModel() {
 
     val messageInfo = savedStateHandle.toRoute<Route.MessageInfo>()
@@ -193,16 +200,52 @@ class MessageInfoViewModel(
     fun onUiAction(action: MessageInfoUiAction) {
         when (action) {
             is MessageInfoUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = MessageInfoUiEvent.Back) }
-            // Stub: Layer 1 will re-enqueue the outbox item. retryMode tells it
-            // whether to re-upload a never-landed file (Create) or re-push an
-            // edit against an existing server file (Update).
-            is MessageInfoUiAction.RetryClicked -> {
-                val state = _uiState.value
-                Logger.i {
-                    "MessageInfo: retry requested (stub) uniqueId=${state.message?.id} retryMode=${state.retryMode}"
+            is MessageInfoUiAction.RetryClicked -> retryFailedSend()
+        }
+    }
+
+    /**
+     * Re-enqueue the failed send via [ChatMessageSenderService.resendMessage]
+     * (create vs update is decided there by a fresh server check). Optimistically
+     * flips the status row to *Sending* and hides the button; on a refused retry
+     * the Failed state is restored from the (unchanged) local tags and the reason
+     * surfaces as a one-time snackbar event.
+     */
+    private fun retryFailedSend() {
+        val state = _uiState.value
+        val message = state.message ?: return
+        if (!state.canRetry) return
+        _uiState.update {
+            it.copy(sendState = OutgoingSendState.Sending, canRetry = false, retryMode = null)
+        }
+        viewModelScope.launch {
+            when (val outcome = chatMessageSenderService.resendMessage(message.id)) {
+                ResendOutcome.EnqueuedCreate,
+                ResendOutcome.EnqueuedUpdate,
+                ResendOutcome.AlreadyQueued -> {
+                    Logger.i { "MessageInfo: retry enqueued ($outcome) uniqueId=${message.id}" }
+                    // Refresh so the swapped tags (failed→pending) drive any later
+                    // recompute instead of the stale Failed snapshot.
+                    val refreshed = chatMessageStream.getMessage(message.id)
+                    _uiState.update { it.copy(message = refreshed ?: it.message) }
+                    recomputeSendStatus()
+                }
+
+                ResendOutcome.UnrecoverableMedia ->
+                    revertRetryWithError(MR.string.msg_retry_media_unavailable)
+
+                is ResendOutcome.Failed -> {
+                    Logger.w(outcome.error) { "MessageInfo: retry failed uniqueId=${message.id}" }
+                    revertRetryWithError(MR.string.msg_retry_failed)
                 }
             }
         }
+    }
+
+    private fun revertRetryWithError(messageRes: StringResource) {
+        // Tags are unchanged (still failed) — recompute restores Failed + canRetry.
+        recomputeSendStatus()
+        _uiState.update { it.copy(uiEvent = MessageInfoUiEvent.RetryFailed(messageRes)) }
     }
 
     fun eventConsumed() {

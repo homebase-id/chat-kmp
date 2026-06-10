@@ -49,6 +49,8 @@
     <string name="msg_status_failed_to_send">Failed to send</string>
     <string name="msg_status_delivery_details_unavailable">Couldn’t load delivery details</string>
     <string name="action_retry">Retry</string>
+    <string name="msg_retry_media_unavailable">The attachment is no longer available — it can’t be resent</string>
+    <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
     <string name="label_message_id">ID: %1$s</string>

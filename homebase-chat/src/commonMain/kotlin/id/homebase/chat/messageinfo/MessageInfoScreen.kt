@@ -24,9 +24,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,10 +90,17 @@ fun MessageInfoScreen(
             onNavigateBack()
         }
 
+        // Consumed inside MessageInfoUi, where the snackbar host lives.
+        is MessageInfoUiEvent.RetryFailed -> {}
+
         null -> {}
     }
 
-    MessageInfoUi(uiState = uiState, onUiAction = viewModel::onUiAction)
+    MessageInfoUi(
+        uiState = uiState,
+        onUiAction = viewModel::onUiAction,
+        onEventConsumed = viewModel::eventConsumed,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,10 +108,23 @@ fun MessageInfoScreen(
 fun MessageInfoUi(
     uiState: MessageInfoUiState,
     onUiAction: (MessageInfoUiAction) -> Unit,
+    onEventConsumed: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val retryFailed = uiState.uiEvent as? MessageInfoUiEvent.RetryFailed
+    val retryFailedText = retryFailed?.let { stringResource(it.messageRes) }
+    LaunchedEffect(retryFailed) {
+        if (retryFailed != null && retryFailedText != null) {
+            // Consume before showing — showSnackbar suspends until dismissal.
+            onEventConsumed()
+            snackbarHostState.showSnackbar(retryFailedText)
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.chat_message_info)) },
