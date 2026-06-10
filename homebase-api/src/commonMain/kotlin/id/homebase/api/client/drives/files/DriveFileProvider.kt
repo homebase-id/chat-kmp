@@ -236,6 +236,33 @@ public class DriveFileProvider(
     }
 
     /**
+     * Seed the encrypted payload disk cache with locally-produced bytes — the
+     * exact AES-CBC ciphertext the server would return for this payload. Used
+     * at optimistic send time so a message whose upload later fails permanently
+     * still has retrievable media: [getPayloadBytesEncrypted] checks this cache
+     * before the network. Counterpart write API to [getPayloadBytesEncrypted].
+     */
+    suspend fun cachePayloadBytesEncrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        bytes: ByteArray,
+        contentType: String,
+    ) = driveCache.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, contentType)
+
+    /** Thumbnail counterpart to [cachePayloadBytesEncrypted]; pairs with [getThumbBytesEncrypted]. */
+    suspend fun cacheThumbBytesEncrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        bytes: ByteArray,
+        contentType: String,
+        lastModified: Long? = null,
+    ) = driveCache.cacheThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified)
+
+    /**
      * Fetch the raw (still-encrypted) bytes for a specific byterange of a payload, going through
      * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
      * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).

@@ -44,6 +44,7 @@ import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.services.resendablePayloads
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -2150,103 +2151,15 @@ class ConversationService(
             }
             return emptyList<PayloadFile>() to emptyList()
         }
-        val existing = file.fileMetadata.payloads.orEmpty()
-        if (existing.isEmpty()) {
-            Logger.d(tag = "HealAudit") {
-                "reuseExistingPayloadsForResend: fileId=${file.fileId} has no existing payloads — nothing to re-attach"
-            }
-            return emptyList<PayloadFile>() to emptyList()
-        }
-
-        val payloads = mutableListOf<PayloadFile>()
-        val thumbnails = mutableListOf<ThumbnailFile>()
-        for (descriptor in existing) {
-            try {
-                val bytes = dfp.getPayloadBytesEncrypted(chatDrive, file.fileId, descriptor.key)
-                if (bytes == null || bytes.isEmpty()) {
-                    Logger.w(tag = "HealAudit") {
-                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — getPayloadBytesEncrypted returned ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
-                    }
-                    continue
-                }
-                val ivBytes = descriptor.iv?.let {
-                    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
-                    kotlin.io.encoding.Base64.Default.decode(it)
-                }
-                if (ivBytes == null) {
-                    Logger.w(tag = "HealAudit") {
-                        "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — descriptor has no iv (fileId=${file.fileId})"
-                    }
-                    continue
-                }
-                val tempPath = fop.writeBytesToTempFile(
-                    bytes = bytes,
-                    prefix = "heal_${descriptor.key}_",
-                    suffix = ".enc",
-                )
-                payloads += PayloadFile(
-                    key = descriptor.key,
-                    filePath = tempPath,
-                    // Keep the payload's embedded preview thumbnail on the descriptor too.
-                    previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
-                    contentType = descriptor.contentType ?: "",
-                    isPreEncrypted = true,
-                    iv = ivBytes,
-                    descriptorContent = descriptor.descriptorContent,
-                )
-
-                // Re-attach the payload's thumbnails. The update ships an
-                // AppendOrOverwrite for this payload key, which REPLACES the
-                // payload AND its thumbnail set on the server. Re-attaching only
-                // the payload bytes (the previous behavior) wiped every
-                // server-side thumbnail, so the avatar loader 404'd on each size
-                // — the warning-triangle-over-tiny-thumb group-image bug. The
-                // thumbnails are encrypted with the SAME payload key + iv, so we
-                // ship the pre-encrypted bytes as-is (no re-encryption needed).
-                var reattachedThumbs = 0
-                for (thumb in descriptor.thumbnails.orEmpty()) {
-                    val w = thumb.pixelWidth
-                    val h = thumb.pixelHeight
-                    if (w == null || h == null) {
-                        Logger.w(tag = "HealAudit") {
-                            "reuseExistingPayloadsForResend: skipping thumbnail for key=${descriptor.key} — missing pixel dims (w=$w h=$h fileId=${file.fileId})"
-                        }
-                        continue
-                    }
-                    val thumbBytes = dfp.getThumbBytesEncrypted(
-                        driveId = chatDrive,
-                        fileId = file.fileId,
-                        payloadKey = descriptor.key,
-                        width = w,
-                        height = h,
-                        lastModified = descriptor.lastModified,
-                    )
-                    if (thumbBytes == null || thumbBytes.isEmpty()) {
-                        Logger.w(tag = "HealAudit") {
-                            "reuseExistingPayloadsForResend: skipping thumbnail key=${descriptor.key} ${w}x$h — getThumbBytesEncrypted returned ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
-                        }
-                        continue
-                    }
-                    thumbnails += ThumbnailFile(
-                        pixelWidth = w,
-                        pixelHeight = h,
-                        thumbnailBytes = thumbBytes,
-                        key = descriptor.key,
-                        contentType = thumb.contentType ?: "image/webp",
-                    )
-                    reattachedThumbs++
-                }
-
-                Logger.i(tag = "HealAudit") {
-                    "reuseExistingPayloadsForResend: re-attached payload key=${descriptor.key} bytes=${bytes.size} thumbs=$reattachedThumbs/${descriptor.thumbnails?.size ?: 0} tempPath=$tempPath fileId=${file.fileId}"
-                }
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = "HealAudit") {
-                    "reuseExistingPayloadsForResend: failed to re-attach payload key=${descriptor.key} fileId=${file.fileId}"
-                }
-            }
-        }
-        return payloads to thumbnails
+        val recovered = resendablePayloads(
+            file = file,
+            driveId = chatDrive,
+            byteSource = dfp,
+            fileOps = fop,
+            tempPrefix = "heal",
+            logTag = "HealAudit",
+        )
+        return recovered.payloads to recovered.thumbnails
     }
 
     override suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {

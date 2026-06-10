@@ -24,9 +24,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,10 +64,14 @@ import id.homebase.resources.copy_message_id
 import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
 import id.homebase.resources.error_delivery_failed
+import id.homebase.resources.action_try_now
+import id.homebase.resources.msg_next_attempt_minutes
+import id.homebase.resources.msg_next_attempt_shortly
 import id.homebase.resources.msg_status_delivery_details_unavailable
 import id.homebase.resources.msg_status_failed_to_send
 import id.homebase.resources.msg_status_sending
 import id.homebase.resources.msg_status_sent
+import id.homebase.resources.msg_still_in_outbox
 import id.homebase.resources.label_size
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
@@ -87,10 +94,17 @@ fun MessageInfoScreen(
             onNavigateBack()
         }
 
+        // Consumed inside MessageInfoUi, where the snackbar host lives.
+        is MessageInfoUiEvent.RetryFailed -> {}
+
         null -> {}
     }
 
-    MessageInfoUi(uiState = uiState, onUiAction = viewModel::onUiAction)
+    MessageInfoUi(
+        uiState = uiState,
+        onUiAction = viewModel::onUiAction,
+        onEventConsumed = viewModel::eventConsumed,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,10 +112,23 @@ fun MessageInfoScreen(
 fun MessageInfoUi(
     uiState: MessageInfoUiState,
     onUiAction: (MessageInfoUiAction) -> Unit,
+    onEventConsumed: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val retryFailed = uiState.uiEvent as? MessageInfoUiEvent.RetryFailed
+    val retryFailedText = retryFailed?.let { stringResource(it.messageRes) }
+    LaunchedEffect(retryFailed) {
+        if (retryFailed != null && retryFailedText != null) {
+            // Consume before showing — showSnackbar suspends until dismissal.
+            onEventConsumed()
+            snackbarHostState.showSnackbar(retryFailedText)
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.chat_message_info)) },
@@ -194,6 +221,40 @@ fun MessageInfoUi(
                                     text = stringResource(MR.string.msg_status_sending),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
+                            }
+                        }
+
+                        OutgoingSendState.Queued -> {
+                            // Still in the outbox: it WILL be sent (after its
+                            // backoff). Honest copy + a Try-now escape hatch
+                            // instead of an indefinite "Sending…" spinner.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                val minutes = uiState.nextAttemptInMinutes
+                                val attemptText = if (minutes == null || minutes <= 0L) {
+                                    stringResource(MR.string.msg_next_attempt_shortly)
+                                } else {
+                                    stringResource(MR.string.msg_next_attempt_minutes, minutes)
+                                }
+                                Text(
+                                    text = stringResource(MR.string.msg_still_in_outbox, attemptText),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            if (uiState.canTryNow) {
+                                OutlinedButton(
+                                    onClick = { onUiAction(MessageInfoUiAction.TryNowClicked) },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(MR.string.action_try_now))
+                                }
                             }
                         }
 

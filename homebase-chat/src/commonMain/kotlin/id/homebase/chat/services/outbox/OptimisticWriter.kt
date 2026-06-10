@@ -60,6 +60,12 @@ class OptimisticWriter(
             reactionToggleLocks.getOrPut(driveId to uniqueId) { Mutex() }
         }
 
+    /**
+     * @param fileId the optimistic (client-minted) fileId for the local record.
+     *   Returned so the send path can key per-file side effects (e.g. seeding
+     *   the payload cache) to the same id the local record carries until the
+     *   server-assigned file syncs back.
+     */
     suspend fun writeNewFile(
         driveId: Uuid,
         keyHeader: KeyHeader,
@@ -67,14 +73,15 @@ class OptimisticWriter(
         originalRecipientCount: Int,
         fileSystemType: FileSystemType,
         payloadDescriptors: List<PayloadDescriptor>? = null,
-    ) {
+        fileId: Uuid = Uuid.random(),
+    ): Uuid {
 
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
         val created = UnixTimeUtc.now()
 
         val file = HomebaseFile(
-            fileId = Uuid.random(),
+            fileId = fileId,
             driveId = driveId,
             serverFileIsEncrypted = unecryptedMetadata.isEncrypted,
             fileState = FileState.Active,
@@ -137,6 +144,8 @@ class OptimisticWriter(
             Logger.e(throwable = e, tag = TAG) { "Optimistic insert failed for uniqueId=${unecryptedMetadata.appData.uniqueId} groupId=${unecryptedMetadata.appData.groupId}" }
             throw e
         }
+
+        return fileId
     }
 
     /**

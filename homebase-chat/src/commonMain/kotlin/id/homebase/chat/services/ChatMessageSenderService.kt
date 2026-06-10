@@ -28,6 +28,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.chat.ChatMessageSizer
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -330,6 +331,17 @@ class ChatMessageSenderService(
             PayloadDescriptor(
                 key = payload.key,
                 contentType = payload.contentType.ifEmpty { null },
+                thumbnails = encryptedBundle.thumbnails
+                    .filter { it.key == payload.key }
+                    .map {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = null,
+                        )
+                    }
+                    .ifEmpty { null },
                 iv = payload.iv?.let { Base64.encode(it) },
                 descriptorContent = payload.descriptorContent,
                 previewThumbnail = payload.previewThumbnail?.let {
@@ -343,7 +355,7 @@ class ChatMessageSenderService(
             )
         }.ifEmpty { null }
         try {
-            optimisticWriter.writeNewFile(
+            val optimisticFileId = optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = unecryptedMetadata,
@@ -352,6 +364,7 @@ class ChatMessageSenderService(
                 payloadDescriptors = payloadDescriptors,
             )
             Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
+            seedPayloadCache(optimisticFileId, encryptedBundle)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "sendMessageInternal: optimistic write failed (non-fatal) message=$messageUniqueId" }
         }
@@ -372,6 +385,45 @@ class ChatMessageSenderService(
         }
 
         return SendMessageResult(uniqueId = messageUniqueId)
+    }
+
+    /**
+     * Seed the encrypted payload/thumbnail disk cache with the bytes that just
+     * went into the outbox, keyed under the optimistic fileId. The outbox temp
+     * files are deleted when a permanently-failed row is dropped, so this cache
+     * copy is what makes a failed message's media (and overflow text, which also
+     * rides as a payload) recoverable by [resendMessage]. Best-effort: the cache
+     * is LRU-bounded and a miss only degrades retry to [ResendOutcome.UnrecoverableMedia].
+     */
+    private suspend fun seedPayloadCache(fileId: Uuid, encryptedBundle: PayloadBundle) {
+        for (payload in encryptedBundle.payloads) {
+            try {
+                driveFileProvider.cachePayloadBytesEncrypted(
+                    driveId = chatDrive,
+                    fileId = fileId,
+                    key = payload.key,
+                    bytes = fileOperationsProvider.readFileBytes(payload.filePath),
+                    contentType = payload.contentType,
+                )
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: payload seed failed (non-fatal) key=${payload.key} fileId=$fileId" }
+            }
+        }
+        for (thumb in encryptedBundle.thumbnails) {
+            try {
+                driveFileProvider.cacheThumbBytesEncrypted(
+                    driveId = chatDrive,
+                    fileId = fileId,
+                    payloadKey = thumb.key,
+                    width = thumb.pixelWidth,
+                    height = thumb.pixelHeight,
+                    bytes = thumb.thumbnailBytes,
+                    contentType = thumb.contentType,
+                )
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: thumb seed failed (non-fatal) key=${thumb.key} ${thumb.pixelWidth}x${thumb.pixelHeight} fileId=$fileId" }
+            }
+        }
     }
 
     suspend fun updateMessage(
@@ -537,6 +589,237 @@ class ChatMessageSenderService(
         }
 
         error("Failed to update chat message")
+    }
+
+    /**
+     * Retries a message whose send permanently failed ([ChatProtocol.isFailedSendTag]).
+     * Decides create-vs-update by asking the server whether the uniqueId exists:
+     *
+     * 1. **Server absent** — the original create never landed: re-enqueue an
+     *    [UploadFileRequest], reusing the file's original [KeyHeader] so the
+     *    recovered pre-encrypted payloads (seeded into the payload cache at
+     *    send time by [seedPayloadCache]) stay decryptable. If any media
+     *    payload's bytes are gone (cache evicted), refuses with
+     *    [ResendOutcome.UnrecoverableMedia] rather than silently sending a
+     *    text-only message.
+     * 2. **Server present** — a later edit's update failed: enqueue an
+     *    [UpdateFileByUniqueIdRequest] stamped with the SERVER's current
+     *    versionTag, re-attaching the payloads fetched back off the drive.
+     *
+     * Deliberately does NOT reuse [sendMessageInternal] — it mints a fresh
+     * [KeyHeader.newRandom16], which would orphan the existing encrypted payloads.
+     *
+     * On success the local tags swap failed→pending ([tagsForRetry]) so the
+     * bubble shows *Sending* again; the outbox outcome then drives the final
+     * state exactly like a first send.
+     *
+     * Known edge: retrying a failed *edit* of an overflow-length (>header) text
+     * resends the full text recovered via [MessageLookup.loadFullMessage]; if
+     * that overflow payload is itself unrecoverable, the header preview is sent.
+     */
+    suspend fun resendMessage(messageId: Uuid): ResendOutcome {
+        val msg = chatMessageStream.getMessage(messageId)
+            ?: return ResendOutcome.Failed(IllegalArgumentException("message not found: $messageId"))
+        val file = chatMessageStream.getMessageFile(messageId)
+            ?: return ResendOutcome.Failed(IllegalArgumentException("message file not found: $messageId"))
+
+        // Safety net — the Retry button isn't shown for a queued message, but if
+        // a row appeared in the meantime the pending send already covers this.
+        if (outboxSync.pendingUploadType(chatDrive, messageId) != null) {
+            Logger.i(tag = TAG) { "resendMessage: uniqueId=$messageId already queued in outbox — no-op" }
+            return ResendOutcome.AlreadyQueued
+        }
+
+        val serverFile = try {
+            driveFileProvider.getFileHeaderByUid(chatDrive, messageId)
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = TAG) { "resendMessage: server check failed for uniqueId=$messageId" }
+            return ResendOutcome.Failed(e)
+        }
+
+        // Recover the media payloads as pre-encrypted bytes (seeded cache first,
+        // then the server). The text overflow is excluded — it's rebuilt from
+        // plaintext below.
+        val recovered = resendablePayloads(
+            file = file,
+            driveId = chatDrive,
+            byteSource = driveFileProvider,
+            fileOps = fileOperationsProvider,
+            excludeKeys = setOf(ChatProtocol.DefaultPayloadKey),
+            tempPrefix = "retry",
+            logTag = TAG,
+        )
+        val mediaKeys = file.fileMetadata.payloads.orEmpty()
+            .filterNot { it.keyEquals(ChatProtocol.DefaultPayloadKey) }
+            .map { it.key }
+            .toSet()
+        val recoverability = retryRecoverability(
+            serverPresent = serverFile != null,
+            mediaKeys = mediaKeys,
+            availableMediaKeys = mediaKeys - recovered.unavailableKeys.toSet(),
+        )
+        if (recoverability == RetryRecoverability.UnrecoverableMedia) {
+            Logger.w(tag = TAG) {
+                "resendMessage: uniqueId=$messageId has unrecoverable media (${recovered.unavailableKeys}) — refusing to resend"
+            }
+            return ResendOutcome.UnrecoverableMedia
+        }
+
+        // Rebuild the text header (and overflow payload, if the full text doesn't
+        // fit the header) from the locally readable full text.
+        val hasOverflow = file.fileMetadata.payloads.orEmpty()
+            .any { it.keyEquals(ChatProtocol.DefaultPayloadKey) }
+        val fullText = if (hasOverflow) {
+            chatMessageStream.loadFullMessage(msg.conversationId, messageId)
+                ?: msg.messageAppData.getMessage()
+        } else {
+            msg.messageAppData.getMessage()
+        }
+        val messageData = msg.messageAppData.copy(
+            message = JsonPrimitive(fullText),
+            deliveryStatus = ChatDeliveryStatus.Sending.value,
+        )
+        val built = buildMessageContentAndBundle(
+            preVersionedMessageData = messageData,
+            payloadBundle = null,
+            fileOperationsProvider = fileOperationsProvider,
+        )
+
+        val recipients = conversationStream.getRecipients(msg.conversationId)
+        val isLocalOnly = recipients.isEmpty()
+
+        val enqueueOutcome = try {
+            when (recoverability) {
+                RetryRecoverability.Create -> resendAsCreate(
+                    messageId, msg, file, built, recovered, recipients, isLocalOnly,
+                )
+                RetryRecoverability.Update -> resendAsUpdate(
+                    messageId, msg, file, serverFile!!, built, recovered, recipients, isLocalOnly,
+                )
+                RetryRecoverability.UnrecoverableMedia -> error("unreachable")
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "resendMessage: enqueue failed uniqueId=$messageId" }
+            return ResendOutcome.Failed(e)
+        }
+
+        // Flip the bubble back to *Sending* — the exact inverse of markSendFailed.
+        try {
+            optimisticWriter.updateLocalTags(
+                chatDrive,
+                messageId,
+                tagsForRetry(file.fileMetadata.localAppData?.tags.orEmpty()),
+            )
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "resendMessage: tag swap failed (non-fatal) uniqueId=$messageId" }
+        }
+        Logger.i(tag = TAG) { "resendMessage: enqueued $enqueueOutcome uniqueId=$messageId" }
+        return enqueueOutcome
+    }
+
+    private suspend fun resendAsCreate(
+        messageId: Uuid,
+        msg: MessageUiModel,
+        file: HomebaseFile,
+        built: MessageBuildResult,
+        recovered: ResendablePayloads,
+        recipients: List<OdinId>,
+        isLocalOnly: Boolean,
+    ): ResendOutcome {
+        // Re-encrypt the rebuilt text-overflow payload (if any) with the file's
+        // original aesKey so it stays decryptable alongside the recovered media.
+        val encryptedOverflow = built.payloadBundle?.let {
+            payloadBundleEncryptionService.encryptBundle(messageId, it, file.keyHeader.aesKey, scope)
+        }?.payloads ?: emptyList()
+
+        val unecryptedMetadata = UploadFileMetadata(
+            allowDistribution = !isLocalOnly,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageId,
+                groupId = msg.conversationId,
+                fileType = ChatProtocol.MessageFileType,
+                dataType = file.fileMetadata.appData.dataType ?: 0,
+                userDate = msg.userDate.toEpochMilliseconds(),
+                content = built.headerContent,
+                previewThumbnail = msg.previewThumbnail,
+            ),
+        )
+        val request = UploadFileRequest(
+            driveId = chatDrive,
+            keyHeader = file.keyHeader,
+            metadata = unecryptedMetadata.encryptContent(file.keyHeader),
+            transitOptions = TransitOptions(
+                recipients = recipients,
+                sendContents = SendContents.All,
+                useAppNotification = !isLocalOnly,
+                appNotificationOptions = PushNotificationOptions(
+                    appId = ChatProtocol.ChatAppId.toString(),
+                    typeId = msg.conversationId.toString(),
+                    tagId = messageId.toString(),
+                    silent = false,
+                    unEncryptedMessage = "You have a new message",
+                ),
+            ),
+            payloads = recovered.payloads + encryptedOverflow,
+            thumbnails = recovered.thumbnails,
+        )
+        val enqueued = outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)
+        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry create"))
+        return ResendOutcome.EnqueuedCreate
+    }
+
+    private suspend fun resendAsUpdate(
+        messageId: Uuid,
+        msg: MessageUiModel,
+        file: HomebaseFile,
+        serverFile: HomebaseFile,
+        built: MessageBuildResult,
+        recovered: ResendablePayloads,
+        recipients: List<OdinId>,
+        isLocalOnly: Boolean,
+    ): ResendOutcome {
+        // Raw (not pre-encrypted) overflow — the uploader encrypts it with the
+        // manifest-generated iv, exactly like updateMessage's update branch.
+        val overflowPayloads = built.payloadBundle?.payloads ?: emptyList()
+        val toDeletePayloads =
+            if (overflowPayloads.isEmpty())
+                listOf(PayloadDeleteKey(ChatProtocol.DefaultPayloadKey))
+            else
+                emptyList()
+
+        val unecryptedMetadata = UploadFileMetadata(
+            allowDistribution = !isLocalOnly,
+            isEncrypted = true,
+            // The SERVER's current versionTag — the local one is stale (the
+            // failed update bumped nothing server-side).
+            versionTag = serverFile.fileMetadata.versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageId,
+                groupId = msg.conversationId,
+                fileType = ChatProtocol.MessageFileType,
+                dataType = file.fileMetadata.appData.dataType ?: 0,
+                userDate = msg.userDate.toEpochMilliseconds(),
+                content = built.headerContent,
+                previewThumbnail = msg.previewThumbnail,
+            ),
+        )
+        val request = buildResendUpdateRequest(
+            driveId = chatDrive,
+            messageId = messageId,
+            keyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16),
+                aesKey = file.keyHeader.aesKey,
+            ),
+            unencryptedMetadata = unecryptedMetadata,
+            recipients = recipients,
+            payloads = recovered.payloads + overflowPayloads,
+            toDeletePayloads = toDeletePayloads,
+            thumbnails = recovered.thumbnails,
+        )
+        val enqueued = outboxSync.replaceEnqueue(request, priority = 1, dependencyUniqueId = null)
+        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry update"))
+        return ResendOutcome.EnqueuedUpdate
     }
 
 
