@@ -47,6 +47,7 @@
     <string name="msg_status_sending">Sending…</string>
     <string name="msg_status_sent">Sent: %1$s</string>
     <string name="msg_status_failed_to_send">Failed to send</string>
+    <string name="msg_status_delivery_details_unavailable">Couldn’t load delivery details</string>
     <string name="action_retry">Retry</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>

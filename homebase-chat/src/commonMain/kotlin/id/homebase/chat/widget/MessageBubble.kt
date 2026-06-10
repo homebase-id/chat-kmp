@@ -827,7 +827,7 @@ fun DeliveryStatus(
     contentColor: Color,
     pendingSince: Instant? = null,
 ) {
-    val warning = HomebaseTheme.extendedColors.warning
+    val warning = deliveryFailureTint()
     if (isPendingSend) {
         val stale = pendingSince != null && rememberPendingStale(pendingSince)
         Icon(
