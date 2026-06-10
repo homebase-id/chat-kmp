@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
@@ -13,8 +14,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.chat.services.sticker.toImageData
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.StickerAdd
 import id.homebase.resources.MR
 import id.homebase.resources.cd_import_sticker
 import id.homebase.resources.cd_sticker_thumbnail
@@ -77,7 +78,7 @@ fun StickerTray(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    imageVector = HomebaseIcons.StickerAdd,
                     contentDescription = importDescription,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.sizeIn(maxWidth = 32.dp, maxHeight = 32.dp),
@@ -136,12 +137,7 @@ private fun StickerTile(
     // placeholder id). Show a spinner and ignore taps until the outbox confirms it
     // (StickerStream then clears isPending and the real row takes over).
     if (sticker.isPending) {
-        Box(modifier = Modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
-                modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
-                strokeWidth = 2.dp,
-            )
-        }
+        StickerTileSpinner(Modifier.aspectRatio(1f))
         return
     }
     val imageData = sticker.toImageData()
@@ -161,7 +157,23 @@ private fun StickerTile(
                 imageData = imageData,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxWidth().padding(4.dp),
+                // While the thumb is loading — or while its payload is still uploading and the
+                // fetch 404s — show a spinner, not the default broken-image icon. Once the
+                // payload lands the row re-emits and the thumb resolves.
+                placeholder = { StickerTileSpinner(Modifier.fillMaxSize()) },
+                error = { StickerTileSpinner(Modifier.fillMaxSize()) },
             )
         }
+    }
+}
+
+/** Small centered spinner used for a sticker tile that is uploading / loading its thumbnail. */
+@Composable
+private fun StickerTileSpinner(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
+            strokeWidth = 2.dp,
+        )
     }
 }

@@ -465,7 +465,6 @@
     <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
     <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
     <string name="chat_sticker_import">Importér klistermærke</string>
-    <string name="chat_sticker_import_not_transparent">Vælg en gennemsigtig PNG for at bruge den som klistermærke</string>
     <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
     <string name="chat_sticker_remove">Fjern klistermærke</string>
     <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
@@ -474,10 +473,11 @@
     <string name="chat_sticker_tray_title">Mine klistermærker</string>
     <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
     <string name="cd_import_sticker">Importér et klistermærke</string>
-    <string name="chat_sticker_import_processing">Fjerner baggrund…</string>
-    <string name="chat_sticker_import_title">Brug dette klistermærke?</string>
-    <string name="chat_sticker_import_use">Brug</string>
-    <string name="chat_sticker_import_no_subject">Kunne ikke finde et motiv at skære ud</string>
+    <string name="chat_sticker_choose_title">Opret klistermærke</string>
+    <string name="chat_sticker_variant_cutout">Udklip</string>
+    <string name="chat_sticker_variant_original">Original</string>
+    <string name="cd_sticker_variant_cutout">Udklips-version</string>
+    <string name="cd_sticker_variant_original">Original foto-version</string>
     <string name="cd_tab_emoji">Emoji</string>
     <string name="cd_tab_stickers">Klistermærker</string>
 

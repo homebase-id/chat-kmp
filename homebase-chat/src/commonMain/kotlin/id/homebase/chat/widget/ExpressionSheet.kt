@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.StickyNote2
-import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GifBox
 import androidx.compose.material.icons.outlined.EmojiEmotions
@@ -37,6 +35,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.chat.services.sticker.StickerStream
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.StickerFilled
+import id.homebase.core.ui.assets.StickerOutlined
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.resources.MR
@@ -105,7 +106,7 @@ fun ExpressionSheet(
 /**
  * Centered icon tab row. The active tab is tinted with the primary color and uses the
  * filled icon variant; inactive tabs use the outlined variant. Emoji = a smiley, Stickers =
- * a sticky-note glyph (distinct from the emoji face), Gifs = a GIF box (reserved tab).
+ * the Material Symbols sticker glyph, Gifs = a GIF box (reserved tab).
  */
 @Composable
 private fun ExpressionTabRow(
@@ -127,7 +128,7 @@ private fun ExpressionTabRow(
                         ExpressionTab.Emoji ->
                             if (isSel) Icons.Filled.EmojiEmotions else Icons.Outlined.EmojiEmotions
                         ExpressionTab.Stickers ->
-                            if (isSel) Icons.AutoMirrored.Filled.StickyNote2 else Icons.AutoMirrored.Outlined.StickyNote2
+                            if (isSel) HomebaseIcons.StickerFilled else HomebaseIcons.StickerOutlined
                         ExpressionTab.Gifs ->
                             if (isSel) Icons.Filled.GifBox else Icons.Outlined.GifBox
                     },
@@ -165,7 +166,7 @@ private fun StickersTabContent(
             scope.launch {
                 val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@launch
                 val contentType = detectContentTypeFromExtensionOrHint(file.name)
-                onUiAction(ConversationListUiAction.ImportSticker(bytes, contentType))
+                onUiAction(ConversationListUiAction.CreateStickerFromImage(conversationId, bytes, contentType))
             }
         }
     }

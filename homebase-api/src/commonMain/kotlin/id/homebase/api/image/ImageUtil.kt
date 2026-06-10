@@ -10,6 +10,13 @@ import kotlin.math.roundToInt
  */
 expect fun ByteArray.toImageBitmap(): ImageBitmap?
 
+/** A decoded image as a 0xAARRGGBB int array (row-major, width*height). */
+data class ArgbImage(val pixels: IntArray, val width: Int, val height: Int) {
+    override fun equals(other: Any?) = this === other ||
+        (other is ArgbImage && width == other.width && height == other.height && pixels.contentEquals(other.pixels))
+    override fun hashCode() = (width * 31 + height) * 31 + pixels.contentHashCode()
+}
+
 /**
  * Platform-specific image manipulation operations.
  * Each platform implements this using their native image libraries.
@@ -130,6 +137,12 @@ expect object ImageUtils {
         outputFormat: ImageFormat = ImageFormat.PNG,
         quality: Int = 100,
     ): ImageResult
+
+    /** Decode encoded image bytes to 0xAARRGGBB pixels, or null if undecodable. */
+    fun decodeToArgb(srcBytes: ByteArray): ArgbImage?
+
+    /** Encode 0xAARRGGBB pixels to a lossless PNG (alpha preserved). */
+    fun encodeArgbToPng(image: ArgbImage): ByteArray
 
     /**
      * Rasterize an SVG document into a bitmap.
