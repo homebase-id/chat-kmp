@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -28,6 +29,7 @@ import kotlin.uuid.Uuid
  *    `.seconds` while `checkout` compares an ms epoch, so even a matching
  *    check-in would have made the row immediately re-eligible.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSetNextRunTimeTest {
 
     private suspend fun insertRow(dbm: DatabaseManager, driveId: Uuid, uniqueId: Uuid) {

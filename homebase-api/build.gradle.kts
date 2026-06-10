@@ -164,6 +164,7 @@ kotlin {
         "id.homebase.api.sync.database.DriveTagIndexTest",
         "id.homebase.api.sync.database.FileStateFilterTest",
         "id.homebase.api.sync.database.MainIndexMetaTest",
+        "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
         "id.homebase.api.sync.database.OutboxTest",
         "id.homebase.api.sync.DriveSyncManagerTest",
