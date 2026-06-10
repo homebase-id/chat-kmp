@@ -4,9 +4,12 @@ import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.websockets.OdinWebSocketClient
+import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -31,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
@@ -44,6 +48,7 @@ class AuthConnectionCoordinator(
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
     private val securityContextProvider: SecurityContextProvider,
+    private val peerWebSocketManager: PeerWebSocketManager,
     private val onPostAuthenticated: () -> Unit = {},
     /**
      * Initial value of [headless]. True only on platforms that can cold-wake the
@@ -68,6 +73,12 @@ class AuthConnectionCoordinator(
         }
     )
     private var wsClient: OdinWebSocketClient? = null
+
+    // Peer (owner-hosted) drives mounted this session, alias -> (owner, drive). Lets [unmountDrive]
+    // tear down the right per-owner peer websocket given only a driveId. Guarded by [peerOwnersMutex]
+    // because mounts arrive from both the Authenticated branch and the registry observer coroutine.
+    private val peerDriveOwners = mutableMapOf<Uuid, Pair<OdinId, TargetDrive>>()
+    private val peerOwnersMutex = kotlinx.coroutines.sync.Mutex()
 
     // Coalesces bursts of mountDrive/unmountDrive calls into a single WebSocket reconnect.
     // [OdinWebSocketClient] freezes its drive-subscription list at construction time, so we
@@ -194,8 +205,9 @@ class AuthConnectionCoordinator(
                 // Pre-mount the granted optional drives so they're in driveSyncs when
                 // onConnected fires start() + syncAll(). mountDrive() defers the network kick
                 // while isRunning is false; syncAll() picks them up alongside the mandatory drives.
+                // ownerOdinId is set for owner-hosted (peer/community) drives, null for own drives.
                 for (drive in initialDrives.retainGrantedDrives()) {
-                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                    driveSyncManager.mountDrive(drive.drive.alias, drive.label, drive.ownerOdinId)
                 }
                 logLifecycleSnapshot("drives mounted")
 
@@ -214,6 +226,9 @@ class AuthConnectionCoordinator(
                 }
 
                 connect(extraDrives = initialDrives)
+                // Owner-hosted (peer) drives don't ride the own-host WebSocket — open a per-owner
+                // peer websocket for each so live community updates arrive over the owner's host.
+                startPeerConnections(initialDrives)
                 // Observe cross-device registry changes. We seed the diff baseline with the
                 // bootstrap result so the chat-drive sync that later writes the same file
                 // into the local index doesn't trigger a spurious onMount for drives that
@@ -285,6 +300,7 @@ class AuthConnectionCoordinator(
         scope.launch {
             onPostAuthenticated()
             connect(extraDrives = drives)
+            startPeerConnections(drives)
             driveRegistry.start(
                 onMount = { drive -> mountDrive(drive, persist = false) },
                 onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
@@ -372,7 +388,10 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                drives = (mandatorySyncDrives + optionalDrives).map { it.drive },
+                // Own-host WebSocket subscribes to own drives only. Peer (owner-hosted) drives get
+                // their own per-owner connection via [startPeerConnections] / [PeerWebSocketManager].
+                drives = (mandatorySyncDrives + optionalDrives.filter { it.ownerOdinId == null })
+                    .map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
                 // background coroutine:
@@ -459,7 +478,8 @@ class AuthConnectionCoordinator(
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
         if (persist) driveRegistry.addDrive(drive)
-        val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+        val owner = drive.ownerOdinId
+        val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label, owner)
         if (!newlyMounted) {
             // Redundant mount — drive was already in DSM. Skipping the refresh
             // trigger is critical: refreshWsSubscription.trigger() would close
@@ -473,7 +493,38 @@ class AuthConnectionCoordinator(
             }
             return
         }
-        refreshWsSubscription.trigger()
+        if (owner != null) {
+            // Peer drive: open/extend the per-owner peer websocket instead of reconnecting the
+            // own-host socket (the community drive isn't hosted on creds.domain).
+            peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
+            peerWebSocketManager.mount(owner, drive.drive)
+        } else {
+            refreshWsSubscription.trigger()
+        }
+    }
+
+    /**
+     * Mount a community drive hosted on another identity ([ownerOdinId]) directly. Part 1 transport
+     * affordance for exercising the validation gate against a real existing community before the
+     * Part 2 feature (and its registry entries) exists. Defaults to `persist = false` so it doesn't
+     * write the cross-device registry.
+     */
+    suspend fun mountPeerDrive(
+        ownerOdinId: OdinId,
+        communityDrive: TargetDrive,
+        label: String,
+        persist: Boolean = false,
+    ) {
+        mountDrive(LabeledDrive(communityDrive, label, ownerOdinId), persist = persist)
+    }
+
+    /** Open a peer websocket for every owner-hosted drive in [drives]. No-op for own drives. */
+    private suspend fun startPeerConnections(drives: List<LabeledDrive>) {
+        for (drive in drives) {
+            val owner = drive.ownerOdinId ?: continue
+            peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
+            peerWebSocketManager.mount(owner, drive.drive)
+        }
     }
 
     /**
@@ -491,7 +542,13 @@ class AuthConnectionCoordinator(
     suspend fun unmountDrive(driveId: Uuid, persist: Boolean = true) {
         if (persist) driveRegistry.removeDrive(driveId)
         driveSyncManager.unmountDrive(driveId)
-        refreshWsSubscription.trigger()
+        val peer = peerOwnersMutex.withLock { peerDriveOwners.remove(driveId) }
+        if (peer != null) {
+            // Peer drive: tear down its per-owner websocket rather than reconnecting the own-host one.
+            peerWebSocketManager.unmount(peer.first, peer.second)
+        } else {
+            refreshWsSubscription.trigger()
+        }
     }
 
     // Close the current WebSocket and open a new one. [connect] reads the DriveRegistry
@@ -512,6 +569,10 @@ class AuthConnectionCoordinator(
         }
         refreshWsSubscription.cancel()
         driveRegistry.stop()
+        // Close every per-owner peer websocket so a second login doesn't inherit the first user's
+        // community connections.
+        peerWebSocketManager.reset()
+        peerOwnersMutex.withLock { peerDriveOwners.clear() }
         outboxSync.setOnline(false)
         // Keep isConnecting = true so the next login cycle correctly starts in
         // StartupState.Loading.  While logged out the auth state is Unauthenticated,

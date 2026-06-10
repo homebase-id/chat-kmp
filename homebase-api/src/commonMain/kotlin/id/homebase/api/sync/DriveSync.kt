@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
@@ -37,6 +38,11 @@ class DriveSync(
     scope: CoroutineScope? = null,
     expectFreshCursor: Boolean = false,
     private val policy: DriveSyncPolicy = DriveSyncPolicy(),
+    // Owning identity when this drive is hosted on a peer (a community owner); null for the
+    // logged-in user's own drives. When set, the sync pull is brokered over peer (queryBatch routes
+    // to /peer/$ownerOdinId/...). Rows still land under the local-user [identityId] — the community
+    // driveId is a globally-unique GUID so it can never collide with own-drive rows.
+    private val ownerOdinId: OdinId? = null,
 ) {
     // Background work is Network and DB bound, so using IO
     private val scope = scope ?: supervisedScope("drive-sync")
@@ -172,7 +178,7 @@ class DriveSync(
             val durationMs = measureTimedValue {
                 try {
                     killroy.value = false // Atomic
-                    queryBatchResponse = driveQueryProvider.queryBatch(driveId, request)
+                    queryBatchResponse = driveQueryProvider.queryBatch(driveId, request, ownerOdinId)
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
