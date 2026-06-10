@@ -48,6 +48,19 @@ private fun uploadTypeName(t: Long): String = when (t) {
 
 private fun Outbox.uploadTypeLabel(): String = "${uploadTypeName(uploadType)}($uploadType)"
 
+/**
+ * True when enqueuing [incomingUploadType] over an existing pending
+ * [existingUploadType] would strand a not-yet-sent create. An `UpdateFile`
+ * must not replace a pending `UploadNewFile`: the two share
+ * `(driveId, uniqueId)`, so the replace deletes the create that never reached
+ * the server, and the update then fails permanently ("Could not find file with
+ * uniqueId") — losing the message. The caller must instead re-enqueue the edit
+ * AS a create (see `ChatMessageSenderService.updateMessage`). Pure + testable.
+ */
+internal fun wouldStrandPendingCreate(existingUploadType: Long?, incomingUploadType: Long): Boolean =
+    incomingUploadType == DriveOutboxUploader.UpdateFile &&
+        existingUploadType == DriveOutboxUploader.UploadNewFile
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -419,6 +432,47 @@ class OutboxSync(
         return enqueued
     }
 
+    /** Replace any pending row for this message with a fresh create. Used to
+     *  coalesce an edit into a still-queued (not-yet-sent) create so the edit
+     *  doesn't downgrade it to an UpdateFile and strand it. */
+    public suspend fun replaceEnqueue(
+        request: UploadFileRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = replaceEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            scope.launch { send() }
+        }
+
+        return enqueued
+    }
+
+    /** Upload type of the pending row for (driveId, uniqueId), or null if none
+     *  is queued. Lets a caller branch on create-vs-update before enqueuing. */
+    public suspend fun pendingUploadType(driveId: Uuid, uniqueId: Uuid): Long? =
+        databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)?.uploadType
+
+    /** The pending row deserialized as an [UploadFileRequest], or null when there
+     *  is no pending row or it isn't an `UploadNewFile`. Lets an edit amend a
+     *  still-queued create in place — preserving its media payloads — rather than
+     *  replacing it with an update the server can't apply. */
+    public suspend fun pendingUploadFileRequest(driveId: Uuid, uniqueId: Uuid): UploadFileRequest? {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        if (row.uploadType != DriveOutboxUploader.UploadNewFile) return null
+        return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+    }
+
     public suspend fun tryEnqueue(
         request: UpdateLocalMetadataTagsOutboxRequest,
         driveId: Uuid,
@@ -548,6 +602,18 @@ class OutboxSync(
         uploadType: Long,
         json: String
     ): Boolean {
+        // Defense in depth: never silently downgrade a pending create to an
+        // update. Chat's edit path coalesces into a create before reaching here
+        // (see ChatMessageSenderService.updateMessage); this guard ensures no
+        // current or future caller can strand a not-yet-sent message instead.
+        val existing = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        if (wouldStrandPendingCreate(existing?.uploadType, uploadType)) {
+            Logger.w(
+                "OutboxSync: refusing to replace a pending UploadNewFile with an UpdateFile " +
+                    "for uniqueId=$uniqueId — would strand the un-sent create."
+            )
+            return false
+        }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
     }
