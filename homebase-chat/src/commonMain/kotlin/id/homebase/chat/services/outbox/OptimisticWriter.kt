@@ -422,8 +422,16 @@ class OptimisticWriter(
         }
     }
 
-    /** Removes an optimistic file from the local DB. Call when the send fails so the
-     *  pending message is not left stranded in the conversation list. */
+    /**
+     * Removes a still-pending optimistic file from the local DB **and cancels its
+     * queued outbox send**. Call when a pending message must not ship — a failed
+     * send rollback, or the user deleting a message before it left the device.
+     *
+     * The local file and its outbox row share the same uniqueId; dropping the
+     * file without cancelling the row would still upload the message we just
+     * removed (the "deleted message still gets sent" bug). Only acts while the
+     * file is still pending (`isPendingSendTag`) — a no-op once the send confirms.
+     */
     suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid) {
         val credentials = credentialsManager.requireActiveCredentials()
 
@@ -438,6 +446,11 @@ class OptimisticWriter(
         if (!isPending) return
 
         try {
+            // Cancel the queued send FIRST. The create/edit row is keyed by this
+            // uniqueId; leaving it would re-upload the file we're about to drop.
+            // Ordered before the local delete so a failure can't leave a message
+            // that's gone locally but still queued to send.
+            dbm.outbox.deleteBy(driveId, uniqueId)
             fileProcessor.deleteEntryDriveMainIndex(
                 identityId = credentials.getIdentityId(),
                 driveId = driveId,
