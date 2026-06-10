@@ -71,6 +71,7 @@
     <string name="msg_status_sending">Sender…</string>
     <string name="msg_status_sent">Sendt: %1$s</string>
     <string name="msg_status_failed_to_send">Kunne ikke sendes</string>
+    <string name="msg_status_delivery_details_unavailable">Leveringsdetaljer kunne ikke indlæses</string>
     <string name="action_retry">Prøv igen</string>
     <string name="label_edited">Redigeret: %1$s</string>
     <string name="label_size">Størrelse: %1$s</string>

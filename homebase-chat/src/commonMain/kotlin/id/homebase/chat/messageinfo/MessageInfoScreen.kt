@@ -44,6 +44,7 @@ import id.homebase.common.util.formatBytes
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
 import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
+import id.homebase.chat.widget.deliveryFailureTint
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
@@ -59,6 +60,8 @@ import id.homebase.resources.label_received
 import id.homebase.resources.copy_message_id
 import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
+import id.homebase.resources.error_delivery_failed
+import id.homebase.resources.msg_status_delivery_details_unavailable
 import id.homebase.resources.msg_status_failed_to_send
 import id.homebase.resources.msg_status_sending
 import id.homebase.resources.msg_status_sent
@@ -209,12 +212,35 @@ fun MessageInfoUi(
                             Text(
                                 text = stringResource(MR.string.msg_status_failed_to_send),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
+                                color = deliveryFailureTint(),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                        }
+
+                        OutgoingSendState.DeliveryFailed -> {
+                            Text(
+                                text = stringResource(MR.string.error_delivery_failed),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = deliveryFailureTint(),
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                             )
                         }
 
                         null -> {}
+                    }
+
+                    // A failed message must never show a bare failure headline
+                    // with silently-missing reasons: when the per-recipient
+                    // transfer history couldn't load, say so.
+                    val sendFailed = uiState.sendState == OutgoingSendState.Failed ||
+                        uiState.sendState == OutgoingSendState.DeliveryFailed
+                    if (sendFailed && uiState.transferHistoryFailed) {
+                        Text(
+                            text = stringResource(MR.string.msg_status_delivery_details_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        )
                     }
 
                     if (uiState.canRetry) {
@@ -428,7 +454,7 @@ private fun RecipientRow(recipient: RecipientStatusUiModel, modifier: Modifier =
                 Text(
                     text = errorText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = deliveryFailureTint(),
                 )
             }
         }
