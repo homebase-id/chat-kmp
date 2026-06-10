@@ -79,6 +79,29 @@ class RichTextRenderingTest {
         onNodeWithText("see this link now").assertExists()
     }
 
+    /**
+     * Chat soft-break semantics: a single `\n` between two words must render as a
+     * hard line break (two lines), NOT collapse to a space the way raw CommonMark
+     * does. Guards the [id.homebase.api.util.withChatHardLineBreaks] pipeline end to
+     * end through [ChatMarkdown]'s inline path.
+     */
+    @Test
+    fun chatMarkdownKeepsSingleNewlineAsLineBreak() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "alpha\nbeta")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("alpha\nbeta").fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("alpha\nbeta").assertExists()
+        kotlin.test.assertTrue(
+            onAllNodesWithText("alpha beta").fetchSemanticsNodes().isEmpty(),
+            "must not collapse to a single space-joined line",
+        )
+    }
+
     @Test
     fun chatMarkdownRendersBlockElements() = runComposeUiTest {
         val body = buildString {
@@ -154,6 +177,28 @@ class RichTextRenderingTest {
      * exception", and the visible-text shape of inline-code + a bare link is an
      * implementation detail of the renderer that shouldn't make this guard brittle.
      */
+    /**
+     * A GFM table must render through the block path (cells visible) without
+     * crashing. Guards the bubble-aware, horizontally-scrollable table component.
+     */
+    @Test
+    fun chatMarkdownRendersTable() = runComposeUiTest {
+        val body = "| Name | Qty |\n| --- | --- |\n| Apples | 3 |\n| Pears | 12 |"
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = body)
+            }
+        }
+        // mikepenz renders GFM table cells with a trailing space ("Apples "), so
+        // match on substring rather than exact text.
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Apples", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Apples", substring = true).assertExists()
+        onNodeWithText("Pears", substring = true).assertExists()
+        onNodeWithText("12", substring = true).assertExists()
+    }
+
     @Test
     fun chatMarkdownRendersInlineAnnotatorSurface() = runComposeUiTest {
         setContent {
