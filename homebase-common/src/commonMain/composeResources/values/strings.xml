@@ -788,6 +788,14 @@
     <string name="cd_sticker_variant_original">Original photo version</string>
     <string name="cd_tab_emoji">Emoji</string>
     <string name="cd_tab_stickers">Stickers</string>
+    <!-- Sticker-tap bottom sheet (tap a sticker message) -->
+    <string name="chat_sticker_options_title">Sticker</string>
+    <string name="chat_sticker_add_to_library">Add to my stickers</string>
+    <string name="chat_sticker_remove_from_library">Remove from my stickers</string>
+    <string name="chat_sticker_save_to_device">Save to device</string>
+    <string name="cd_sticker_options_add">Add to my stickers</string>
+    <string name="cd_sticker_options_remove">Remove from my stickers</string>
+    <string name="cd_sticker_options_save">Save to device</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
