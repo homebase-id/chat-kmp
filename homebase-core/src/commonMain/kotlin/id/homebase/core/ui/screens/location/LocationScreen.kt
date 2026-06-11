@@ -1,10 +1,6 @@
 package id.homebase.core.ui.screens.location
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -24,14 +20,12 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
 import id.homebase.resources.location_label
-import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationScreen(
     viewModel: LocationViewModel,
-    onNavigateBack: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -91,16 +85,10 @@ fun LocationScreen(
 
     Scaffold(
         topBar = {
+            // No back arrow: Location is a top-level destination reached from the
+            // bottom nav bar (which stays visible here), matching Vault/Moments.
             TopAppBar(
                 title = { Text(stringResource(MR.string.location_label)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
             )
         },
     ) { innerPadding ->

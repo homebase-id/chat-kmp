@@ -1163,10 +1163,7 @@ fun AppNavHost(
 
                         composable<Route.Location> {
                             if (isAuthenticated) {
-                                LocationScreen(
-                                    viewModel = locationViewModel,
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                                LocationScreen(viewModel = locationViewModel)
                             }
                         }
 
