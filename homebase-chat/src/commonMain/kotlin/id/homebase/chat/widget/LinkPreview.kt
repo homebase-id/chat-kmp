@@ -234,8 +234,11 @@ fun LinkPreviewCard(
  * @param payloadKey Payload key (e.g. `PAYLOAD_KEY_LINKS`).
  * @param keyHeader Key header for decryption.
  * @param previewThumbnail Optional embedded tiny thumbnail for instant display.
+ * @param isUploading If true, the message is still being sent and its payload does not yet exist on
+ * the drive — render the embedded [previewThumbnail] directly instead of attempting a drive fetch.
  * @param modifier Modifier for the composable.
  */
+@OptIn(ExperimentalEncodingApi::class, ExperimentalResourceApi::class)
 @Composable
 fun LinkPreviewCard(
     descriptor: LinkPreviewDescriptor,
@@ -244,10 +247,31 @@ fun LinkPreviewCard(
     payloadKey: String,
     keyHeader: KeyHeader,
     previewThumbnail: EmbeddedThumb? = null,
+    isUploading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
+
+    val imageCornerShape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
+    )
+
+    // While the message is pending/uploading the drive payload does not exist yet, so a
+    // HomebaseImage fetch would fail and overlay a broken-image triangle. Decode the embedded
+    // tinyThumb (always a tiny WebP, base64) and show it directly during that window — mirroring
+    // how a pending sent IMAGE renders its local file instead of the remote drive payload. Once
+    // the send completes the bubble re-renders with isUploading=false and swaps to HomebaseImage.
+    val pendingThumbBitmap = remember(previewThumbnail?.content, isUploading) {
+        if (!isUploading) return@remember null
+        previewThumbnail?.content?.let {
+            try {
+                Base64.decode(it).decodeToImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth()
@@ -256,30 +280,34 @@ fun LinkPreviewCard(
             .clickable { uriHandler.openUri(descriptor.url) },
     ) {
         if (descriptor.hasImage) {
-            val imageData = remember(driveId, fileId, payloadKey) {
-                HomebaseImageData(
-                    driveId = driveId,
-                    fileId = fileId,
-                    payloadKey = payloadKey,
-                    previewThumbnail = previewThumbnail,
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    isEncrypted = true,
-                    keyHeader = keyHeader,
-                    loadFullPayload = true,
+            if (pendingThumbBitmap != null) {
+                Image(
+                    bitmap = pendingThumbBitmap,
+                    contentDescription = descriptor.title,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(imageCornerShape),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                val imageData = remember(driveId, fileId, payloadKey) {
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payloadKey,
+                        previewThumbnail = previewThumbnail,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        isEncrypted = true,
+                        keyHeader = keyHeader,
+                        loadFullPayload = true,
+                    )
+                }
+
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(imageCornerShape),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = descriptor.title,
                 )
             }
-
-            HomebaseImage(
-                imageData = imageData,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(
-                    RoundedCornerShape(
-                        topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius
-                    )
-                ),
-                contentScale = ContentScale.Crop,
-                contentDescription = descriptor.title,
-
-                )
         }
 
         Column(modifier = Modifier.padding(12.dp)) {

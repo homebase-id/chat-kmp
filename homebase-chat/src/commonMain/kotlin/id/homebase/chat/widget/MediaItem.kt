@@ -184,6 +184,7 @@ fun MediaItem(
                     keyHeader = KeyHeader(payloadIv, keyHeader.aesKey),
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
+                    isUploading = isUploading,
                     modifier = baseModifier,
                 )
             } else {
