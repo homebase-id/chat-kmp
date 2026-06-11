@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
@@ -315,7 +316,23 @@ internal class MediaDownloadHandler(
                     action.message.payloads?.firstOrNull { it.key == action.payloadKey }
                         ?: return@launch
                 val contentType = selectedPayload.contentType ?: ""
+                // A sticker tap (WhatsApp-style) opens the sticker-options bottom sheet — add/
+                // remove from the user's library + save to device — instead of the fullscreen
+                // viewer. Detected the same way the bubble decides to render bare (PR #664
+                // descriptorContent {"isSticker":true}). Regular images fall through to the
+                // fullscreen path unchanged.
+                val isSticker =
+                    (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
                 when {
+                    contentType.startsWith("image/") && isSticker -> {
+                        dispatch(
+                            ConversationListUiAction.ShowStickerOptions(
+                                message = action.message,
+                                payloadKey = action.payloadKey,
+                            )
+                        )
+                    }
+
                     contentType.startsWith("image/") -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 

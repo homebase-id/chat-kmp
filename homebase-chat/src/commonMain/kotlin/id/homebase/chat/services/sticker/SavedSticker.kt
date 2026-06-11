@@ -7,6 +7,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.Base64
@@ -34,6 +35,13 @@ data class SavedSticker(
     val payloadDescriptor: PayloadDescriptor,
     val createdAt: Long,
     val groupId: Uuid? = null,
+    /**
+     * The chat-message file this sticker was saved FROM, or null if it was created in-app
+     * (editor / background-remover). Read off [StickerFileContent.sourceFileId] in the
+     * envelope's appData.content. Lets the sticker-tap bottom sheet detect that a received
+     * sticker is already in the user's library (`sourceFileId == message.fileId`).
+     */
+    val sourceFileId: Uuid? = null,
     /** True until the outbox confirms the upload (optimistic local entry). */
     val isPending: Boolean = false,
 )
@@ -47,9 +55,18 @@ fun HomebaseFile.toSavedSticker(): SavedSticker? {
     val payloads = fileMetadata.payloads
     val payload = payloads?.firstOrNull() ?: return null
 
-    // appData.content carries only an optional [StickerFileContent.name], which the v1
-    // tray does not surface — so we deliberately don't read it here. The sticker identity
-    // and render data all come from the envelope + payload below.
+    // appData.content carries an optional [StickerFileContent]. The v1 tray ignores the
+    // label (name); we read it only for [StickerFileContent.sourceFileId] — the back-pointer
+    // to the chat message a sticker was saved from, used by the sticker-tap bottom sheet to
+    // detect an already-saved sticker. A blank/legacy/corrupt content parses to null source.
+    val savedContent = fileMetadata.appData.content?.let { json ->
+        try {
+            OdinSystemSerializer.deserialize<StickerFileContent>(json)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     return SavedSticker(
         fileId = fileId,
         uniqueId = fileMetadata.appData.uniqueId ?: fileId,
@@ -61,6 +78,7 @@ fun HomebaseFile.toSavedSticker(): SavedSticker? {
         payloadDescriptor = payload,
         createdAt = fileMetadata.created.milliseconds,
         groupId = fileMetadata.appData.groupId,
+        sourceFileId = savedContent?.sourceFileId,
     )
 }
 

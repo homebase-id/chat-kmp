@@ -246,6 +246,7 @@ class ConversationListViewModel(
         scope = viewModelScope,
         messagesUiState = _messagesUiState,
         stickerService = stickerService,
+        stickerStream = stickerStream,
         chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
@@ -1101,6 +1102,16 @@ class ConversationListViewModel(
             is ConversationListUiAction.DismissStickerCreate -> stickerCreator.dismiss()
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
+
+            // Sticker-tap bottom sheet (WhatsApp-style): open the sheet, dismiss it, or
+            // remove the saved copy created from this message. "Add to my stickers" reuses
+            // SaveStickerFromMessage; "Save to device" reuses DownloadMedia.
+            is ConversationListUiAction.ShowStickerOptions ->
+                stickerHandler.handleShowStickerOptions(action)
+            is ConversationListUiAction.DismissStickerOptions ->
+                stickerHandler.handleDismissStickerOptions()
+            is ConversationListUiAction.RemoveStickerFromMessage ->
+                stickerHandler.handleRemoveStickerFromMessage(action)
         }
     }
 
