@@ -1194,6 +1194,7 @@
     <string name="location_onboarding_body_2">Set it up to mount the Location drive on this device. You choose when tracking is on.</string>
     <string name="location_onboarding_setup">Set it up</string>
     <string name="location_onboarding_dismiss">Not now</string>
+    <string name="location_settings">Settings</string>
     <string name="location_settings_section">Location</string>
     <string name="location_settings_open">Open Location</string>
     <string name="location_settings_show_icon">Show Location icon in bottom bar</string>

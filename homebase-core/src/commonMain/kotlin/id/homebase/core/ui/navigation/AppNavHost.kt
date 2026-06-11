@@ -1163,7 +1163,12 @@ fun AppNavHost(
 
                         composable<Route.Location> {
                             if (isAuthenticated) {
-                                LocationScreen(viewModel = locationViewModel)
+                                LocationScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateToSettings = {
+                                        navController.navigate(Route.LocationSettings)
+                                    },
+                                )
                             }
                         }
 
