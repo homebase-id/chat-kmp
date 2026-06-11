@@ -16,6 +16,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.ReactionDisplayItem
 import io.github.vinceglb.filekit.PlatformFile
@@ -83,6 +84,8 @@ data class MessageListUiState(
     val messageReactions: List<ReactionDisplayItem>? = null,
     val reactionDetailsMessageId: Uuid? = null,
     val isReactionsLoading: Boolean = false,
+    /** Non-null while the sticker-tap bottom sheet is open; null otherwise. */
+    val stickerOptionsSheet: StickerOptionsSheetState? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
@@ -133,6 +136,26 @@ data class ReplyTargetEventDetail(
     val ownReactions: ImmutableList<String>,
     val reactionSummary: ReactionSummary?,
     val organizer: OdinId?,
+)
+
+/**
+ * State for the sticker-tap bottom sheet (WhatsApp-style). Opening a sticker bubble routes
+ * here instead of the fullscreen viewer; the sheet offers "Add to my stickers" /
+ * "Remove from my stickers" (by [isAlreadySaved]) and "Save to device".
+ *
+ * [sourceFileId] is the chat message's fileId — used both to remove the saved copy created
+ * from this message and to recompute "already saved" when the library changes while the sheet
+ * is open. [payloadKey] addresses the sticker image payload for the device-export path.
+ * [stickerImage] is the render descriptor for the larger in-sheet preview (built once when the
+ * sheet opens, reusing the same drive/keyHeader the bubble used).
+ */
+@Immutable
+data class StickerOptionsSheetState(
+    val messageId: Uuid,
+    val payloadKey: String,
+    val sourceFileId: Uuid,
+    val isAlreadySaved: Boolean,
+    val stickerImage: HomebaseImageData,
 )
 
 @Immutable

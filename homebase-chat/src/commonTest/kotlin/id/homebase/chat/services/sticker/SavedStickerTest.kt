@@ -147,6 +147,36 @@ class SavedStickerTest {
     }
 
     @Test
+    fun toSavedSticker_readsSourceFileIdFromContent() {
+        val source = Uuid.random()
+        val sticker = buildStickerFile(
+            contentJson = OdinSystemSerializer.serialize(
+                StickerFileContent(name = "smile", sourceFileId = source)
+            ),
+        ).toSavedSticker()
+        assertNotNull(sticker)
+        assertEquals(source, sticker.sourceFileId)
+    }
+
+    @Test
+    fun toSavedSticker_sourceFileIdNullForLegacyContent() {
+        // A legacy sticker file (content without sourceFileId) maps to a null source — it was
+        // not saved from a known message, so the bottom sheet can't claim a duplicate.
+        val sticker = buildStickerFile(
+            contentJson = OdinSystemSerializer.serialize(StickerFileContent(name = "smile")),
+        ).toSavedSticker()
+        assertNotNull(sticker)
+        assertNull(sticker.sourceFileId)
+    }
+
+    @Test
+    fun toSavedSticker_sourceFileIdNullForBlankContent() {
+        val sticker = buildStickerFile(contentJson = null).toSavedSticker()
+        assertNotNull(sticker)
+        assertNull(sticker.sourceFileId)
+    }
+
+    @Test
     fun toImageData_decodesIvIntoKeyHeader() {
         val sticker = buildStickerFile().toSavedSticker()
         assertNotNull(sticker)
