@@ -16,12 +16,15 @@ import kotlin.uuid.Uuid
  *
  * While a link-preview message is still uploading, its drive payload does not exist yet, so the
  * normal [id.homebase.core.image.HomebaseImage] fetch would fail and overlay a broken-image
- * triangle. The card must instead decode and show the embedded tinyThumb directly.
+ * triangle. The card must instead render a local source via Coil [coil3.compose.AsyncImage] — the
+ * crisp `localImagePath` when present, else the embedded tinyThumb bytes. This case passes no
+ * `localImagePath`, so it exercises the tinyThumb fallback.
  *
  * The test environment intentionally has NO Koin container. [HomebaseImage] resolves an
- * `ImageLoader` via `koinInject()` during composition, so any path that reaches it throws. The
- * `isUploading = true` case below renders to completion (title + description visible), which proves
- * it took the embedded-thumbnail branch and never touched HomebaseImage.
+ * `ImageLoader` via `koinInject()` during composition, so any path that reaches it throws; AsyncImage
+ * instead uses Coil's singleton loader and needs no Koin. The `isUploading = true` case below renders
+ * to completion (title + description visible), which proves it took the local-source branch and never
+ * touched HomebaseImage.
  */
 @OptIn(ExperimentalTestApi::class)
 class LinkPreviewPendingImageTest {
