@@ -25,11 +25,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.cd_sticker_options_add
 import id.homebase.resources.cd_sticker_options_remove
 import id.homebase.resources.cd_sticker_options_save
+import id.homebase.resources.cd_sticker_thumbnail
 import id.homebase.resources.chat_sticker_add_to_library
 import id.homebase.resources.chat_sticker_options_title
 import id.homebase.resources.chat_sticker_remove_from_library
@@ -52,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StickerOptionsSheet(
+    stickerImage: HomebaseImageData,
     isAlreadySaved: Boolean,
     onAddToLibrary: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
@@ -72,6 +77,18 @@ fun StickerOptionsSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 8.dp),
         ) {
+            // Enlarged sticker preview (bigger than the bubble's ~160dp cap) so the user can see
+            // it clearly when they tap. Transparent stickers show the sheet surface through.
+            HomebaseImage(
+                imageData = stickerImage,
+                contentDescription = stringResource(MR.string.cd_sticker_thumbnail),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 8.dp, bottom = 16.dp)
+                    .size(200.dp),
+            )
+
             Text(
                 text = stringResource(MR.string.chat_sticker_options_title),
                 style = MaterialTheme.typography.titleLarge,

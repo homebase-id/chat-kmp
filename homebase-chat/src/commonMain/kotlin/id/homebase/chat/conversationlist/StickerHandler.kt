@@ -10,6 +10,8 @@ import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_remove_failed
 import id.homebase.resources.chat_sticker_removed
@@ -141,6 +143,20 @@ internal class StickerHandler(
     fun handleShowStickerOptions(action: ConversationListUiAction.ShowStickerOptions) {
         val message = action.message
         val isAlreadySaved = findSavedFromMessage(message.fileId) != null
+        val stickerPayload = message.payloads?.firstOrNull { it.key == action.payloadKey }
+        val stickerImage = HomebaseImageData(
+            driveId = chatTargetDrive.alias,
+            fileId = message.fileId,
+            payloadKey = action.payloadKey,
+            previewThumbnail = stickerPayload?.previewThumbnail?.toEmbeddedThumb()
+                ?: message.previewThumbnail,
+            // Load the full sticker (a small payload) so the enlarged preview is crisp and animates
+            // for animated-WebP/GIF stickers, matching the bubble's inline treatment.
+            loadFullPayload = true,
+            isEncrypted = true,
+            payloadContentType = stickerPayload?.contentType,
+            keyHeader = message.keyHeader,
+        )
         messagesUiState.update {
             it.copy(
                 stickerOptionsSheet = StickerOptionsSheetState(
@@ -148,6 +164,7 @@ internal class StickerHandler(
                     payloadKey = action.payloadKey,
                     sourceFileId = message.fileId,
                     isAlreadySaved = isAlreadySaved,
+                    stickerImage = stickerImage,
                 )
             )
         }

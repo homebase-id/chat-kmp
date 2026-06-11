@@ -644,6 +644,7 @@ fun ConversationContent(
     // dispatches then dismisses; the sheet state is cleared on dismiss.
     uiState.stickerOptionsSheet?.let { sheet ->
         StickerOptionsSheet(
+            stickerImage = sheet.stickerImage,
             isAlreadySaved = sheet.isAlreadySaved,
             onAddToLibrary = {
                 onUiAction(

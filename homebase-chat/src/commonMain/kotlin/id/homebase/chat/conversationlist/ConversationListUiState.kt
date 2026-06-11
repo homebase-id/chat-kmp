@@ -16,6 +16,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.ReactionDisplayItem
 import io.github.vinceglb.filekit.PlatformFile
@@ -145,6 +146,8 @@ data class ReplyTargetEventDetail(
  * [sourceFileId] is the chat message's fileId — used both to remove the saved copy created
  * from this message and to recompute "already saved" when the library changes while the sheet
  * is open. [payloadKey] addresses the sticker image payload for the device-export path.
+ * [stickerImage] is the render descriptor for the larger in-sheet preview (built once when the
+ * sheet opens, reusing the same drive/keyHeader the bubble used).
  */
 @Immutable
 data class StickerOptionsSheetState(
@@ -152,6 +155,7 @@ data class StickerOptionsSheetState(
     val payloadKey: String,
     val sourceFileId: Uuid,
     val isAlreadySaved: Boolean,
+    val stickerImage: HomebaseImageData,
 )
 
 @Immutable
