@@ -319,6 +319,26 @@ sealed interface ConversationListUiAction {
         val sticker: id.homebase.chat.services.sticker.SavedSticker,
     ) : ConversationListUiAction
 
+    /**
+     * Tapping a sticker message bubble. Opens the sticker-options bottom sheet (Add/Remove +
+     * Save to device) instead of the fullscreen media viewer.
+     */
+    data class ShowStickerOptions(
+        val message: MessageUiModel,
+        val payloadKey: String,
+    ) : ConversationListUiAction
+
+    /** Dismiss the sticker-options bottom sheet. */
+    data object DismissStickerOptions : ConversationListUiAction
+
+    /**
+     * "Remove from my stickers" in the sticker-options sheet. Deletes the saved copy created
+     * from the given source message file; does NOT delete the chat message.
+     */
+    data class RemoveStickerFromMessage(
+        val sourceFileId: Uuid,
+    ) : ConversationListUiAction
+
     /** Ensure the optional Stickers drive is mounted (first tray open). */
     data object EnsureStickerDriveMounted : ConversationListUiAction
 

@@ -639,6 +639,37 @@ fun ConversationContent(
         )
     }
 
+    // Sticker-tap bottom sheet (WhatsApp-style): tapping a sticker message opens this instead
+    // of the fullscreen viewer. Add/Remove from the user's library + Save to device. Each row
+    // dispatches then dismisses; the sheet state is cleared on dismiss.
+    uiState.stickerOptionsSheet?.let { sheet ->
+        StickerOptionsSheet(
+            stickerImage = sheet.stickerImage,
+            isAlreadySaved = sheet.isAlreadySaved,
+            onAddToLibrary = {
+                onUiAction(
+                    ConversationListUiAction.SaveStickerFromMessage(sheet.messageId, sheet.payloadKey)
+                )
+                onUiAction(ConversationListUiAction.DismissStickerOptions)
+            },
+            onRemoveFromLibrary = {
+                onUiAction(
+                    ConversationListUiAction.RemoveStickerFromMessage(sheet.sourceFileId)
+                )
+                onUiAction(ConversationListUiAction.DismissStickerOptions)
+            },
+            onSaveToDevice = {
+                // Reuse the existing decrypt-to-cache + SaveFileToDevice path the fullscreen
+                // viewer's onSave uses — no new device-export code.
+                onUiAction(
+                    ConversationListUiAction.DownloadMedia(sheet.messageId, sheet.payloadKey)
+                )
+                onUiAction(ConversationListUiAction.DismissStickerOptions)
+            },
+            onDismiss = { onUiAction(ConversationListUiAction.DismissStickerOptions) },
+        )
+    }
+
     if (showBlockConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showBlockConfirmDialog = false },

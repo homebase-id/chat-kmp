@@ -87,6 +87,13 @@ class StickerService(
         scope: CoroutineScope,
         name: String? = null,
         uniqueId: Uuid = Uuid.random(),
+        /**
+         * The chat-message file this sticker is being saved FROM. Persisted in the sticker
+         * file's appData content ([StickerFileContent.sourceFileId]) so the sticker-tap bottom
+         * sheet can later detect that the same received sticker is already saved. Null when the
+         * sticker originates in-app (editor / background-remover) with no source message.
+         */
+        sourceFileId: Uuid? = null,
     ): Uuid? {
         ensureDriveMounted()
 
@@ -133,7 +140,9 @@ class StickerService(
                 uniqueId, bundle, keyHeader.aesKey, scope,
             )
 
-            val content = OdinSystemSerializer.serialize(StickerFileContent(name = name))
+            val content = OdinSystemSerializer.serialize(
+                StickerFileContent(name = name, sourceFileId = sourceFileId)
+            )
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -205,6 +214,7 @@ class StickerService(
                     payloadDescriptor = payloadDescriptors?.firstOrNull()
                         ?: PayloadDescriptor(key = key, contentType = uploadType),
                     createdAt = Clock.System.now().toEpochMilliseconds(),
+                    sourceFileId = sourceFileId,
                     isPending = true,
                 )
             )
