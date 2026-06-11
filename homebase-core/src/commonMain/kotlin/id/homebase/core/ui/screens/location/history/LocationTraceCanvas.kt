@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.WebMercator
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -78,17 +79,21 @@ fun LocationTraceCanvas(
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<TileKey, ImageBitmap>() }
-    val failedTiles = remember { mutableStateMapOf<TileKey, Boolean>() }
     val visibleTiles = if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
         visibleTileKeys(viewport, canvasSize)
     } else emptyList()
     LaunchedEffect(visibleTiles, showMapTiles) {
         if (!showMapTiles) return@LaunchedEffect
+        // Concurrent fetches: the provider single-flights and runs downloads on
+        // its own scope, so restarts of this effect (pan/zoom) neither cancel
+        // nor duplicate them. Failures are simply retried on the next restart.
         for (key in visibleTiles) {
-            if (tileBitmaps.containsKey(key) || failedTiles.containsKey(key)) continue
-            val bytes = fetchTile(key.zoom, key.x, key.y)
-            val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-            if (bitmap != null) tileBitmaps[key] = bitmap else failedTiles[key] = true
+            if (tileBitmaps.containsKey(key)) continue
+            launch {
+                val bytes = fetchTile(key.zoom, key.x, key.y)
+                val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
+                if (bitmap != null) tileBitmaps[key] = bitmap
+            }
         }
     }
 
@@ -186,24 +191,33 @@ private fun fitViewport(bbox: DoubleArray?, canvasSize: IntSize): Viewport? {
 }
 
 private fun visibleTileKeys(vp: Viewport, canvasSize: IntSize): List<TileKey> {
-    // Pick the zoom where one tile (256px-native) renders at roughly 1:1.
-    val zoom = (-ln(vp.unitsPerPx * WebMercator.TILE_SIZE_PX) / ln(2.0))
+    // Start at the zoom where one tile (256px-native) renders ~1:1, then step
+    // DOWN until the full visible grid fits the tile budget — a portrait phone
+    // at 1:1 needs ~30-40 tiles, so coverage beats crispness: coarser tiles are
+    // upscaled but the whole view gets a basemap (truncating the grid instead
+    // left the bottom of the screen bare).
+    val idealZoom = (-ln(vp.unitsPerPx * WebMercator.TILE_SIZE_PX) / ln(2.0))
         .roundToInt().coerceIn(MIN_TILE_ZOOM, MAX_TILE_ZOOM)
-    val n = 1 shl zoom
     val halfW = canvasSize.width / 2.0 * vp.unitsPerPx
     val halfH = canvasSize.height / 2.0 * vp.unitsPerPx
-    val x0 = floor((vp.centerX - halfW) * n).toInt().coerceIn(0, n - 1)
-    val x1 = ceil((vp.centerX + halfW) * n).toInt().coerceIn(0, n - 1)
-    val y0 = floor((vp.centerY - halfH) * n).toInt().coerceIn(0, n - 1)
-    val y1 = ceil((vp.centerY + halfH) * n).toInt().coerceIn(0, n - 1)
-    val keys = mutableListOf<TileKey>()
-    outer@ for (y in y0..y1) {
-        for (x in x0..x1) {
-            keys += TileKey(zoom, x, y)
-            if (keys.size >= MAX_TILES_PER_VIEW) break@outer
+    for (zoom in idealZoom downTo MIN_TILE_ZOOM) {
+        val n = 1 shl zoom
+        val x0 = floor((vp.centerX - halfW) * n).toInt().coerceIn(0, n - 1)
+        val x1 = ceil((vp.centerX + halfW) * n).toInt().coerceIn(0, n - 1)
+        val y0 = floor((vp.centerY - halfH) * n).toInt().coerceIn(0, n - 1)
+        val y1 = ceil((vp.centerY + halfH) * n).toInt().coerceIn(0, n - 1)
+        val count = (x1 - x0 + 1) * (y1 - y0 + 1)
+        if (count > MAX_TILES_PER_VIEW && zoom > MIN_TILE_ZOOM) continue
+        return buildList {
+            for (y in y0..y1) {
+                for (x in x0..x1) {
+                    add(TileKey(zoom, x, y))
+                    if (size >= MAX_TILES_PER_VIEW) return@buildList
+                }
+            }
         }
     }
-    return keys
+    return emptyList()
 }
 
 private const val FIT_PADDING = 1.2
@@ -212,4 +226,7 @@ private const val MIN_UNITS_PER_PX = 1e-9
 private const val MAX_UNITS_PER_PX = 1.0 / 256.0
 private const val MIN_TILE_ZOOM = 3
 private const val MAX_TILE_ZOOM = 19
-private const val MAX_TILES_PER_VIEW = 16
+
+// Budget per view. 24 fits a portrait phone one zoom step below 1:1 (×2
+// upscale worst case) while keeping per-view OSM traffic modest.
+private const val MAX_TILES_PER_VIEW = 24

@@ -7,7 +7,10 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.CompletableDeferred
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.coroutines.supervisedScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -146,40 +149,43 @@ class LocationPreviewProvider(
 
     /**
      * Fetch one raw OSM tile PNG for the Location history basemap. Same HTTP
-     * path, User-Agent and blank-tile guard as the chat preview; LRU-cached and
-     * single-flighted so a pan/zoom burst doesn't refetch or double-fetch.
-     * Returns null on failure or blank tile — callers leave the background empty.
+     * path and User-Agent as the chat preview; LRU-cached and single-flighted.
+     * The fetch runs on a provider-owned scope so a cancelled caller (the
+     * canvas effect restarting on pan/zoom) can neither kill an in-flight
+     * download other callers await nor strand its single-flight entry.
+     * Returns null on failure — callers leave the background empty.
+     *
+     * No blank-tile size guard here (unlike [fetchStaticMap]): a tiny
+     * uniform-color PNG is a legitimate basemap tile (open water, plain
+     * terrain), not a broken preview image.
      */
     suspend fun getTilePng(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
         val key = TileKey(zoom, xTile, yTile)
-        var owner = false
         val flight = tileCacheMutex.withLock {
             tileCache[key]?.let { return it }
-            tileFlights[key] ?: CompletableDeferred<ByteArray?>().also {
-                tileFlights[key] = it
-                owner = true
-            }
-        }
-        if (!owner) return flight.await()
-
-        val bytes = try {
-            fetchTile(zoom, xTile, yTile)
-        } catch (e: Exception) {
-            Logger.w(throwable = e, tag = TAG) { "getTilePng($zoom/$xTile/$yTile) threw" }
-            null
-        }
-        tileCacheMutex.withLock {
-            if (bytes != null) {
-                tileCache[key] = bytes
-                // Insertion-order eviction — good enough for a pan/zoom cache.
-                while (tileCache.size > TILE_CACHE_MAX) {
-                    tileCache.remove(tileCache.keys.first())
+            tileFlights.getOrPut(key) {
+                tileScope.async {
+                    val bytes = try {
+                        fetchTile(zoom, xTile, yTile)
+                    } catch (e: Exception) {
+                        Logger.w(throwable = e, tag = TAG) { "getTilePng($zoom/$xTile/$yTile) threw" }
+                        null
+                    }
+                    tileCacheMutex.withLock {
+                        if (bytes != null) {
+                            tileCache[key] = bytes
+                            // Insertion-order eviction — good enough for a pan/zoom cache.
+                            while (tileCache.size > TILE_CACHE_MAX) {
+                                tileCache.remove(tileCache.keys.first())
+                            }
+                        }
+                        tileFlights.remove(key)
+                    }
+                    bytes
                 }
             }
-            tileFlights.remove(key)
         }
-        flight.complete(bytes)
-        return bytes
+        return flight.await()
     }
 
     private suspend fun fetchTile(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
@@ -192,9 +198,7 @@ class LocationPreviewProvider(
             Logger.w(tag = TAG) { "tile HTTP ${response.status.value} for $zoom/$xTile/$yTile" }
             return null
         }
-        val bytes = response.readRawBytes()
-        if (bytes.size < BLANK_TILE_THRESHOLD_BYTES) return null
-        return bytes
+        return response.readRawBytes()
     }
 
     /** Web Mercator lat/lon → tile X/Y at the given zoom. Standard Slippy Map formula. */
@@ -230,7 +234,10 @@ class LocationPreviewProvider(
         // Raw-tile cache for the Location history basemap (~64 tiles ≈ 1-2MB).
         private const val TILE_CACHE_MAX = 64
         private val tileCache = LinkedHashMap<TileKey, ByteArray>()
-        private val tileFlights = mutableMapOf<TileKey, CompletableDeferred<ByteArray?>>()
+        private val tileFlights = mutableMapOf<TileKey, Deferred<ByteArray?>>()
         private val tileCacheMutex = Mutex()
+
+        // Owns tile downloads so they survive caller cancellation (see getTilePng).
+        private val tileScope = supervisedScope("OsmTileFetcher", ioDispatcher)
     }
 }
