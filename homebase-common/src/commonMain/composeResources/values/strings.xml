@@ -1221,6 +1221,10 @@
     <string name="location_status_pending">Waiting to upload</string>
     <string name="location_status_last_flush">Last upload</string>
     <string name="location_status_never">Never</string>
+    <string name="location_consent_title">Your private location history</string>
+    <string name="location_consent_text">Your app will collect location data to record your private location history and store it on your private Homebase Location drive — even when this app is closed or not in use. Your history is end-to-end encrypted to your personal drive; no one but you, not even your cloud operator, can read it.</string>
+    <string name="location_consent_agree">Agree</string>
+    <string name="location_consent_decline">No thanks</string>
     <string name="location_history_title">History</string>
     <string name="location_history_empty">No locations recorded on this day</string>
     <string name="location_history_show_map">Show map</string>

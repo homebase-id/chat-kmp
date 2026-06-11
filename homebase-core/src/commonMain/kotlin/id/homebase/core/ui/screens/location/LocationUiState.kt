@@ -6,6 +6,8 @@ data class LocationUiState(
     // Main-screen state
     val trackingEnabled: Boolean = false,
     val trackingAvailable: Boolean = false,
+    /** Google Play prominent-disclosure consent (persisted; gates first grant/enable). */
+    val disclosureAccepted: Boolean = false,
     val whileInUseGranted: Boolean = false,
     val whileInUsePermanentlyDenied: Boolean = false,
     val alwaysGranted: Boolean = false,

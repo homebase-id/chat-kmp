@@ -3,17 +3,20 @@ package id.homebase.core.ui.screens.location
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
@@ -24,6 +27,10 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
+import id.homebase.resources.location_consent_agree
+import id.homebase.resources.location_consent_decline
+import id.homebase.resources.location_consent_text
+import id.homebase.resources.location_consent_title
 import id.homebase.resources.location_history_title
 import id.homebase.resources.location_label
 import id.homebase.resources.location_settings
@@ -92,6 +99,33 @@ fun LocationScreen(
         }
     }
 
+    // Google Play prominent disclosure: the consent dialog must be accepted
+    // before the first location permission request or tracking enable. Holds
+    // the intercepted action and replays it on Agree.
+    var pendingConsentAction by remember { mutableStateOf<LocationUiAction?>(null) }
+
+    fun execute(action: LocationUiAction) {
+        when (action) {
+            LocationUiAction.RequestWhileInUseClicked ->
+                permissionsManager.askPermission(PermissionType.LOCATION)
+
+            LocationUiAction.RequestAlwaysClicked ->
+                permissionsManager.askPermission(PermissionType.LOCATION_ALWAYS)
+
+            LocationUiAction.OpenSystemSettingsClicked ->
+                permissionsManager.launchSettings()
+
+            else -> viewModel.onAction(action)
+        }
+    }
+
+    fun needsConsent(action: LocationUiAction): Boolean {
+        if (uiState.disclosureAccepted) return false
+        return action == LocationUiAction.RequestWhileInUseClicked ||
+            action == LocationUiAction.RequestAlwaysClicked ||
+            (action as? LocationUiAction.SetTrackingEnabled)?.enabled == true
+    }
+
     Scaffold(
         topBar = {
             // No back arrow: Location is a top-level destination reached from the
@@ -119,17 +153,26 @@ fun LocationScreen(
             uiState = uiState,
             innerPadding = innerPadding,
             onAction = { action ->
-                when (action) {
-                    LocationUiAction.RequestWhileInUseClicked ->
-                        permissionsManager.askPermission(PermissionType.LOCATION)
+                if (needsConsent(action)) pendingConsentAction = action else execute(action)
+            },
+        )
+    }
 
-                    LocationUiAction.RequestAlwaysClicked ->
-                        permissionsManager.askPermission(PermissionType.LOCATION_ALWAYS)
-
-                    LocationUiAction.OpenSystemSettingsClicked ->
-                        permissionsManager.launchSettings()
-
-                    else -> viewModel.onAction(action)
+    pendingConsentAction?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingConsentAction = null },
+            title = { Text(stringResource(MR.string.location_consent_title)) },
+            text = { Text(stringResource(MR.string.location_consent_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.acceptDisclosure()
+                    pendingConsentAction = null
+                    execute(pending)
+                }) { Text(stringResource(MR.string.location_consent_agree)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConsentAction = null }) {
+                    Text(stringResource(MR.string.location_consent_decline))
                 }
             },
         )

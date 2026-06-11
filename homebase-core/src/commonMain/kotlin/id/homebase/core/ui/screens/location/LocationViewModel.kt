@@ -84,6 +84,11 @@ class LocationViewModel(
             }
         }
         viewModelScope.launch {
+            locationPreferences.disclosureAccepted.collect { accepted ->
+                _uiState.update { it.copy(disclosureAccepted = accepted) }
+            }
+        }
+        viewModelScope.launch {
             pointStore.lastPoint.collect { p ->
                 _uiState.update {
                     it.copy(lastFixEpochMs = p?.t, lastFixLat = p?.lat, lastFixLon = p?.lon)
@@ -133,6 +138,11 @@ class LocationViewModel(
             LocationUiAction.RequestAlwaysClicked,
             LocationUiAction.OpenSystemSettingsClicked -> Unit
         }
+    }
+
+    /** Persist the prominent-disclosure consent (Agree in the dialog). */
+    fun acceptDisclosure() {
+        viewModelScope.launch { locationPreferences.setDisclosureAccepted(true) }
     }
 
     fun updateWhileInUseStatus(granted: Boolean, permanentlyDenied: Boolean) {

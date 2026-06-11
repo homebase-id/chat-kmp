@@ -31,6 +31,12 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
     private val _showMapTiles = MutableStateFlow(readBoolean(SHOW_MAP_TILES_KEY, default = false))
     val showMapTiles: StateFlow<Boolean> = _showMapTiles.asStateFlow()
 
+    // Google Play "prominent disclosure" consent: the user accepted the
+    // location-collection dialog. Gates the first permission request and the
+    // tracking switch; shown once, persisted.
+    private val _disclosureAccepted = MutableStateFlow(readBoolean(DISCLOSURE_ACCEPTED_KEY, default = false))
+    val disclosureAccepted: StateFlow<Boolean> = _disclosureAccepted.asStateFlow()
+
     suspend fun setActivated(value: Boolean) {
         if (_activated.value == value) return
         keyValue.upsertValue(ACTIVATED_KEY, encode(value))
@@ -55,6 +61,12 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         _showMapTiles.value = value
     }
 
+    suspend fun setDisclosureAccepted(value: Boolean) {
+        if (_disclosureAccepted.value == value) return
+        keyValue.upsertValue(DISCLOSURE_ACCEPTED_KEY, encode(value))
+        _disclosureAccepted.value = value
+    }
+
     /**
      * Re-seed in-memory state from the DB for a clean login. Called from
      * `onPostAuthenticated` in `AppModule.kt`; after a logout wipe the reads
@@ -65,6 +77,7 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = false)
         _trackingEnabled.value = readBoolean(TRACKING_ENABLED_KEY, default = false)
         _showMapTiles.value = readBoolean(SHOW_MAP_TILES_KEY, default = false)
+        _disclosureAccepted.value = readBoolean(DISCLOSURE_ACCEPTED_KEY, default = false)
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
@@ -86,5 +99,6 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0302")
         val TRACKING_ENABLED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
         val SHOW_MAP_TILES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0304")
+        val DISCLOSURE_ACCEPTED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0305")
     }
 }
