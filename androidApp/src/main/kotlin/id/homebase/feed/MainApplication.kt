@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
@@ -146,6 +147,11 @@ class MainApplication : Application(), KoinComponent {
         // Cold-start is covered by StartupCacheAudit; this is the bound on
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
+
+        // Re-arm Location tracking on every process start (incl. boot-receiver
+        // and background-location wakes — onPostAuthenticated never runs on
+        // headless cold starts, so this cannot live there).
+        get<LocationTrackingCoordinator>().onProcessStart()
 
         StartupLogger.checkpoint("onCreate end")
     }

@@ -10,7 +10,16 @@ import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.AVFoundation.requestAccessForMediaType
+import platform.CoreLocation.CLAuthorizationStatus
+import platform.CoreLocation.CLLocationManager
+import platform.CoreLocation.CLLocationManagerDelegateProtocol
+import platform.CoreLocation.kCLAuthorizationStatusAuthorizedAlways
+import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
+import platform.CoreLocation.kCLAuthorizationStatusDenied
+import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
+import platform.CoreLocation.kCLAuthorizationStatusRestricted
 import platform.Foundation.NSURL
+import platform.darwin.NSObject
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatus
 import platform.Photos.PHAuthorizationStatusAuthorized
@@ -35,6 +44,58 @@ import kotlin.coroutines.suspendCoroutine
 @Composable
 actual fun createPermissionsManager(onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit): PermissionsManager {
     return IOSPermissionsManager(onPermissionResult)
+}
+
+/**
+ * Process-wide CLLocationManager used only for authorization requests/reads.
+ * A singleton (rather than per-[IOSPermissionsManager]) because the delegate
+ * must stay alive until the user answers the system prompt, while
+ * [createPermissionsManager] returns a fresh manager on every composition.
+ */
+private object LocationPermissionRequester {
+    private var pending: ((CLAuthorizationStatus) -> Unit)? = null
+
+    private val delegate = object : NSObject(), CLLocationManagerDelegateProtocol {
+        override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+            val status = manager.authorizationStatus
+            // Fires once when the delegate is first assigned; ignore the
+            // not-determined report and wait for the user's answer.
+            if (status == kCLAuthorizationStatusNotDetermined) return
+            pending?.invoke(status)
+            pending = null
+        }
+    }
+
+    private val manager = CLLocationManager().apply { delegate = this@LocationPermissionRequester.delegate }
+
+    val status: CLAuthorizationStatus get() = manager.authorizationStatus
+
+    fun requestWhenInUse(onResult: (CLAuthorizationStatus) -> Unit) {
+        val current = status
+        if (current != kCLAuthorizationStatusNotDetermined) {
+            onResult(current)
+            return
+        }
+        pending = onResult
+        manager.requestWhenInUseAuthorization()
+    }
+
+    fun requestAlways(onResult: (CLAuthorizationStatus) -> Unit) {
+        when (val current = status) {
+            kCLAuthorizationStatusAuthorizedAlways,
+            kCLAuthorizationStatusDenied,
+            kCLAuthorizationStatusRestricted -> {
+                onResult(current)
+                return
+            }
+        }
+        // Valid from NotDetermined (single combined prompt) or WhenInUse (the
+        // one-time "Change to Always Allow?" escalation). If the user picks
+        // "Keep Only While Using" iOS reports no change — callers re-check
+        // on resume, so a silently dropped callback is fine.
+        pending = onResult
+        manager.requestAlwaysAuthorization()
+    }
 }
 
 class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit) :
@@ -71,6 +132,30 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                         askNotificationPermission(status, permission, onPermissionResult)
                     }
             }
+
+            PermissionType.LOCATION -> {
+                LocationPermissionRequester.requestWhenInUse { status ->
+                    val granted = status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+                        status == kCLAuthorizationStatusAuthorizedAlways
+                    // iOS never re-prompts after a denial — settings is the only way back.
+                    onPermissionResult(
+                        permission,
+                        if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                        !granted,
+                    )
+                }
+            }
+
+            PermissionType.LOCATION_ALWAYS -> {
+                LocationPermissionRequester.requestAlways { status ->
+                    val granted = status == kCLAuthorizationStatusAuthorizedAlways
+                    onPermissionResult(
+                        permission,
+                        if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                        !granted,
+                    )
+                }
+            }
         }
     }
 
@@ -106,6 +191,16 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                             status == UNAuthorizationStatusAuthorized || status == UNAuthorizationStatusProvisional || status == UNAuthorizationStatusEphemeral
                         cont.resume(granted)
                     }
+            }
+
+            PermissionType.LOCATION -> {
+                val status = LocationPermissionRequester.status
+                status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+                    status == kCLAuthorizationStatusAuthorizedAlways
+            }
+
+            PermissionType.LOCATION_ALWAYS -> {
+                LocationPermissionRequester.status == kCLAuthorizationStatusAuthorizedAlways
             }
         }
     }

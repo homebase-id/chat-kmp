@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -104,6 +105,13 @@ import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.location.LocationPreferences
+import id.homebase.core.ui.screens.location.LocationScreen
+import id.homebase.core.ui.screens.location.LocationUiEvent
+import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
+import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
+import id.homebase.core.ui.screens.location.settings.LocationSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -120,6 +128,7 @@ import id.homebase.core.vault.VaultPreferences
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
+import id.homebase.resources.location_label
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -176,12 +185,16 @@ fun AppNavHost(
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible) {
+    val locationPreferences = koinInject<LocationPreferences>()
+    val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
+    val locationViewModel: LocationViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
+            if (locationIconVisible) add(TopLevelRoute.Location)
             add(TopLevelRoute.Home)
         }
     }
@@ -194,6 +207,17 @@ fun AppNavHost(
             }
         } else {
             navController.navigate(Route.MomentsOnboarding)
+        }
+    }
+    val openLocation: () -> Unit = {
+        if (locationPreferences.activated.value) {
+            navController.navigate(Route.Location) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.LocationOnboarding)
         }
     }
     val uriHandler = getUriHandler()
@@ -426,6 +450,22 @@ fun AppNavHost(
         }
     }
 
+    // Translate Location onboarding one-shot events into nav-stack changes.
+    LaunchedEffect(Unit) {
+        locationViewModel.events.collect { event ->
+            when (event) {
+                LocationUiEvent.Activated -> {
+                    navController.popBackStack(Route.LocationOnboarding, inclusive = true)
+                    navController.navigate(Route.Location) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+                LocationUiEvent.CloseOnboarding -> navController.popBackStack()
+            }
+        }
+    }
+
     // Auto-dismiss in-app banner after 4 seconds
     val inAppNotification = uiState.inAppNotification
     LaunchedEffect(inAppNotification) {
@@ -464,6 +504,7 @@ fun AppNavHost(
                                 when {
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Location -> openLocation()
                                     else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
@@ -498,6 +539,7 @@ fun AppNavHost(
                                     when {
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                        topLevelRoute is TopLevelRoute.Location -> openLocation()
                                         else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
@@ -671,6 +713,7 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
                                     onNavigateToMoments = openMoments,
+                                    onNavigateToLocation = openLocation,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
@@ -994,6 +1037,9 @@ fun AppNavHost(
                                     onNavigateToVaultSettings = {
                                         navController.navigate(Route.VaultSettings)
                                     },
+                                    onNavigateToLocationSettings = {
+                                        navController.navigate(Route.LocationSettings)
+                                    },
                                 )
                             }
                         }
@@ -1103,6 +1149,48 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenMoments = openMoments,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationOnboarding> {
+                            if (isAuthenticated) {
+                                LocationOnboardingScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.Location> {
+                            if (isAuthenticated) {
+                                LocationScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateToSettings = {
+                                        navController.navigate(Route.LocationSettings)
+                                    },
+                                    onNavigateToHistory = {
+                                        navController.navigate(Route.LocationHistory)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationHistory> {
+                            if (isAuthenticated) {
+                                LocationHistoryScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationSettings> {
+                            if (isAuthenticated) {
+                                LocationSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenLocation = openLocation,
                                 )
                             }
                         }
@@ -1318,7 +1406,8 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Feed::class) == true ||
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true
+            this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Location::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
@@ -1339,6 +1428,7 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
 }
 
 /**
