@@ -222,17 +222,24 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
-        // Bump the penultimate byte for each new add-on — Vault = 0a01xx, next = 0a02xx, etc.
-        val ACTIVATED_KEY:   Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0201")
-        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0202")
-        val BIOMETRICS_KEY:  Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0203")
+        // Bump the penultimate byte for each new add-on — see the ownership
+        // table below for the next free 0a0Nxx slot.
+        val ACTIVATED_KEY:   Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N01")
+        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N02")
+        val BIOMETRICS_KEY:  Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N03")
     }
 }
 ```
 
-**UUID namespacing.** Vault owns `0000...0a01xx`. Pick the next free `0a0Nxx` slot for
-your add-on — these keys must be stable across releases, so never reuse an existing
-range.
+**UUID namespacing.** These keys must be stable across releases, so never reuse an
+existing range. Current owners:
+
+| Range | Owner |
+|---|---|
+| `0000...0a01xx` | Vault |
+| `0000...0a02xx` | Moments |
+| `0000...0a03xx` | Location |
+| `0000...0a04xx` | **next free** — claim it here when you take it |
 
 ---
 

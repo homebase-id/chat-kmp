@@ -127,6 +127,22 @@ val stickerLabeledDrive = LabeledDrive(
     label = "Stickers",
 )
 
+// Location drive — modeled on [stickerLabeledDrive] (app-generated stable alias GUID +
+// drive type GUID). Holds the user's encrypted location history: one file per device
+// per UTC hour (see LocationTrackContent). Optional drive (not in [mandatorySyncDrives]);
+// requested via the extend-permissions flow and mounted when the user activates the
+// Location add-on.
+//
+// The type GUID is a placeholder until the server team provisions the real Location
+// drive type (same caveat as Vault above).
+val locationLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("2e191a14-8640-4ebc-b0c8-aaac913f6fa8"),
+        type = Uuid.parse("9dbc3bf5-ca24-4d7d-98ca-6933af0ad491"),
+    ),
+    label = "Location",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -318,6 +334,28 @@ val stickerTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     )
 )
+
+// Location-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Vault/Moments optional-drive permission shape.
+val locationTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = locationLabeledDrive.drive.alias.toString(),
+        type = locationLabeledDrive.drive.type.toString(),
+        name = "Location Drive",
+        description = "Drive which contains your encrypted location history",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = locationTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
 
 fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(

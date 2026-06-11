@@ -132,13 +132,25 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.location.LocationPreferences
+import id.homebase.core.location.tracking.LocationDeviceId
+import id.homebase.core.location.tracking.LocationPointStore
+import id.homebase.core.location.tracking.LocationTracker
+import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.location.tracking.createLocationTracker
+import id.homebase.core.ui.screens.location.LocationTrackUploaderService
+import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
+import id.homebase.core.ui.screens.location.settings.LocationSettingsViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
 val StickerPermissionQualifier = named("stickerPermission")
+val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
@@ -181,6 +193,39 @@ val appModule = module {
     singleOf(::MomentGroupService)
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
+
+    // region Location add-on
+    single { LocationPreferences(get()) }
+    single { LocationDeviceId() }
+    singleOf(::LocationPointStore)
+    single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
+    single {
+        LocationTrackUploaderService(
+            outboxSync = get(),
+            optimisticWriter = get(),
+            payloadEncryptionService = get(),
+            fileOperationsProvider = get(),
+            driveFileProvider = get(),
+            databaseManager = get(),
+            credentialsManager = get(),
+            eventBus = get(),
+            deviceId = get(),
+            preferences = get(),
+            scope = get(),
+        )
+    }
+    single {
+        LocationTrackingCoordinator(
+            preferences = get(),
+            tracker = get(),
+            scope = get(),
+        ).apply {
+            // The uploader lives in homebase-core; the coordinator (homebase-common)
+            // reaches it through this seam only.
+            onFlushDue = { get<LocationTrackUploaderService>().flushIfDue() }
+        }
+    }
+    // endregion
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -351,6 +396,15 @@ val appModule = module {
                 get<VaultStream>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
+
+                // Location add-on: re-seed prefs from the (possibly wiped) DB,
+                // clear in-memory capture state, restart the flusher's outbox
+                // observer + retention sweep, and stop the tracker if the wipe
+                // turned the master switch off. Order matters: prefs first.
+                get<LocationPreferences>().reset()
+                get<LocationPointStore>().reset()
+                get<LocationTrackUploaderService>().apply { reset(); start() }
+                get<LocationTrackingCoordinator>().reset()
             }
         )
     }
@@ -591,6 +645,22 @@ val appModule = module {
     }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
+    viewModel(LocationPermissionQualifier) {
+        ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
+    }
+    viewModel {
+        LocationViewModel(
+            locationPreferences = get(),
+            locationPermissionViewModel = get(LocationPermissionQualifier),
+            authConnectionCoordinator = get(),
+            trackingCoordinator = get(),
+            pointStore = get(),
+            uploaderService = get(),
+            tracker = get(),
+        )
+    }
+    viewModelOf(::LocationSettingsViewModel)
+    viewModelOf(::LocationHistoryViewModel)
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)

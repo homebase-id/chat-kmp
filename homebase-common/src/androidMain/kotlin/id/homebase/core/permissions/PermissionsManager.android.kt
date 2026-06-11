@@ -60,6 +60,10 @@ private fun String.toPermissionType(): PermissionType? {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && this == Manifest.permission.POST_NOTIFICATIONS) return PermissionType.NOTIFICATION
 
+    if (this == Manifest.permission.ACCESS_FINE_LOCATION || this == Manifest.permission.ACCESS_COARSE_LOCATION) return PermissionType.LOCATION
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACCESS_BACKGROUND_LOCATION) return PermissionType.LOCATION_ALWAYS
+
     return null
 }
 
@@ -118,6 +122,26 @@ class AndroidPermissionsManager(
                     )
                 }
             }
+
+            PermissionType.LOCATION -> {
+                genericPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    )
+                )
+            }
+
+            PermissionType.LOCATION_ALWAYS -> {
+                // Background location is a separate runtime permission from API 29 and
+                // may only be requested once foreground location is already granted —
+                // callers gate the request on isPermissionGranted(LOCATION).
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    genericPermissionLauncher.launch(
+                        arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    )
+                }
+            }
         }
     }
 
@@ -170,6 +194,26 @@ class AndroidPermissionsManager(
                     ) == PackageManager.PERMISSION_GRANTED
                 } else {
                     true
+                }
+            }
+
+            PermissionType.LOCATION -> {
+                // Coarse-only ("approximate") still counts as while-in-use access.
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            PermissionType.LOCATION_ALWAYS -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    isPermissionGranted(PermissionType.LOCATION)
                 }
             }
         }

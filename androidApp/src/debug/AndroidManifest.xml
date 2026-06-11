@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Debug-only until the Play Console background-location declaration is
+         approved — see the note in src/main/AndroidManifest.xml. Sideloaded
+         debug builds keep full background tracking for development/testing;
+         Play-uploaded build types (dev, release) omit the permission so the
+         androidpublisher edit commit isn't rejected with 403
+         "Your background location permission declaration needs to be updated". -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+</manifest>

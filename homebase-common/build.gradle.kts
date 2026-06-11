@@ -145,6 +145,10 @@ kotlin {
             // `api` so the dep cascades transitively to androidApp (which
             // imports NotifierManager in MainApplication/MainActivity).
             api(libs.kmpnotifier)
+            // Location add-on tracker: fused provider (batched background
+            // PendingIntent updates) + app-foreground observation.
+            implementation(libs.play.services.location)
+            implementation(libs.androidx.lifecycle.process)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)

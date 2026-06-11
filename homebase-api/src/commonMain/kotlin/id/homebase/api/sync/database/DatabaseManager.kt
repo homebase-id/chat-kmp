@@ -68,6 +68,9 @@ private val driveLocalTagIndexAdapter = DriveLocalTagIndex.Adapter(
 private val keyValueAdapter = KeyValue.Adapter(
     keyAdapter = UuidAdapter
 )
+private val locationPointAdapter = LocationPoint.Adapter(
+    flushedFileUidAdapter = UuidAdapter
+)
 private val outboxAdapter = Outbox.Adapter(
     driveIdAdapter = UuidAdapter,
     uniqueIdAdapter = UuidAdapter,
@@ -138,6 +141,7 @@ class DatabaseManager(
             driveMainIndexAdapter,
             driveTagIndexAdapter,
             keyValueAdapter,
+            locationPointAdapter,
             outboxAdapter
         )
         logger.i { "Database initialized" }
@@ -207,6 +211,7 @@ class DatabaseManager(
             "DriveMainIndex",
             "DriveTagIndex",
             "KeyValue",
+            "LocationPoint",
             "Outbox"
         )
 
@@ -291,6 +296,9 @@ class DatabaseManager(
     }
     val outbox: OutboxWrapper by lazy {
         OutboxWrapper(driver, outboxAdapter, this)
+    }
+    val locationPoint: LocationPointWrapper by lazy {
+        LocationPointWrapper(driver, locationPointAdapter, this)
     }
     val connectionCache: ConnectionCacheWrapper by lazy {
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
