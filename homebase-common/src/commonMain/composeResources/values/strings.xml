@@ -1186,4 +1186,31 @@
     <string name="file_share_failed">Failed to share: %1$s</string>
     <string name="error_unknown">Unknown error</string>
 
+    <!-- Location add-on -->
+    <string name="location_label">Location</string>
+    <string name="location_home_subtitle">Your private location history</string>
+    <string name="location_onboarding_title">Your places, only yours</string>
+    <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you\'ve been — stored on your own drive, visible to no one but you.</string>
+    <string name="location_onboarding_body_2">Set it up to mount the Location drive on this device. You choose when tracking is on.</string>
+    <string name="location_onboarding_setup">Set it up</string>
+    <string name="location_onboarding_dismiss">Not now</string>
+    <string name="location_settings_section">Location</string>
+    <string name="location_settings_open">Open Location</string>
+    <string name="location_settings_show_icon">Show Location icon in bottom bar</string>
+    <string name="location_tracking_switch">Track my location</string>
+    <string name="location_tracking_unavailable">Tracking isn\'t available on this device. Enable it on your phone to record location history.</string>
+    <string name="location_perm_section">Permissions</string>
+    <string name="location_perm_while_in_use">Location while using the app</string>
+    <string name="location_perm_always">Location all the time (background)</string>
+    <string name="location_perm_granted">Granted</string>
+    <string name="location_perm_grant">Grant</string>
+    <string name="location_perm_open_settings">Open settings</string>
+    <string name="location_perm_always_hint">Without this, locations are only recorded while the app is open.</string>
+    <string name="location_status_section">Status</string>
+    <string name="location_status_last_fix">Last fix</string>
+    <string name="location_status_points_today">Points today</string>
+    <string name="location_status_pending">Waiting to upload</string>
+    <string name="location_status_last_flush">Last upload</string>
+    <string name="location_status_never">Never</string>
+
 </resources>

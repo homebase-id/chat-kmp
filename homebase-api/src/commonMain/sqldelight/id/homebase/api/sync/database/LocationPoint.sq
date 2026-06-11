@@ -1,0 +1,75 @@
+import kotlin.uuid.Uuid;
+
+-- Local buffer for GPS points captured by the Location add-on, drained into
+-- per-device per-UTC-hour track files on the Location drive by
+-- LocationTrackUploaderService. Drain semantics: rows are stamped with the
+-- target file's uniqueId on enqueue (markFlushed), deleted when the outbox
+-- confirms the upload (deleteByFlushUid), and un-stamped on failure
+-- (clearFlushMark) so the next flush retries them.
+CREATE TABLE IF NOT EXISTS LocationPoint(
+  t INTEGER NOT NULL PRIMARY KEY,  -- capture time, epoch ms; INSERT OR REPLACE dedups
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  acc REAL,                        -- horizontal accuracy, meters
+  alt REAL,                        -- altitude, meters
+  altAcc REAL,                     -- vertical accuracy, meters
+  spd REAL,                        -- speed, m/s
+  hdg REAL,                        -- heading/bearing, degrees
+  src TEXT NOT NULL,               -- gps | net | fused | slc
+  fg INTEGER NOT NULL,             -- 1 when captured in foreground precise mode
+  flushedFileUid BLOB AS Uuid      -- hour-file uniqueId once part of an enqueued flush
+);
+
+insertPoint:
+INSERT OR REPLACE INTO LocationPoint(t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, flushedFileUid)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);
+
+-- Hours (epoch ms / 3600000) that still have rows not yet part of an enqueued flush.
+selectPendingHours:
+SELECT DISTINCT (t / 3600000) AS hourBucket
+FROM LocationPoint
+WHERE flushedFileUid IS NULL
+ORDER BY hourBucket;
+
+-- Every row of an hour (marked and unmarked) — a flush re-serializes the full hour.
+selectByTimeRange:
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg
+FROM LocationPoint
+WHERE t >= ? AND t < ?
+ORDER BY t;
+
+markFlushed:
+UPDATE LocationPoint
+SET flushedFileUid = ?
+WHERE t >= ? AND t < ?;
+
+clearFlushMark:
+UPDATE LocationPoint
+SET flushedFileUid = NULL
+WHERE flushedFileUid = ?;
+
+deleteByFlushUid:
+DELETE FROM LocationPoint
+WHERE flushedFileUid = ?;
+
+-- Rows still on this device (enqueued or not) — the UI's "waiting to upload" count.
+countAll:
+SELECT COUNT(*) FROM LocationPoint;
+
+countSince:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t >= ?;
+
+selectLatest:
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg
+FROM LocationPoint
+ORDER BY t DESC
+LIMIT 1;
+
+-- Retention sweep: bounds buffer growth when uploads are persistently failing.
+deleteOlderThan:
+DELETE FROM LocationPoint
+WHERE t < ?;
+
+deleteAll:
+DELETE FROM LocationPoint;

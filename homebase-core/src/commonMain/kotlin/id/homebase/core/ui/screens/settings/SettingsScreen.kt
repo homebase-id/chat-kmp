@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -90,6 +91,7 @@ import id.homebase.resources.settings_security_setup
 import id.homebase.resources.cd_open_externally
 import id.homebase.resources.settings_section_danger_zone
 import id.homebase.resources.settings_section_general
+import id.homebase.resources.location_settings_section
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
@@ -105,6 +107,7 @@ fun SettingsScreen(
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit,
+    onNavigateToLocationSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -163,6 +166,7 @@ fun SettingsScreen(
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp,
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
+            onNavigateToLocationSettings = onNavigateToLocationSettings,
         )
 
         if (uiState.isLoggingOut) {
@@ -224,6 +228,7 @@ fun SettingsUi(
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit = {},
+    onNavigateToLocationSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -380,6 +385,13 @@ fun SettingsUi(
                 imageVector = Icons.Outlined.Lock,
                 text = stringResource(MR.string.vault_settings_section),
                 onClick = onNavigateToVaultSettings,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                modifier = Modifier.testTag("locationSettingsButton"),
+                imageVector = Icons.Outlined.LocationOn,
+                text = stringResource(MR.string.location_settings_section),
+                onClick = onNavigateToLocationSettings,
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

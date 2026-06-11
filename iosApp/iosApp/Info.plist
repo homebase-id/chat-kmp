@@ -30,7 +30,9 @@
 	<key>NSCalendarsUsageDescription</key>
 	<string>Used to add chat events to your calendar.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to share your current location in chat.</string>
+	<string>Used to share your current location in chat and, when you enable it, to record your private location history.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allows Homebase to keep recording your private, encrypted location history while the app is in the background. Only you can see it.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>
@@ -39,6 +41,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 </dict>

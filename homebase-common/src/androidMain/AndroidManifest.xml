@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Location add-on background tracking. Both receivers merge into the app
+         manifest; the app module declares the runtime permissions
+         (ACCESS_BACKGROUND_LOCATION, RECEIVE_BOOT_COMPLETED). -->
+    <application>
+        <receiver
+            android:name="id.homebase.core.location.tracking.LocationUpdatesReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
+            android:name="id.homebase.core.location.tracking.LocationBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>
