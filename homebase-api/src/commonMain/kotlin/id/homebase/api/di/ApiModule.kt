@@ -8,6 +8,7 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
@@ -105,6 +106,7 @@ val apiModule = module {
     }
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
+    factoryOf(::ContactsProvider)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)
