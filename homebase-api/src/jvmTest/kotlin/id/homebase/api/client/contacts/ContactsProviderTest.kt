@@ -43,7 +43,8 @@ class ContactsProviderTest {
         )
         cm.storeCredentials(creds)
         cm.setActiveCredentials(creds)
-        return ContactsProvider(HttpClient(engine), cm)
+        // No image tests here, so the header reader is never invoked.
+        return ContactsProvider(HttpClient(engine), cm, { _, _ -> null })
     }
 
     /** Replays [responses] in order, one per HTTP call, recording each request for assertions. */

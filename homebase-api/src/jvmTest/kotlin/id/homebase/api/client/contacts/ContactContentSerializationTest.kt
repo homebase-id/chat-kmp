@@ -34,6 +34,7 @@ class ContactContentSerializationTest {
     fun roundTripsAllFields() {
         val original = ContactContent(
             odinId = "sam.dotyou.cloud",
+            source = "user",
             name = ContactName(
                 displayName = "Sam Q. Public",
                 givenName = "Sam",
@@ -50,6 +51,16 @@ class ContactContentSerializationTest {
         val decoded = OdinSystemSerializer.deserialize<ContactContent>(json)
 
         assertEquals(original, decoded)
+    }
+
+    @Test
+    fun sourceRoundTripsAndIsOmittedWhenNull() {
+        assertEquals(
+            """{"source":"public"}""",
+            OdinSystemSerializer.serialize(ContactContent(source = "public")),
+        )
+        // Absent when not set.
+        assertFalse(OdinSystemSerializer.serialize(ContactContent(odinId = "x")).contains("source"))
     }
 
     @Test

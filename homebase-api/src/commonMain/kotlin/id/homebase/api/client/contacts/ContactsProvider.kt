@@ -3,11 +3,19 @@
 package id.homebase.api.client.contacts
 
 import id.homebase.api.client.ApiResponse
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -25,17 +33,34 @@ import kotlin.uuid.Uuid
  *
  * Writes return a typed [ContactWriteResult] (Ok / Conflict / NotFound) rather than throwing on
  * 409/404, so callers can run the bounded merge-and-retry flow in [saveContact].
+ *
+ * The contact JSON `content` is sent PLAINTEXT — the server encrypts it at rest so it can do
+ * field-level merges. The contact IMAGE is the opposite: it is client-encrypted under the contact
+ * file's AES key (see [setContactImage]); the server stores the ciphertext opaquely.
+ *
+ * Registered as a singleton so the per-contact AES-key cache survives across calls.
  */
+@OptIn(ExperimentalEncodingApi::class)
 class ContactsProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
+    private val contactHeaderReader: ContactHeaderReader,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
         private const val TAG = "ContactsProvider"
         private const val BASE = "/contacts"
         const val CONTACT_FILE_TYPE: Int = 100
+
+        /** Server payload key the contact image (and its thumbnails) are stored under. */
+        const val CONTACT_IMAGE_PAYLOAD_KEY: String = "prfl_pic"
     }
+
+    // Caches the contact file's AES key by uniqueId. The key is stable across content/image updates,
+    // so we read the file header once and reuse it for later image writes. SecureByteArray so the
+    // raw key isn't an ordinary long-lived ByteArray. Guarded by [aesKeyCacheMutex].
+    private val aesKeyCache = mutableMapOf<Uuid, SecureByteArray>()
+    private val aesKeyCacheMutex = Mutex()
 
     // ------------------------------------------------------------
     // CREATE
@@ -131,6 +156,84 @@ class ContactsProvider(
     }
 
     // ------------------------------------------------------------
+    // IMAGE (client-encrypted)
+    // ------------------------------------------------------------
+
+    /**
+     * PUT /api/v2/contacts/{uniqueId}/image — sets the contact's avatar.
+     *
+     * Client-encrypts [imageBytes] and generated thumbnails under the contact file's AES key (read
+     * from the file header on [contactDriveId], then cached), all sharing a fresh 16-byte IV, and
+     * uploads the ciphertext. This is version-gated: on 409 it resends the same encrypted body with
+     * the authoritative tag, bounded by [maxAttempts] (throws [IllegalStateException] if exhausted).
+     * Returns [ContactWriteResult.NotFound] if there is no such contact.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    suspend fun setContactImage(
+        uniqueId: Uuid,
+        contactDriveId: Uuid,
+        imageBytes: ByteArray,
+        contentType: String,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult {
+        require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
+
+        val aesKey = resolveAesKey(uniqueId, contactDriveId)
+            ?: return ContactWriteResult.NotFound
+
+        // Same IV for the image and every thumbnail, per the controller's storage model.
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val keyHeader = KeyHeader(iv = iv, aesKey = aesKey)
+
+        val (_, _, thumbs) = createThumbnails(imageBytes, CONTACT_IMAGE_PAYLOAD_KEY)
+        val encryptedThumbnails = thumbs.map { thumb ->
+            ContactImageThumbnail(
+                pixelWidth = thumb.pixelWidth,
+                pixelHeight = thumb.pixelHeight,
+                contentType = thumb.contentType,
+                content = Base64.encode(keyHeader.encryptDataAes(thumb.thumbnailBytes)),
+            )
+        }
+
+        // Encrypt once; the retry loop only swaps the version tag.
+        val baseRequest = SetContactImageRequest(
+            versionTag = versionTag,
+            contentType = contentType,
+            iv = Base64.encode(iv),
+            content = Base64.encode(keyHeader.encryptDataAes(imageBytes)),
+            thumbnails = encryptedThumbnails,
+        )
+
+        return retryVersionGated(versionTag, maxAttempts) { tag ->
+            putContactImageOnce(uniqueId, baseRequest.copy(versionTag = tag))
+        }
+    }
+
+    /**
+     * DELETE /api/v2/contacts/{uniqueId}/image — removes the contact's avatar. Version-gated with
+     * the same bounded retry as [setContactImage].
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    suspend fun deleteContactImage(
+        uniqueId: Uuid,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult {
+        require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
+
+        return retryVersionGated(versionTag, maxAttempts) { tag ->
+            val creds = requireCreds()
+            val response = encryptedDelete(
+                url = apiUrl(creds.domain, "$BASE/$uniqueId/image?versionTag=$tag"),
+                token = creds.accessToken,
+                secret = creds.secret,
+            )
+            toWriteResult(response, allowNotFound = true)
+        }
+    }
+
+    // ------------------------------------------------------------
     // MERGE-AND-RETRY
     // ------------------------------------------------------------
 
@@ -188,9 +291,68 @@ class ContactsProvider(
         error("contact write contention exceeded $maxAttempts attempts for $uniqueId")
     }
 
+    /**
+     * Drops the cached contact AES keys. MUST be called on session end / logout before the image
+     * path goes live: keys are cached by `uniqueId` (= md5(odinId)), which collides across
+     * identities, so a stale entry would encrypt a new identity's image under the previous
+     * identity's key. (Wired into the SessionEnded path when [setContactImage] gets a real caller.)
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    suspend fun clearKeyCache() {
+        aesKeyCacheMutex.withLock { aesKeyCache.clear() }
+    }
+
     // ------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------
+
+    /**
+     * Runs a version-gated write through the bounded merge-and-retry loop: on 409 it takes the
+     * authoritative `conflict.versionTag` and re-invokes [call] with it. Returns on Ok/NotFound;
+     * throws [IllegalStateException] if [maxAttempts] is exhausted by contention.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun retryVersionGated(
+        initialTag: Uuid,
+        maxAttempts: Int,
+        call: suspend (Uuid) -> ContactWriteResult,
+    ): ContactWriteResult {
+        var tag = initialTag
+        repeat(maxAttempts) {
+            when (val result = call(tag)) {
+                is ContactWriteResult.Ok -> return result
+                ContactWriteResult.NotFound -> return ContactWriteResult.NotFound
+                is ContactWriteResult.Conflict -> tag = result.conflict.versionTag
+            }
+        }
+        error("contact image write contention exceeded $maxAttempts attempts")
+    }
+
+    /** Reads (and caches) the contact file's AES key; null if the contact header isn't found. */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun resolveAesKey(uniqueId: Uuid, contactDriveId: Uuid): SecureByteArray? {
+        aesKeyCacheMutex.withLock { aesKeyCache[uniqueId] }?.let { return it }
+
+        val header = contactHeaderReader.getHeaderByUid(contactDriveId, uniqueId) ?: return null
+        val aesKey = header.keyHeader.aesKey
+        aesKeyCacheMutex.withLock { aesKeyCache[uniqueId] = aesKey }
+        return aesKey
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun putContactImageOnce(
+        uniqueId: Uuid,
+        request: SetContactImageRequest,
+    ): ContactWriteResult {
+        val creds = requireCreds()
+        val response = encryptedPutJson(
+            url = apiUrl(creds.domain, "$BASE/$uniqueId/image"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(request),
+            secret = creds.secret,
+        )
+        return toWriteResult(response, allowNotFound = true)
+    }
 
     /**
      * Maps a write [response] to a [ContactWriteResult]. 409 and (when [allowNotFound]) 404 become

@@ -18,6 +18,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ContactContent(
     val odinId: String? = null,
+    /** Origin marker, round-tripped: `'contact'` | `'public'` | `'user'`. */
+    val source: String? = null,
     val name: ContactName? = null,
     val location: ContactLocation? = null,
     val phone: ContactPhone? = null,
