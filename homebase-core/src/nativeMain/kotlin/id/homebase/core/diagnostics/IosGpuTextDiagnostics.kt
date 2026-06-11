@@ -40,6 +40,20 @@ private object IosGpuTextProbe : GpuTextDiagnostics.Probe {
         return ((NSDate().timeIntervalSince1970 - started) * 1000.0).toLong()
     }
 
+    // Session high-water mark of the font cache. The cache builds during USE (between lifecycle
+    // events), so a periodic sampler updates this; it's the gate that proves text really rendered
+    // this session (so the blank-text trigger doesn't fire on a fresh cold start). Main-thread only.
+    var peakFontCacheUsedBytes: Long = 0L
+        private set
+
+    fun currentFontCacheUsedBytes(): Long =
+        runCatching { Graphics.fontCacheUsed }.getOrNull()?.toLong() ?: 0L
+
+    fun samplePeak() {
+        val used = currentFontCacheUsedBytes()
+        if (used > peakFontCacheUsedBytes) peakFontCacheUsedBytes = used
+    }
+
     override fun snapshot(
         event: GpuTextDiagnostics.Event,
         note: String?,
@@ -91,6 +105,7 @@ fun installGpuTextDiagnostics() {
             GpuTextDiagnostics.Event.Foreground,
             backgroundDurationMs = IosGpuTextProbe.consumeBackgroundDurationMs(),
         )
+        maybeFireBlankTextTrigger()
     }
 
     center.addObserverForName(
@@ -99,8 +114,43 @@ fun installGpuTextDiagnostics() {
         queue = mainQueue,
     ) { _ -> GpuTextDiagnostics.log(GpuTextDiagnostics.Event.MemoryWarning) }
 
+    // Periodic peak sampler: the cache builds during USE (between lifecycle events), so sample it so
+    // we know text really rendered this session — the gate that stops the trigger firing on cold
+    // starts. Cheap (reads one global counter). iOS suspends this loop while backgrounded.
+    MainScope().launch {
+        while (true) {
+            IosGpuTextProbe.samplePeak()
+            delay(PEAK_SAMPLE_INTERVAL_MS)
+        }
+    }
+
     Logger.i(tag = GpuTextDiagnostics.TAG) { "installed (probe + lifecycle observers attached)" }
     GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ColdStart)
+}
+
+// --- Blank-text auto-trigger (observe-only hypothesis; see BlankTextTrigger) ---
+
+private const val TRIGGER_PEAK_RENDERED_BYTES = 200_000L // text rendered substantially this session
+private const val TRIGGER_BLANK_BYTES = 10_000L          // font cache now near-empty (reclaimed)
+private const val PEAK_SAMPLE_INTERVAL_MS = 5_000L
+
+/**
+ * Blank-text auto-trigger HYPOTHESIS, evaluated on every foreground. If the font cache is near-empty
+ * yet it was substantial earlier this session, iOS likely reclaimed the GPU/font resources while
+ * backgrounded — the condition that precedes blank text. OBSERVE-ONLY: fire a visible toast + log so
+ * TestFlight can measure the false-positive rate. No recovery yet. Thresholds are starting
+ * hypotheses (blank foregrounds measured ~6.9KB used; healthy ~1.9MB) — tune from the logged values.
+ */
+private fun maybeFireBlankTextTrigger() {
+    val used = IosGpuTextProbe.currentFontCacheUsedBytes()
+    val peak = IosGpuTextProbe.peakFontCacheUsedBytes
+    if (peak > TRIGGER_PEAK_RENDERED_BYTES && used < TRIGGER_BLANK_BYTES) {
+        Logger.i(tag = GpuTextDiagnostics.TAG) {
+            "TRIGGER MET (observe-only): foreground font cache reclaimed — used=$used peak=$peak " +
+                "(rule: used<$TRIGGER_BLANK_BYTES AND peak>$TRIGGER_PEAK_RENDERED_BYTES) — firing toast"
+        }
+        BlankTextTrigger.fire(used, peak)
+    }
 }
 
 /**

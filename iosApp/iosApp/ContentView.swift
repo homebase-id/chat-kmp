@@ -23,6 +23,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.colorScheme) var colorScheme
     @State private var showPrivacyOverlay = false
+    @State private var triggerToast: String? = nil
 
     var body: some View {
         ZStack {
@@ -33,6 +34,24 @@ struct ContentView: View {
                 PrivacyOverlayView()
                     .ignoresSafeArea()
                     .transition(.opacity)
+            }
+
+            // Native (UIKit) toast for the blank-text auto-trigger — renders even while Compose text
+            // is blank, so a TestFlight tester can judge true vs. false positive at the moment it fires.
+            if let msg = triggerToast {
+                VStack {
+                    Text(msg)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.red.opacity(0.92), in: Capsule())
+                        .padding(.top, 12)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
             }
         }
         .onAppear {
@@ -75,6 +94,16 @@ struct ContentView: View {
             // Blank-text recovery experiment: log cache state, purge Skia caches + force a full
             // re-composition, then log again ~1.5s later. See captureAndRecoverOnShake.
             captureAndRecoverOnShake()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .blankTextTriggerFired)) { note in
+            // Blank-text auto-trigger fired (observe-only). Show a native toast asking the tester to
+            // judge true/false positive. Auto-dismisses after 6s.
+            let used = (note.userInfo?["used"] as? Int64) ?? -1
+            let peak = (note.userInfo?["peak"] as? Int64) ?? -1
+            withAnimation { triggerToast = "⚠️ Blank-text trigger fired (cache \(used)B, peak \(peak)B). Is text missing? If not, it's a false positive." }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                withAnimation { triggerToast = nil }
+            }
         }
     }
 }

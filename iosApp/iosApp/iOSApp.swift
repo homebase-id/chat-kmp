@@ -194,6 +194,10 @@ struct iOSApp: App {
 
         // Register Metal layer nudge so Compose UI can trigger glyph atlas rebuilds
         TextRenderingHelper.shared.register(nudger: MetalLayerNudger())
+
+        // Surface the Kotlin blank-text auto-trigger (observe-only) as a native toast in ContentView,
+        // so TestFlight testers can report whether it's a true or false positive.
+        BlankTextTrigger.shared.register(listener: BlankTextTriggerToastListener())
     }
     
     var body: some Scene {

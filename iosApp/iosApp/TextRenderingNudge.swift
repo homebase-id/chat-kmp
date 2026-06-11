@@ -63,6 +63,25 @@ class MetalLayerNudger: TextRenderingNudger {
 extension Notification.Name {
     /// Posted by `UIWindow.motionEnded` below when the user shakes the device.
     static let deviceDidShake = Notification.Name("id.homebase.feed.deviceDidShake")
+    /// Posted by `BlankTextTriggerToastListener` when the Kotlin blank-text auto-trigger fires.
+    static let blankTextTriggerFired = Notification.Name("id.homebase.feed.blankTextTriggerFired")
+}
+
+/// Receives the Kotlin blank-text auto-trigger (observe-only) and surfaces it as a native toast in
+/// ContentView. Native SwiftUI text renders even while Compose is blank, so the toast is visible at
+/// exactly the moment we need a tester to judge: was the screen actually blank (true positive) or
+/// fine (false positive)? Registered in `iOSApp.init`.
+class BlankTextTriggerToastListener: BlankTextTriggerListener {
+    func onTriggerFired(usedBytes: Int64, peakBytes: Int64) {
+        os_log("BLANK-TEXT trigger fired (observe-only): used=%lld peak=%lld", log: textRenderLog, type: .error, usedBytes, peakBytes)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .blankTextTriggerFired,
+                object: nil,
+                userInfo: ["used": usedBytes, "peak": peakBytes]
+            )
+        }
+    }
 }
 
 extension UIWindow {
