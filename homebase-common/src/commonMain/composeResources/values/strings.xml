@@ -1213,5 +1213,16 @@
     <string name="location_status_pending">Waiting to upload</string>
     <string name="location_status_last_flush">Last upload</string>
     <string name="location_status_never">Never</string>
+    <string name="location_history_title">History</string>
+    <string name="location_history_empty">No locations recorded on this day</string>
+    <string name="location_history_show_map">Show map</string>
+    <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
+    <string name="location_history_previous_day">Previous day</string>
+    <string name="location_history_next_day">Next day</string>
+    <string name="location_history_pick_date">Pick a date</string>
+    <string name="location_history_distance">%1$s km</string>
+    <string name="location_history_points">%1$d points</string>
+    <string name="location_history_devices">%1$d devices</string>
+    <string name="location_history_span">%1$s – %2$s</string>
 
 </resources>

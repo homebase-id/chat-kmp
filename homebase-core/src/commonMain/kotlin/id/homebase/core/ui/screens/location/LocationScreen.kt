@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.location
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,6 +24,7 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
+import id.homebase.resources.location_history_title
 import id.homebase.resources.location_label
 import id.homebase.resources.location_settings
 import org.jetbrains.compose.resources.stringResource
@@ -32,6 +34,7 @@ import org.jetbrains.compose.resources.stringResource
 fun LocationScreen(
     viewModel: LocationViewModel,
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -96,6 +99,12 @@ fun LocationScreen(
             TopAppBar(
                 title = { Text(stringResource(MR.string.location_label)) },
                 actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = stringResource(MR.string.location_history_title),
+                        )
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(
                             imageVector = Icons.Outlined.Settings,

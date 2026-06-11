@@ -109,6 +109,7 @@ import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.settings.LocationSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -1168,6 +1169,18 @@ fun AppNavHost(
                                     onNavigateToSettings = {
                                         navController.navigate(Route.LocationSettings)
                                     },
+                                    onNavigateToHistory = {
+                                        navController.navigate(Route.LocationHistory)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationHistory> {
+                            if (isAuthenticated) {
+                                LocationHistoryScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }

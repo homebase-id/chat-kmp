@@ -7,6 +7,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -16,10 +17,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.ln
-import kotlin.math.tan
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -147,14 +144,62 @@ class LocationPreviewProvider(
         return bytes
     }
 
-    /** Web Mercator lat/lon → tile X/Y at the given zoom. Standard Slippy Map formula. */
-    private fun latLonToTile(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> {
-        val n = 1 shl zoom
-        val xTile = ((lon + 180.0) / 360.0 * n).toInt()
-        val latRad = lat * PI / 180.0
-        val yTile = ((1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * n).toInt()
-        return xTile to yTile
+    /**
+     * Fetch one raw OSM tile PNG for the Location history basemap. Same HTTP
+     * path, User-Agent and blank-tile guard as the chat preview; LRU-cached and
+     * single-flighted so a pan/zoom burst doesn't refetch or double-fetch.
+     * Returns null on failure or blank tile — callers leave the background empty.
+     */
+    suspend fun getTilePng(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
+        val key = TileKey(zoom, xTile, yTile)
+        var owner = false
+        val flight = tileCacheMutex.withLock {
+            tileCache[key]?.let { return it }
+            tileFlights[key] ?: CompletableDeferred<ByteArray?>().also {
+                tileFlights[key] = it
+                owner = true
+            }
+        }
+        if (!owner) return flight.await()
+
+        val bytes = try {
+            fetchTile(zoom, xTile, yTile)
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = TAG) { "getTilePng($zoom/$xTile/$yTile) threw" }
+            null
+        }
+        tileCacheMutex.withLock {
+            if (bytes != null) {
+                tileCache[key] = bytes
+                // Insertion-order eviction — good enough for a pan/zoom cache.
+                while (tileCache.size > TILE_CACHE_MAX) {
+                    tileCache.remove(tileCache.keys.first())
+                }
+            }
+            tileFlights.remove(key)
+        }
+        flight.complete(bytes)
+        return bytes
     }
+
+    private suspend fun fetchTile(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
+        val url = "https://tile.openstreetmap.org/$zoom/$xTile/$yTile.png"
+        val response = httpClient.get(url) {
+            header("User-Agent", USER_AGENT)
+            header("Accept", "image/png,image/*")
+        }
+        if (!response.status.isSuccess()) {
+            Logger.w(tag = TAG) { "tile HTTP ${response.status.value} for $zoom/$xTile/$yTile" }
+            return null
+        }
+        val bytes = response.readRawBytes()
+        if (bytes.size < BLANK_TILE_THRESHOLD_BYTES) return null
+        return bytes
+    }
+
+    /** Web Mercator lat/lon → tile X/Y at the given zoom. Standard Slippy Map formula. */
+    private fun latLonToTile(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> =
+        WebMercator.latLonToTile(lat, lon, zoom)
 
     private fun formatLatLon(lat: Double, lon: Double): String {
         val latStr = ((lat * 1e5).toLong() / 1e5).toString()
@@ -163,6 +208,8 @@ class LocationPreviewProvider(
     }
 
     private data class CacheKey(val lat: Double, val lon: Double, val zoom: Int)
+
+    private data class TileKey(val zoom: Int, val x: Int, val y: Int)
 
     private companion object {
         private const val TAG = "LocationPreviewProvider"
@@ -179,5 +226,11 @@ class LocationPreviewProvider(
         private val cache = mutableMapOf<CacheKey, LocationPreview>()
         private val nominatimMutex = Mutex()
         private var lastNominatimCallAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+        // Raw-tile cache for the Location history basemap (~64 tiles ≈ 1-2MB).
+        private const val TILE_CACHE_MAX = 64
+        private val tileCache = LinkedHashMap<TileKey, ByteArray>()
+        private val tileFlights = mutableMapOf<TileKey, CompletableDeferred<ByteArray?>>()
+        private val tileCacheMutex = Mutex()
     }
 }

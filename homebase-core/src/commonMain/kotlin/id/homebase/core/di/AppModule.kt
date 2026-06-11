@@ -142,6 +142,7 @@ import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.settings.LocationSettingsViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
@@ -659,6 +660,7 @@ val appModule = module {
         )
     }
     viewModelOf(::LocationSettingsViewModel)
+    viewModelOf(::LocationHistoryViewModel)
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
