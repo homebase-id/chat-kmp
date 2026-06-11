@@ -34,7 +34,8 @@ class LocationUpdatesReceiver : BroadcastReceiver(), KoinComponent {
         val points = result.locations.map { it.toRawPoint(fg = false) }
         if (points.isEmpty()) return
 
-        logger.d { "Background batch: ${points.size} points" }
+        // Info so the cold-process background path is auditable in homebase.log.
+        logger.i { "Background batch: ${points.size} points" }
         val pendingResult = goAsync()
         scope.launch {
             try {

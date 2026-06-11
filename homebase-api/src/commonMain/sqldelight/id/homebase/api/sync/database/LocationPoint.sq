@@ -60,6 +60,13 @@ countSince:
 SELECT COUNT(*) FROM LocationPoint
 WHERE t >= ?;
 
+-- Rows captured since ? that are not yet serialized into any hour file.
+-- Used by the "points today" computation: hour files carry the counts for
+-- everything already enqueued; these rows are the not-yet-flushed remainder.
+countUnmarkedSince:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t >= ? AND flushedFileUid IS NULL;
+
 selectLatest:
 SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg
 FROM LocationPoint

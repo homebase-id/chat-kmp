@@ -92,6 +92,18 @@ class LocationPointWrapperTest {
     }
 
     @Test
+    fun countUnmarkedSinceExcludesEnqueuedRows() = runDbTest { buffer ->
+        val h0 = 0L
+        buffer.insertPoints(listOf(point(h0 + 1), point(h0 + 2)))
+        buffer.markFlushed(Uuid.random(), h0, hourMs)
+        // New point after the flush — the only one not yet in a file.
+        buffer.insertPoints(listOf(point(h0 + 3)))
+
+        assertEquals(1, buffer.countUnmarkedSince(0))
+        assertEquals(3, buffer.countSince(0))
+    }
+
+    @Test
     fun countSinceAndLatestAndRetention() = runDbTest { buffer ->
         buffer.insertPoints(listOf(point(1000), point(5000), point(9000)))
         assertEquals(2, buffer.countSince(5000))

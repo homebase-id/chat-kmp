@@ -119,9 +119,13 @@ class LocationTrackUploaderService(
     suspend fun flush() {
         flushMutex.withLock {
             lastFlushAttemptMs = Clock.System.now().toEpochMilliseconds()
-            if (!preferences.activated.value) return
+            if (!preferences.activated.value) {
+                logger.d { "Flush skipped: Location add-on not activated" }
+                return
+            }
             if (credentialsManager.getActiveCredentials() == null) {
                 // Logged out / not yet logged in: points stay buffered.
+                logger.d { "Flush skipped: no active credentials — points stay buffered" }
                 return
             }
             val hours = runCatching { buffer.selectPendingHours() }
@@ -152,11 +156,42 @@ class LocationTrackUploaderService(
 
         if (enqueued) {
             buffer.markFlushed(uid, hourStartMs, hourStartMs + HOUR_MS)
-            logger.d {
-                "Flushed hour=$hourStartMs points=${points.size} stored=${stored.size} " +
+            logger.i {
+                "Flushed hour=$hourStartMs uid=$uid points=${points.size} stored=${stored.size} " +
                     "overflowPayload=$overflow mode=${if (existing == null) "create" else "update"}"
             }
         }
+    }
+
+    /**
+     * Points captured today (UTC) by this device: the sum of today's hour-file
+     * counts (`full` raw count when the header trace was thinned) plus buffered
+     * rows not yet serialized into any file. NOT the upload buffer's row count —
+     * the buffer drains on upload confirmation, which is exactly why the UI must
+     * not derive "points today" from it.
+     *
+     * Transient overcount window: after an upload FAILS, its rows are unmarked
+     * for retry while the optimistic local header still carries their count;
+     * the next successful flush reconverges.
+     */
+    suspend fun countPointsToday(): Int {
+        val creds = credentialsManager.getActiveCredentials() ?: return 0
+        val now = Clock.System.now().toEpochMilliseconds()
+        val dayStart = now - now % DAY_MS
+        val hourUids = (0 until 24)
+            .map { dayStart + it * HOUR_MS }
+            .filter { it <= now }
+            .map { locationHourFileUid(deviceId.value, it) }
+        val fromFiles = runCatching {
+            databaseManager.driveMainIndex
+                .selectHomebaseFilesByUniqueIds(creds.getIdentityId(), driveId, hourUids)
+                .sumOf { file ->
+                    file.fileMetadata.appData.content
+                        ?.let { LocationTrackCodec.decodeHeader(it)?.fullCount } ?: 0
+                }
+        }.getOrDefault(0)
+        val unflushed = runCatching { buffer.countUnmarkedSince(dayStart) }.getOrDefault(0L)
+        return fromFiles + unflushed.toInt()
     }
 
     /** Local index first; on miss one HTTP probe (fresh login mid-hour, before sync). */
@@ -311,6 +346,7 @@ class LocationTrackUploaderService(
             when (event) {
                 is BackendEvent.OutboxEvent.ItemCompleted -> {
                     if (event.driveId != driveId) return@collect
+                    logger.i { "Hour-file upload confirmed uid=${event.uniqueId} — draining buffer rows" }
                     runCatching { buffer.deleteByFlushUid(event.uniqueId) }
                         .onFailure { logger.e(it) { "deleteByFlushUid failed" } }
                     _lastFlushTime.value = Clock.System.now().toEpochMilliseconds()
@@ -337,5 +373,6 @@ class LocationTrackUploaderService(
     private companion object {
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
         const val RETENTION_MS = 7L * 24 * HOUR_MS
+        const val DAY_MS = 24 * HOUR_MS
     }
 }

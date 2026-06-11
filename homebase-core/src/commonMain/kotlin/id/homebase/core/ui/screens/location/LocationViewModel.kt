@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
@@ -157,12 +156,13 @@ class LocationViewModel(
     }
 
     private suspend fun refreshCounts() {
-        val now = Clock.System.now().toEpochMilliseconds()
-        val utcDayStart = now - now % 86_400_000L
-        val today = pointStore.countSince(utcDayStart)
+        // "Points today" comes from the hour files (+ unflushed remainder), NOT
+        // the upload buffer — the buffer drains on upload confirmation, so its
+        // row count is the "waiting to upload" number, not the day's history.
+        val today = uploaderService.countPointsToday()
         val pending = pointStore.countPendingUpload()
         _uiState.update {
-            it.copy(pointsToday = today.toInt(), pendingUploadCount = pending.toInt())
+            it.copy(pointsToday = today, pendingUploadCount = pending.toInt())
         }
     }
 }

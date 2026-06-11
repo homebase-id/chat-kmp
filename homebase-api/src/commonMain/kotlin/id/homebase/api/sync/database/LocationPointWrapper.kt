@@ -98,6 +98,12 @@ class LocationPointWrapper(
             delegate.countSince(fromInclusiveMs).executeAsOne()
         }
 
+    /** Rows since [fromInclusiveMs] not yet part of any enqueued hour file. */
+    suspend fun countUnmarkedSince(fromInclusiveMs: Long): Long =
+        databaseManager.readValue("locationPoint.countUnmarkedSince") {
+            delegate.countUnmarkedSince(fromInclusiveMs).executeAsOne()
+        }
+
     suspend fun selectLatest(): BufferedLocationPoint? {
         val row = databaseManager.readValue("locationPoint.selectLatest") {
             delegate.selectLatest().executeAsOneOrNull()
