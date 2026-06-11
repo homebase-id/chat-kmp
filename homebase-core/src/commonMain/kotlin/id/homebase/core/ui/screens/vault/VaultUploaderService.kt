@@ -21,6 +21,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFiles
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
@@ -152,7 +153,7 @@ class VaultUploaderService(
                 thumbnails = encryptedBundle.thumbnails,
             )
 
-            val enqueued = outboxSync.tryEnqueue(request)
+            val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
                     optimisticWriter.writeNewFile(

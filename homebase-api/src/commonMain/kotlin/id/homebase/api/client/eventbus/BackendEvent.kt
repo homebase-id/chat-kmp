@@ -154,11 +154,15 @@ sealed interface BackendEvent {
             val uniqueId: Uuid,
         ) : OutboxEvent
 
-        /** Fired when an item is permanently dropped after exceeding the max retry limit. */
+        /** Fired when an item is permanently dropped — either a permanent
+         *  (never-retryable) failure or the max retry limit was exceeded.
+         *  [reason] is human-readable diagnostics (classifier reason or
+         *  "retries exhausted (N)"), for logs/Message Info — not for branching. */
         data class OutboxItemDropped(
             val driveId: Uuid,
             val uniqueId: Uuid,
-            val attempts: Int
+            val attempts: Int,
+            val reason: String? = null,
         ) : OutboxEvent
 
     }

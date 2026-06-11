@@ -16,6 +16,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -120,16 +121,21 @@ class ChatMessageActionService(
         // Note-to-Self / all-self-authored views, we skip the outbox but still advance local state.
         val enqueued = if (unreadRecords.isNotEmpty()) {
             val fileIds = unreadRecords.map { it.fileId }
-            val ok = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = SendReadReceiptByFileIdsOutboxRequest(
                     driveId = chatDrive,
                     fileIds = fileIds,
                 )
             )
             Logger.d(tag = TAG) {
-                "enqueue receipt: enqueued=$ok drive=$chatDrive fileIdsCount=${fileIds.size}"
+                "enqueue receipt: result=$result drive=$chatDrive fileIdsCount=${fileIds.size}"
             }
-            ok
+            if (!result.enqueued) {
+                Logger.w(tag = TAG) {
+                    "outbox.tryEnqueue → $result — skipped DB upsert + enrich; convo=$conversationId"
+                }
+            }
+            result.enqueued
         } else {
             Logger.d(tag = TAG) {
                 "no receipt-eligible records — skipping outbox; advancing local read state only"
@@ -138,9 +144,6 @@ class ChatMessageActionService(
         }
 
         if (!enqueued) {
-            Logger.w(tag = TAG) {
-                "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
-            }
             return
         }
 
@@ -243,7 +246,7 @@ class ChatMessageActionService(
         if (original == null) return ToggleReactionResult(resultType = resultType)
 
         try {
-            val enqueued = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = ToggleReactionOutboxRequest(
                     driveId = chatDrive,
                     fileId = original.fileId,
@@ -251,7 +254,8 @@ class ChatMessageActionService(
                     recipients = getRecipients(conversationId),
                 )
             )
-            if (!enqueued) {
+            if (!result.enqueued) {
+                Logger.w("toggleReaction: outbox enqueue → $result — rolling back optimistic write")
                 optimisticWriter.rollbackWrite(chatDrive, original)
             }
         } catch (t: Throwable) {
@@ -316,7 +320,7 @@ class ChatMessageActionService(
         val original = optimisticWriter.writeDelete(chatDrive, messageId)
 
         try {
-            val enqueued = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
                     driveId = chatDrive,
                     fileIds = listOf(fileId),
@@ -324,7 +328,8 @@ class ChatMessageActionService(
                     hardDelete = hardDelete,
                 )
             )
-            if (!enqueued && original != null) {
+            if (!result.enqueued && original != null) {
+                Logger.w("deleteMessage: outbox enqueue → $result — rolling back optimistic write")
                 optimisticWriter.rollbackWrite(chatDrive, original)
             }
         } catch (t: Throwable) {

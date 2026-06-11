@@ -19,6 +19,7 @@ import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
@@ -171,7 +172,7 @@ class StickerService(
             )
 
             val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued) return null
+            if (!enqueued.enqueued) return null
 
             // Optimistic local write + in-memory insert so the tray shows the sticker
             // immediately, before the outbox round-trips. The real fileId is assigned by
@@ -261,7 +262,7 @@ class StickerService(
                     driveId = driveId,
                     fileIds = listOf(sticker.fileId),
                 ),
-            )
+            ).enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue sticker delete: ${sticker.uniqueId}" }
             false

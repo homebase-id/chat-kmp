@@ -90,6 +90,7 @@ import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
@@ -168,7 +169,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request) },
+            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
             eventBus = get(),
             scope = get(),
         )

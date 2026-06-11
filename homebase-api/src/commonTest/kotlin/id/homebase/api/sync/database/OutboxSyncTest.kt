@@ -6,9 +6,12 @@ import id.homebase.api.client.eventbus.EventBus
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -29,6 +32,7 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 
 class TestUploader : OutboxUploader {
     var shouldFail = false
@@ -351,6 +355,7 @@ class OutboxSyncTest {
         assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(driveId, dropped.driveId)
         assertEquals(20, dropped.attempts)
+        assertEquals("retries exhausted (20)", dropped.reason)
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
@@ -433,7 +438,7 @@ class OutboxSyncTest {
                 }
             }
 
-            assertTrue(enqueued, "tryEnqueue should report success")
+            assertTrue(enqueued.enqueued, "tryEnqueue should report success")
             assertEquals(1L, db.outbox.count(), "record should be durably inserted in outbox")
 
             // Clean up — release the blocked collector so backgroundScope can finish.
@@ -456,12 +461,13 @@ class OutboxSyncTest {
      * `ChatMessageSenderService.updateMessage` re-threw as `IllegalStateException: Failed to
      * update chat message`, which surfaced as a user-visible toast on every retry attempt.
      *
-     * Contract under test: `tryEnqueue` on a duplicate `(driveId, uniqueId)` reports failure
-     * (doesn't throw) and leaves the original row untouched. Callers that want the new request
-     * to supersede the old one must use `replaceEnqueue`.
+     * Contract under test: `tryEnqueue` on a duplicate `(driveId, uniqueId)` reports
+     * [EnqueueResult.AlreadyQueued] (doesn't throw) and leaves the original row untouched —
+     * distinguishable from a real DB failure ([EnqueueResult.Failed]). Callers that want the
+     * new request to supersede the old one must use `replaceEnqueue`.
      */
     @Test
-    fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() = runOutboxTest { db ->
+    fun testTryEnqueueDuplicateReturnsAlreadyQueuedAndKeepsOriginal() = runOutboxTest { db ->
         val eventBus = EventBus()
         val uploader = TestUploader()
         val sync = OutboxSync(
@@ -471,7 +477,7 @@ class OutboxSyncTest {
         val driveId = Uuid.random()
         val uniqueId = Uuid.random()
 
-        val firstOk = sync.tryEnqueue(
+        val first = sync.tryEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = null,
@@ -479,10 +485,11 @@ class OutboxSyncTest {
             uploadType = 2, // UpdateFile
             json = "original"
         )
-        assertTrue(firstOk, "first enqueue should succeed")
+        assertEquals(EnqueueResult.Enqueued, first, "first enqueue should succeed")
+        assertTrue(first.enqueued)
         assertEquals(1L, db.outbox.count())
 
-        val secondOk = sync.tryEnqueue(
+        val second = sync.tryEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = null,
@@ -490,12 +497,60 @@ class OutboxSyncTest {
             uploadType = 2,
             json = "superseding"
         )
-        assertFalse(secondOk, "duplicate tryEnqueue should report failure, not throw")
+        assertEquals(
+            EnqueueResult.AlreadyQueued, second,
+            "duplicate tryEnqueue must report AlreadyQueued — not throw, and not a generic failure"
+        )
+        assertFalse(second.enqueued)
         assertEquals(1L, db.outbox.count(), "original row must remain")
 
         val row = db.outbox.checkout()
         assertNotNull(row)
         assertEquals("original", row.json.decodeToString(), "original row's payload must be preserved")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * The strand guard in `replaceEnqueue` (see `wouldStrandPendingCreate`) must be
+     * distinguishable from a DB failure: replacing a pending UploadNewFile with an
+     * UpdateFile is refused with [EnqueueResult.WouldStrandCreate] and the queued
+     * create stays untouched.
+     */
+    @Test
+    fun testReplaceEnqueueRefusesToStrandPendingCreate() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+
+        val create = sync.tryEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = "create"
+        )
+        assertTrue(create.enqueued)
+
+        val result = sync.replaceEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 1,
+            uploadType = DriveOutboxUploader.UpdateFile,
+            json = "edit"
+        )
+        assertEquals(EnqueueResult.WouldStrandCreate, result)
+        assertEquals(1L, db.outbox.count(), "the pending create must remain")
+
+        val row = db.outbox.checkout()
+        assertNotNull(row)
+        assertEquals("create", row.json.decodeToString(), "the un-sent create must not be replaced")
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
@@ -515,7 +570,7 @@ class OutboxSyncTest {
         val driveId = Uuid.random()
         val uniqueId = Uuid.random()
 
-        val firstOk = sync.tryEnqueue(
+        val first = sync.tryEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = null,
@@ -523,9 +578,9 @@ class OutboxSyncTest {
             uploadType = 2,
             json = "stale"
         )
-        assertTrue(firstOk)
+        assertTrue(first.enqueued)
 
-        val replacedOk = sync.replaceEnqueue(
+        val replaced = sync.replaceEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = null,
@@ -533,7 +588,7 @@ class OutboxSyncTest {
             uploadType = 2,
             json = "fresh"
         )
-        assertTrue(replacedOk, "replaceEnqueue must succeed even when a row already exists")
+        assertEquals(EnqueueResult.Enqueued, replaced, "replaceEnqueue must succeed even when a row already exists")
         assertEquals(1L, db.outbox.count(), "exactly one row should remain after replace")
 
         val row = db.outbox.checkout()
@@ -639,8 +694,10 @@ class OutboxSyncTest {
      * Regression for the actual user-reported scenario (homebase.log 2026-05-04):
      * the server collapsed `errorCode` to `UnhandledScenario` while preserving the
      * title `Mismatching version tag …`. Without a title-match fallback this loops
-     * for 20 retries / ~48h. The fallback in `isPermanentFailure` (and the
-     * symmetrical fallback in `DriveOutboxUploader.upload`) must drop on attempt 1.
+     * for 20 retries / ~48h. The fallback in `classifyPermanentFailure` must drop
+     * on attempt 1 — and the drop must be honest: no `ItemCompleted` for an
+     * update the server rejected (previously `DriveOutboxUploader.upload`
+     * swallowed this case by returning normally, faking a successful send).
      */
     @Test
     fun testPermanentFailure_MismatchingVersionTagByTitleDroppedOnFirstAttempt() = runOutboxTest { db ->
@@ -656,8 +713,15 @@ class OutboxSyncTest {
         )
         sync.setOnline(true)
 
-        val droppedDeferred = async {
-            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+        // Collect ALL outbox events so we can assert what was NOT emitted; await
+        // the terminal `Completed` before asserting (see class KDoc — a bare
+        // advanceUntilIdle() can return before the worker drains).
+        val events = mutableListOf<BackendEvent.OutboxEvent>()
+        val collectorJob = backgroundScope.launch {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent>().collect { events.add(it) }
+        }
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
         }
         testScheduler.runCurrent()
 
@@ -676,11 +740,101 @@ class OutboxSyncTest {
         try { sync.send() } catch (_: Exception) {}
         advanceUntilIdle()
 
-        val dropped = droppedDeferred.await()
+        completedDeferred.await()
+        advanceUntilIdle() // let the list collector drain anything still buffered
+
+        val dropped = events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().single()
 
         assertEquals(0L, db.outbox.count())
         assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(1, dropped.attempts)
+        assertTrue(
+            events.filterIsInstance<BackendEvent.OutboxEvent.ItemCompleted>().isEmpty(),
+            "a dropped item must NOT be reported as completed",
+        )
+
+        collectorJob.cancel()
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * Honest-drop contract for the self-recipient rejection: "Cannot transfer
+     * to yourself" is a terminal 400 (the recipient list contains the
+     * logged-in identity; the server rejects it forever).
+     *
+     * Previously this case was swallowed inside `DriveOutboxUploader.upload`
+     * by returning normally — OutboxSync then took the success path and
+     * emitted `ItemCompleted`, so the chat bubble showed *sent* for a message
+     * that never reached the server. The classification now lives in
+     * `classifyPermanentFailure` and the drop must be honest: row deleted on
+     * attempt 1, `OutboxItemDropped` emitted, NO `ItemCompleted`, and the
+     * final `Completed` batch event counts 0 sent items.
+     */
+    @Test
+    fun testPermanentFailure_CannotTransferToYourselfDropsHonestly() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = clientException(
+            errorCode = OdinClientErrorCode.UnhandledScenario,
+            message = "Cannot transfer to yourself: frodo.dotyou.cloud",
+        )
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        // Collect ALL outbox events so we can assert what was NOT emitted.
+        // `advanceUntilIdle()` alone is not enough to drain the worker (see the
+        // class KDoc) — the established pattern in this file is to await the
+        // terminal `Completed` event (emitted when the last worker exits)
+        // before asserting.
+        val events = mutableListOf<BackendEvent.OutboxEvent>()
+        val collectorJob = backgroundScope.launch {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent>().collect { events.add(it) }
+        }
+        val completedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
+        }
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val completed = completedDeferred.await()
+        advanceUntilIdle() // let the list collector drain anything still buffered
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+
+        val dropped = events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().single()
+        assertEquals(uniqueId, dropped.uniqueId)
+        assertEquals(driveId, dropped.driveId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        assertNotNull(dropped.reason, "a permanent drop must carry its classifier reason")
+        assertTrue(
+            dropped.reason!!.contains("Cannot transfer to yourself"),
+            "reason should surface the server message; was: ${dropped.reason}",
+        )
+
+        assertTrue(
+            events.filterIsInstance<BackendEvent.OutboxEvent.ItemCompleted>().isEmpty(),
+            "a dropped item must NOT be reported as completed — that's the fake-success bug",
+        )
+        assertEquals(0, completed.totalCount, "nothing was sent, so the batch count must be 0")
+
+        collectorJob.cancel()
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
@@ -856,6 +1010,84 @@ class OutboxSyncTest {
                     "stays in outbox only as long as the head exists"
         )
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * Cancelling the outbox scope mid-upload (logout, shutdown) must NOT be
+     * recorded as a failed attempt: no `ItemFailed`/`Failed`/`OutboxItemDropped`
+     * events, no `checkInFailed` (checkOutCount stays 0). The row stays checked
+     * out and is recovered by the next start's `clearCheckedOut` — exactly like
+     * an app kill. Locks in the CancellationException rethrow at the top of
+     * `outboxSend`'s catch.
+     */
+    @Test
+    fun testScopeCancellationMidUploadIsNotAFailedAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        // A dedicated, cancellable scope on the same virtual scheduler.
+        val workerScope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
+
+        val uploadStarted = CompletableDeferred<Unit>()
+        val uploader = object : OutboxUploader {
+            override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
+                uploadStarted.complete(Unit)
+                kotlinx.coroutines.delay(600_000) // parked until the scope is cancelled
+                error("unreachable — upload should have been cancelled")
+            }
+        }
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = workerScope
+        )
+        sync.setOnline(true)
+
+        val events = mutableListOf<BackendEvent.OutboxEvent>()
+        val collectorJob = backgroundScope.launch {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent>().collect { events.add(it) }
+        }
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        sync.send()
+        uploadStarted.await() // upload is now parked inside delay()
+
+        workerScope.cancel()
+        advanceUntilIdle()
+
+        assertTrue(
+            events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().isEmpty(),
+            "cancellation must not be reported as an upload failure",
+        )
+        assertTrue(
+            events.filterIsInstance<BackendEvent.OutboxEvent.Failed>().isEmpty(),
+            "cancellation must not be reported as an upload failure",
+        )
+        assertTrue(
+            events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().isEmpty(),
+            "cancellation must never drop the row",
+        )
+
+        val row = db.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        assertNotNull(row, "row must survive cancellation")
+        assertEquals(0L, row.checkOutCount, "cancellation must not count as a failed attempt")
+        assertNotNull(
+            row.checkOutStamp,
+            "row stays checked out — the next start's clearCheckedOut recovers it",
+        )
+
+        collectorJob.cancel()
+        // No sync.clearCheckout() here: the worker scope is dead, so activeThreads
+        // never decremented — clearCheckout would just spin to its timeout.
     }
 
     @Test

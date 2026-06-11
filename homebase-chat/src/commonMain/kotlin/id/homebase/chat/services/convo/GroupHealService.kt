@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.GroupHealCleanupInfo
@@ -464,8 +465,8 @@ class GroupHealService(
                 )
             )
         }.onSuccess { enqueued ->
-            if (enqueued) audit.checkPass("healMsgSoftDeleteEnqueue")
-            else audit.checkWarn("healMsgSoftDeleteEnqueue", "tryEnqueue returned false")
+            if (enqueued.enqueued) audit.checkPass("healMsgSoftDeleteEnqueue")
+            else audit.checkWarn("healMsgSoftDeleteEnqueue", "tryEnqueue → $enqueued")
         }.onFailure { e -> audit.threw("healMsgSoftDeleteEnqueue", e) }
 
         val mainFile = convoOps.getConversationHomebaseFile(info.conversationUniqueId)
@@ -562,7 +563,7 @@ class GroupHealService(
                 )
             }.onSuccess { enqueued ->
                 audit.info("STEP 1 enqueued=$enqueued")
-                if (enqueued) audit.checkPass("hardDeleteEnqueue") else audit.checkWarn("hardDeleteEnqueue", "tryEnqueue returned false (UNIQUE collision)")
+                if (enqueued.enqueued) audit.checkPass("hardDeleteEnqueue") else audit.checkWarn("hardDeleteEnqueue", "tryEnqueue → $enqueued")
             }.onFailure { e -> audit.threw("hardDeleteEnqueue", e) }
         } else {
             audit.info("STEP 1 SKIPPED — no broken local files to hard-delete (mainMissing=$mainMissing adminMissing=$adminMissing)")
@@ -735,8 +736,8 @@ class GroupHealService(
                 )
             )
         }.onSuccess { enqueued ->
-            if (enqueued) audit.checkPass("healMsgHardDeleteEnqueue")
-            else audit.checkWarn("healMsgHardDeleteEnqueue", "tryEnqueue returned false")
+            if (enqueued.enqueued) audit.checkPass("healMsgHardDeleteEnqueue")
+            else audit.checkWarn("healMsgHardDeleteEnqueue", "tryEnqueue → $enqueued")
         }.onFailure { e -> audit.threw("healMsgHardDeleteEnqueue", e) }
     }
 
