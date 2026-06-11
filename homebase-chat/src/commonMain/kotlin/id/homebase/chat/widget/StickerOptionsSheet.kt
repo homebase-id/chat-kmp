@@ -77,8 +77,12 @@ fun StickerOptionsSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 8.dp),
         ) {
-            // Enlarged sticker preview (bigger than the bubble's ~160dp cap) so the user can see
-            // it clearly when they tap. Transparent stickers show the sheet surface through.
+            val previewHeight = 160.dp
+            val stickerAspect = stickerImage.previewThumbnail
+                ?.takeIf { it.pixelWidth > 0 && it.pixelHeight > 0 }
+                ?.let { (it.pixelWidth.toFloat() / it.pixelHeight.toFloat()).coerceIn(0.6f, 1.8f) }
+                ?: 1f
+
             HomebaseImage(
                 imageData = stickerImage,
                 contentDescription = stringResource(MR.string.cd_sticker_thumbnail),
@@ -86,7 +90,7 @@ fun StickerOptionsSheet(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(top = 8.dp, bottom = 16.dp)
-                    .size(200.dp),
+                    .size(width = previewHeight * stickerAspect, height = previewHeight),
             )
 
             Text(

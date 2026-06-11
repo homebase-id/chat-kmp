@@ -12,6 +12,7 @@ import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_remove_failed
 import id.homebase.resources.chat_sticker_removed
@@ -144,18 +145,22 @@ internal class StickerHandler(
         val message = action.message
         val isAlreadySaved = findSavedFromMessage(message.fileId) != null
         val stickerPayload = message.payloads?.firstOrNull { it.key == action.payloadKey }
+        val payloadIv = stickerPayload?.iv?.let { Base64.decode(it) }
         val stickerImage = HomebaseImageData(
             driveId = chatTargetDrive.alias,
             fileId = message.fileId,
             payloadKey = action.payloadKey,
             previewThumbnail = stickerPayload?.previewThumbnail?.toEmbeddedThumb()
                 ?: message.previewThumbnail,
-            // Load the full sticker (a small payload) so the enlarged preview is crisp and animates
-            // for animated-WebP/GIF stickers, matching the bubble's inline treatment.
-            loadFullPayload = true,
+            requestedSize = ImageSize.THUMB_MEDIUM,
+            lastModified = stickerPayload?.lastModified,
             isEncrypted = true,
             payloadContentType = stickerPayload?.contentType,
-            keyHeader = message.keyHeader,
+            keyHeader = if (payloadIv != null) {
+                KeyHeader(iv = payloadIv, aesKey = message.keyHeader.aesKey)
+            } else {
+                message.keyHeader
+            },
         )
         messagesUiState.update {
             it.copy(
