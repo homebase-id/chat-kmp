@@ -31,6 +31,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
@@ -96,6 +97,15 @@ fun MediaMessage(
             (payloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
     }
 
+    // A link preview is a single auto-generated card (image + title/description). Unlike a photo or
+    // video upload its payload is tiny and the card carries text, so the full-bleed dark
+    // UploadProgressOverlay scrim is heavy, redundant with the message's own pending tick, and would
+    // hide the crisp local image we now render during send. Skip the scrim for it — the inner card
+    // still receives isUploading so it renders the local source instead of a failing drive fetch.
+    val isLinkPreview = remember(payloads) {
+        payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
+    }
+
     Box(modifier = Modifier.animateContentSize()) {
         when (payloads.size) {
             1 -> {
@@ -158,7 +168,7 @@ fun MediaMessage(
             }
         }
 
-        if (uploadStatus != null) {
+        if (uploadStatus != null && !isLinkPreview) {
             UploadProgressOverlay(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),

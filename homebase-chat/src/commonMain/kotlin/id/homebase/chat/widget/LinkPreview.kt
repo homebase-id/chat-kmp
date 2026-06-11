@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.link.LinkPreview
@@ -235,10 +236,14 @@ fun LinkPreviewCard(
  * @param keyHeader Key header for decryption.
  * @param previewThumbnail Optional embedded tiny thumbnail for instant display.
  * @param isUploading If true, the message is still being sent and its payload does not yet exist on
- * the drive — render the embedded [previewThumbnail] directly instead of attempting a drive fetch.
+ * the drive — render a local image instead of attempting a drive fetch.
+ * @param localImagePath Optional path to the plaintext local copy of the OG image (the same temp
+ * file that feeds the upload pipeline). When present during [isUploading] it renders crisp and
+ * full-resolution, mirroring how a pending sent IMAGE shows its local file. Falls back to the 20px
+ * embedded [previewThumbnail] when absent (e.g. a pending message restored after app restart).
  * @param modifier Modifier for the composable.
  */
-@OptIn(ExperimentalEncodingApi::class, ExperimentalResourceApi::class)
+@OptIn(ExperimentalEncodingApi::class)
 @Composable
 fun LinkPreviewCard(
     descriptor: LinkPreviewDescriptor,
@@ -248,6 +253,7 @@ fun LinkPreviewCard(
     keyHeader: KeyHeader,
     previewThumbnail: EmbeddedThumb? = null,
     isUploading: Boolean = false,
+    localImagePath: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -258,19 +264,17 @@ fun LinkPreviewCard(
     )
 
     // While the message is pending/uploading the drive payload does not exist yet, so a
-    // HomebaseImage fetch would fail and overlay a broken-image triangle. Decode the embedded
-    // tinyThumb (always a tiny WebP, base64) and show it directly during that window — mirroring
-    // how a pending sent IMAGE renders its local file instead of the remote drive payload. Once
-    // the send completes the bubble re-renders with isUploading=false and swaps to HomebaseImage.
-    val pendingThumbBitmap = remember(previewThumbnail?.content, isUploading) {
+    // HomebaseImage fetch would 404 into a broken-image triangle. Feed Coil a local source
+    // instead: the crisp, full-resolution [localImagePath] (the plaintext temp file that also
+    // feeds the upload) when we still hold it, else the 20px embedded tinyThumb bytes as a soft
+    // fallback (e.g. a pending message restored after an app restart, when the in-memory local
+    // path is gone). Coil takes both a file-path String and a ByteArray model (cf.
+    // StickerCreatorSheet / VideoTrimScrubber). Once the send completes the bubble re-renders with
+    // isUploading=false and swaps to HomebaseImage.
+    val pendingModel: Any? = remember(localImagePath, previewThumbnail?.content, isUploading) {
         if (!isUploading) return@remember null
-        previewThumbnail?.content?.let {
-            try {
-                Base64.decode(it).decodeToImageBitmap()
-            } catch (_: Exception) {
-                null
-            }
-        }
+        localImagePath
+            ?: previewThumbnail?.content?.let { runCatching { Base64.decode(it) }.getOrNull() }
     }
 
     Column(
@@ -280,9 +284,11 @@ fun LinkPreviewCard(
             .clickable { uriHandler.openUri(descriptor.url) },
     ) {
         if (descriptor.hasImage) {
-            if (pendingThumbBitmap != null) {
-                Image(
-                    bitmap = pendingThumbBitmap,
+            if (pendingModel != null) {
+                // Coil decodes a plaintext file path or raw bytes by sniffing content, so the temp
+                // file's `.dat` suffix is irrelevant.
+                AsyncImage(
+                    model = pendingModel,
                     contentDescription = descriptor.title,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(imageCornerShape),
                     contentScale = ContentScale.Crop,

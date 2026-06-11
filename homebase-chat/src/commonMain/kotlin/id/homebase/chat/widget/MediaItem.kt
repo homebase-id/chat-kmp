@@ -185,6 +185,7 @@ fun MediaItem(
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     isUploading = isUploading,
+                    localImagePath = (localContext as? LocalAttachmentContext.Image)?.localFilePath,
                     modifier = baseModifier,
                 )
             } else {
