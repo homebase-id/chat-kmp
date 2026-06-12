@@ -20,8 +20,10 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.sync.database.CancelOutcome
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -39,6 +41,7 @@ class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
+    private val outboxSync: OutboxSync,
 ) {
     companion object {
         private const val TAG = "OptimisticWriter"
@@ -464,10 +467,9 @@ class OptimisticWriter(
             // Cancel the queued send FIRST. The create/edit row is keyed by this
             // uniqueId; leaving it would re-upload the file we're about to drop.
             // Ordered before the local delete so a failure can't leave a message
-            // that's gone locally but still queued to send. Guarded: a checked-out
-            // row is left alone and the removal aborted (see KDoc).
-            val deleted = dbm.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
-            if (deleted == 0L && dbm.outbox.selectByDriveAndUnique(driveId, uniqueId) != null) {
+            // that's gone locally but still queued to send. InFlight aborts the
+            // removal — see KDoc.
+            if (outboxSync.cancelPending(driveId, uniqueId) is CancelOutcome.InFlight) {
                 Logger.w(tag = TAG) {
                     "removeOptimisticFile: outbox row for uniqueId=$uniqueId is in flight — keeping local file"
                 }
