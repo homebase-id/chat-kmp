@@ -9,6 +9,8 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.FileOperationsProvider
@@ -391,6 +393,87 @@ class DriveFileProviderCachedTest {
         assertEquals(countAfter404, requestCount, "read after seeding must not hit the network")
         assertEquals(200, result.status, "the 404 marker must not shadow the seeded bytes")
         assertContentEquals(bytes, result.bytes)
+    }
+
+    // ---- rekeyCachedFile: optimistic→server fileId move at sync-back ----
+
+    private val newFileId = Uuid.parse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    private val serverLastModified = 1_780_000_000_000L
+
+    private fun rekeyDescriptors() = listOf(
+        PayloadDescriptor(
+            key = key,
+            contentType = "image/jpeg",
+            lastModified = serverLastModified,
+            thumbnails = listOf(
+                ThumbnailDescriptor(
+                    pixelWidth = 100,
+                    pixelHeight = 100,
+                    contentType = "image/webp",
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun `rekey moves seeded payload and thumb to the new fileId without touching the network`() = runTest {
+        val payloadBytes = ByteArray(64) { it.toByte() }
+        val thumbBytes = ByteArray(32) { (it * 3).toByte() }
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, payloadBytes, "image/jpeg")
+        provider.cacheThumbBytesEncrypted(driveId, fileId, key, 100, 100, thumbBytes, "image/webp")
+
+        nextException = IOException("network must not be reached for a rekeyed entry")
+        provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
+
+        val payload = provider.getPayloadBytesRaw(driveId, newFileId, key)
+        assertContentEquals(payloadBytes, payload.bytes)
+        assertEquals("true", payload.headers["payloadencrypted"], "the encrypted bit must survive the copy")
+        // The thumb must land under the SERVER's lastModified — that's the key
+        // post-sync readers use (the seed was written under null).
+        val thumb = provider.getThumbBytesRaw(driveId, newFileId, key, 100, 100, serverLastModified)
+        assertContentEquals(thumbBytes, thumb.bytes)
+        assertEquals(0, requestCount, "rekeyed reads must not hit the network")
+    }
+
+    @Test
+    fun `rekey with no seeded source is a silent no-op`() = runTest {
+        provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
+
+        // Nothing cached under the new id — the read goes to the network.
+        nextStatus = HttpStatusCode.OK
+        provider.getPayloadBytesRaw(driveId, newFileId, key)
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `rekey removes the old entries`() = runTest {
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, ByteArray(16) { 1 }, "image/jpeg")
+        provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
+
+        // The old key's LRU budget is freed — a read under the old fileId must
+        // fall through to the network.
+        nextStatus = HttpStatusCode.OK
+        provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertEquals(1, requestCount, "old entry must be removed by the rekey")
+    }
+
+    @Test
+    fun `rekey clears a cached 404 for the new key`() = runTest {
+        // A racing probe 404-caches the NEW payload key before the rekey lands.
+        nextStatus = HttpStatusCode.NotFound
+        assertFailsWith<NotFoundException> {
+            provider.getPayloadBytesRaw(driveId, newFileId, key)
+        }
+        val countAfter404 = requestCount
+
+        val bytes = ByteArray(16) { 0x42 }
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+        provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
+
+        nextException = IOException("network must not be reached after rekey")
+        val result = provider.getPayloadBytesRaw(driveId, newFileId, key)
+        assertEquals(countAfter404, requestCount, "read after rekey must not hit the network")
+        assertContentEquals(bytes, result.bytes, "the 404 marker must not shadow the moved entry")
     }
 
     /**

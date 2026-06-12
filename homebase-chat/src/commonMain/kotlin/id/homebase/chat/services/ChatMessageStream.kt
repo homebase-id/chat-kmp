@@ -372,6 +372,23 @@ class ChatMessageStream(
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
             val window = paginatedState.getWindow(conversationId) ?: return@forEach
+            // An own optimistic send that synced back carries a new SERVER fileId;
+            // the payload-cache entries seeded at send time are keyed by the old
+            // optimistic fileId, which is about to vanish with the window update.
+            // Move them now so the sender's own media keeps hitting the cache.
+            // Before the hasNewerMessages gate on purpose: that gate is about
+            // display ordering, and cache correctness must not depend on it.
+            // Fire-and-forget, best-effort — a failed re-key only costs a re-download.
+            for ((oldFileId, msg) in fileIdRekeyCandidates(window.messages, msgs)) {
+                scope.launch {
+                    try {
+                        driveFileProvider.rekeyCachedFile(chatDrive, oldFileId, msg.fileId, msg.payloads.orEmpty())
+                        Logger.d { "ChatMessageStream: rekeyed payload cache uniqueId=${msg.id} old=$oldFileId new=${msg.fileId}" }
+                    } catch (t: Throwable) {
+                        Logger.w(t) { "ChatMessageStream: cache rekey failed uniqueId=${msg.id} old=$oldFileId new=${msg.fileId}" }
+                    }
+                }
+            }
             // Gate: when the user has paged backwards (hasNewerMessages == true), the
             // window doesn't include the latest messages. Stream events that arrive while
             // the user is deep in history would land out of order; defer them until the
