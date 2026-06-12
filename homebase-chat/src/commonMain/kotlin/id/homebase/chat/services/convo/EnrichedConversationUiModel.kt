@@ -13,6 +13,10 @@ data class EnrichedConversationUiModel(
     val oneOnOneConnectionStatus: OneOnOneConnectionStatus? = null,
 ) {
     fun getDisplayName(youLabel: String = "You"): String {
+        // Note-to-self: the single "participant" is the owner, so a name lookup
+        // would surface the owner's own domain. Label it with [youLabel] instead.
+        if (conversation.isWithSelf) return youLabel
+
         if (!conversation.isGroupConversation) {
             participants.firstOrNull()?.let {
                 return it.name
