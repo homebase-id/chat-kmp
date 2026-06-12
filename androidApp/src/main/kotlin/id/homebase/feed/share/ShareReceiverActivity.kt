@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
@@ -79,6 +80,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val conversationStream: ConversationStream by inject()
     private val contactService: ContactService by inject()
     private val ownerSessionRepository: OwnerSessionRepository by inject()
+    private val credentialsManager: CredentialsManager by inject()
     private val chatMessageSenderService: ChatMessageSenderService by inject()
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
@@ -223,6 +225,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             conversationStream = conversationStream,
                             contactService = contactService,
                             ownerSessionRepository = ownerSessionRepository,
+                            credentialsManager = credentialsManager,
                             sharedContent = sharedContent,
                             hasFiles = sharedContent.hasFiles,
                             isSending = isSending,
