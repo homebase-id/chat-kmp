@@ -72,7 +72,7 @@ val apiModule = module {
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }
+    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
     singleOf(::OutboxSync)
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
