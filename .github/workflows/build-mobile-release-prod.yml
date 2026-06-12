@@ -252,6 +252,32 @@ jobs:
                     :homebase-notifshared:linkReleaseFrameworkIosArm64
           ./gradlew --stop
 
+      # fastlane's build_app starts with `xcodebuild -resolvePackageDependencies`,
+      # which has no timeout: run 27409300090 hung there for 35 min (vs 80 s in
+      # the previous green run) on a stuck GitHub fetch. Pre-resolve here with a
+      # watchdog + retries; gym's own resolve then hits warm SwiftPM caches.
+      # Non-fatal on persistent failure — gym gets its usual chance.
+      - name: Pre-resolve SPM dependencies (watchdog + retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "SPM resolve attempt $attempt"
+            xcodebuild -resolvePackageDependencies \
+              -workspace iosApp/iosApp.xcodeproj/project.xcworkspace \
+              -scheme iosApp -configuration Release &
+            xb=$!
+            ( sleep 600; echo "watchdog: killing stuck resolve"; kill "$xb" 2>/dev/null ) &
+            wd=$!
+            if wait "$xb"; then
+              kill "$wd" 2>/dev/null || true
+              echo "SPM dependencies resolved on attempt $attempt"
+              exit 0
+            fi
+            kill "$wd" 2>/dev/null || true
+            echo "attempt $attempt failed or timed out"
+          done
+          echo "::warning ::SPM pre-resolve failed 3 times; letting fastlane try"
+          exit 0
+
       # The build action's bundled Fastfile runs create_keychain(timeout: 3600):
       # the build keychain auto-locks after 60 minutes. A cold-cache archive
       # (Kotlin/Native invalidation, dependency bumps) takes >60min to reach the
