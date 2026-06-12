@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -55,6 +56,52 @@ class DeleteMessageCancelsPendingTest {
                     fixture.testIdentityId, fixture.chatDriveId, messageId,
                 ),
                 "the optimistic local file must be removed",
+            )
+        }
+    }
+
+    /**
+     * A create whose upload is IN FLIGHT (row checked out) can't be cancelled —
+     * the worker already read the row, so deleting it wouldn't stop the upload;
+     * it would only remove the local file and let the next sync resurrect the
+     * message as a ghost. deleteMessage must refuse: keep the local file, keep
+     * the row, and enqueue no server delete (the server-assigned fileId isn't
+     * known yet). A second delete after the send confirms takes the normal path.
+     */
+    @Test
+    fun delete_inFlightCreate_isRefused_nothingChanges() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val messageId = fixture.seedDeletableMessage(
+                conversationId = Uuid.random(),
+                isPendingSend = true,
+            )
+            fixture.dbm.outbox.insert(
+                driveId = fixture.chatDriveId,
+                uniqueId = messageId,
+                dependencyUniqueId = null,
+                priority = 1L,
+                uploadType = DriveOutboxUploader.UploadNewFile,
+                json = "{}".encodeToByteArray(),
+                filePaths = null,
+            )
+            // Simulate the worker holding the row mid-upload.
+            checkNotNull(fixture.dbm.outbox.checkout())
+
+            service.deleteMessage(messageId, deleteForEveryone = true)
+
+            val row = fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, messageId)
+            assertNotNull(row, "the in-flight create row must survive")
+            assertNotNull(row.checkOutStamp, "the row must remain checked out")
+            assertNotNull(
+                fixture.dbm.driveMainIndex.selectHomebaseFileByUnique(
+                    fixture.testIdentityId, fixture.chatDriveId, messageId,
+                ),
+                "the local file must be kept — removing it would create a ghost",
+            )
+            assertTrue(
+                fixture.drainOutbox().none { it.uploadType == DriveOutboxUploader.DeleteFile },
+                "no server delete may be enqueued for a file whose fileId is not yet server-confirmed",
             )
         }
     }

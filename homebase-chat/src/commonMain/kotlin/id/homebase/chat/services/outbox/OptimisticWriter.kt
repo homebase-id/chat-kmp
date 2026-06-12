@@ -440,26 +440,39 @@ class OptimisticWriter(
      * file without cancelling the row would still upload the message we just
      * removed (the "deleted message still gets sent" bug). Only acts while the
      * file is still pending (`isPendingSendTag`) — a no-op once the send confirms.
+     *
+     * Returns true when the local file was removed. Returns false without
+     * touching anything when the file isn't pending, or when the outbox row is
+     * **in flight**: a checked-out row's upload can't be stopped by deleting the
+     * row, so removing the local file would only create a ghost — the upload
+     * completes and the next sync resurrects the "removed" message.
      */
-    suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid) {
+    suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return
+        ) ?: return false
 
         // Only remove files that are still pending — if the outbox already sent the message
         // the isPendingSendTag will have been removed, and we must not delete it.
         val isPending = file.fileMetadata.localAppData?.tags
             ?.contains(ChatProtocol.isPendingSendTag) == true
-        if (!isPending) return
+        if (!isPending) return false
 
         try {
             // Cancel the queued send FIRST. The create/edit row is keyed by this
             // uniqueId; leaving it would re-upload the file we're about to drop.
             // Ordered before the local delete so a failure can't leave a message
-            // that's gone locally but still queued to send.
-            dbm.outbox.deleteBy(driveId, uniqueId)
+            // that's gone locally but still queued to send. Guarded: a checked-out
+            // row is left alone and the removal aborted (see KDoc).
+            val deleted = dbm.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
+            if (deleted == 0L && dbm.outbox.selectByDriveAndUnique(driveId, uniqueId) != null) {
+                Logger.w(tag = TAG) {
+                    "removeOptimisticFile: outbox row for uniqueId=$uniqueId is in flight — keeping local file"
+                }
+                return false
+            }
             fileProcessor.deleteEntryDriveMainIndex(
                 identityId = credentials.getIdentityId(),
                 driveId = driveId,
@@ -471,8 +484,10 @@ class OptimisticWriter(
                     uniqueId = uniqueId,
                 )
             )
+            return true
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic remove failed for uniqueId=$uniqueId" }
+            return false
         }
     }
 

@@ -31,6 +31,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.api.toBase64
@@ -2470,10 +2471,18 @@ class ConversationService(
                     }
                     continue
                 }
-                // tryEnqueue returning false means an outbox row is already
-                // queued for this file — that row will pick up the latest
-                // localAppData when it drains, so the writeback still lands.
-                outboxSync.tryEnqueue(request)
+                // AlreadyQueued is expected and benign: the queued row picks up
+                // the latest localAppData when it drains, so the writeback still
+                // lands. A real Failed means nothing is queued — leave the
+                // conversation dirty so the next debounce flush retries instead
+                // of silently losing the writeback.
+                val result = outboxSync.tryEnqueue(request)
+                if (!result.enqueued && result != EnqueueResult.AlreadyQueued) {
+                    Logger.w(tag = "MarkAsRead") {
+                        "ConversationService.flushDirtyLastRead: enqueue → $result for convo=$id — left dirty, will retry next flush"
+                    }
+                    continue
+                }
                 // Clear dirty only if nothing advanced lastRead while we were
                 // pushing — a concurrent advance leaves it dirty so the newer
                 // value goes out next round.
