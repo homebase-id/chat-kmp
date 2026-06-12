@@ -48,6 +48,10 @@ fun LocationTraceCanvas(
     fetchTile: suspend (zoom: Int, x: Int, y: Int) -> ByteArray?,
     traceColors: List<Color>,
     modifier: Modifier = Modifier,
+    /** False for preview cards: no pan/zoom gestures (the card itself is clickable). */
+    interactive: Boolean = true,
+    /** Emphasize each trace's final position (Find device): bigger dot + halo. */
+    highlightLast: Boolean = false,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     // User pan/zoom override; null = fit the day's bbox. Reset when the day's data changes.
@@ -97,27 +101,31 @@ fun LocationTraceCanvas(
         }
     }
 
+    val gestureModifier = if (!interactive) Modifier else {
+        Modifier.pointerInput(traces) {
+            detectTransformGestures { centroid, pan, zoom, _ ->
+                val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
+                val newUnitsPerPx = (current.unitsPerPx / zoom)
+                    .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
+                // Keep the gesture centroid anchored while zooming, then pan.
+                val cx = centroid.x - size.width / 2f
+                val cy = centroid.y - size.height / 2f
+                val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
+                val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
+                userViewport = Viewport(
+                    centerX = anchoredX - pan.x * newUnitsPerPx,
+                    centerY = anchoredY - pan.y * newUnitsPerPx,
+                    unitsPerPx = newUnitsPerPx,
+                )
+            }
+        }
+    }
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { canvasSize = it }
-            .pointerInput(traces) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
-                    val newUnitsPerPx = (current.unitsPerPx / zoom)
-                        .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-                    // Keep the gesture centroid anchored while zooming, then pan.
-                    val cx = centroid.x - size.width / 2f
-                    val cy = centroid.y - size.height / 2f
-                    val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
-                    val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                    userViewport = Viewport(
-                        centerX = anchoredX - pan.x * newUnitsPerPx,
-                        centerY = anchoredY - pan.y * newUnitsPerPx,
-                        unitsPerPx = newUnitsPerPx,
-                    )
-                }
-            },
+            .then(gestureModifier),
     ) {
         val vp = viewport ?: return@Canvas
         fun toPx(unit: Pair<Double, Double>): Offset = Offset(
@@ -168,7 +176,15 @@ fun LocationTraceCanvas(
             // Start dot (filled) and end marker (ring) for the whole trace.
             segments.firstOrNull()?.firstOrNull()?.let { drawCircle(color, dotRadius, toPx(it)) }
             segments.lastOrNull()?.lastOrNull()?.let {
-                drawCircle(color, dotRadius, toPx(it), style = Stroke(width = strokeWidth))
+                val end = toPx(it)
+                if (highlightLast) {
+                    // Find-device emphasis: soft halo + solid dot + ring.
+                    drawCircle(color.copy(alpha = 0.25f), dotRadius * 3.2f, end)
+                    drawCircle(color, dotRadius * 1.6f, end)
+                    drawCircle(color, dotRadius * 2.4f, end, style = Stroke(width = strokeWidth))
+                } else {
+                    drawCircle(color, dotRadius, end, style = Stroke(width = strokeWidth))
+                }
             }
         }
     }

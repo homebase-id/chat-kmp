@@ -38,6 +38,30 @@ class LocationTrackContentTest {
     }
 
     @Test
+    fun deviceFileUidIsDeterministicAndDeviceScoped() {
+        assertEquals(locationDeviceFileUid(deviceId), locationDeviceFileUid(deviceId))
+        assertTrue(locationDeviceFileUid(deviceId) != locationDeviceFileUid(Uuid.random()))
+        // Device profile uid never collides with the device's hour files.
+        assertTrue(locationDeviceFileUid(deviceId) != locationHourFileUid(deviceId, hourStart))
+    }
+
+    @Test
+    fun deviceProfileRoundTrip() {
+        val profile = LocationDeviceProfile(
+            deviceId = deviceId.toString(),
+            name = "Pixel 9 Pro",
+            platform = "android",
+        )
+        val decoded = assertNotNull(
+            LocationDeviceProfile.decode(
+                id.homebase.api.serialization.OdinSystemSerializer.serialize(profile)
+            )
+        )
+        assertEquals(profile, decoded)
+        assertEquals(null, LocationDeviceProfile.decode("not json"))
+    }
+
+    @Test
     fun hourBucketing() {
         assertEquals(hourStart, hourStartMs(hourStart))
         assertEquals(hourStart, hourStartMs(hourStart + HOUR_MS - 1))

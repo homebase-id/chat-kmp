@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.location.model
 
 import id.homebase.api.crypto.Md5
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.BufferedLocationPoint
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -39,6 +41,31 @@ const val LOCATION_HEADER_PLAINTEXT_BUDGET = 5200
 /** Deterministic per-device per-UTC-hour file identity. */
 fun locationHourFileUid(deviceId: Uuid, hourStartMs: Long): Uuid =
     Md5.toGuidId("loc-track:$deviceId:$hourStartMs")
+
+/**
+ * Per-device profile file (fileType [LOCATION_DEVICE_FILE_TYPE]): gives the
+ * anonymous tracking deviceId a human-readable identity for Find device and
+ * the dashboard's device list. Written once by each device that actually
+ * tracks — viewer devices (desktop/web) never create one. Auto-only naming v1.
+ */
+const val LOCATION_DEVICE_FILE_TYPE = 5611
+
+fun locationDeviceFileUid(deviceId: Uuid): Uuid = Md5.toGuidId("loc-device:$deviceId")
+
+@Serializable
+data class LocationDeviceProfile(
+    val v: Int = 1,
+    val deviceId: String,
+    val name: String,
+    /** "android" | "ios" (trackers); desktop/web never write profiles. */
+    val platform: String,
+) {
+    companion object {
+        fun decode(json: String): LocationDeviceProfile? = runCatching {
+            OdinSystemSerializer.deserialize<LocationDeviceProfile>(json)
+        }.getOrNull()
+    }
+}
 
 fun hourStartMs(epochMs: Long): Long = (epochMs / HOUR_MS) * HOUR_MS
 
