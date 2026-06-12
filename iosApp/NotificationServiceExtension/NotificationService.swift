@@ -1,5 +1,6 @@
 import UserNotifications
 import Intents
+import FirebaseCore
 #if canImport(HomebaseNotifKit)
 import HomebaseNotifKit
 #endif
@@ -13,6 +14,14 @@ class NotificationService: UNNotificationServiceExtension {
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
+        // Configure Firebase so Crashlytics' signal handler captures crashes in THIS
+        // extension process — it has its own bundle/process, so the main app's
+        // FirebaseApp.configure() does not cover it. Guarded so repeated didReceive
+        // calls configure only once.
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+
         self.contentHandler = contentHandler
         bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent
 
