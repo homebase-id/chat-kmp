@@ -1,9 +1,13 @@
 package id.homebase.core.ui.screens.location
 
+import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
+import id.homebase.core.ui.screens.location.history.DeviceTrace
+
 data class LocationUiState(
     val isCheckingPermissions: Boolean = false,
     val setupInitiated: Boolean = false,
     // Main-screen state
+    val activated: Boolean = false,
     val trackingEnabled: Boolean = false,
     val trackingAvailable: Boolean = false,
     /** Google Play prominent-disclosure consent (persisted; gates first grant/enable). */
@@ -18,7 +22,24 @@ data class LocationUiState(
     val pointsToday: Int = 0,
     val pendingUploadCount: Int = 0,
     val lastFlushEpochMs: Long? = null,
+    // Dashboard state
+    val devices: List<LocationDeviceInfo> = emptyList(),
+    val todayTraces: List<DeviceTrace> = emptyList(),
+    val showMapTiles: Boolean = false,
 )
+
+/**
+ * Main-screen body switch: dashboard once the add-on runs, setup otherwise.
+ * Viewer devices (desktop/web, trackerAvailable = false) never have
+ * trackingEnabled — once activated they are pure viewers and always get the
+ * dashboard; requiring the switch would strand them on Setup forever.
+ */
+fun isDashboard(
+    activated: Boolean,
+    trackingEnabled: Boolean,
+    trackerAvailable: Boolean,
+    setupOverride: Boolean,
+): Boolean = !setupOverride && activated && (trackingEnabled || !trackerAvailable)
 
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction

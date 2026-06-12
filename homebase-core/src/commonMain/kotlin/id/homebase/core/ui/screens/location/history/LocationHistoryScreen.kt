@@ -139,12 +139,7 @@ fun LocationHistoryScreen(
                     traces = uiState.traces,
                     showMapTiles = uiState.showMapTiles,
                     fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                    traceColors = listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.tertiary,
-                        MaterialTheme.colorScheme.secondary,
-                        MaterialTheme.colorScheme.error,
-                    ),
+                    traceColors = mapTraceColors,
                 )
                 if (uiState.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

@@ -188,6 +188,10 @@ sealed class Route {
     data object LocationHistory : Route()
 
     @Serializable
+    @SerialName("location-find-device")
+    data class LocationFindDevice(val deviceId: String? = null) : Route()
+
+    @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String) : Route()
 

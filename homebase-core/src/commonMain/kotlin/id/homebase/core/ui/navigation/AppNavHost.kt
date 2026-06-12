@@ -109,6 +109,7 @@ import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.settings.LocationSettingsScreen
@@ -1172,6 +1173,11 @@ fun AppNavHost(
                                     onNavigateToHistory = {
                                         navController.navigate(Route.LocationHistory)
                                     },
+                                    onNavigateToFindDevice = { deviceId ->
+                                        navController.navigate(
+                                            Route.LocationFindDevice(deviceId?.toString())
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -1181,6 +1187,28 @@ fun AppNavHost(
                                 LocationHistoryScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationFindDevice> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationFindDevice>()
+                                FindDeviceScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.deviceId ?: "picker",
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                route.deviceId?.let { Uuid.parse(it) }
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onOpenDevice = { deviceId ->
+                                        navController.navigate(
+                                            Route.LocationFindDevice(deviceId.toString())
+                                        )
+                                    },
                                 )
                             }
                         }

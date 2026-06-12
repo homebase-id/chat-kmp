@@ -27,10 +27,16 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.location.LocationPreferences
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.location.tracking.LocationDeviceId
+import id.homebase.core.location.tracking.deviceDisplayName
+import id.homebase.core.location.tracking.devicePlatform
 import id.homebase.core.ui.screens.location.model.HOUR_MS
 import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
+import id.homebase.core.ui.screens.location.model.LOCATION_DEVICE_FILE_TYPE
 import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
+import id.homebase.core.ui.screens.location.model.LocationDeviceProfile
+import id.homebase.core.ui.screens.location.model.locationDeviceFileUid
 import id.homebase.core.ui.screens.location.model.LocationTrackCodec
 import id.homebase.core.ui.screens.location.model.locationHourFileUid
 import kotlinx.coroutines.CoroutineScope
@@ -83,6 +89,7 @@ class LocationTrackUploaderService(
     private val flushMutex = Mutex()
     private var lastFlushAttemptMs = 0L
     private var observerStarted = false
+    private var deviceProfileEnsured = false
 
     private val _lastFlushTime = MutableStateFlow<Long?>(null)
     val lastFlushTime: StateFlow<Long?> = _lastFlushTime.asStateFlow()
@@ -108,6 +115,7 @@ class LocationTrackUploaderService(
         _lastFlushTime.value = null
         _pendingCount.value = 0
         lastFlushAttemptMs = 0
+        deviceProfileEnsured = false
     }
 
     /** Rate-gated flush — the entry point for tickers and background batch wakes. */
@@ -132,6 +140,12 @@ class LocationTrackUploaderService(
             val hours = runCatching { buffer.selectPendingHours() }
                 .onFailure { logger.e(it) { "selectPendingHours failed" } }
                 .getOrNull() ?: return
+            if (hours.isNotEmpty()) {
+                // Only devices that actually capture points register an identity —
+                // viewer devices (desktop/web) never reach this branch.
+                runCatching { ensureDeviceProfile() }
+                    .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
+            }
             for (hourBucket in hours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
                     .onFailure { logger.e(it) { "flushHour($hourBucket) failed" } }
@@ -212,6 +226,54 @@ class LocationTrackUploaderService(
                 logger.w(it) { "Header probe failed for $uid — assuming create" }
             }
             .getOrNull()
+    }
+
+    /**
+     * Create this device's profile file (fileType 5611) once: gives the
+     * anonymous deviceId a human-readable name for Find device / the device
+     * list. Auto-only naming v1 — created, never updated.
+     */
+    private suspend fun ensureDeviceProfile() {
+        if (deviceProfileEnsured) return
+        val uid = locationDeviceFileUid(deviceId.value)
+        if (findExistingFile(uid) != null) {
+            deviceProfileEnsured = true
+            return
+        }
+        val profile = LocationDeviceProfile(
+            deviceId = deviceId.value.toString(),
+            name = deviceDisplayName(),
+            platform = devicePlatform(),
+        )
+        val keyHeader = KeyHeader.newRandom16()
+        val unencryptedMetadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = uid,
+                content = OdinSystemSerializer.serialize(profile),
+                fileType = LOCATION_DEVICE_FILE_TYPE,
+            ),
+        )
+        val request = UploadFileRequest(
+            driveId = driveId,
+            keyHeader = keyHeader,
+            metadata = unencryptedMetadata.encryptContent(keyHeader),
+        )
+        val enqueued = outboxSync.replaceEnqueue(request).enqueued
+        if (enqueued) {
+            runCatching {
+                optimisticWriter.writeNewFile(
+                    driveId = driveId,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = unencryptedMetadata,
+                    originalRecipientCount = 0,
+                    fileSystemType = FileSystemType.Standard,
+                )
+            }.onFailure { logger.e(it) { "Optimistic write failed (non-fatal) for device profile" } }
+            deviceProfileEnsured = true
+            logger.i { "Device profile registered: ${profile.name} (${profile.platform})" }
+        }
     }
 
     private suspend fun enqueueCreate(

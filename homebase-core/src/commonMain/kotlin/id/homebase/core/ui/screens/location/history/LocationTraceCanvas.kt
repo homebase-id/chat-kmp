@@ -34,6 +34,19 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
+ * Trace colors for drawing on the map. Deliberately NOT theme colors: the OSM
+ * basemap doesn't follow the app theme, and Material pastels wash out on it.
+ * First color = the classic location-pin red; the rest stay saturated and
+ * distinguishable for multi-device days.
+ */
+val mapTraceColors = listOf(
+    Color(0xFFEA4335), // pin red
+    Color(0xFF4285F4), // map blue
+    Color(0xFF34A853), // map green
+    Color(0xFF9C27B0), // purple
+)
+
+/**
  * Viewport over Web-Mercator unit space (0..1 world): a center point plus the
  * unit-width of one screen pixel. Pure data so gestures and tile math share it.
  */
@@ -48,6 +61,10 @@ fun LocationTraceCanvas(
     fetchTile: suspend (zoom: Int, x: Int, y: Int) -> ByteArray?,
     traceColors: List<Color>,
     modifier: Modifier = Modifier,
+    /** False for preview cards: no pan/zoom gestures (the card itself is clickable). */
+    interactive: Boolean = true,
+    /** Emphasize each trace's final position (Find device): bigger dot + halo. */
+    highlightLast: Boolean = false,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     // User pan/zoom override; null = fit the day's bbox. Reset when the day's data changes.
@@ -97,27 +114,31 @@ fun LocationTraceCanvas(
         }
     }
 
+    val gestureModifier = if (!interactive) Modifier else {
+        Modifier.pointerInput(traces) {
+            detectTransformGestures { centroid, pan, zoom, _ ->
+                val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
+                val newUnitsPerPx = (current.unitsPerPx / zoom)
+                    .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
+                // Keep the gesture centroid anchored while zooming, then pan.
+                val cx = centroid.x - size.width / 2f
+                val cy = centroid.y - size.height / 2f
+                val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
+                val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
+                userViewport = Viewport(
+                    centerX = anchoredX - pan.x * newUnitsPerPx,
+                    centerY = anchoredY - pan.y * newUnitsPerPx,
+                    unitsPerPx = newUnitsPerPx,
+                )
+            }
+        }
+    }
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { canvasSize = it }
-            .pointerInput(traces) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
-                    val newUnitsPerPx = (current.unitsPerPx / zoom)
-                        .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-                    // Keep the gesture centroid anchored while zooming, then pan.
-                    val cx = centroid.x - size.width / 2f
-                    val cy = centroid.y - size.height / 2f
-                    val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
-                    val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                    userViewport = Viewport(
-                        centerX = anchoredX - pan.x * newUnitsPerPx,
-                        centerY = anchoredY - pan.y * newUnitsPerPx,
-                        unitsPerPx = newUnitsPerPx,
-                    )
-                }
-            },
+            .then(gestureModifier),
     ) {
         val vp = viewport ?: return@Canvas
         fun toPx(unit: Pair<Double, Double>): Offset = Offset(
@@ -159,6 +180,15 @@ fun LocationTraceCanvas(
                     val p = toPx(segment[i])
                     path.lineTo(p.x, p.y)
                 }
+                if (showMapTiles) {
+                    // Cartography casing: a wider white underlay keeps the
+                    // route readable over any tile content.
+                    drawPath(
+                        path = path,
+                        color = Color.White.copy(alpha = 0.9f),
+                        style = Stroke(width = strokeWidth * 2.0f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
                 drawPath(
                     path = path,
                     color = color,
@@ -166,9 +196,21 @@ fun LocationTraceCanvas(
                 )
             }
             // Start dot (filled) and end marker (ring) for the whole trace.
-            segments.firstOrNull()?.firstOrNull()?.let { drawCircle(color, dotRadius, toPx(it)) }
+            segments.firstOrNull()?.firstOrNull()?.let {
+                val start = toPx(it)
+                if (showMapTiles) drawCircle(Color.White, dotRadius * 1.4f, start)
+                drawCircle(color, dotRadius, start)
+            }
             segments.lastOrNull()?.lastOrNull()?.let {
-                drawCircle(color, dotRadius, toPx(it), style = Stroke(width = strokeWidth))
+                val end = toPx(it)
+                if (highlightLast) {
+                    // Find-device emphasis: soft halo + solid dot + ring.
+                    drawCircle(color.copy(alpha = 0.25f), dotRadius * 3.2f, end)
+                    drawCircle(color, dotRadius * 1.6f, end)
+                    drawCircle(color, dotRadius * 2.4f, end, style = Stroke(width = strokeWidth))
+                } else {
+                    drawCircle(color, dotRadius, end, style = Stroke(width = strokeWidth))
+                }
             }
         }
     }
