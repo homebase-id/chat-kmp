@@ -201,7 +201,32 @@ jobs:
                 done
               fi
             done
-          done          
+          done
+
+      # The build action's bundled Fastfile runs create_keychain(timeout: 3600):
+      # the build keychain auto-locks after 60 minutes. A cold-cache archive
+      # (Kotlin/Native invalidation, dependency bumps) takes >60min to reach the
+      # embedded-framework signing phase, at which point codesign blocks forever
+      # on the locked keychain (it posts an unlock dialog into the runner's GUI
+      # session) — the recurring "Build iOS timed out" hang at
+      # "Signing libswscale.framework". This watcher outlives its step, waits for
+      # the keychain to appear, and re-clears its auto-lock every minute
+      # (set-keychain-settings with no -t = never lock; no password needed while
+      # the freshly created keychain is unlocked).
+      - name: Defuse build-keychain auto-lock (background watcher)
+        run: |
+          nohup bash -c '
+            kc="$HOME/Library/Keychains/ios-build.keychain-db"
+            while true; do
+              if [ -f "$kc" ]; then
+                if security set-keychain-settings "$kc" 2>>"$RUNNER_TEMP/keychain-watcher.log"; then
+                  echo "$(date -u +%FT%TZ) cleared auto-lock on $kc"
+                fi
+              fi
+              sleep 60
+            done
+          ' >> "$RUNNER_TEMP/keychain-watcher.log" 2>&1 &
+          echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
       - name: Build iOS
         timeout-minutes: 180

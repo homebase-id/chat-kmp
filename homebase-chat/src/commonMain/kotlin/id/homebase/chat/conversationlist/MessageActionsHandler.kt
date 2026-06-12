@@ -18,6 +18,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
@@ -1025,6 +1026,7 @@ internal class MessageActionsHandler(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
                 chatMessageSenderService.sendNewMessage(
@@ -1050,6 +1052,28 @@ internal class MessageActionsHandler(
         }
     }
 
+    /**
+     * Register the plaintext local copy of a link preview's OG image so the optimistic bubble can
+     * render it crisp via AsyncImage while the payload uploads — instead of the 20px embedded
+     * tinyThumb. [PayloadFile.filePath] is the same temp file that feeds the encryption pipeline,
+     * which reads it and writes ciphertext to a *separate* file (see PayloadBundleEncryptionService),
+     * so it stays plaintext and decodable for the upload window. A present
+     * [PayloadFile.previewThumbnail] is the signal that a real raster image was produced — the
+     * no-image case writes a 1-byte sentinel we must not hand to Coil. Keyed by the link payload key
+     * so MediaItem can look it up by (messageId, payloadKey).
+     */
+    private fun registerLocalPreviewContexts(messageId: Uuid, bundle: PayloadBundle?) {
+        bundle?.payloads?.forEach { payload ->
+            if (payload.key == ChatProtocol.PAYLOAD_KEY_LINKS && payload.previewThumbnail != null) {
+                localVideoContextStore.put(
+                    messageId,
+                    payload.key,
+                    LocalAttachmentContext.Image(localFilePath = payload.filePath, aspectRatio = null),
+                )
+            }
+        }
+    }
+
     private fun MessageUiModel.toReplyPreview() = ReplyPreview(
         replyUniqueId = id,
         authorOdinId = originalAuthor?.domainName ?: "null",
@@ -1071,6 +1095,7 @@ internal class MessageActionsHandler(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
                 chatMessageSenderService.replyToMessage(

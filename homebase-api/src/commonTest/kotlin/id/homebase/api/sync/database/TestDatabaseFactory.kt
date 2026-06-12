@@ -48,6 +48,8 @@ object TestDatabaseFactory {
 
     private val connectionCacheAdapter = ConnectionCache.Adapter(identityIdAdapter = UuidAdapter)
 
+    private val locationPointAdapter = LocationPoint.Adapter(flushedFileUidAdapter = UuidAdapter)
+
     /**
      * Creates a test database with all adapters pre-configured. Uses the platform-specific
      * in-memory driver.
@@ -67,6 +69,7 @@ object TestDatabaseFactory {
             driveMainIndexAdapter,
             driveTagIndexAdapter,
             keyValueAdapter,
+            locationPointAdapter,
             outboxAdapter
         )
     }

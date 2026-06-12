@@ -172,6 +172,22 @@ sealed class Route {
     data object MomentsSettings : Route()
 
     @Serializable
+    @SerialName("location")
+    data object Location : Route()
+
+    @Serializable
+    @SerialName("location-onboarding")
+    data object LocationOnboarding : Route()
+
+    @Serializable
+    @SerialName("location-settings")
+    data object LocationSettings : Route()
+
+    @Serializable
+    @SerialName("location-history")
+    data object LocationHistory : Route()
+
+    @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String) : Route()
 

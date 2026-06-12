@@ -1,6 +1,11 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.chat.services.sticker
 
+import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Wire constants + tiny appData content shape for saved stickers.
@@ -36,7 +41,20 @@ object StickerProtocol {
     const val STICKER_PAYLOAD_KEY = "sticker_0"
 }
 
+/**
+ * Tiny appData content for a saved sticker.
+ *
+ * [name] is an optional label (unused by the v1 tray). [sourceFileId] records the
+ * chat-message file a sticker was saved FROM, so the sticker-tap bottom sheet can ask
+ * "is this received sticker already in my library?" — a saved copy is re-uploaded with a
+ * fresh random uniqueId and shares no identity with the source message, so without this
+ * back-reference there is no way to detect a duplicate. Null when the sticker was created
+ * by the in-app editor / background-remover (no originating message). Per CLAUDE.md this is
+ * NOT a duplicated envelope field: it points at a *different* file (the source message),
+ * not this sticker's own identity.
+ */
 @Serializable
 data class StickerFileContent(
     val name: String? = null,
+    @Serializable(with = UuidSerializer::class) val sourceFileId: Uuid? = null,
 )
