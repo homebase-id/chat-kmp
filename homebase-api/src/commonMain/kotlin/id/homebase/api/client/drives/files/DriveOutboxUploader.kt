@@ -2,6 +2,9 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.KeyHeader
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -159,13 +162,31 @@ class DriveOutboxUploader(
                     "recipients=${original.transitOptions?.recipients?.size ?: 0}"
         )
 
-        // original.metadata is already encrypted (encryptContent was called before
-        // the request was serialized into the outbox). Just stamp the versionTag.
-        val metadataWithVersionTag = original.metadata.copy(
-            versionTag = versionTag
+        // The server rejects an update whose AES key differs from the existing
+        // file's ("AES key must match"). When the client's key has diverged
+        // (local DB lost the key and minted a fresh one, or a replaceEnqueue
+        // superseded an in-flight create carrying a different key), re-encrypt
+        // a header-only request with the SERVER's key — the owner can always
+        // read it off the fetched header. Payload-carrying requests can't be
+        // re-keyed (bytes are pre-encrypted on disk); they fall through to the
+        // standard path and, on divergence, the server rejection drops the row
+        // (see OutboxFailureClassifier).
+        val rekeyed = rekeyedUpdateForExistingServerFile(
+            original = original,
+            serverKeyHeader = serverFile.keyHeader,
+            serverVersionTag = versionTag,
         )
+        if (rekeyed != null) {
+            Logger.w(
+                "$TAG retryAsUpdate: local AES key diverged from the server file for uniqueId=$uniqueId — " +
+                        "re-encrypted the header with the server's key"
+            )
+        }
 
-        val updateRequest = UpdateFileByUniqueIdRequest(
+        // Standard path: original.metadata is already encrypted (encryptContent
+        // was called before the request was serialized into the outbox). Just
+        // stamp the versionTag.
+        val updateRequest = rekeyed ?: UpdateFileByUniqueIdRequest(
             driveId = original.driveId,
             uniqueId = uniqueId,
             keyHeader = original.keyHeader,
@@ -180,7 +201,7 @@ class DriveOutboxUploader(
                     generatePayloadIv = false
                 )
             ),
-            metadata = metadataWithVersionTag,
+            metadata = original.metadata.copy(versionTag = versionTag),
             payloads = original.payloads,
             thumbnails = original.thumbnails
         )
@@ -351,4 +372,74 @@ class DriveOutboxUploader(
         const val ToggleReaction = 8L
         const val DeleteFilesByGroupId = 9L
     }
+}
+
+/**
+ * Root-cause fix for the "AES key must match" drop (see
+ * OutboxFailureClassifier): when `retryAsUpdate` converts a failed
+ * UploadNewFile into an update and the client's AES key has diverged from the
+ * server file's, re-encrypt the request with the SERVER's key (fresh IV) so
+ * the update is acceptable instead of deterministically rejected.
+ *
+ * Returns null when re-keying doesn't apply and the standard versionTag-stamp
+ * path is correct or the only option:
+ *  - the request isn't encrypted, or the server header has no usable key;
+ *  - the keys already match (the common case — e.g. chat's edit-coalesce
+ *    reuses the pending create's key);
+ *  - the request carries payloads or thumbnails: their bytes are
+ *    pre-encrypted on disk with the client key, and re-encrypting
+ *    arbitrarily large media in memory is not safe. Those requests take the
+ *    standard path; on divergence the server rejects and the row drops with
+ *    the classifier's reason — the owning flows self-heal (location
+ *    re-flushes its buffer, chat offers Retry).
+ *
+ * Pure given its inputs (plus IV randomness) — unit-tested in
+ * RetryAsUpdateRekeyTest.
+ */
+@OptIn(ExperimentalEncodingApi::class)
+internal suspend fun rekeyedUpdateForExistingServerFile(
+    original: UploadFileRequest,
+    serverKeyHeader: KeyHeader,
+    serverVersionTag: Uuid?,
+): UpdateFileByUniqueIdRequest? {
+    if (!original.metadata.isEncrypted) return null
+    if (serverKeyHeader == KeyHeader.empty()) return null
+    if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return null
+    if (original.keyHeader.aesKey == serverKeyHeader.aesKey) return null
+    val uniqueId = original.metadata.appData.uniqueId ?: return null
+
+    val newKeyHeader = KeyHeader(
+        iv = ByteArrayUtil.getRndByteArray(16),
+        aesKey = serverKeyHeader.aesKey,
+    )
+
+    // encryptContent stored Base64(AES(plaintext, clientKey)) — recover the
+    // plaintext with the client key, re-encrypt with the server key.
+    val reEncryptedContent = original.metadata.appData.content?.let { contentB64 ->
+        val plaintext = original.keyHeader.decrypt(Base64.decode(contentB64))
+        Base64.encode(newKeyHeader.encryptDataAes(plaintext))
+    }
+
+    return UpdateFileByUniqueIdRequest(
+        driveId = original.driveId,
+        uniqueId = uniqueId,
+        keyHeader = newKeyHeader,
+        instructions = FileUpdateInstructionSet(
+            transferIv = ByteArrayUtil.getRndByteArray(16),
+            locale = UpdateLocale.Local,
+            recipients = original.transitOptions?.recipients ?: emptyList(),
+            manifest = UpdateManifest.build(
+                payloads = emptyList(),
+                toDeletePayloads = null,
+                thumbnails = emptyList(),
+                generatePayloadIv = false,
+            ),
+        ),
+        metadata = original.metadata.copy(
+            versionTag = serverVersionTag,
+            appData = original.metadata.appData.copy(content = reEncryptedContent),
+        ),
+        payloads = emptyList(),
+        thumbnails = emptyList(),
+    )
 }

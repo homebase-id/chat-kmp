@@ -49,12 +49,13 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
         // outbox row carries a fixed key, so every retry replays the same
         // wrong key against an unchanging server file — deterministically
         // unrecoverable. Drop it instead of burning ~48h of retries.
-        // GUARDRAIL, not the fix: the root cause is DriveOutboxUploader.
-        // retryAsUpdate adopting the server's versionTag but reusing the
-        // client's freshly-minted keyHeader (seen when the local DB lost the
-        // conversation's key, e.g. the in-memory web DB after a reload, and
-        // optimistically recreated the conversation with a new key). The real
-        // fix re-hydrates the existing server key on ExistingFileWithUniqueId.
+        // The root cause (DriveOutboxUploader.retryAsUpdate reusing the
+        // client's diverged keyHeader on ExistingFileWithUniqueId) is fixed
+        // for header-only requests by `rekeyedUpdateForExistingServerFile`,
+        // which re-encrypts with the server's key. This remains the guardrail
+        // for payload-carrying requests, whose pre-encrypted bytes can't be
+        // safely re-keyed in memory — those flows self-heal (location
+        // re-flushes its buffer on OutboxItemDropped, chat offers Retry).
         if (msg.contains("AES key must match", ignoreCase = true)) return reasonOf(e)
         // Client-side pre-flight rejections from
         // [UploadValidation.kt]. The validator throws ClientException
