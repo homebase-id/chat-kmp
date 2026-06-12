@@ -42,9 +42,13 @@ anything rendered. Trigger v2 should fire on the fingerprint instead: first Fore
 first frame was drawn in background). 3-for-3 in our data; 0 false positives observed (healthy
 first foregrounds show exactly 0).
 
-**Prevention idea (untested):** never let Compose render while backgrounded — gate `ComposeView`
-on the scene's first `.active` phase (show a native placeholder until then). Would stop the atlas
-being poisoned at all.
+**Prevention — BUILT (same branch as shake v2):** `ContentView` defers `ComposeView` creation until
+the scene's first `.active` phase (native `systemBackground` placeholder until then; latched forever
+after so later backgrounding never tears it down). Compose can no longer render its first frame
+while the app is backgrounded → the atlas is never poisoned. Logged as `prevention: first .active —
+ComposeView built now` in homebase.log. **Validation signal:** background-launched sessions
+(ColdStart with no immediate Foreground) should now show `0/0` at the first Foreground instead of
+the `6889/4` fingerprint — measurable even without a user report. Shake v2 stays as the backstop.
 
 **Repro recipe (untested):** kill app → deliver a silent push (`content-available`) so iOS
 relaunches it in background → wait → open the app. Simulator: `xcrun simctl push` with a

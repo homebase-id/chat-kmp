@@ -183,3 +183,15 @@ fun logShakeRecovery(
         "drawable=${drawableWidth.toInt()}x${drawableHeight.toInt()}]"
     GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake-recreate/$phase $metal")
 }
+
+/**
+ * PREVENTION experiment marker — called from Swift (`ContentView`) at the scene's FIRST `.active`
+ * phase, the moment it builds `ComposeView` (creation is deferred until then so Compose can never
+ * render its first frame while the app is backgrounded — the confirmed atlas-poisoning condition).
+ * Lands in homebase.log so a session's timeline shows ColdStart → (gap, if launched in background)
+ * → this line → Foreground. Validation: background-launched sessions should now show `0/0` at the
+ * first Foreground instead of the poisoned `6889/4` fingerprint, and no blank.
+ */
+fun logPrevention(note: String) {
+    Logger.i(tag = GpuTextDiagnostics.TAG) { "prevention: $note" }
+}

@@ -29,12 +29,26 @@ struct ContentView: View {
     // that can rebuild the dead atlas (purge+recompose was field-falsified three times).
     @State private var composeViewEpoch = 0
     @State private var lastShakeAt = Date.distantPast
+    // PREVENTION: don't build ComposeView until the scene has been .active at least once. iOS can
+    // launch the process in the BACKGROUND (prewarm / push relaunch) and still connect the scene;
+    // Compose's first frame then renders while backgrounded, iOS rejects the Metal submissions, and
+    // the glyph atlas is born dead → all text blank at the first real foreground (fingerprint
+    // fontCacheUsed=6889 count=4, 3/3 field captures). Latched true forever after — backgrounding
+    // later must NOT tear the view down.
+    @State private var hasBeenActive = false
 
     var body: some View {
         ZStack {
-            ComposeView()
-                .id(composeViewEpoch)
-                .ignoresSafeArea()
+            if hasBeenActive || scenePhase == .active {
+                ComposeView()
+                    .id(composeViewEpoch)
+                    .ignoresSafeArea()
+            } else {
+                // Native placeholder while the scene has never been active (background launch, or
+                // the first milliseconds of a normal launch before .active lands).
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea()
+            }
 
             if showPrivacyOverlay {
                 PrivacyOverlayView()
@@ -62,6 +76,13 @@ struct ContentView: View {
         }
         .onAppear {
             os_log("onAppear fired", log: textRenderLog, type: .info)
+            // PREVENTION latch (companion to the .active onChange): if the scene is already active
+            // when we appear, onChange never fires — latch here so a later backgrounding can never
+            // un-build ComposeView (tearing it down on .background would recreate the very bug).
+            if scenePhase == .active && !hasBeenActive {
+                hasBeenActive = true
+                IosGpuTextDiagnosticsKt.logPrevention(note: "appeared already .active — ComposeView built immediately")
+            }
             // DISABLED for the blank-text recovery experiment — the cold-start 150ms Metal nudge is a
             // bare setNeedsDisplay (replays cached blobs) that hasn't reliably fixed the bug and would
             // confound attribution of the shake-triggered purge+recompose recovery. Re-enable to restore.
@@ -82,6 +103,12 @@ struct ContentView: View {
             case .active:
                 withAnimation(.easeOut(duration: 0.15)) {
                     showPrivacyOverlay = false
+                }
+                // PREVENTION latch: first .active ever → ComposeView gets built now (and stays built
+                // through later backgrounding). Log it so homebase.log shows the deferral timeline.
+                if !hasBeenActive {
+                    hasBeenActive = true
+                    IosGpuTextDiagnosticsKt.logPrevention(note: "first .active — ComposeView built now (deferred since launch)")
                 }
                 // DISABLED for the experiment (see onAppear): the foreground nudge would mask the blank
                 // and confound the shake recovery. nudgeMetalLayer(trigger: "scenePhase→active")
