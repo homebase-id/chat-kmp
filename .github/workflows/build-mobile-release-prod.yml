@@ -187,6 +187,35 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
 
+      # CI-only memory tuning for the 7 GB macos-15 runner. Appended at build
+      # time so the repo's gradle.properties stays untouched for local dev;
+      # in a Java properties file the LAST occurrence of a key wins.
+      # Rollback: delete this step and the "Upload JVM OOM diagnostics" step.
+      # Must run AFTER the Kotlin/Native cache step — its key hashes
+      # gradle.properties and should see the pristine file.
+      - name: Apply iOS CI memory overrides
+        run: |
+          mkdir -p /Users/runner/work/jvm-dumps
+          cat >> gradle.properties << 'EOF'
+
+          # --- CI-only overrides (appended by "Apply iOS CI memory overrides") ---
+          # Gradle daemon only orchestrates this build; don't let it compete
+          # with the Kotlin/Native compiler for the runner's 7 GB of RAM.
+          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
+          kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
+          # One K/N task at a time; incremental-native caches are dead weight
+          # on a one-shot runner.
+          kotlin.native.gradle.workers.max=1
+          kotlin.incremental.native=false
+          # Run each K/N compilation in a fresh short-lived process so the
+          # release link starts with a clean heap instead of inheriting 45+
+          # minutes of accumulated daemon heap (build 27400310875 OOM).
+          kotlin.native.disableCompilerDaemon=true
+          kotlin.native.jvmArgs=-Xmx6g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          EOF
+          echo "Appended CI memory overrides to gradle.properties:"
+          tail -n 15 gradle.properties
+
       - name: Strip existing FFmpegKit signatures
         run: |
           cd homebase-api/libs/ffmpegkit-bundled.xcframework
@@ -244,6 +273,16 @@ jobs:
           code-signing-identity: "Apple Distribution"
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
+
+      # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
+      # the heap dump + GC logs tell us what the live set actually is.
+      - name: Upload JVM OOM diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-jvm-oom-diagnostics
+          path: /Users/runner/work/jvm-dumps
+          if-no-files-found: ignore
 
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
