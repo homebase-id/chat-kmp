@@ -18,9 +18,12 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ContactContent(
     val odinId: String? = null,
+    val name: ContactName? = null,
     /** Origin marker, round-tripped: `'contact'` | `'public'` | `'user'`. */
     val source: String? = null,
-    val name: ContactName? = null,
+    // location/phone/email/birthday are ALWAYS present on a stored contact (rendered as `{}` when
+    // empty), so a read can treat them as reliably non-null; on WRITE they're optional — omit or
+    // send `{}` and the server normalizes. They stay nullable here to keep the write model uniform.
     val location: ContactLocation? = null,
     val phone: ContactPhone? = null,
     val email: ContactEmail? = null,
