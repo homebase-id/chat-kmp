@@ -50,10 +50,26 @@ fun setupIOSCrashHandler() {
                 // Record to Crashlytics with the readable ObjC name/reason/stack.
                 // The SDK's signal handler would otherwise capture this only as an
                 // opaque native backtrace.
-                CrashlyticsBridgeHolder.getBridge()?.recordException(
-                    name = it.name ?: "NSException",
-                    reason = it.reason ?: "",
-                    stackTrace = it.callStackSymbols.mapNotNull { sym -> sym as? String },
+                val bridge = CrashlyticsBridgeHolder.getBridge()
+                val objcName = it.name ?: "NSException"
+                val objcReason = it.reason ?: ""
+                val objcStack = it.callStackSymbols.mapNotNull { sym -> sym as? String }
+                bridge?.recordException(
+                    name = objcName,
+                    reason = objcReason,
+                    stackTrace = objcStack,
+                )
+                // Crash-safe breadcrumb (see Kotlin hook below): the async non-fatal
+                // above can lose the termination race, but a log() is captured
+                // synchronously with the crash, so the readable context survives.
+                bridge?.log(
+                    buildString {
+                        append("FATAL ").append(objcName)
+                        if (objcReason.isNotBlank()) append(": ").append(objcReason)
+                        objcStack.take(FATAL_BREADCRUMB_STACK_LIMIT).forEach { frame ->
+                            append('\n').append(frame)
+                        }
+                    }
                 )
 
                 // Give the file log writer a moment to flush before the process dies.
@@ -72,11 +88,18 @@ fun setupIOSCrashHandler() {
     var previousHook: ((Throwable) -> Unit)? = null
     previousHook = setUnhandledExceptionHook { throwable ->
         try {
-            // Record to Crashlytics first — a Kotlin/Native exception aborts the
-            // process without raising an NSException, so the SDK never sees it
-            // unless we record it explicitly here. This is the only path that
-            // gets pure-Kotlin crashes into the dashboard with a readable stack.
+            // Record to Crashlytics — a Kotlin/Native exception aborts the process
+            // without raising an NSException, so the SDK never sees it unless we
+            // surface it explicitly here. Two complementary channels:
+            //  1. record(exceptionModel:) — a readable non-fatal, but it's enqueued
+            //     async and usually loses the race with termination microseconds later.
+            //  2. a crash-safe log() breadcrumb — captured SYNCHRONOUSLY by the SDK's
+            //     signal handler when terminateWithUnhandledException raises SIGABRT
+            //     below, so the readable name/reason/stack survives even when (1) is
+            //     lost. This is what actually gets pure-Kotlin crashes into the
+            //     dashboard with a readable stack.
             crashlyticsRecordException(throwable)
+            crashlyticsLogFatalBreadcrumb(throwable)
             CrashLogger.logCrash(thread = "Kotlin/Native", exception = throwable)
             // Give the file log writer a moment to flush before the process dies.
             NSThread.sleepForTimeInterval(0.1)

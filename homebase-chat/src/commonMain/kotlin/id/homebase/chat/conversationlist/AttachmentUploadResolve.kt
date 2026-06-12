@@ -21,6 +21,29 @@ import io.github.vinceglb.filekit.PlatformFile
 expect suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): String
 
 /**
+ * Copy a freshly-picked [PlatformFile] into the app sandbox **at pick time** and return a
+ * sandbox-backed [PlatformFile], or return `this` unchanged when no copy is needed.
+ *
+ * This exists because an iOS document/Files-app picker vends a **security-scoped** `NSURL`: the
+ * read grant is bound to that specific URL object, not to its path string. The chat send path is
+ * path-based — it keeps only `file.toString()` and reads the bytes later, inside a separate
+ * `scope.launch`, by rebuilding a scope-LESS `NSURL.fileURLWithPath(path)`. By then the original
+ * scoped URL is gone, `startAccessingSecurityScopedResource()` on the path-built URL returns false,
+ * and `NSData.dataWithContentsOfFile` returns nil → "Unable to read file". Copying into the sandbox
+ * **while the picker's scope is still live** (this is called synchronously in the picker callback's
+ * launch, before any further suspension) yields a path the send path can always read with no scope.
+ *
+ * Mirrors the working Vault contract (`VaultViewModel` copies picked files via FileKit `copyTo`
+ * before upload). FileKit's `copyTo` is what handles the security scope on apple.
+ *
+ * - apple/android/jvm: copy into the FileKit cache dir, preserving the original file name (so the
+ *   send path's content-type / display-name resolution from `file.name` is unchanged).
+ * - web: no-op (`this`). The browser has no path and no security scope; the picked `PlatformFile`
+ *   keeps its bytes and [toUploadPath]'s web actual materializes them at send time via `readBytes()`.
+ */
+expect suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile
+
+/**
  * A handle the in-editor video decoder/player can read **immediately**, without the expensive
  * okio materialization [toUploadPath] performs (whole-file read + in-memory copy).
  *

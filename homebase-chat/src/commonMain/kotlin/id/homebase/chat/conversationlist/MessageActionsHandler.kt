@@ -914,7 +914,18 @@ internal class MessageActionsHandler(
      * Checks for pending shared content (from iOS share extension handoff)
      * and sends it to the given conversation automatically.
      */
-    internal suspend fun processPendingSharedContent(conversationId: Uuid) {
+    internal suspend fun processPendingSharedContent(
+        conversationId: Uuid,
+        trigger: ConversationLoadTrigger,
+    ) {
+        // Only a share-intent navigation may auto-send the pending descriptor. Any other
+        // open of this conversation (notification tap, ordinary navigation) must NOT consume
+        // it — otherwise a descriptor left on disk from an earlier share would be re-sent the
+        // next time its target conversation is opened. A leftover descriptor is harmless: a
+        // ShareIntent navigation is always preceded by the share extension writing a *fresh*
+        // descriptor (it overwrites), so a stale one can never be the thing consumed here.
+        if (trigger != ConversationLoadTrigger.ShareIntent) return
+
         val descriptor = shareContentProcessor.readPendingContent() ?: return
         // Only process if the target conversation matches
         if (descriptor.targetConversationId != conversationId.toString()) return

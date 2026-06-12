@@ -49,8 +49,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.conversationlist.synthesizeOwnerSession
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -84,6 +86,7 @@ fun SharePickerScreen(
     conversationStream: ConversationStream,
     contactService: ContactService,
     ownerSessionRepository: OwnerSessionRepository,
+    credentialsManager: CredentialsManager,
     sharedContent: SharedContent,
     hasFiles: Boolean,
     isSending: Boolean,
@@ -94,14 +97,29 @@ fun SharePickerScreen(
     val conversationsData by conversationStream.conversations.collectAsStateWithLifecycle()
     val contactsState by contactService.contacts.collectAsStateWithLifecycle()
     val ownerSession by ownerSessionRepository.user.collectAsStateWithLifecycle()
+    val credentials by credentialsManager.credentialsFlow.collectAsStateWithLifecycle()
     val searchFieldState = remember { TextFieldState() }
     var selectedIds by remember { mutableStateOf(emptySet<Uuid>()) }
     val enricher = remember { ConversationEnricher() }
 
-    // Enrich conversations with contact names — same pattern as ConversationListViewModel
+    // Enrich conversations with contact names — same pattern as ConversationListViewModel.
+    //
+    // Prefer the fully-resolved owner session, but fall back to a minimal one
+    // synthesized from the active credentials when the async profile load hasn't
+    // landed yet. credentialsFlow is set synchronously at login/restore, so it
+    // fills the gap before OwnerSessionRepository.load() runs.
+    //
+    // This matters in the share-activity cold start: conversationStream.start()
+    // reads the local DB and flips dataReady=true fast, but OwnerSessionRepository
+    // .load() runs last in the auth bootstrap (after connect + driveRegistry), so
+    // ownerSession is null for a window — or indefinitely if connect stalls.
+    // Gating on `ownerSession != null` left the conversation list empty while the
+    // New Moment row (which only needs dataReady) still showed: the user could
+    // share to a moment but not to a conversation.
     val enrichedConversations by remember {
         derivedStateOf {
-            val session = ownerSession ?: return@derivedStateOf emptyList()
+            val session = synthesizeOwnerSession(ownerSession, credentials)
+                ?: return@derivedStateOf emptyList()
             val contactMap = contactsState.associateBy { it.odinId }
             conversationsData.items.map { enricher.enrich(it, contactMap, session) }
         }

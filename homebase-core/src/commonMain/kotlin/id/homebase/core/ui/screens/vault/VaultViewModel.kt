@@ -552,12 +552,27 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
+            // Copy each picked file into the sandbox NOW for the upload read. By upload
+            // time the iOS document picker's security scope is gone, so reading the raw
+            // "File Provider Storage" path there throws ("Unable to read file"). The raw
+            // paths above are fine for the instant optimistic preview because the picker
+            // scope is still live at pick time. Mirrors handleAddFiles (and chat's
+            // materializeForUpload fix).
+            val uploadData = action.newFiles.mapIndexed { index, file ->
+                val ext = file.name.substringAfterLast('.', "tmp")
+                val tempPath = "${fileOperationsProvider.getCacheDirectory()}/vault_upload_${Uuid.random()}.$ext"
+                file.copyToPath(tempPath)
+                tempPath to fileData[index].second
+            }
             val success = vaultUploaderService.appendPages(
                 file = action.file,
-                newFiles = fileData,
+                newFiles = uploadData,
                 scope = viewModelScope,
             )
             if (!success) {
+                uploadData.forEach { (path, _) ->
+                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
+                }
                 vaultStream.updateOptimisticEntry(action.file)
                 _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
             }
