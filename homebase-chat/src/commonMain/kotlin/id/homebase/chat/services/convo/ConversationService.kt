@@ -32,6 +32,7 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
@@ -501,12 +502,12 @@ class ConversationService(
             }
         audit.step(3, "outboxSync.tryEnqueue(UploadFileRequest)")
         val enqueued = outboxSync.tryEnqueue(request)
-        audit.info("STEP 3 returned enqueued=$enqueued")
-        audit.check("outboxEnqueue", enqueued, "outboxSync.tryEnqueue returned false — file will not be uploaded; conversation creation effectively failed")
+        audit.info("STEP 3 returned $enqueued")
+        audit.check("outboxEnqueue", enqueued.enqueued, "outboxSync.tryEnqueue → $enqueued — file will not be uploaded; conversation creation effectively failed")
         val outboxAfter = dbm.outbox.count()
         audit.post("counts: outboxRows=$outboxAfter (delta=${outboxAfter - outboxBefore}, expected ≥+1 if enqueue succeeded)")
         audit.finish("returned $enqueued")
-        return enqueued
+        return enqueued.enqueued
         // ---- end DEBUG ----
     }
 
@@ -1352,14 +1353,14 @@ class ConversationService(
         // ---- end DEBUG ----
         val enqueued = outboxSync.replaceEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         // ---- DEBUG instrumentation ----
-        audit.info("STEP 1 returned enqueued=$enqueued")
-        audit.check("replaceEnqueue", enqueued, "outboxSync.replaceEnqueue returned false — update will not happen")
-        if (!enqueued) {
-            audit.finish("ABORTED — replaceEnqueue false")
+        audit.info("STEP 1 returned $enqueued")
+        audit.check("replaceEnqueue", enqueued.enqueued, "outboxSync.replaceEnqueue → $enqueued — update will not happen")
+        if (!enqueued.enqueued) {
+            audit.finish("ABORTED — replaceEnqueue $enqueued")
         }
         // ---- end DEBUG ----
-        if (!enqueued) {
-            error("Failed to update conversation")
+        if (!enqueued.enqueued) {
+            error("Failed to update conversation (outbox: $enqueued)")
         }
         // ---- DEBUG instrumentation: POST verification ----
         val postFile = getConversationHomebaseFile(conversationId)
@@ -1966,8 +1967,8 @@ class ConversationService(
             )
         }
         step1.onSuccess { result ->
-            audit.info("STEP 1 returned enqueued=$result")
-            if (result == false) audit.checkFail("step1Enqueue", "tryEnqueue returned false — UNIQUE(driveId, uniqueId) collision; server-side delete will NOT happen this attempt") else audit.checkPass("step1Enqueue")
+            audit.info("STEP 1 returned $result")
+            if (!result.enqueued) audit.checkFail("step1Enqueue", "tryEnqueue → $result — server-side delete will NOT happen this attempt") else audit.checkPass("step1Enqueue")
         }.onFailure { e ->
             audit.threw("step1Enqueue", e)
             audit.finish("ABORTED at STEP 1")
@@ -2047,7 +2048,7 @@ class ConversationService(
         )
         // ---- DEBUG instrumentation ----
         audit.info("tryEnqueue returned $enqueued")
-        audit.check("enqueue", enqueued, "tryEnqueue returned false — UNIQUE(driveId, uniqueId) collision; clear NOT performed")
+        audit.check("enqueue", enqueued.enqueued, "tryEnqueue → $enqueued — clear NOT performed")
         val outboxAfter = dbm.outbox.count()
         audit.post("counts: outboxRows=$outboxAfter (delta=${outboxAfter - outboxBefore}, expected ≥+1)")
         audit.finish()
@@ -2106,8 +2107,8 @@ class ConversationService(
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId
         )
-        audit.info("STEP 2 returned enqueued=$enqueued")
-        audit.check("step2Enqueue", enqueued, "tryEnqueue returned false — server-side tags update will NOT happen")
+        audit.info("STEP 2 returned $enqueued")
+        audit.check("step2Enqueue", enqueued.enqueued, "tryEnqueue → $enqueued — server-side tags update will NOT happen")
 
         // POST verify the optimistic write applied
         val postFile = getConversationHomebaseFile(conversationId)
@@ -2236,8 +2237,8 @@ class ConversationService(
         // parallel — but it removes the local-outbox half of the race, which is the
         // half we control.
         val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = conversationId)
-        if (!enqueued) {
-            Logger.w { "uploadAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId; the file was NOT scheduled for upload" }
+        if (!enqueued.enqueued) {
+            Logger.w { "uploadAdminFile: outbox enqueue → $enqueued for $conversationId (adminUniqueId=$adminUniqueId); the file was NOT scheduled for upload" }
         } else {
             Logger.d { "uploadAdminFile: enqueued upload for adminUniqueId=$adminUniqueId dependencyUniqueId=$conversationId" }
         }
@@ -2334,8 +2335,8 @@ class ConversationService(
         // file is benign: the conversation file's outbox row, if any, drains first,
         // otherwise the dependency resolves immediately.
         val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = conversationId)
-        if (!enqueued) {
-            Logger.w { "updateAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId (something already pending); the update was NOT scheduled" }
+        if (!enqueued.enqueued) {
+            Logger.w { "updateAdminFile: outbox enqueue → $enqueued for $conversationId (adminUniqueId=$adminUniqueId); the update was NOT scheduled" }
         } else {
             Logger.d { "updateAdminFile: enqueued update for adminUniqueId=$adminUniqueId versionTag=${existingFile.fileMetadata.versionTag} dependencyUniqueId=$conversationId" }
         }

@@ -47,42 +47,13 @@ class DriveOutboxUploader(
                 DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
             }
         } catch (e: ClientException) {
-            if (e.status == 400) {
-                // Self-recipient: the outbox item's recipient list contains the
-                // logged-in identity. The server will reject this forever, so drop
-                // the row rather than scheduling 20 retries. Title-match because the
-                // server returns errorCode=UnhandledScenario for this case; there's
-                // no dedicated enum value. Mirrors the VersionTagMismatch pattern
-                // below: return normally and OutboxSync deletes the row.
-                if (e.message?.startsWith("Cannot transfer to yourself") == true) {
-                    Logger.w(
-                        "$TAG upload: dropping outbox item ${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadType} — terminal: ${e.message}"
-                    )
-                    return
-                }
-                // Title-match in addition to the structured errorCode because the server
-                // sometimes collapses VersionTagMismatch into errorCode=UnhandledScenario
-                // while preserving the title text "Mismatching version tag …". Without
-                // this fallback the outbox burns 20 attempts (~48h) on a stale tag.
-                val isVersionTagMismatch =
-                    e.errorCode == OdinClientErrorCode.VersionTagMismatch ||
-                            e.message?.contains("Mismatching version tag", ignoreCase = true) == true
-                if (isVersionTagMismatch) {
-                    Logger.w(
-                        "$TAG upload: dropping outbox item ${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadType} driveId=${outboxRecord.driveId} " +
-                                "— VersionTagMismatch (errorCode=${e.errorCode}): ${e.message}"
-                    )
-                    return
-                }
-                Logger.e(
-                    "$TAG upload: 400 for outbox item ${outboxRecord.uniqueId} " +
-                            "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} " +
-                            "— will retry (server message: ${e.message})"
-                )
-                throw e
-            }
+            // Always rethrow — never swallow a terminal error by returning
+            // normally. Doing so used to make OutboxSync take the success path
+            // and emit ItemCompleted for an upload the server rejected (the
+            // bubble showed *sent* for a message that never landed). All
+            // permanent-vs-retryable classification lives in
+            // [classifyPermanentFailure]; OutboxSync drops permanent failures
+            // with an honest OutboxItemDropped.
             Logger.e(
                 "$TAG upload: failing outbox item ${outboxRecord.uniqueId} " +
                         "uploadType=${outboxRecord.uploadType} status=${e.status} " +

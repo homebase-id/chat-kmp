@@ -21,6 +21,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -238,7 +239,7 @@ class LocationTrackUploaderService(
                 metadata = unencryptedMetadata.encryptContent(keyHeader),
                 payloads = payloads ?: emptyList(),
             )
-            val enqueued = outboxSync.replaceEnqueue(request)
+            val enqueued = outboxSync.replaceEnqueue(request).enqueued
             if (enqueued) {
                 runCatching {
                     optimisticWriter.writeNewFile(
@@ -297,7 +298,7 @@ class LocationTrackUploaderService(
             )
             // replaceEnqueue keyed on (driveId, uniqueId): successive flushes of
             // the same hour collapse to one pending upload.
-            val enqueued = outboxSync.replaceEnqueue(request)
+            val enqueued = outboxSync.replaceEnqueue(request).enqueued
             if (enqueued) {
                 runCatching {
                     optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)

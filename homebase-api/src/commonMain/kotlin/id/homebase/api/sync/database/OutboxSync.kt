@@ -1,9 +1,6 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
-import id.homebase.api.client.NotFoundException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
@@ -24,6 +21,7 @@ import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,6 +59,36 @@ internal fun wouldStrandPendingCreate(existingUploadType: Long?, incomingUploadT
     incomingUploadType == DriveOutboxUploader.UpdateFile &&
         existingUploadType == DriveOutboxUploader.UploadNewFile
 
+/**
+ * Outcome of [OutboxSync.tryEnqueue]/[OutboxSync.replaceEnqueue]. Replaces the
+ * old Boolean, whose `false` collapsed three very different situations —
+ * a benign UNIQUE(driveId, uniqueId) collision ("already queued, fine"), the
+ * strand guard refusing a downgrade, and a real DB failure ("this request is
+ * silently lost") — leaving callers to guess which one happened.
+ */
+sealed interface EnqueueResult {
+    /** The request is durably queued. */
+    data object Enqueued : EnqueueResult
+
+    /** A row for this (driveId, uniqueId) is already pending — the UNIQUE
+     *  constraint rejected the insert. Usually benign: the queued request will
+     *  be sent. Use [OutboxSync.replaceEnqueue] when the new request should
+     *  supersede it. */
+    data object AlreadyQueued : EnqueueResult
+
+    /** replaceEnqueue refused to replace a pending `UploadNewFile` with an
+     *  `UpdateFile` — that would strand the un-sent create (see
+     *  [wouldStrandPendingCreate]). Re-enqueue the edit AS a create instead. */
+    data object WouldStrandCreate : EnqueueResult
+
+    /** The insert failed for a reason other than the UNIQUE constraint — the
+     *  request was NOT queued and will not be sent. */
+    data class Failed(val cause: Throwable) : EnqueueResult
+}
+
+/** True only for [EnqueueResult.Enqueued] — exactly the old Boolean `true`. */
+val EnqueueResult.enqueued: Boolean get() = this == EnqueueResult.Enqueued
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -83,63 +111,6 @@ class OutboxSync(
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
 
-    /**
-     * Returns true when the upload exception describes a state that won't be
-     * fixed by retrying (file not found server-side, missing version tag for
-     * an update, etc.). Drops these immediately instead of burning ~48h of
-     * exponential-backoff retries.
-     */
-    private fun isPermanentFailure(e: Throwable): Boolean {
-        if (e is NotFoundException) return true
-        if (e is ClientException) {
-            when (e.errorCode) {
-                OdinClientErrorCode.FileNotFound,
-                OdinClientErrorCode.MissingVersionTag,
-                OdinClientErrorCode.VersionTagMismatch,
-                OdinClientErrorCode.CannotOverwriteNonExistentFile,
-                OdinClientErrorCode.UnknownId -> return true
-                else -> Unit
-            }
-            // The server sometimes returns 400 with the structured errorCode
-            // collapsed to UnhandledScenario but the message text intact.
-            // Catch the recurring local-only-placeholder failures we've seen
-            // so they don't loop in the outbox. The version-tag check matches
-            // both "Missing version tag" and "Mismatching version tag".
-            val msg = e.message ?: return false
-            if (msg.contains("Could not find file", ignoreCase = true)) return true
-            if (msg.contains(Regex("Mis(sing|matching) version tag", RegexOption.IGNORE_CASE))) return true
-            // Server-enforced size invariants — never recover with retry.
-            // Catches "Thumbnail size of N exceeds 1024" (the bug behind
-            // the URL-preview SVG outbox stall on 2026-05-17) and any
-            // sibling quota messages the server emits in the same shape
-            // with errorCode collapsed to UnhandledScenario.
-            if (msg.contains(Regex("size of \\d+ exceeds \\d+", RegexOption.IGNORE_CASE))) return true
-            // Encrypted-file key mismatch on update: the server rejects an update
-            // whose AES key differs from the existing file's ("When updating an
-            // encrypted file, the AES key must match the existing key …"). The
-            // outbox row carries a fixed key, so every retry replays the same
-            // wrong key against an unchanging server file — deterministically
-            // unrecoverable. Drop it instead of burning ~48h of retries.
-            // GUARDRAIL, not the fix: the root cause is DriveOutboxUploader.
-            // retryAsUpdate adopting the server's versionTag but reusing the
-            // client's freshly-minted keyHeader (seen when the local DB lost the
-            // conversation's key, e.g. the in-memory web DB after a reload, and
-            // optimistically recreated the conversation with a new key). The real
-            // fix re-hydrates the existing server key on ExistingFileWithUniqueId.
-            if (msg.contains("AES key must match", ignoreCase = true)) return true
-            // Client-side pre-flight rejections from
-            // [UploadValidation.kt]. The validator throws ClientException
-            // shaped like a server response so we land here on attempt 1.
-            if (msg.startsWith("Upload validation failed: ")) return true
-        }
-        return false
-    }
-
-    private fun permanentFailureReason(e: Throwable): String = when {
-        e is NotFoundException -> "404 NotFound"
-        e is ClientException -> "errorCode=${e.errorCode} msg=${e.message}"
-        else -> e::class.simpleName ?: "unknown"
-    }
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
 
@@ -233,14 +204,24 @@ class OutboxSync(
                     )
                 )
                 totalSent.incrementAndGet()
+            } catch (e: CancellationException) {
+                // Worker scope cancelled (logout, shutdown) — not an upload
+                // failure. Don't classify, don't checkInFailed, don't emit
+                // failure events: the row stays checked out and the next
+                // start's clearCheckedOut recovers it, exactly like an app
+                // kill. Without this rethrow the catch below would record a
+                // bogus failed attempt (it only avoids that today because its
+                // first suspension point happens to rethrow cancellation).
+                throw e
             } catch (e: Exception) {
                 val attempts = outboxRecord.checkOutCount + 1
 
-                if (attempts >= MAX_RETRIES || isPermanentFailure(e)) {
-                    val reason = if (attempts >= MAX_RETRIES) {
-                        "after $attempts failed attempts"
+                val permanentReason = classifyPermanentFailure(e)
+                if (attempts >= MAX_RETRIES || permanentReason != null) {
+                    val reason = if (permanentReason != null) {
+                        "permanent failure ($permanentReason)"
                     } else {
-                        "permanent failure (${permanentFailureReason(e)})"
+                        "after $attempts failed attempts"
                     }
                     Logger.e(
                         "OutboxSync: DROPPING uniqueId=${outboxRecord.uniqueId} " +
@@ -267,7 +248,8 @@ class OutboxSync(
                         BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId,
-                            attempts.toInt()
+                            attempts.toInt(),
+                            reason = permanentReason ?: "retries exhausted ($attempts)",
                         )
                     )
                     continue
@@ -302,121 +284,96 @@ class OutboxSync(
         }
     }
 
+    /**
+     * Fire-and-forget send kick after a successful enqueue: the caller (e.g.
+     * the chat Send button) must not wait on outbox worker startup. send() is
+     * non-blocking today, but we launch it on the outbox's own scope so future
+     * changes to send() can't leak back into the caller's suspension chain.
+     */
+    private fun kickIfEnqueued(result: EnqueueResult, sendNow: Boolean): EnqueueResult {
+        if (sendNow && result.enqueued) {
+            scope.launch { send() }
+        }
+        return result
+    }
+
     public suspend fun tryEnqueue(
         request: DeleteFilesByGroupIdOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFilesByGroupId,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: DeleteLocalFilesByFileIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(), //random because our request is a list of files
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UpdateFileByUniqueIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val json = OdinSystemSerializer.serialize(request)
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = json
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+            json = OdinSystemSerializer.serialize(request)
+        ),
+        sendNow,
+    )
 
     public suspend fun replaceEnqueue(
         request: UpdateFileByUniqueIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val json = OdinSystemSerializer.serialize(request)
-        val enqueued = replaceEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = json
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+            json = OdinSystemSerializer.serialize(request)
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UploadFileRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
@@ -424,18 +381,9 @@ class OutboxSync(
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     /** Replace any pending row for this message with a fresh create. Used to
      *  coalesce an edit into a still-queued (not-yet-sent) create so the edit
@@ -445,8 +393,8 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = replaceEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
@@ -454,14 +402,9 @@ class OutboxSync(
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     /** Upload type of the pending row for (driveId, uniqueId), or null if none
      *  is queued. Lets a caller branch on create-vs-update before enqueuing. */
@@ -525,37 +468,28 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateLocalMetadataTags,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UpdateLocalAppdataContentOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
+    ): EnqueueResult {
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null} sendNow=$sendNow"
         }
-        val enqueued = tryEnqueue(
+        val result = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.fileId,
             dependencyUniqueId = dependencyUniqueId,
@@ -564,18 +498,9 @@ class OutboxSync(
             json = OdinSystemSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
-            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): enqueued=$enqueued drive=${request.driveId} fileId=${request.fileId}"
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): result=$result drive=${request.driveId} fileId=${request.fileId}"
         }
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
+        return kickIfEnqueued(result, sendNow)
     }
 
     public suspend fun tryEnqueue(
@@ -583,37 +508,28 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.ToggleReaction,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: SendReadReceiptByFileIdsOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
+    ): EnqueueResult {
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): drive=${request.driveId} fileIdsCount=${request.fileIds.size} sendNow=$sendNow"
         }
-        val enqueued = tryEnqueue(
+        val result = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
@@ -622,18 +538,9 @@ class OutboxSync(
             json = OdinSystemSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
-            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): enqueued=$enqueued drive=${request.driveId}"
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): result=$result drive=${request.driveId}"
         }
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
+        return kickIfEnqueued(result, sendNow)
     }
 
     /** Like tryEnqueue but replaces any existing pending item with the same (driveId, uniqueId).
@@ -646,7 +553,7 @@ class OutboxSync(
         priority: Long,
         uploadType: Long,
         json: String
-    ): Boolean {
+    ): EnqueueResult {
         // Defense in depth: never silently downgrade a pending create to an
         // update. Chat's edit path coalesces into a create before reaching here
         // (see ChatMessageSenderService.updateMessage); this guard ensures no
@@ -657,7 +564,7 @@ class OutboxSync(
                 "OutboxSync: refusing to replace a pending UploadNewFile with an UpdateFile " +
                     "for uniqueId=$uniqueId — would strand the un-sent create."
             )
-            return false
+            return EnqueueResult.WouldStrandCreate
         }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
@@ -670,7 +577,7 @@ class OutboxSync(
         priority: Long,
         uploadType: Long,
         json: String
-    ): Boolean {
+    ): EnqueueResult {
         try {
             databaseManager.outbox.insert(
                 driveId,
@@ -694,14 +601,27 @@ class OutboxSync(
                 Logger.w("OutboxSync: ItemEnqueued event dropped (EventBus buffer full) uniqueId=$uniqueId")
             }
 
-            return true
+            return EnqueueResult.Enqueued
 
+        } catch (e: CancellationException) {
+            // The caller's coroutine was cancelled — propagate; classifying it
+            // as Failed would misreport routine cancellation as a lost request.
+            throw e
         } catch (t: Throwable) {
+            // Tell the benign UNIQUE(driveId, uniqueId) collision apart from a
+            // real DB failure: if a pending row exists for this key, the insert
+            // hit the constraint. (Driver-agnostic — constraint exception types
+            // differ across JDBC/Android/native.)
+            val alreadyQueued = runCatching {
+                databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) != null
+            }.getOrDefault(false)
+            if (alreadyQueued) {
+                Logger.i("OutboxSync: tryEnqueue found a pending row for uniqueId=$uniqueId — AlreadyQueued")
+                return EnqueueResult.AlreadyQueued
+            }
             Logger.e("OutboxSync - Failed to Enqueue", t)
+            return EnqueueResult.Failed(t)
         }
-
-        return false
-
     }
 
     /**
