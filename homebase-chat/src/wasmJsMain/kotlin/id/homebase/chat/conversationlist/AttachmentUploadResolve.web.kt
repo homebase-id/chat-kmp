@@ -14,6 +14,11 @@ import io.github.vinceglb.filekit.readBytes
 actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): String =
     materializeBytesToUploadPath(fileOps, name, readBytes())
 
+// No-op on web: the browser has no filesystem path to copy to and no security scope to lose. The
+// picked PlatformFile keeps its bytes; toUploadPath() above materializes them at send time via
+// readBytes(). (FileKit's copyTo / cacheDir aren't available on wasmJs.)
+actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile = this
+
 // Mint a blob: object URL straight from the picked browser File. This is O(1): the browser keeps
 // the File's bytes and the <video>/canvas stream from the URL on demand — no readBytes(), no copy
 // into wasm, no base64. Reused for poster, duration, filmstrip and playback (the old code base64'd
