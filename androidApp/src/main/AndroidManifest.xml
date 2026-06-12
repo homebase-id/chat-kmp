@@ -23,14 +23,12 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Location add-on: re-arming the fused PendingIntent registration after a
-         reboot. ACCESS_BACKGROUND_LOCATION lives in src/debug/AndroidManifest.xml
-         ONLY: Google Play rejects any AAB carrying that permission until the
-         Play Console sensitive-permission declaration (use case + prominent-
-         disclosure video) is approved for the package — the dev-track upload
-         failed exactly there. Once the declaration is done, move it back here
-         so store builds can track in the background; until then store builds
-         record foreground-only (the Location screen explains this). -->
+    <!-- Location add-on: background tracking (requires the Play Console
+         sensitive-permission declaration for this package — uploads are
+         rejected with 403 "background location permission declaration needs
+         to be updated" until it is approved) and re-arming the fused
+         PendingIntent registration after a reboot. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Devices running Android 13 (API level 33) or higher -->

@@ -19,6 +19,7 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -60,7 +61,7 @@ class VaultService(
                 keyHeader = keyHeader,
                 metadata = unencryptedMetadata.encryptContent(keyHeader),
             )
-            val enqueued = outboxSync.tryEnqueue(request)
+            val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
                     optimisticWriter.writeNewFile(
@@ -90,7 +91,7 @@ class VaultService(
                     driveId = driveId,
                     fileIds = listOf(fileId),
                 ),
-            )
+            ).enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue vault file delete: $uniqueId" }
             false
@@ -139,7 +140,7 @@ class VaultService(
                 payloads = payloads,
                 thumbnails = thumbnails,
             ),
-        )
+        ).enqueued
 
         if (enqueued) {
             try {
@@ -205,13 +206,13 @@ class VaultService(
                     driveId = driveId,
                     groupIds = listOf(sectionUniqueId),
                 ),
-            )
+            ).enqueued
             val sectionEnqueued = outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
                     driveId = driveId,
                     fileIds = listOf(sectionFileId),
                 ),
-            )
+            ).enqueued
             childrenEnqueued && sectionEnqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to delete vault section: $sectionUniqueId" }
@@ -255,7 +256,7 @@ class VaultService(
                     ),
                     metadata = unencryptedMetadata.encryptContent(newKeyHeader),
                 ),
-            )
+            ).enqueued
 
             if (enqueued) {
                 try {

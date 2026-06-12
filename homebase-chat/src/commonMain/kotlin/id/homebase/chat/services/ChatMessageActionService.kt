@@ -5,7 +5,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -14,8 +13,10 @@ import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.CancelOutcome
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -120,16 +121,21 @@ class ChatMessageActionService(
         // Note-to-Self / all-self-authored views, we skip the outbox but still advance local state.
         val enqueued = if (unreadRecords.isNotEmpty()) {
             val fileIds = unreadRecords.map { it.fileId }
-            val ok = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = SendReadReceiptByFileIdsOutboxRequest(
                     driveId = chatDrive,
                     fileIds = fileIds,
                 )
             )
             Logger.d(tag = TAG) {
-                "enqueue receipt: enqueued=$ok drive=$chatDrive fileIdsCount=${fileIds.size}"
+                "enqueue receipt: result=$result drive=$chatDrive fileIdsCount=${fileIds.size}"
             }
-            ok
+            if (!result.enqueued) {
+                Logger.w(tag = TAG) {
+                    "outbox.tryEnqueue → $result — skipped DB upsert + enrich; convo=$conversationId"
+                }
+            }
+            result.enqueued
         } else {
             Logger.d(tag = TAG) {
                 "no receipt-eligible records — skipping outbox; advancing local read state only"
@@ -138,9 +144,6 @@ class ChatMessageActionService(
         }
 
         if (!enqueued) {
-            Logger.w(tag = TAG) {
-                "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
-            }
             return
         }
 
@@ -243,7 +246,7 @@ class ChatMessageActionService(
         if (original == null) return ToggleReactionResult(resultType = resultType)
 
         try {
-            val enqueued = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = ToggleReactionOutboxRequest(
                     driveId = chatDrive,
                     fileId = original.fileId,
@@ -251,7 +254,8 @@ class ChatMessageActionService(
                     recipients = getRecipients(conversationId),
                 )
             )
-            if (!enqueued) {
+            if (!result.enqueued) {
+                Logger.w("toggleReaction: outbox enqueue → $result — rolling back optimistic write")
                 optimisticWriter.rollbackWrite(chatDrive, original)
             }
         } catch (t: Throwable) {
@@ -278,18 +282,40 @@ class ChatMessageActionService(
         // server; a pending *edit* (UpdateFile) means it did. We can't use
         // msg.isPendingSend for this — an edit re-stamps isPendingSendTag, so a
         // sent-then-edited message looks "pending" yet still needs a server delete.
-        val pendingUploadType =
-            dbm.outbox.selectByDriveAndUnique(chatDrive, messageId)?.uploadType
+        // cancelPending also removes any queued *edit* here — its content is moot,
+        // and leaving it would race the server delete enqueued below.
+        when (val cancel = outboxSync.cancelPending(chatDrive, messageId)) {
+            CancelOutcome.CancelledCreate -> {
+                // Never reached the server: drop it locally. No server delete —
+                // recipients never received it, and there is no remote file to
+                // remove.
+                optimisticWriter.removeOptimisticFile(chatDrive, messageId)
+                return
+            }
 
-        if (pendingUploadType == DriveOutboxUploader.UploadNewFile) {
-            // Never reached the server: cancel the queued send and drop it
-            // locally. No server delete — recipients never received it, and there
-            // is no remote file to remove. (Narrow race: if the send confirms
-            // between the lookup and here, removeOptimisticFile self-guards on
-            // isPendingSendTag and no-ops; a second delete then takes the path
-            // below.)
-            optimisticWriter.removeOptimisticFile(chatDrive, messageId)
-            return
+            is CancelOutcome.InFlight -> {
+                if (cancel.isCreate) {
+                    // The create is uploading RIGHT NOW. It can't be stopped
+                    // (the worker already read the row) and the server-assigned
+                    // fileId isn't known yet, so neither a local cancel nor a
+                    // server delete is sound. The old unconditional cancel here
+                    // produced a ghost: the upload completed anyway and the next
+                    // sync resurrected the locally-deleted message. Refuse —
+                    // deleting again once the send confirms (a moment later)
+                    // takes the normal server-delete path below.
+                    Logger.w {
+                        "deleteMessage: create for $messageId is in flight — delete refused; retry after send confirms"
+                    }
+                    return
+                }
+                // An in-flight *edit* can't be cancelled either, but the file
+                // exists server-side, so the delete below is sound: it drains
+                // after the edit and removes the file — the same end state the
+                // old unconditional deleteBy produced (it never stopped a
+                // running edit upload anyway).
+            }
+
+            CancelOutcome.Cancelled, CancelOutcome.NothingPending -> Unit
         }
 
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
@@ -308,15 +334,10 @@ class ChatMessageActionService(
             null
         }
 
-        // Cancel any queued *edit* before deleting — its content is moot, and
-        // leaving it would race the delete against the server. No-op when nothing
-        // is queued (a normally-sent message).
-        dbm.outbox.deleteBy(chatDrive, messageId)
-
         val original = optimisticWriter.writeDelete(chatDrive, messageId)
 
         try {
-            val enqueued = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
                     driveId = chatDrive,
                     fileIds = listOf(fileId),
@@ -324,7 +345,8 @@ class ChatMessageActionService(
                     hardDelete = hardDelete,
                 )
             )
-            if (!enqueued && original != null) {
+            if (!result.enqueued && original != null) {
+                Logger.w("deleteMessage: outbox enqueue → $result — rolling back optimistic write")
                 optimisticWriter.rollbackWrite(chatDrive, original)
             }
         } catch (t: Throwable) {

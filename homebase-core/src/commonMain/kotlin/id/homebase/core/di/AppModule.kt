@@ -90,6 +90,7 @@ import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
@@ -142,6 +143,8 @@ import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
+import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.settings.LocationSettingsViewModel
 
@@ -180,7 +183,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request) },
+            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
             eventBus = get(),
             scope = get(),
         )
@@ -656,11 +659,20 @@ val appModule = module {
             trackingCoordinator = get(),
             pointStore = get(),
             uploaderService = get(),
+            deviceDirectory = get(),
             tracker = get(),
         )
     }
     viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
+    singleOf(::LocationDeviceDirectory)
+    viewModel { params ->
+        FindDeviceViewModel(
+            deviceIdArg = params.getOrNull(),
+            deviceDirectory = get(),
+            locationPreferences = get(),
+        )
+    }
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)

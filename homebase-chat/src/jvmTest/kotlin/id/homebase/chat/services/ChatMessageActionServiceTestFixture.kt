@@ -215,6 +215,7 @@ class ChatMessageActionServiceTestFixture(
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus,
+            outboxSync = outboxSync,
         )
 
         // ConversationService is a ctor-required dep even though markAsReadByFiles

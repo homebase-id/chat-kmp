@@ -114,6 +114,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus,
+            outboxSync = outboxSync,
         )
 
         // Real DriveFileProvider with a scriptable mock engine (default: 500s

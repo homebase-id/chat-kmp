@@ -15,6 +15,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.widget.EmojiReaction
@@ -126,7 +127,8 @@ class MomentActionService(
                     recipients = recipients,
                 ),
             )
-            if (!enqueued) {
+            if (!enqueued.enqueued) {
+                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
                 optimisticWriter.rollbackWrite(drive, original)
             }
         } catch (t: Throwable) {
@@ -212,7 +214,8 @@ class MomentActionService(
                     hardDelete = false,
                 ),
             )
-            if (!enqueued) {
+            if (!enqueued.enqueued) {
+                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
                 optimisticWriter.rollbackWrite(drive, original)
             }
         } catch (t: Throwable) {
@@ -245,7 +248,8 @@ class MomentActionService(
                     hardDelete = false,
                 ),
             )
-            if (!enqueued) {
+            if (!enqueued.enqueued) {
+                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
                 optimisticWriter.rollbackWrite(drive, original)
             }
         } catch (t: Throwable) {

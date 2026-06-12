@@ -10,6 +10,9 @@ import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
+import id.homebase.core.ui.screens.location.history.localDayStart
+import id.homebase.core.ui.screens.location.history.shiftDay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
@@ -27,6 +31,7 @@ class LocationViewModel(
     private val trackingCoordinator: LocationTrackingCoordinator,
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
+    private val deviceDirectory: LocationDeviceDirectory,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -34,6 +39,8 @@ class LocationViewModel(
         LocationUiState(
             trackingAvailable = tracker.isAvailable,
             trackingEnabled = locationPreferences.trackingEnabled.value,
+            activated = locationPreferences.activated.value,
+            showMapTiles = locationPreferences.showMapTiles.value,
         )
     )
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
@@ -86,6 +93,16 @@ class LocationViewModel(
         viewModelScope.launch {
             locationPreferences.disclosureAccepted.collect { accepted ->
                 _uiState.update { it.copy(disclosureAccepted = accepted) }
+            }
+        }
+        viewModelScope.launch {
+            locationPreferences.activated.collect { activated ->
+                _uiState.update { it.copy(activated = activated) }
+            }
+        }
+        viewModelScope.launch {
+            locationPreferences.showMapTiles.collect { show ->
+                _uiState.update { it.copy(showMapTiles = show) }
             }
         }
         viewModelScope.launch {
@@ -162,6 +179,19 @@ class LocationViewModel(
         viewModelScope.launch {
             pointStore.refresh()
             refreshCounts()
+        }
+        loadDashboard()
+    }
+
+    /** Dashboard data: today's traces (map preview) + the device list. */
+    fun loadDashboard() {
+        viewModelScope.launch {
+            val dayStart = localDayStart(Clock.System.now().toEpochMilliseconds())
+            val traces = runCatching { deviceDirectory.loadDayTraces(dayStart, shiftDay(dayStart, 1)) }
+                .getOrDefault(emptyList())
+            val devices = runCatching { deviceDirectory.loadDevices() }
+                .getOrDefault(emptyList())
+            _uiState.update { it.copy(todayTraces = traces, devices = devices) }
         }
     }
 

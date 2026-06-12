@@ -31,6 +31,7 @@ import id.homebase.api.image.ImageUtils
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.builder.AttachmentInput
@@ -367,14 +368,15 @@ class MomentsPostSenderService(
                 thumbnails = encrypted.thumbnails,
             )
 
-            enqueued = outboxSync.tryEnqueue(
+            val result = outboxSync.tryEnqueue(
                 request,
                 priority = 1,
                 dependencyUniqueId = null,
             )
+            enqueued = result.enqueued
 
             if (!enqueued) {
-                error("Failed to enqueue moment for upload")
+                error("Failed to enqueue moment for upload (outbox: $result)")
             }
 
             Logger.d(tag = TAG) { "finalizeMomentSend: outbox enqueued moment=$momentUniqueId" }
@@ -550,8 +552,8 @@ class MomentsPostSenderService(
             dependencyUniqueId = null,
         )
 
-        if (!enqueued) {
-            error("Failed to enqueue moment update")
+        if (!enqueued.enqueued) {
+            error("Failed to enqueue moment update (outbox: $enqueued)")
         }
 
         Logger.d(tag = TAG) { "updateMoment: outbox enqueued moment=$momentUniqueId" }
@@ -734,8 +736,8 @@ class MomentsPostSenderService(
             dependencyUniqueId = null,
         )
 
-        if (!enqueued) {
-            error("Failed to enqueue moment recipient update")
+        if (!enqueued.enqueued) {
+            error("Failed to enqueue moment recipient update (outbox: $enqueued)")
         }
 
         Logger.d(tag = TAG) {
@@ -1013,8 +1015,8 @@ class MomentsPostSenderService(
             dependencyUniqueId = null,
         )
 
-        if (!enqueued) {
-            error("Failed to enqueue comment for upload")
+        if (!enqueued.enqueued) {
+            error("Failed to enqueue comment for upload (outbox: $enqueued)")
         }
 
         Logger.d(tag = TAG) { "postComment: outbox enqueued comment=$commentUniqueId" }
@@ -1147,8 +1149,8 @@ class MomentsPostSenderService(
             dependencyUniqueId = null,
         )
 
-        if (!enqueued) {
-            error("Failed to enqueue comment update")
+        if (!enqueued.enqueued) {
+            error("Failed to enqueue comment update (outbox: $enqueued)")
         }
 
         Logger.d(tag = TAG) { "updateComment: outbox enqueued comment=$commentUniqueId" }

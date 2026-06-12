@@ -1,9 +1,10 @@
 package id.homebase.core.ui.screens.location
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,10 +32,17 @@ import id.homebase.resources.location_consent_agree
 import id.homebase.resources.location_consent_decline
 import id.homebase.resources.location_consent_text
 import id.homebase.resources.location_consent_title
+import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.resources.location_history_title
 import id.homebase.resources.location_label
+import id.homebase.resources.location_menu_dashboard
+import id.homebase.resources.location_menu_find_device
+import id.homebase.resources.location_menu_more
+import id.homebase.resources.location_menu_setup
 import id.homebase.resources.location_settings
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +50,7 @@ fun LocationScreen(
     viewModel: LocationViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToFindDevice: (Uuid?) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -126,6 +135,21 @@ fun LocationScreen(
             (action as? LocationUiAction.SetTrackingEnabled)?.enabled == true
     }
 
+    // Body switcher: dashboard once running, setup otherwise; the three-dot
+    // menu's "Location setup" forces the setup body (override clears when the
+    // screen leaves the back stack, or via the menu's "Dashboard" item).
+    var setupOverride by remember { mutableStateOf(false) }
+    val dashboardEligible = isDashboard(
+        activated = uiState.activated,
+        trackingEnabled = uiState.trackingEnabled,
+        trackerAvailable = uiState.trackingAvailable,
+        setupOverride = false,
+    )
+    val showDashboard = dashboardEligible && !setupOverride
+    val previewProvider = koinInject<LocationPreviewProvider>()
+
+    var menuOpen by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             // No back arrow: Location is a top-level destination reached from the
@@ -133,29 +157,73 @@ fun LocationScreen(
             TopAppBar(
                 title = { Text(stringResource(MR.string.location_label)) },
                 actions = {
-                    IconButton(onClick = onNavigateToHistory) {
+                    IconButton(onClick = { menuOpen = true }) {
                         Icon(
-                            imageVector = Icons.Outlined.History,
-                            contentDescription = stringResource(MR.string.location_history_title),
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(MR.string.location_menu_more),
                         )
                     }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = stringResource(MR.string.location_settings),
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.location_menu_find_device)) },
+                            onClick = {
+                                menuOpen = false
+                                onNavigateToFindDevice(null)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.location_history_title)) },
+                            onClick = {
+                                menuOpen = false
+                                onNavigateToHistory()
+                            },
+                        )
+                        if (dashboardEligible) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (setupOverride) MR.string.location_menu_dashboard
+                                            else MR.string.location_menu_setup
+                                        )
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    setupOverride = !setupOverride
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.location_settings)) },
+                            onClick = {
+                                menuOpen = false
+                                onNavigateToSettings()
+                            },
                         )
                     }
                 },
             )
         },
     ) { innerPadding ->
-        LocationContent(
-            uiState = uiState,
-            innerPadding = innerPadding,
-            onAction = { action ->
-                if (needsConsent(action)) pendingConsentAction = action else execute(action)
-            },
-        )
+        if (showDashboard) {
+            LocationDashboardContent(
+                uiState = uiState,
+                innerPadding = innerPadding,
+                fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                onOpenHistory = onNavigateToHistory,
+                onOpenDevice = { onNavigateToFindDevice(it) },
+                onOpenSetup = { setupOverride = true },
+            )
+        } else {
+            LocationContent(
+                uiState = uiState,
+                innerPadding = innerPadding,
+                onAction = { action ->
+                    if (needsConsent(action)) pendingConsentAction = action else execute(action)
+                },
+            )
+        }
     }
 
     pendingConsentAction?.let { pending ->

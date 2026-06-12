@@ -27,6 +27,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.chat.ChatMessageSizer
@@ -311,8 +312,8 @@ class ChatMessageSenderService(
             dependencyUniqueId = effectiveDep,
         )
 
-        if (!enqueued) {
-            error("Failed to send chat message")
+        if (!enqueued.enqueued) {
+            error("Failed to send chat message (outbox: $enqueued)")
         }
         // Record this message as the new chain tail for the conversation. Done after
         // a successful enqueue so a failure doesn't leave a dangling pointer that
@@ -494,7 +495,7 @@ class ChatMessageSenderService(
                 encryptedOverflowPayloads = encryptedOverflow
             )
             val enqueued = outboxSync.replaceEnqueue(amended, priority = 1, dependencyUniqueId = null)
-            if (!enqueued) error("Failed to update chat message")
+            if (!enqueued.enqueued) error("Failed to update chat message (outbox: $enqueued)")
             optimisticWriter.writeUpdate(
                 driveId = chatDrive,
                 keyHeader = createKey,
@@ -572,8 +573,8 @@ class ChatMessageSenderService(
                 dependencyUniqueId = null,
             )
 
-            if (!enqueued) {
-                error("Failed to update chat message")
+            if (!enqueued.enqueued) {
+                error("Failed to update chat message (outbox: $enqueued)")
             }
 
             optimisticWriter.writeUpdate(
@@ -765,7 +766,7 @@ class ChatMessageSenderService(
             thumbnails = recovered.thumbnails,
         )
         val enqueued = outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)
-        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry create"))
+        if (!enqueued.enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry create: $enqueued"))
         return ResendOutcome.EnqueuedCreate
     }
 
@@ -818,7 +819,7 @@ class ChatMessageSenderService(
             thumbnails = recovered.thumbnails,
         )
         val enqueued = outboxSync.replaceEnqueue(request, priority = 1, dependencyUniqueId = null)
-        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry update"))
+        if (!enqueued.enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry update: $enqueued"))
         return ResendOutcome.EnqueuedUpdate
     }
 
