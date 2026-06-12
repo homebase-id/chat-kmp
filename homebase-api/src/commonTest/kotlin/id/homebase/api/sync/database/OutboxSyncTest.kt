@@ -1013,6 +1013,81 @@ class OutboxSyncTest {
     }
 
     /**
+     * cancelPending contract: queued rows are removed and classified
+     * (create vs other); a missing row reports NothingPending.
+     */
+    @Test
+    fun testCancelPendingRemovesQueuedRowsAndClassifies() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+
+        val driveId = Uuid.random()
+        val createId = Uuid.random()
+        val editId = Uuid.random()
+
+        sync.tryEnqueue(
+            driveId = driveId, uniqueId = createId, dependencyUniqueId = null,
+            priority = 1, uploadType = DriveOutboxUploader.UploadNewFile, json = "create",
+        )
+        sync.tryEnqueue(
+            driveId = driveId, uniqueId = editId, dependencyUniqueId = null,
+            priority = 1, uploadType = DriveOutboxUploader.UpdateFile, json = "edit",
+        )
+        assertEquals(2L, db.outbox.count())
+
+        assertEquals(CancelOutcome.CancelledCreate, sync.cancelPending(driveId, createId))
+        assertEquals(CancelOutcome.Cancelled, sync.cancelPending(driveId, editId))
+        assertEquals(0L, db.outbox.count(), "both queued rows must be removed")
+
+        assertEquals(
+            CancelOutcome.NothingPending, sync.cancelPending(driveId, createId),
+            "a second cancel finds nothing",
+        )
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * cancelPending must NOT delete a checked-out row: the worker already read
+     * it, so deleting it can't stop the upload — it only fakes the cancel while
+     * the request still ships (the old raw-deleteBy "ghost message" race).
+     * The row must survive untouched and the caller gets InFlight(isCreate).
+     */
+    @Test
+    fun testCancelPendingRefusesInFlightRow() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+        // Simulate a worker holding the row.
+        val checkedOut = db.outbox.checkout()
+        assertNotNull(checkedOut)
+
+        val outcome = sync.cancelPending(driveId, uniqueId)
+        assertEquals(CancelOutcome.InFlight(isCreate = true), outcome)
+
+        val row = db.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        assertNotNull(row, "in-flight row must survive a cancel attempt")
+        assertNotNull(row.checkOutStamp, "row must remain checked out")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
      * Cancelling the outbox scope mid-upload (logout, shutdown) must NOT be
      * recorded as a failed attempt: no `ItemFailed`/`Failed`/`OutboxItemDropped`
      * events, no `checkInFailed` (checkOutCount stays 0). The row stays checked

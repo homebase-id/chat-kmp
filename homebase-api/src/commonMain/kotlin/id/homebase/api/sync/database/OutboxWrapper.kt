@@ -133,6 +133,18 @@ class OutboxWrapper(
         }
     }
 
+    /** Guarded cancel: deletes the row only when no worker holds it
+     *  (checkOutStamp IS NULL). Returns rows deleted — 0 means the row is
+     *  either gone or in flight; see [OutboxSync.cancelPending]. */
+    suspend fun deleteByIfNotCheckedOut(
+        driveId: Uuid,
+        uniqueId: Uuid,
+    ): Long {
+        return databaseManager.withWriteValue {
+            delegate.deleteByIfNotCheckedOut(driveId, uniqueId).value
+        }
+    }
+
     suspend fun deleteAll(): Long {
         return databaseManager.withWriteValue { delegate.deleteAll().value }
     }

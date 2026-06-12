@@ -89,6 +89,28 @@ sealed interface EnqueueResult {
 /** True only for [EnqueueResult.Enqueued] — exactly the old Boolean `true`. */
 val EnqueueResult.enqueued: Boolean get() = this == EnqueueResult.Enqueued
 
+/**
+ * Outcome of [OutboxSync.cancelPending]. Replaces callers reaching into the
+ * raw outbox table (`selectByDriveAndUnique` + unconditional `deleteBy`) —
+ * which silently "cancelled" rows whose upload was already running.
+ */
+sealed interface CancelOutcome {
+    /** A queued `UploadNewFile` was removed — the create never reached the
+     *  server, so there is nothing to delete remotely. */
+    data object CancelledCreate : CancelOutcome
+
+    /** A queued non-create row (edit, delete, …) was removed. */
+    data object Cancelled : CancelOutcome
+
+    /** A worker currently holds the row: the upload is running and CANNOT be
+     *  stopped by deleting the row. Nothing was changed. [isCreate] tells the
+     *  caller whether the in-flight request is the file's create. */
+    data class InFlight(val isCreate: Boolean) : CancelOutcome
+
+    /** No row for (driveId, uniqueId) — already sent, dropped, or never queued. */
+    data object NothingPending : CancelOutcome
+}
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -443,6 +465,31 @@ class OutboxSync(
             isCheckedOut = row.checkOutStamp != null,
             uploadType = row.uploadType,
         )
+    }
+
+    /**
+     * Cancel the pending outbox row for (driveId, uniqueId), if any — but never
+     * a row whose upload is in flight: deleting a checked-out row doesn't stop
+     * the worker (it already read the row), it only turns the cancel into a
+     * silent lie while the request still ships. Callers branch on the returned
+     * [CancelOutcome] instead of guessing.
+     */
+    public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+            ?: return CancelOutcome.NothingPending
+        val isCreate = row.uploadType == DriveOutboxUploader.UploadNewFile
+        if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
+
+        val deleted = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
+        if (deleted == 0L) {
+            // Raced: between the select and the guarded delete the row was
+            // either checked out or drained. Re-read to report which.
+            val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+                ?: return CancelOutcome.NothingPending
+            return CancelOutcome.InFlight(now.uploadType == DriveOutboxUploader.UploadNewFile)
+        }
+        Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
+        return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
     }
 
     /**

@@ -344,25 +344,32 @@ class LocationTrackUploaderService(
 
     private suspend fun observeOutbox() {
         eventBus.events.collect { event ->
-            when (event) {
-                is BackendEvent.OutboxEvent.ItemCompleted -> {
-                    if (event.driveId != driveId) return@collect
-                    logger.i { "Hour-file upload confirmed uid=${event.uniqueId} — draining buffer rows" }
-                    runCatching { buffer.deleteByFlushUid(event.uniqueId) }
+            if (event !is BackendEvent.OutboxEvent) return@collect
+            when (bufferActionFor(event, driveId)) {
+                BufferAction.DrainFlushed -> {
+                    val uid = (event as BackendEvent.OutboxEvent.ItemCompleted).uniqueId
+                    logger.i { "Hour-file upload confirmed uid=$uid — draining buffer rows" }
+                    runCatching { buffer.deleteByFlushUid(uid) }
                         .onFailure { logger.e(it) { "deleteByFlushUid failed" } }
                     _lastFlushTime.value = Clock.System.now().toEpochMilliseconds()
                     refreshPendingCount()
                 }
 
-                is BackendEvent.OutboxEvent.ItemFailed -> {
-                    if (event.driveId != driveId) return@collect
-                    logger.w { "Hour-file upload failed for ${event.uniqueId} — rows unmarked for retry" }
-                    runCatching { buffer.clearFlushMark(event.uniqueId) }
+                BufferAction.UnmarkForRetry -> {
+                    val (uid, detail) = when (event) {
+                        is BackendEvent.OutboxEvent.ItemFailed ->
+                            event.uniqueId to "failed — will retry"
+                        is BackendEvent.OutboxEvent.OutboxItemDropped ->
+                            event.uniqueId to "permanently dropped (${event.reason ?: "no reason"}) — rows re-flush next cycle"
+                        else -> return@collect // unreachable by construction of bufferActionFor
+                    }
+                    logger.w { "Hour-file upload $detail uid=$uid — rows unmarked" }
+                    runCatching { buffer.clearFlushMark(uid) }
                         .onFailure { logger.e(it) { "clearFlushMark failed" } }
                     refreshPendingCount()
                 }
 
-                else -> {}
+                BufferAction.None -> {}
             }
         }
     }
@@ -376,4 +383,41 @@ class LocationTrackUploaderService(
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS
     }
+}
+
+/** What an outbox event means for the location point buffer. */
+internal enum class BufferAction {
+    /** Hour file confirmed on the server — delete the flushed rows. */
+    DrainFlushed,
+
+    /** Upload didn't land — clear the flush mark so the next cycle re-flushes
+     *  the hour from live state (fresh request, fresh key, current points). */
+    UnmarkForRetry,
+
+    None,
+}
+
+/**
+ * Pure event → buffer-action mapping; unit-tested in LocationBufferActionTest.
+ *
+ * `OutboxItemDropped` must map to [BufferAction.UnmarkForRetry]: a permanent
+ * drop (retries exhausted, or a permanent failure such as "AES key must
+ * match") emits ONLY this event — no `ItemFailed` — so without this branch the
+ * dropped hour's rows stayed flush-marked forever: never re-flushed, never
+ * deleted, pending count silently wrong.
+ */
+internal fun bufferActionFor(
+    event: BackendEvent.OutboxEvent,
+    locationDriveId: Uuid,
+): BufferAction = when (event) {
+    is BackendEvent.OutboxEvent.ItemCompleted ->
+        if (event.driveId == locationDriveId) BufferAction.DrainFlushed else BufferAction.None
+
+    is BackendEvent.OutboxEvent.ItemFailed ->
+        if (event.driveId == locationDriveId) BufferAction.UnmarkForRetry else BufferAction.None
+
+    is BackendEvent.OutboxEvent.OutboxItemDropped ->
+        if (event.driveId == locationDriveId) BufferAction.UnmarkForRetry else BufferAction.None
+
+    else -> BufferAction.None
 }

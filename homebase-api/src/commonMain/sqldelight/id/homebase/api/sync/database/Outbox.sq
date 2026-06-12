@@ -96,6 +96,15 @@ deleteBy:
 DELETE FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
+-- Cancel a queued row ONLY when no worker holds it. Deleting a checked-out
+-- row does NOT stop its upload (the worker already read the row) — it just
+-- makes the cancel a silent lie while the message still ships. Callers that
+-- need cancellation use this guarded form via OutboxSync.cancelPending and
+-- get an explicit InFlight answer instead.
+deleteByIfNotCheckedOut:
+DELETE FROM Outbox
+WHERE driveId = ? AND uniqueId = ? AND checkOutStamp IS NULL;
+
 
 -- Select the (single, by UNIQUE(driveId,uniqueId)) pending row for a message.
 -- Lets a caller tell a queued create apart from a queued edit before deleting.

@@ -117,7 +117,8 @@ class ConversationServiceTestFixture : AutoCloseable {
         optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
             dbm = dbm,
-            eventBus = eventBus
+            eventBus = eventBus,
+            outboxSync = outboxSync,
         )
 
         return ConversationService(
