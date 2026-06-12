@@ -128,11 +128,31 @@ class LocationViewModel(
 
     fun onAction(action: LocationUiAction) {
         when (action) {
-            LocationUiAction.SetupClicked -> {
-                _uiState.update {
-                    it.copy(isCheckingPermissions = true, setupInitiated = true)
+            LocationUiAction.SetupClicked -> viewModelScope.launch {
+                // Already-granted paths must complete synchronously: the
+                // permissionsGranted StateFlow is already `true` on a re-login
+                // whose drive grant survived, so the auto-activate collector in
+                // init (filter { it }) will never fire again — waiting for it
+                // leaves Setup visibly doing nothing (observed on emulator:
+                // four taps, dialog stuck at Idle, no navigation).
+                when {
+                    locationPreferences.activated.value -> {
+                        _events.tryEmit(LocationUiEvent.Activated)
+                    }
+
+                    locationPermissionViewModel.permissionsGranted.value -> {
+                        locationPreferences.setActivated(true)
+                        authConnectionCoordinator.mountDrive(locationLabeledDrive)
+                        _events.tryEmit(LocationUiEvent.Activated)
+                    }
+
+                    else -> {
+                        _uiState.update {
+                            it.copy(isCheckingPermissions = true, setupInitiated = true)
+                        }
+                        locationPermissionViewModel.recheckPermissions()
+                    }
                 }
-                locationPermissionViewModel.recheckPermissions()
             }
 
             LocationUiAction.DismissOnboardingClicked -> {
