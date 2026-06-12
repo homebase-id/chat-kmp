@@ -1252,4 +1252,67 @@
     <string name="location_history_devices">%1$d devices</string>
     <string name="location_history_span">%1$s – %2$s</string>
 
+    <!-- Contact Book (contact manager add-on) -->
+    <string name="contactbook_label">Contacts</string>
+    <string name="contactbook_home_subtitle">Manage your address book</string>
+    <string name="contactbook_onboarding_title">Your contacts, in one place</string>
+    <string name="contactbook_onboarding_body_1">Keep your contacts on your private Homebase cloud and reach the people you chat with. Import from your phone, or add contacts by hand.</string>
+    <string name="contactbook_onboarding_body_2">Your contacts are encrypted on your personal Homebase server and sync across your devices.</string>
+    <string name="contactbook_onboarding_setup">Get started</string>
+    <string name="contactbook_onboarding_dismiss">Maybe later</string>
+
+    <string name="contactbook_search_hint">Search contacts</string>
+    <string name="contactbook_filter_all">All</string>
+    <string name="contactbook_filter_homebase">Homebase</string>
+    <string name="contactbook_filter_imported">Other</string>
+    <string name="contactbook_no_results">No contacts match your search</string>
+
+    <string name="contactbook_action_add">Add contact</string>
+    <string name="contactbook_action_import">Import contacts</string>
+    <string name="contactbook_action_settings">Contact settings</string>
+    <string name="contactbook_locked_unlock">Unlock</string>
+
+    <string name="contactbook_empty_title">No contacts yet</string>
+    <string name="contactbook_empty_body">Add a contact by hand, or import them from your phone.</string>
+    <string name="contactbook_empty_new">Add a contact</string>
+    <string name="contactbook_empty_import">Import from phone</string>
+
+    <string name="contactbook_detail_message">Message</string>
+    <string name="contactbook_detail_sync">Sync</string>
+    <string name="contactbook_detail_edit">Edit</string>
+    <string name="contactbook_detail_delete">Delete</string>
+
+    <string name="contactbook_edit_title_new">New contact</string>
+    <string name="contactbook_edit_title_edit">Edit contact</string>
+    <string name="contactbook_edit_given_name">First name</string>
+    <string name="contactbook_edit_surname">Last name</string>
+    <string name="contactbook_edit_phone">Phone</string>
+    <string name="contactbook_edit_email">Email</string>
+    <string name="contactbook_edit_city">City</string>
+    <string name="contactbook_edit_country">Country</string>
+    <string name="contactbook_edit_birthday">Birthday</string>
+    <string name="contactbook_edit_save">Save</string>
+    <string name="contactbook_edit_cancel">Cancel</string>
+
+    <string name="contactbook_import_title">Import contacts</string>
+    <string name="contactbook_import_requesting">Requesting access to your contacts…</string>
+    <string name="contactbook_import_reading">Reading your contacts…</string>
+    <string name="contactbook_import_select_all">Select all</string>
+    <string name="contactbook_import_confirm">Import %1$d</string>
+    <string name="contactbook_import_saving">Saving %1$d of %2$d…</string>
+    <string name="contactbook_import_result">Imported %1$d contacts, skipped %2$d.</string>
+    <string name="contactbook_import_empty">No contacts with a phone number or email were found on this device.</string>
+    <string name="contactbook_import_failed_permission">Contacts permission is needed to import. You can enable it in Settings.</string>
+    <string name="contactbook_import_failed_read">Couldn\'t read your contacts. Please try again.</string>
+    <string name="contactbook_import_done">Done</string>
+
+    <string name="contactbook_settings_section">Contacts</string>
+    <string name="contactbook_settings_open">Open Contacts</string>
+    <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
+    <string name="contactbook_settings_biometrics">Biometrics protection</string>
+
+    <string name="contactbook_error_save">Couldn\'t save the contact.</string>
+    <string name="contactbook_error_delete">Couldn\'t delete the contact.</string>
+    <string name="contactbook_error_import">Couldn\'t import contacts.</string>
+
 </resources>

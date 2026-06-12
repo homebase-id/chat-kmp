@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
@@ -49,6 +50,8 @@ import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
 import id.homebase.resources.app_version
 import id.homebase.resources.clear_log
+import id.homebase.resources.contactbook_home_subtitle
+import id.homebase.resources.contactbook_label
 import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.location_home_subtitle
@@ -66,6 +69,7 @@ fun HomeScreen(
     onNavigateToVault: () -> Unit,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
+    onNavigateToContacts: () -> Unit,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,6 +123,7 @@ fun HomeScreen(
         onNavigateToVault = onNavigateToVault,
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
+        onNavigateToContacts = onNavigateToContacts,
     )
 }
 
@@ -130,6 +135,7 @@ fun HomeUi(
     onNavigateToVault: () -> Unit = {},
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
+    onNavigateToContacts: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
     Scaffold(
@@ -177,6 +183,15 @@ fun HomeUi(
                 label = stringResource(MR.string.location_label),
                 subtitle = stringResource(MR.string.location_home_subtitle),
                 onClick = onNavigateToLocation,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.Contacts,
+                label = stringResource(MR.string.contactbook_label),
+                subtitle = stringResource(MR.string.contactbook_home_subtitle),
+                onClick = onNavigateToContacts,
             )
 
             Spacer(modifier = Modifier.height(48.dp))

@@ -239,7 +239,8 @@ existing range. Current owners:
 | `0000...0a01xx` | Vault |
 | `0000...0a02xx` | Moments |
 | `0000...0a03xx` | Location |
-| `0000...0a04xx` | **next free** — claim it here when you take it |
+| `0000...0a04xx` | Contact Book (contact manager) |
+| `0000...0a05xx` | **next free** — claim it here when you take it |
 
 ---
 

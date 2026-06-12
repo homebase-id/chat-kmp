@@ -16,4 +16,12 @@ enum class PermissionType {
      * [LOCATION] is granted; on iOS it is the Always authorization escalation.
      */
     LOCATION_ALWAYS,
+
+    /**
+     * Read access to the device address book. Android: `READ_CONTACTS` runtime
+     * permission; iOS: `CNContactStore` contacts authorization. Used by the
+     * contact-book import flow (mobile only) — desktop/web have no address book
+     * and their permission stubs always report granted.
+     */
+    CONTACTS,
 }
