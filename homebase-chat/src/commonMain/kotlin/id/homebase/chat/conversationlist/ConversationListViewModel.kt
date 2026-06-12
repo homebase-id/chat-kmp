@@ -1750,7 +1750,7 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
  * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
  * display name / profile image with a bare odinId.
  */
-internal fun synthesizeOwnerSession(
+fun synthesizeOwnerSession(
     live: OwnerSession?,
     credentials: ApiCredentials?,
 ): OwnerSession? = live ?: credentials?.let {
