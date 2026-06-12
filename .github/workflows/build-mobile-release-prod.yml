@@ -187,6 +187,40 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
 
+      # CI-only memory tuning for the 7 GB macos-15 runner. Appended at build
+      # time so the repo's gradle.properties stays untouched for local dev;
+      # in a Java properties file the LAST occurrence of a key wins.
+      # Rollback: delete this step and the "Upload JVM OOM diagnostics" step.
+      # Must run AFTER the Kotlin/Native cache step — its key hashes
+      # gradle.properties and should see the pristine file.
+      - name: Apply iOS CI memory overrides
+        run: |
+          mkdir -p /Users/runner/work/jvm-dumps
+          cat >> gradle.properties << 'EOF'
+
+          # --- CI-only overrides (appended by "Apply iOS CI memory overrides") ---
+          # Gradle daemon only orchestrates this build; don't let it compete
+          # with the Kotlin/Native compiler for the runner's 7 GB of RAM.
+          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
+          kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
+          # One K/N task at a time; incremental-native caches are dead weight
+          # on a one-shot runner.
+          kotlin.native.gradle.workers.max=1
+          kotlin.incremental.native=false
+          # Run each K/N compilation in a fresh short-lived process so the
+          # release link starts with a clean heap instead of inheriting 45+
+          # minutes of accumulated daemon heap (build 27400310875 OOM).
+          kotlin.native.disableCompilerDaemon=true
+          # 8g, not less: run 27407420160's GC log proved ~5.1 GB is genuinely
+          # live during linkReleaseFrameworkIosArm64 (full GC clearing soft refs
+          # reclaimed nothing at a 6g cap). 8g exceeds the runner's 7 GB RAM but
+          # macOS swap absorbs it once xcodebuild isn't resident (see the
+          # pre-build step below).
+          kotlin.native.jvmArgs=-Xmx8g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          EOF
+          echo "Appended CI memory overrides to gradle.properties:"
+          tail -n 15 gradle.properties
+
       - name: Strip existing FFmpegKit signatures
         run: |
           cd homebase-api/libs/ffmpegkit-bundled.xcframework
@@ -202,6 +236,47 @@ jobs:
               fi
             done
           done
+
+      # Pre-build the Kotlin frameworks BEFORE fastlane/xcodebuild start, so the
+      # memory-hungry release link has the runner's 7 GB to itself instead of
+      # competing with xcodebuild/SWBBuildService/fastlane (run 27407420160 saw
+      # both a heap-space OOM in the link and SIGKILLs of java processes —
+      # system-level memory exhaustion). The Xcode script phase ("Compile Kotlin
+      # Framework") then finds the link tasks UP-TO-DATE and just copies the
+      # frameworks. Must run AFTER the FFmpegKit signature strip so task inputs
+      # are identical between this invocation and Xcode's.
+      # Rollback: delete this step together with the other CI-memory steps.
+      - name: Pre-build Kotlin frameworks (link outside Xcode)
+        run: |
+          ./gradlew :homebase-core:linkReleaseFrameworkIosArm64 \
+                    :homebase-notifshared:linkReleaseFrameworkIosArm64
+          ./gradlew --stop
+
+      # fastlane's build_app starts with `xcodebuild -resolvePackageDependencies`,
+      # which has no timeout: run 27409300090 hung there for 35 min (vs 80 s in
+      # the previous green run) on a stuck GitHub fetch. Pre-resolve here with a
+      # watchdog + retries; gym's own resolve then hits warm SwiftPM caches.
+      # Non-fatal on persistent failure — gym gets its usual chance.
+      - name: Pre-resolve SPM dependencies (watchdog + retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "SPM resolve attempt $attempt"
+            xcodebuild -resolvePackageDependencies \
+              -workspace iosApp/iosApp.xcodeproj/project.xcworkspace \
+              -scheme iosApp -configuration Release &
+            xb=$!
+            ( sleep 600; echo "watchdog: killing stuck resolve"; kill "$xb" 2>/dev/null ) &
+            wd=$!
+            if wait "$xb"; then
+              kill "$wd" 2>/dev/null || true
+              echo "SPM dependencies resolved on attempt $attempt"
+              exit 0
+            fi
+            kill "$wd" 2>/dev/null || true
+            echo "attempt $attempt failed or timed out"
+          done
+          echo "::warning ::SPM pre-resolve failed 3 times; letting fastlane try"
+          exit 0
 
       # The build action's bundled Fastfile runs create_keychain(timeout: 3600):
       # the build keychain auto-locks after 60 minutes. A cold-cache archive
@@ -244,6 +319,16 @@ jobs:
           code-signing-identity: "Apple Distribution"
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
+
+      # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
+      # the heap dump + GC logs tell us what the live set actually is.
+      - name: Upload JVM OOM diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-jvm-oom-diagnostics
+          path: /Users/runner/work/jvm-dumps
+          if-no-files-found: ignore
 
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
