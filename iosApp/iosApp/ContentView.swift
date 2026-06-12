@@ -24,10 +24,16 @@ struct ContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var showPrivacyOverlay = false
     @State private var triggerToast: String? = nil
+    // Shake recovery v2: bumping this recreates ComposeView (SwiftUI dismantles + remakes the
+    // ComposeUIViewController) → fresh skiko GrDirectContext → fresh glyph atlas. The only lever
+    // that can rebuild the dead atlas (purge+recompose was field-falsified three times).
+    @State private var composeViewEpoch = 0
+    @State private var lastShakeAt = Date.distantPast
 
     var body: some View {
         ZStack {
             ComposeView()
+                .id(composeViewEpoch)
                 .ignoresSafeArea()
 
             if showPrivacyOverlay {
@@ -91,9 +97,26 @@ struct ContentView: View {
             // }
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
-            // Blank-text recovery experiment: log cache state, purge Skia caches + force a full
-            // re-composition, then log again ~1.5s later. See captureAndRecoverOnShake.
-            captureAndRecoverOnShake()
+            // Shake recovery v2 — SURFACE RECREATION. Acknowledge visibly (native toast renders even
+            // while Compose text is blank), log before-state, recreate the Compose view controller
+            // (fresh GrDirectContext + empty atlas bookkeeping), then log after-state. Costs: the
+            // composition rebuilds (navigation resets, in-progress typing lost) — acceptable on a
+            // deliberate shake during an unusable screen. Debounced: double-shakes (seen in the
+            // field) must not recreate twice.
+            let now = Date()
+            guard now.timeIntervalSince(lastShakeAt) > 5 else { return }
+            lastShakeAt = now
+
+            os_log("BLANK-TEXT shake — recreating Compose surface", log: textRenderLog, type: .error)
+            withAnimation { triggerToast = "🔄 Shake: rebuilding screen to recover text… (logged — please share the log via Help, don't clear it)" }
+            logShakeRecoveryState(phase: "before")
+            composeViewEpoch += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                logShakeRecoveryState(phase: "after-recreate")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+                withAnimation { triggerToast = nil }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .blankTextTriggerFired)) { note in
             // Blank-text auto-trigger fired (observe-only). Show a native toast asking the tester to
