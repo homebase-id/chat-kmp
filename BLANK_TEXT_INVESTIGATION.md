@@ -5,6 +5,60 @@ Skia-backed targets (iOS and Web). Update as we learn more.
 
 ---
 
+## 🎯 iOS ROOT CAUSE FOUND (2026-06-12) — first frame rendered while app BACKGROUNDED
+
+Three field captures (2026-06-08, 06-10, 06-12 — two devices, two builds) share one exact onset
+signature, and it pins the bug's birth:
+
+| occurrence | pattern | cache at first Foreground |
+|---|---|---|
+| 06-08 11:55 | ColdStart 10:30, NO immediate Foreground → first Foreground 85 min later, no `bgMs` | **6889 / 4** |
+| 06-10 18:18 | ColdStart 18:16, NO immediate Foreground → push → first Foreground, no `bgMs` | **6889 / 4** |
+| 06-12 20:47 | ColdStart 20:28, NO immediate Foreground → first Foreground 19 min later, no `bgMs` | **6889 / 4** |
+| healthy cold starts | ColdStart → Foreground within ~50 ms (user-tap launch) | 0 / 0 |
+
+**Mechanism:** iOS launches the app process into the **background** (prewarm / push / background
+fetch relaunch — e.g. after multitasking memory pressure killed it). The SwiftUI scene connects and
+`MainViewController()` runs (`promoteToForeground` in the log proves it), so **Compose builds and
+renders its first frame while `applicationState == .background`**. iOS rejects Metal GPU submissions
+from backgrounded apps (the CMP-9488 error family), so the glyph-atlas texture created by that first
+frame is **born dead**: CPU strikes rasterize fine (= the constant `fontCacheUsed=6889 count=4`
+fingerprint — same first composition every time), bookkeeping marks glyphs resident, but the GPU
+memory never receives pixels. Every later glyph — old or new — lands in the poisoned atlas and
+samples nothing. Frames/images don't touch the glyph atlas → they render.
+
+**Recovery — purge+recompose FALSIFIED (3×):** shakes on 06-10 and 06-12 (×2) ran
+`Graphics.purgeAllCaches()` + full `key()` recomposition; the cache rebuilt with fresh strikes
+within ~1.3 s and the screen stayed blank. The poisoned atlas lives on the per-context
+`GrDirectContext` Compose owns internally; **no public API reaches it**. The only lever: destroy the
+context — recreate the `ComposeUIViewController` (SwiftUI `.id()` bump → fresh `GrDirectContext` →
+empty bookkeeping → every glyph re-uploads). Shipped as **shake recovery v2** (this branch). A
+process relaunch always fixes the blank — recreation replicates that without losing the process.
+
+**Why the #703 auto-trigger never toasted:** its `peak > 200 KB` gate (meant to exclude cold
+starts) excludes *exactly* this onset — the blank happens at the **first-ever** foreground, before
+anything rendered. Trigger v2 should fire on the fingerprint instead: first Foreground with no
+`bgMs` AND `0 < fontCacheUsed ≤ ~50 KB` (strikes existed before the app was ever foregrounded =
+first frame was drawn in background). 3-for-3 in our data; 0 false positives observed (healthy
+first foregrounds show exactly 0).
+
+**Prevention — BUILT (same branch as shake v2):** `ContentView` defers `ComposeView` creation until
+the scene's first `.active` phase (native `systemBackground` placeholder until then; latched forever
+after so later backgrounding never tears it down). Compose can no longer render its first frame
+while the app is backgrounded → the atlas is never poisoned. Logged as `prevention: first .active —
+ComposeView built now` in homebase.log. **Validation signal:** background-launched sessions
+(ColdStart with no immediate Foreground) should now show `0/0` at the first Foreground instead of
+the `6889/4` fingerprint — measurable even without a user report. Shake v2 stays as the backstop.
+
+**Repro recipe (untested):** kill app → deliver a silent push (`content-available`) so iOS
+relaunches it in background → wait → open the app. Simulator: `xcrun simctl push` with a
+content-available payload may do it deterministically.
+
+**Tester protocol:** NEVER clear the log (the 06-12 first capture destroyed its onset that way) —
+share first via Help. The shake now acknowledges itself with a native toast.
+
+---
+
 ## iOS — instrumentation shipped (2026-06-07) — diagnose-on-recurrence
 
 We cannot reproduce the iOS blank text on demand (rare, real devices only; triggers on **cold start**
