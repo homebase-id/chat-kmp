@@ -72,6 +72,7 @@ import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
+import id.homebase.chat.conversationlist.ConversationLoadTrigger
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -360,7 +361,9 @@ fun AppNavHost(
                     // runs processPendingSharedContent so the shared file lands
                     // in the correct conversation.
                     if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
-                        navController.selectConversationOnChatList(id)
+                        // Tag this as a share-caused navigation so processPendingSharedContent
+                        // actually sends the pending descriptor (and only this path does).
+                        navController.selectConversationOnChatList(id, fromShareIntent = true)
                     }
                     TextRenderingHelper.nudge()
                 }
@@ -748,6 +751,9 @@ fun AppNavHost(
                                 val pendingScrollToMessageId by backStackEntry.savedStateHandle.getStateFlow<String?>(
                                     "pendingScrollToMessageId", null
                                 ).collectAsStateWithLifecycle()
+                                val pendingFromShareIntent by backStackEntry.savedStateHandle.getStateFlow(
+                                    "pendingFromShareIntent", false
+                                ).collectAsStateWithLifecycle()
                                 LaunchedEffect(pendingConversationId) {
                                     pendingConversationId?.let { idStr ->
                                         Uuid.parseOrNull(idStr)?.let {
@@ -758,6 +764,13 @@ fun AppNavHost(
                                                 it,
                                                 messageId = pendingScrollToMessageId?.let { m -> Uuid.parseOrNull(m) },
                                                 scrollToBottom = pendingScrollToBottom,
+                                                // Only a share-intent navigation may auto-send the
+                                                // pending share descriptor (processPendingSharedContent).
+                                                trigger = if (pendingFromShareIntent) {
+                                                    ConversationLoadTrigger.ShareIntent
+                                                } else {
+                                                    ConversationLoadTrigger.Navigation
+                                                },
                                             )
                                             backStackEntry.savedStateHandle["pendingConversationId"] =
                                                 null
@@ -765,6 +778,8 @@ fun AppNavHost(
                                                 false
                                             backStackEntry.savedStateHandle["pendingScrollToMessageId"] =
                                                 null
+                                            backStackEntry.savedStateHandle["pendingFromShareIntent"] =
+                                                false
                                         }
                                     }
                                 }
@@ -1414,7 +1429,8 @@ fun AppNavHost(
 
 
 private fun NavHostController.selectConversationOnChatList(
-    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null
+    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,
+    fromShareIntent: Boolean = false,
 ): Boolean {
     val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
     if (entry == null) {
@@ -1426,6 +1442,7 @@ private fun NavHostController.selectConversationOnChatList(
     entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
     entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
     entry.savedStateHandle["pendingScrollToMessageId"] = messageId?.toString()
+    entry.savedStateHandle["pendingFromShareIntent"] = fromShareIntent
     return true
 }
 

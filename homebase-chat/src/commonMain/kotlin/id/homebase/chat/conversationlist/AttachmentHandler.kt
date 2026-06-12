@@ -123,7 +123,14 @@ internal class AttachmentHandler(
     fun handleAttachPlatformFile(action: ConversationListUiAction.AttachPlatformFile) {
         scope.launch {
             try {
-                val newFiles = action.files.map {
+                val newFiles = action.files.map { picked ->
+                    // Copy the picked file into the sandbox NOW, while the picker's iOS
+                    // security scope is still live. The send path later reads the file by
+                    // path from a separate coroutine, where a path-rebuilt NSURL has no
+                    // scope — so without this copy `readFileData` throws "Unable to read
+                    // file". No-op on web; a cheap sandbox copy elsewhere. See
+                    // AttachmentUploadResolve.materializeForUpload.
+                    val it = picked.materializeForUpload(fileOperationsProvider)
                     val ct = it.mimeType()?.toString()
                         ?: detectContentTypeFromExtensionOrHint(it.name)
                     when {
