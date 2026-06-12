@@ -34,6 +34,19 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
+ * Trace colors for drawing on the map. Deliberately NOT theme colors: the OSM
+ * basemap doesn't follow the app theme, and Material pastels wash out on it.
+ * First color = the classic location-pin red; the rest stay saturated and
+ * distinguishable for multi-device days.
+ */
+val mapTraceColors = listOf(
+    Color(0xFFEA4335), // pin red
+    Color(0xFF4285F4), // map blue
+    Color(0xFF34A853), // map green
+    Color(0xFF9C27B0), // purple
+)
+
+/**
  * Viewport over Web-Mercator unit space (0..1 world): a center point plus the
  * unit-width of one screen pixel. Pure data so gestures and tile math share it.
  */
@@ -167,6 +180,15 @@ fun LocationTraceCanvas(
                     val p = toPx(segment[i])
                     path.lineTo(p.x, p.y)
                 }
+                if (showMapTiles) {
+                    // Cartography casing: a wider white underlay keeps the
+                    // route readable over any tile content.
+                    drawPath(
+                        path = path,
+                        color = Color.White.copy(alpha = 0.9f),
+                        style = Stroke(width = strokeWidth * 2.0f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
                 drawPath(
                     path = path,
                     color = color,
@@ -174,7 +196,11 @@ fun LocationTraceCanvas(
                 )
             }
             // Start dot (filled) and end marker (ring) for the whole trace.
-            segments.firstOrNull()?.firstOrNull()?.let { drawCircle(color, dotRadius, toPx(it)) }
+            segments.firstOrNull()?.firstOrNull()?.let {
+                val start = toPx(it)
+                if (showMapTiles) drawCircle(Color.White, dotRadius * 1.4f, start)
+                drawCircle(color, dotRadius, start)
+            }
             segments.lastOrNull()?.lastOrNull()?.let {
                 val end = toPx(it)
                 if (highlightLast) {

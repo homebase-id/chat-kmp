@@ -205,9 +205,4 @@ fun DeviceRow(device: LocationDeviceInfo, onClick: () -> Unit) {
 }
 
 @Composable
-fun dashboardTraceColors() = listOf(
-    MaterialTheme.colorScheme.primary,
-    MaterialTheme.colorScheme.tertiary,
-    MaterialTheme.colorScheme.secondary,
-    MaterialTheme.colorScheme.error,
-)
+fun dashboardTraceColors() = id.homebase.core.ui.screens.location.history.mapTraceColors
