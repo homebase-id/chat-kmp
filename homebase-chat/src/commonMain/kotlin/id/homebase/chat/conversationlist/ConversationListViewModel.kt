@@ -103,6 +103,14 @@ enum class ConversationLoadTrigger {
     /** A notification tap resolved to a now-loaded conversation. */
     NotificationResolved,
 
+    /**
+     * Navigation caused by an incoming OS share (homebase-share:// on iOS,
+     * ShareReceiverActivity → MainActivity on Android). This is the ONLY trigger
+     * that may auto-send a pending share descriptor — see
+     * [MessageActionsHandler.processPendingSharedContent].
+     */
+    ShareIntent,
+
     /** Caller did not specify — investigate if these show up in a burst. */
     Unknown,
 }
@@ -757,9 +765,11 @@ class ConversationListViewModel(
         Logger.i(tag = "ConversationListViewModel") {
             "selectConversation id=$conversationId scrollToBottom=$scrollToBottom trigger=$trigger"
         }
-        // Check for pending shared content (from iOS share extension or other handoff)
+        // Check for pending shared content (from iOS share extension or other handoff).
+        // Pass the trigger: only a ShareIntent-caused open consumes the descriptor, so a
+        // leftover share can't be auto-re-sent by an ordinary open or a notification tap.
         viewModelScope.launch {
-            messageActionsHandler.processPendingSharedContent(conversationId)
+            messageActionsHandler.processPendingSharedContent(conversationId, trigger)
         }
 
         ActiveConversation.selectConversation(conversationId)
@@ -1740,7 +1750,7 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
  * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
  * display name / profile image with a bare odinId.
  */
-internal fun synthesizeOwnerSession(
+fun synthesizeOwnerSession(
     live: OwnerSession?,
     credentials: ApiCredentials?,
 ): OwnerSession? = live ?: credentials?.let {

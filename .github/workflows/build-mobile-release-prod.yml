@@ -213,9 +213,12 @@ jobs:
           kotlin.native.disableCompilerDaemon=true
           # 8g, not less: run 27407420160's GC log proved ~5.1 GB is genuinely
           # live during linkReleaseFrameworkIosArm64 (full GC clearing soft refs
-          # reclaimed nothing at a 6g cap). 8g exceeds the runner's 7 GB RAM but
-          # macOS swap absorbs it once xcodebuild isn't resident (see the
-          # pre-build step below).
+          # reclaimed nothing at a 6g cap). 8g exceeds the runner's 7 GB RAM;
+          # macOS swap absorbs it, proven even with xcodebuild resident: run
+          # 27414487423's in-Xcode link completed at 8g. (A pre-build step that
+          # linked before fastlane was removed — embedAndSignAppleFrameworkForXcode
+          # configures the link differently, so the pre-built framework was not
+          # UP-TO-DATE and the ~60 min link ran twice.)
           kotlin.native.jvmArgs=-Xmx8g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
@@ -236,21 +239,6 @@ jobs:
               fi
             done
           done
-
-      # Pre-build the Kotlin frameworks BEFORE fastlane/xcodebuild start, so the
-      # memory-hungry release link has the runner's 7 GB to itself instead of
-      # competing with xcodebuild/SWBBuildService/fastlane (run 27407420160 saw
-      # both a heap-space OOM in the link and SIGKILLs of java processes —
-      # system-level memory exhaustion). The Xcode script phase ("Compile Kotlin
-      # Framework") then finds the link tasks UP-TO-DATE and just copies the
-      # frameworks. Must run AFTER the FFmpegKit signature strip so task inputs
-      # are identical between this invocation and Xcode's.
-      # Rollback: delete this step together with the other CI-memory steps.
-      - name: Pre-build Kotlin frameworks (link outside Xcode)
-        run: |
-          ./gradlew :homebase-core:linkReleaseFrameworkIosArm64 \
-                    :homebase-notifshared:linkReleaseFrameworkIosArm64
-          ./gradlew --stop
 
       # fastlane's build_app starts with `xcodebuild -resolvePackageDependencies`,
       # which has no timeout: run 27409300090 hung there for 35 min (vs 80 s in
