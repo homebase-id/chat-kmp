@@ -1,6 +1,7 @@
 import UIKit
 import SwiftUI
 import Intents
+import FirebaseCore
 
 /// Main entry point for the iOS Share Extension.
 /// Checks auth, loads the conversation cache, shows a picker,
@@ -9,6 +10,13 @@ class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // Configure Firebase so Crashlytics captures crashes in the share-extension
+        // process (separate bundle/process from the main app). Guarded against
+        // re-entry across extension reuse.
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
 
         // 1. Check authentication via App Group cache
         guard ShareAuthChecker.isAuthenticated() else {

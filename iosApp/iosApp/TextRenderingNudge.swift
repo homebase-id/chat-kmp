@@ -95,18 +95,13 @@ extension UIWindow {
     }
 }
 
-/// Blank-text recovery EXPERIMENT, fired by a device shake. When the bug strikes every label is
-/// unreadable, so the user can't tap an on-screen control — a physical shake works regardless.
-///
-/// We read the (read-only) CAMetalLayer state from the view hierarchy and hand it to Kotlin
-/// `onBlankTextShake`, which logs the font-cache state to homebase.log BEFORE, attempts a recovery
-/// (purge Skia caches + force a full Compose re-composition so glyphs re-rasterize), and logs the
-/// font-cache state again ~1.5s later. The before/after counts tell us whether the recovery worked.
-/// Passing the CAMetalLayer fields means the GPU-surface state lands in the shareable homebase.log
-/// too (Kotlin can't read Compose's Metal view).
-func captureAndRecoverOnShake() {
-    os_log("BLANK-TEXT shake — capturing state + attempting recovery", log: textRenderLog, type: .error)
-
+/// Shake recovery v2 (SURFACE RECREATION) — logging half. The recovery itself is in ContentView:
+/// it bumps `.id()` on `ComposeView`, which tears down the ComposeUIViewController and rebuilds it,
+/// giving skiko a fresh GrDirectContext + empty glyph atlas (the only lever that can rebuild the
+/// dead atlas; purge+recompose was field-falsified three times). This helper reads the (read-only)
+/// CAMetalLayer state from the CURRENT view hierarchy (old controller for phase "before", new one
+/// for phase "after-recreate") and forwards it to Kotlin so it lands in the shareable homebase.log.
+func logShakeRecoveryState(phase: String) {
     var count = 0
     var devicePresent = false
     var drawableW = 0.0
@@ -115,10 +110,11 @@ func captureAndRecoverOnShake() {
         view.layoutIfNeeded()
         collectMetalState(in: view, count: &count, devicePresent: &devicePresent, drawableW: &drawableW, drawableH: &drawableH)
     } else {
-        os_log("shake: MainViewControllerRef.instance is nil", log: textRenderLog, type: .fault)
+        os_log("shake[%{public}@]: MainViewControllerRef.instance is nil", log: textRenderLog, type: .fault, phase)
     }
 
-    IosGpuTextDiagnosticsKt.onBlankTextShake(
+    IosGpuTextDiagnosticsKt.logShakeRecovery(
+        phase: phase,
         metalLayerCount: Int32(count),
         metalDevicePresent: devicePresent,
         drawableWidth: drawableW,
