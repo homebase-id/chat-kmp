@@ -143,6 +143,8 @@ import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
+import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.settings.LocationSettingsViewModel
 
@@ -657,11 +659,20 @@ val appModule = module {
             trackingCoordinator = get(),
             pointStore = get(),
             uploaderService = get(),
+            deviceDirectory = get(),
             tracker = get(),
         )
     }
     viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
+    singleOf(::LocationDeviceDirectory)
+    viewModel { params ->
+        FindDeviceViewModel(
+            deviceIdArg = params.getOrNull(),
+            deviceDirectory = get(),
+            locationPreferences = get(),
+        )
+    }
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
