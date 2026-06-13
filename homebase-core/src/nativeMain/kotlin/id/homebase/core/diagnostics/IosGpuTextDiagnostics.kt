@@ -154,20 +154,26 @@ private fun maybeFireBlankTextTrigger() {
 }
 
 /**
- * iOS blank-text recovery EXPERIMENT — called from Swift (`ContentView`) when the user shakes the
- * device during a blank screen. Because every label is unreadable during the bug, a physical shake
- * is the only reliable trigger.
+ * Shake recovery v2 — SURFACE RECREATION. Logging side of the experiment; the recovery itself is
+ * Swift-side (`ContentView` bumps `.id()` on `ComposeView`, tearing down the `ComposeUIViewController`
+ * and rebuilding it → fresh skiko `GrDirectContext` → fresh glyph atlas with empty residency
+ * bookkeeping → every glyph is a miss → fresh rasterize + upload → text renders).
  *
- * It (1) logs the font-cache state to homebase.log BEFORE, (2) attempts a recovery — purge Skia's
- * CPU strike cache + GPU resource/atlas pages, then force a full re-composition so every `Text`
- * re-shapes and re-rasterizes against a clean atlas — and (3) logs the font-cache state again ~1.5s
- * later. The before/after `fontCacheCount` tells us whether the recovery worked (climbs to ~80 = text
- * rendered; stays ~0 = glyphs still aren't rasterizing, pointing upstream of the GPU).
+ * Why not purge+recompose (v1)? Field-falsified three times (2026-06-10, 2026-06-12 ×2): even
+ * freshly recomposed text with freshly rasterized CPU strikes stayed blank, because the per-context
+ * glyph-atlas texture/bookkeeping lives on the `GrDirectContext` Compose owns internally — no public
+ * API reaches it. The atlas is born dead when Compose's first frame renders while the app is still
+ * in the BACKGROUND state (iOS rejects background Metal submissions): fingerprint
+ * `fontCacheUsed=6889 count=4` at a first-ever Foreground with no prior background mark.
  *
- * The CAMetalLayer fields come from Swift (Kotlin can't read Compose's Metal view) so the GPU-surface
- * state (device present? drawable size?) also lands in the shareable homebase.log. Runs on main.
+ * Swift calls this twice per shake — `phase="before"` ahead of the recreation and
+ * `phase="after-recreate"` ~2.5s after — each time with the CAMetalLayer state read from the
+ * (old/new) view hierarchy, so the GPU-surface state lands in the shareable homebase.log.
+ * Text visibly returning + a healthy after-state = recovery proven; we then hang it on the
+ * (recalibrated) auto-trigger.
  */
-fun onBlankTextShake(
+fun logShakeRecovery(
+    phase: String,
     metalLayerCount: Int,
     metalDevicePresent: Boolean,
     drawableWidth: Double,
@@ -175,13 +181,17 @@ fun onBlankTextShake(
 ) {
     val metal = "metal[count=$metalLayerCount device=$metalDevicePresent " +
         "drawable=${drawableWidth.toInt()}x${drawableHeight.toInt()}]"
-    GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake/before $metal")
+    GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake-recreate/$phase $metal")
+}
 
-    runCatching { Graphics.purgeAllCaches() }
-    TextRecovery.forceRecompose()
-
-    MainScope().launch {
-        delay(1500)
-        GpuTextDiagnostics.log(GpuTextDiagnostics.Event.ManualCapture, note = "shake/after purge+recompose")
-    }
+/**
+ * PREVENTION experiment marker — called from Swift (`ContentView`) at the scene's FIRST `.active`
+ * phase, the moment it builds `ComposeView` (creation is deferred until then so Compose can never
+ * render its first frame while the app is backgrounded — the confirmed atlas-poisoning condition).
+ * Lands in homebase.log so a session's timeline shows ColdStart → (gap, if launched in background)
+ * → this line → Foreground. Validation: background-launched sessions should now show `0/0` at the
+ * first Foreground instead of the poisoned `6889/4` fingerprint, and no blank.
+ */
+fun logPrevention(note: String) {
+    Logger.i(tag = GpuTextDiagnostics.TAG) { "prevention: $note" }
 }

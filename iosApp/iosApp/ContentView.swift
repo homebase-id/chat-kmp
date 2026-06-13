@@ -24,11 +24,31 @@ struct ContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var showPrivacyOverlay = false
     @State private var triggerToast: String? = nil
+    // Shake recovery v2: bumping this recreates ComposeView (SwiftUI dismantles + remakes the
+    // ComposeUIViewController) → fresh skiko GrDirectContext → fresh glyph atlas. The only lever
+    // that can rebuild the dead atlas (purge+recompose was field-falsified three times).
+    @State private var composeViewEpoch = 0
+    @State private var lastShakeAt = Date.distantPast
+    // PREVENTION: don't build ComposeView until the scene has been .active at least once. iOS can
+    // launch the process in the BACKGROUND (prewarm / push relaunch) and still connect the scene;
+    // Compose's first frame then renders while backgrounded, iOS rejects the Metal submissions, and
+    // the glyph atlas is born dead → all text blank at the first real foreground (fingerprint
+    // fontCacheUsed=6889 count=4, 3/3 field captures). Latched true forever after — backgrounding
+    // later must NOT tear the view down.
+    @State private var hasBeenActive = false
 
     var body: some View {
         ZStack {
-            ComposeView()
-                .ignoresSafeArea()
+            if hasBeenActive || scenePhase == .active {
+                ComposeView()
+                    .id(composeViewEpoch)
+                    .ignoresSafeArea()
+            } else {
+                // Native placeholder while the scene has never been active (background launch, or
+                // the first milliseconds of a normal launch before .active lands).
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea()
+            }
 
             if showPrivacyOverlay {
                 PrivacyOverlayView()
@@ -56,6 +76,13 @@ struct ContentView: View {
         }
         .onAppear {
             os_log("onAppear fired", log: textRenderLog, type: .info)
+            // PREVENTION latch (companion to the .active onChange): if the scene is already active
+            // when we appear, onChange never fires — latch here so a later backgrounding can never
+            // un-build ComposeView (tearing it down on .background would recreate the very bug).
+            if scenePhase == .active && !hasBeenActive {
+                hasBeenActive = true
+                IosGpuTextDiagnosticsKt.logPrevention(note: "appeared already .active — ComposeView built immediately")
+            }
             // DISABLED for the blank-text recovery experiment — the cold-start 150ms Metal nudge is a
             // bare setNeedsDisplay (replays cached blobs) that hasn't reliably fixed the bug and would
             // confound attribution of the shake-triggered purge+recompose recovery. Re-enable to restore.
@@ -77,6 +104,12 @@ struct ContentView: View {
                 withAnimation(.easeOut(duration: 0.15)) {
                     showPrivacyOverlay = false
                 }
+                // PREVENTION latch: first .active ever → ComposeView gets built now (and stays built
+                // through later backgrounding). Log it so homebase.log shows the deferral timeline.
+                if !hasBeenActive {
+                    hasBeenActive = true
+                    IosGpuTextDiagnosticsKt.logPrevention(note: "first .active — ComposeView built now (deferred since launch)")
+                }
                 // DISABLED for the experiment (see onAppear): the foreground nudge would mask the blank
                 // and confound the shake recovery. nudgeMetalLayer(trigger: "scenePhase→active")
             default:
@@ -91,9 +124,26 @@ struct ContentView: View {
             // }
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
-            // Blank-text recovery experiment: log cache state, purge Skia caches + force a full
-            // re-composition, then log again ~1.5s later. See captureAndRecoverOnShake.
-            captureAndRecoverOnShake()
+            // Shake recovery v2 — SURFACE RECREATION. Acknowledge visibly (native toast renders even
+            // while Compose text is blank), log before-state, recreate the Compose view controller
+            // (fresh GrDirectContext + empty atlas bookkeeping), then log after-state. Costs: the
+            // composition rebuilds (navigation resets, in-progress typing lost) — acceptable on a
+            // deliberate shake during an unusable screen. Debounced: double-shakes (seen in the
+            // field) must not recreate twice.
+            let now = Date()
+            guard now.timeIntervalSince(lastShakeAt) > 5 else { return }
+            lastShakeAt = now
+
+            os_log("BLANK-TEXT shake — recreating Compose surface", log: textRenderLog, type: .error)
+            withAnimation { triggerToast = "🔄 Shake: rebuilding screen to recover text… (logged — please share the log via Help, don't clear it)" }
+            logShakeRecoveryState(phase: "before")
+            composeViewEpoch += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                logShakeRecoveryState(phase: "after-recreate")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+                withAnimation { triggerToast = nil }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .blankTextTriggerFired)) { note in
             // Blank-text auto-trigger fired (observe-only). Show a native toast asking the tester to
