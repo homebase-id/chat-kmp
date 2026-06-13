@@ -45,6 +45,7 @@ import id.homebase.resources.contactbook_action_import
 import id.homebase.resources.contactbook_action_settings
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_import
+import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
@@ -97,18 +98,20 @@ fun ContactBookScreen(
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errImport = stringResource(MR.string.contactbook_error_import)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
+    val errMessage = stringResource(MR.string.contactbook_error_message)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 ContactBookUiEvent.RequestContactsPermission ->
                     permissionManager.askPermission(PermissionType.CONTACTS)
-                is ContactBookUiEvent.OpenChat -> { /* navigation handled in AppNavHost */ }
+                is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
+                        ContactBookError.MessageFailed -> errMessage
                         ContactBookError.ImportFailed,
                         ContactBookError.PermissionDenied -> errImport
                     }

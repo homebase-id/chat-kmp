@@ -5,6 +5,8 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.contacts.ContactContent
+import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
@@ -37,6 +39,7 @@ class ContactBookViewModel(
     private val stream: ContactBookStream,
     private val service: ContactBookService,
     private val preferences: ContactBookPreferences,
+    private val conversationService: ConversationService,
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -97,9 +100,7 @@ class ContactBookViewModel(
             is ContactBookUiAction.EditClicked -> _overlay.value = ContactBookOverlay.Edit(action.entry)
             is ContactBookUiAction.DeleteClicked -> handleDelete(action.entry)
             is ContactBookUiAction.SaveContact -> handleSave(action.draft, action.editing, action.photo)
-            is ContactBookUiAction.MessageClicked -> {
-                action.entry.odinId?.let { _events.tryEmit(ContactBookUiEvent.OpenChat(it)) }
-            }
+            is ContactBookUiAction.MessageClicked -> handleMessage(action.entry)
             is ContactBookUiAction.SyncClicked -> {
                 val odinId = action.entry.odinId ?: return
                 viewModelScope.launch { service.syncFromIdentity(odinId) }
@@ -204,6 +205,32 @@ class ContactBookViewModel(
             contentType = contentType,
             versionTag = versionTag,
         )
+    }
+
+    /**
+     * Opens (creating if needed) the 1:1 conversation with this contact, then
+     * emits the conversationId so the host can land the chat list on it — the
+     * same path the "New conversation" contact picker uses. Closes the detail
+     * overlay first so the chat is what the user sees.
+     */
+    private fun handleMessage(entry: ContactBookEntry) {
+        val odinId = entry.odinId?.trim()?.ifBlank { null } ?: return
+        _overlay.value = null
+        viewModelScope.launch {
+            val conversationId = try {
+                conversationService.createConversation(
+                    recipients = listOf(OdinId(odinId)),
+                    title = "",
+                    payloadBundle = null,
+                ).conversationId
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.MessageFailed))
+                return@launch
+            }
+            _events.tryEmit(ContactBookUiEvent.OpenConversation(conversationId))
+        }
     }
 
     private fun handleDelete(entry: ContactBookEntry) {

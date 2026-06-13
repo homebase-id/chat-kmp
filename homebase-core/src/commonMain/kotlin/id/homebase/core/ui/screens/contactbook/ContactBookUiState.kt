@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
+import kotlin.uuid.Uuid
 
 /** Source filter for the list. */
 enum class ContactFilter { ALL, HOMEBASE, IMPORTED }
@@ -111,8 +112,8 @@ sealed interface ContactBookUiAction {
 sealed interface ContactBookUiEvent {
     /** Ask the screen (which owns the PermissionsManager) to prompt for CONTACTS. */
     data object RequestContactsPermission : ContactBookUiEvent
-    /** Bridge into chat for a contact that has an odinId. */
-    data class OpenChat(val odinId: String) : ContactBookUiEvent
+    /** Open (creating if needed) the 1:1 conversation with a contact, by id. */
+    data class OpenConversation(val conversationId: Uuid) : ContactBookUiEvent
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent
@@ -123,5 +124,6 @@ enum class ContactBookError {
     DeleteFailed,
     ImportFailed,
     PhotoFailed,
+    MessageFailed,
     PermissionDenied,
 }

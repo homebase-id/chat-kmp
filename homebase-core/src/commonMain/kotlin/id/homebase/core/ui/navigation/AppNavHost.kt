@@ -338,13 +338,16 @@ fun AppNavHost(
         }
     }
 
-    // Contact Book events → navigation. OpenChat bridges into the chat contact
-    // screen; CloseOnboarding pops back out of the contacts tab after a skip.
+    // Contact Book events → navigation. OpenConversation lands the chat list on
+    // the (created-if-needed) 1:1 conversation; CloseOnboarding pops back out of
+    // the contacts tab after a skip.
     LaunchedEffect(Unit) {
         contactBookViewModel.events.collect { event ->
             when (event) {
-                is ContactBookUiEvent.OpenChat ->
-                    navController.navigate(Route.ContactInfo(event.odinId))
+                is ContactBookUiEvent.OpenConversation -> {
+                    navController.selectConversationOnChatList(event.conversationId)
+                    navController.popBackStack(Route.ChatList, inclusive = false)
+                }
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* RequestContactsPermission + Error handled by ContactBookScreen */ }
