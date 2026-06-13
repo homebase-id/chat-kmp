@@ -10,6 +10,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadOperationOptions
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
@@ -31,6 +32,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import okio.ByteString.Companion.encodeUtf8
 import okio.Path.Companion.toPath
+import okio.buffer
+import okio.use
 
 /**
  * Disk-backed, encrypted cache for authenticated drive file bytes. Wraps
@@ -544,6 +547,94 @@ class DriveFileProviderCached(
                 )
         )
         notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+    }
+
+    /**
+     * Move a file's seeded cache entries from the client-minted optimistic
+     * fileId to the server-assigned one. Counterpart to
+     * [cachePayloadBytesEncrypted]/[cacheThumbBytesEncrypted]: at optimistic
+     * send time entries are seeded under a random local fileId; when the file
+     * syncs back the server has assigned a new fileId and readers key by it,
+     * so without this the sender re-downloads media it just produced.
+     *
+     * [payloads] must be the SYNCED file's descriptors: thumbnail target keys
+     * need the server's `lastModified` (the read path includes it in the thumb
+     * key; seeds were written with null), and the thumbnail (w,h) list drives
+     * which sizes to move.
+     *
+     * Per-entry best-effort — a missing source (LRU-evicted seed) or a failed
+     * copy is logged and skipped; the only cost is a re-download.
+     */
+    suspend fun rekeyCachedFile(
+            driveId: Uuid,
+            oldFileId: Uuid,
+            newFileId: Uuid,
+            payloads: List<PayloadDescriptor>
+    ) {
+        for (descriptor in payloads) {
+            moveCacheEntry(
+                    cache = payloadDiskCache,
+                    oldKey = buildPayloadCacheKey(driveId, oldFileId, descriptor.key, null, null),
+                    newKey = buildPayloadCacheKey(driveId, newFileId, descriptor.key, null, null),
+                    logTag = "PayloadIO",
+            )
+            for (thumb in descriptor.thumbnails.orEmpty()) {
+                val w = thumb.pixelWidth ?: continue
+                val h = thumb.pixelHeight ?: continue
+                moveCacheEntry(
+                        cache = thumbDiskCache,
+                        // Seeds are written with lastModified = null; the synced
+                        // descriptor's lastModified is what readers use from now on.
+                        oldKey = buildThumbCacheKey(driveId, oldFileId, descriptor.key, w, h, null),
+                        newKey = buildThumbCacheKey(driveId, newFileId, descriptor.key, w, h, descriptor.lastModified),
+                        logTag = "ThumbIO",
+                )
+            }
+        }
+    }
+
+    /**
+     * Copy one cache entry's on-disk file to a new key, then remove the old
+     * entry. A byte-exact streaming file copy — the serialized entry format
+     * (status, contentType, payloadencrypted flag, bytes) is preserved without
+     * ever loading a potentially large payload into memory.
+     */
+    private suspend fun moveCacheEntry(
+            cache: DiskCache,
+            oldKey: String,
+            newKey: String,
+            logTag: String,
+    ) {
+        try {
+            val copied = cache.openSnapshot(oldKey.toDiskKey())?.use { snapshot ->
+                val editor = cache.openEditor(newKey.toDiskKey()) ?: return@use false
+                try {
+                    fileSystem.source(snapshot.data).use { source ->
+                        fileSystem.sink(editor.data).buffer().use { sink ->
+                            sink.writeAll(source)
+                        }
+                    }
+                    editor.commit()
+                    true
+                } catch (e: Exception) {
+                    try { editor.abort() } catch (_: Exception) {}
+                    throw e
+                }
+            } ?: false
+
+            if (!copied) {
+                Logger.d(tag = logTag) { "cache-rekey skipped (no source entry or editor conflict) old=$oldKey" }
+                return
+            }
+            // A racing read between the DB fileId swap and this copy may have
+            // 404-cached the new key — clear it so the moved entry is visible.
+            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - newKey }
+            // The old key can never be read again (the local record now carries
+            // the new fileId) — free its LRU budget instead of waiting for eviction.
+            cache.remove(oldKey.toDiskKey())
+        } catch (e: Exception) {
+            Logger.w(tag = logTag, throwable = e) { "cache-rekey FAILED old=$oldKey new=$newKey" }
+        }
     }
 
     // ====================================================
