@@ -28,11 +28,14 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
@@ -43,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.common.util.formatBytes
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
@@ -65,8 +69,11 @@ import id.homebase.resources.label_message_id
 import id.homebase.resources.label_sent
 import id.homebase.resources.error_delivery_failed
 import id.homebase.resources.action_try_now
-import id.homebase.resources.msg_next_attempt_minutes
+import id.homebase.resources.msg_next_attempt_countdown
 import id.homebase.resources.msg_next_attempt_shortly
+import id.homebase.resources.msg_send_attempt
+import id.homebase.resources.msg_stuck_reason
+import id.homebase.resources.msg_waiting_on_earlier_message
 import id.homebase.resources.msg_status_delivery_details_unavailable
 import id.homebase.resources.msg_status_failed_to_send
 import id.homebase.resources.msg_status_sending
@@ -78,8 +85,43 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * Live "next attempt" label for a queued message: ticks once a second toward
+ * [deadlineMs] and renders the remaining time as "in m:ss". Returns the
+ * "shortly" copy when there's no meaningful deadline ([deadlineMs] null — the
+ * row is in flight or fresh) or the countdown has elapsed.
+ */
+@Composable
+private fun rememberNextAttemptText(deadlineMs: Long?): String {
+    if (deadlineMs == null) return stringResource(MR.string.msg_next_attempt_shortly)
+    var nowMs by remember(deadlineMs) { mutableStateOf(UnixTimeUtc.now().milliseconds) }
+    LaunchedEffect(deadlineMs) {
+        while (nowMs < deadlineMs) {
+            delay(1_000)
+            nowMs = UnixTimeUtc.now().milliseconds
+        }
+    }
+    val remainingMs = (deadlineMs - nowMs).coerceAtLeast(0L)
+    return if (remainingMs <= 0L) {
+        stringResource(MR.string.msg_next_attempt_shortly)
+    } else {
+        stringResource(MR.string.msg_next_attempt_countdown, formatCountdown(remainingMs))
+    }
+}
+
+/** Format a remaining-millis span as a compact "m:ss" countdown (e.g. "1:48",
+ *  "0:09"). Digits only — safe to pass as a [stringResource] argument. */
+private fun formatCountdown(remainingMs: Long): String {
+    val totalSeconds = remainingMs / 1_000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    val paddedSeconds = if (seconds < 10L) "0$seconds" else "$seconds"
+    return "$minutes:$paddedSeconds"
+}
 
 @Composable
 fun MessageInfoScreen(
@@ -226,27 +268,53 @@ fun MessageInfoUi(
 
                         OutgoingSendState.Queued -> {
                             // Still in the outbox: it WILL be sent (after its
-                            // backoff). Honest copy + a Try-now escape hatch
-                            // instead of an indefinite "Sending…" spinner.
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                                val minutes = uiState.nextAttemptInMinutes
-                                val attemptText = if (minutes == null || minutes <= 0L) {
-                                    stringResource(MR.string.msg_next_attempt_shortly)
-                                } else {
-                                    stringResource(MR.string.msg_next_attempt_minutes, minutes)
+                            // backoff). Honest copy — attempt count, a live
+                            // countdown to the next try (or "waiting on an
+                            // earlier message"), and the last failure reason —
+                            // plus a Try-now escape hatch, instead of an
+                            // indefinite "Sending…" spinner.
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    val statusText = if (uiState.waitingOnEarlierMessage) {
+                                        stringResource(MR.string.msg_waiting_on_earlier_message)
+                                    } else {
+                                        stringResource(
+                                            MR.string.msg_still_in_outbox,
+                                            rememberNextAttemptText(uiState.nextAttemptAtMs),
+                                        )
+                                    }
+                                    Text(
+                                        text = statusText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
                                 }
-                                Text(
-                                    text = stringResource(MR.string.msg_still_in_outbox, attemptText),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
+                                uiState.attemptNumber?.let { attempt ->
+                                    Text(
+                                        text = stringResource(
+                                            MR.string.msg_send_attempt,
+                                            attempt,
+                                            uiState.maxAttempts,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                                uiState.stuckReason?.let { reason ->
+                                    Text(
+                                        text = stringResource(MR.string.msg_stuck_reason, reason),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
                             }
                             if (uiState.canTryNow) {
                                 OutlinedButton(

@@ -113,6 +113,13 @@ SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTim
 FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
+-- Does ANY outbox row still exist for this uniqueId (across drives)? Message
+-- Info uses it to tell whether a queued message is still waiting on an earlier
+-- message — its dependencyUniqueId row hasn't drained yet — which is the same
+-- existence condition the checkout dependency gate (nextScheduled) applies.
+existsByUniqueId:
+SELECT COUNT(*) FROM Outbox WHERE uniqueId = ?;
+
 -- Select checked out item
 selectCheckedOut:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files

@@ -8,6 +8,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.upload.CreateFileResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.PayloadUploadReceipt
@@ -208,6 +209,26 @@ class DriveOutboxUploader(
                     "fileState=${serverFile.fileState} " +
                     "recipients=${original.transitOptions?.recipients?.size ?: 0}"
         )
+
+        // Lost-ack recovery: the original UploadNewFile already landed on the
+        // server (that's *why* it reports ExistingFileWithUniqueId) — only the
+        // success response was lost to a dropped connection. For a
+        // payload-carrying request we can neither skip nor replay the update:
+        // re-sending the pre-encrypted bytes reuses the original payload IV, and
+        // the server rejects an unchanged IV with MustRotateKeyHeaderIvWhenUpdating
+        // ("When updating a file, you must change the Iv") on every retry —
+        // a deterministic ~48h loop (see the homebase.log image-to-Leela stall).
+        // The bytes on disk are sealed under that IV so we can't safely re-key
+        // them in memory. But we don't need to: the server already holds our
+        // file and payloads under our own key. Mark the row complete (Sent).
+        if (serverFileIsOurLandedCreate(original, serverFile)) {
+            Logger.i(
+                "$TAG retryAsUpdate: server already holds our create for uniqueId=$uniqueId " +
+                        "(AES key matches, payload(s) present) — treating as Sent (lost-ack create), " +
+                        "skipping the payload-IV-reuse update that the server would reject"
+            )
+            return
+        }
 
         // The server rejects an update whose AES key differs from the existing
         // file's ("AES key must match"). When the client's key has diverged
@@ -513,4 +534,37 @@ internal fun stampDescriptorsWithReceipts(
             descriptor.copy(thumbnails = null)
         }
     }
+}
+
+/**
+ * True when the server file already carrying our uniqueId is OUR OWN
+ * already-landed create whose success ack was lost (e.g. the connection
+ * dropped right after the server created the file — the
+ * `SocketException: Software caused connection abort` case). The signal:
+ *
+ *  - the request is payload-carrying (header-only divergence is handled by
+ *    [rekeyedUpdateForExistingServerFile]; only payload requests hit the
+ *    unrecoverable "must change the Iv" loop);
+ *  - the server file's AES key equals ours — a random 256-bit key only matches
+ *    if the server file is the one *we* created, not a stale/foreign file that
+ *    happens to share the (also random) uniqueId;
+ *  - every payload we were uploading is already present in the server header,
+ *    so nothing is missing and there is genuinely nothing left to send.
+ *
+ * When this holds, [DriveOutboxUploader.retryAsUpdate] returns without issuing
+ * the update PATCH — the row completes and the message shows Sent — instead of
+ * replaying the original payload IV, which the server rejects forever.
+ *
+ * Pure given its inputs — unit-tested in RetryAsUpdateRecoverLostAckTest.
+ */
+internal fun serverFileIsOurLandedCreate(
+    original: UploadFileRequest,
+    serverFile: HomebaseFile,
+): Boolean {
+    if (original.payloads.isEmpty()) return false
+    val serverKey = serverFile.keyHeader
+    if (serverKey == KeyHeader.empty()) return false
+    if (original.keyHeader.aesKey != serverKey.aesKey) return false
+    val serverPayloadKeys = serverFile.fileMetadata.payloads?.mapTo(mutableSetOf()) { it.key } ?: emptySet()
+    return original.payloads.all { it.key in serverPayloadKeys }
 }

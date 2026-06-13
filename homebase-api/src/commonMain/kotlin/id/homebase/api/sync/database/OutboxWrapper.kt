@@ -51,6 +51,13 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
+    /** True when any outbox row still exists for [uniqueId] (across drives) —
+     *  i.e. a dependency a queued message is waiting on hasn't drained yet. */
+    suspend fun existsByUniqueId(uniqueId: Uuid): Boolean =
+        databaseManager.readValue("outbox.existsByUniqueId") {
+            delegate.existsByUniqueId(uniqueId).executeAsOne() > 0L
+        }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 

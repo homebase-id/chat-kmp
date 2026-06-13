@@ -53,7 +53,11 @@
     <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
     <string name="msg_still_in_outbox">Still sending — next attempt %1$s</string>
     <string name="msg_next_attempt_minutes">in about %1$d min</string>
+    <string name="msg_next_attempt_countdown">in %1$s</string>
     <string name="msg_next_attempt_shortly">shortly</string>
+    <string name="msg_send_attempt">Attempt %1$d of %2$d</string>
+    <string name="msg_waiting_on_earlier_message">Waiting for an earlier message to send first</string>
+    <string name="msg_stuck_reason">Couldn’t send: %1$s</string>
     <string name="action_try_now">Try now</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>

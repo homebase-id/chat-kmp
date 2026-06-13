@@ -168,11 +168,12 @@ class MessageInfoViewModel(
             )
             // The outbox row (when present) overrides the tag/server view —
             // a queued item is "still sending", whatever the tags claim.
+            val row = state.outboxRow.takeIf { isOwn }
             val overlay = retryUiState(
                 base = result,
-                inOutbox = isOwn && state.outboxRow != null,
-                isCheckedOut = state.outboxRow?.isCheckedOut == true,
-                nextRunTimeRaw = state.outboxRow?.nextRunTime,
+                inOutbox = row != null,
+                isCheckedOut = row?.isCheckedOut == true,
+                nextRunTimeRaw = row?.nextRunTime,
                 nowMs = UnixTimeUtc.now().milliseconds,
             )
             state.copy(
@@ -182,6 +183,11 @@ class MessageInfoViewModel(
                 canRetry = overlay.canRetry,
                 canTryNow = overlay.canTryNow,
                 nextAttemptInMinutes = overlay.nextAttemptInMinutes,
+                // Diagnostic detail for a queued/backed-off message.
+                attemptNumber = row?.takeIf { it.checkOutCount >= 1 }?.let { (it.checkOutCount + 1).toInt() },
+                nextAttemptAtMs = row?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
+                waitingOnEarlierMessage = row?.dependencyPending == true,
+                stuckReason = row?.lastError,
             )
         }
     }
