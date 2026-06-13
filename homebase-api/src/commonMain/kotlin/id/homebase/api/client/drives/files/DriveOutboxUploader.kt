@@ -7,7 +7,10 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.upload.CreateFileResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.PayloadUploadReceipt
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -23,6 +26,7 @@ import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlin.uuid.Uuid
@@ -32,6 +36,8 @@ class DriveOutboxUploader(
     private val fileProvider: DriveFileProvider,
     private val operationsProvider: DriveFileOperationsProvider,
     private val reactionProvider: DriveFileGroupReactionProvider,
+    private val databaseManager: DatabaseManager,
+    private val credentialsManager: CredentialsManager,
 ) : OutboxUploader {
 
     override suspend fun upload(
@@ -100,6 +106,14 @@ class DriveOutboxUploader(
                             "recipientStatus=${rStatus.entries.joinToString { "${it.key}=${it.value}" }}"
                 )
             }
+            // Best-effort, MUST never throw: an exception after a successful
+            // upload would read as upload failure to OutboxSync and re-send
+            // the file.
+            if (result != null) {
+                runCatching { rekeyCacheAfterCreate(request, result) }.onFailure {
+                    Logger.w("$TAG uploadNewFile: cache rekey failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
+                }
+            }
         // region Recovery: missing conversation file
         // If the server already has a file with this uniqueId (e.g. stale/archived
         // from a previous install), convert the failed UploadNewFile into an
@@ -128,6 +142,39 @@ class DriveOutboxUploader(
             throw e
         }
         // endregion
+    }
+
+    /**
+     * Move the file's seeded payload-cache entries from the optimistic
+     * (client-minted) fileId to the server-assigned one, now that the upload
+     * response tells us both the new fileId and — via [CreateFileResult.payloads]
+     * receipts — each payload's server `lastModified` (the version segment of
+     * the thumbnail cache key). Doing this here, rather than at sync-back,
+     * works for every drive (chat, Vault, Moments), needs no UI state, and
+     * lands before the synced file re-renders under the new fileId.
+     *
+     * The old fileId comes from the local optimistic record, which still holds
+     * it at this moment (sync-back hasn't replaced the row yet). No local
+     * record, or one already carrying the server fileId → nothing to move.
+     * On servers that pre-date the receipts field, thumbs are skipped (their
+     * target keys need the server lastModified) and only payload entries move;
+     * the orphaned thumb seeds age out via LRU.
+     */
+    private suspend fun rekeyCacheAfterCreate(request: UploadFileRequest, result: CreateFileResult) {
+        val uniqueId = request.metadata.appData.uniqueId ?: return
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val local = databaseManager.driveMainIndex
+            .selectHomebaseFileByUnique(identityId, request.driveId, uniqueId) ?: return
+        if (local.fileId == result.fileId) return
+
+        val descriptors = stampDescriptorsWithReceipts(local.fileMetadata.payloads.orEmpty(), result.payloads)
+        if (descriptors.isEmpty()) return
+
+        fileProvider.rekeyCachedFile(request.driveId, local.fileId, result.fileId, descriptors)
+        Logger.d(
+            "$TAG rekeyCacheAfterCreate: moved cache entries uniqueId=$uniqueId " +
+                    "old=${local.fileId} new=${result.fileId} receipts=${result.payloads.size}"
+        )
     }
 
     // region Recovery: missing conversation file — retry UploadNewFile as update
@@ -442,4 +489,28 @@ internal suspend fun rekeyedUpdateForExistingServerFile(
         payloads = emptyList(),
         thumbnails = emptyList(),
     )
+}
+
+/**
+ * Prepare a local file's payload descriptors for a cache re-key by stamping
+ * each with its upload receipt's server-assigned `uid`/`lastModified` (the
+ * thumbnail cache key's version segment). A descriptor with no matching
+ * receipt — an old server that doesn't return receipts — keeps its payload
+ * entry movable but has its thumbnail list stripped: without the server
+ * lastModified its thumb target keys can't be computed, so those seeds are
+ * left to age out via LRU rather than copied to dead keys.
+ */
+internal fun stampDescriptorsWithReceipts(
+    localPayloads: List<PayloadDescriptor>,
+    receipts: List<PayloadUploadReceipt>,
+): List<PayloadDescriptor> {
+    val receiptsByKey = receipts.associateBy { it.key.lowercase() }
+    return localPayloads.map { descriptor ->
+        val receipt = receiptsByKey[descriptor.key.lowercase()]
+        if (receipt != null) {
+            descriptor.copy(uid = receipt.uid, lastModified = receipt.lastModified)
+        } else {
+            descriptor.copy(thumbnails = null)
+        }
+    }
 }
