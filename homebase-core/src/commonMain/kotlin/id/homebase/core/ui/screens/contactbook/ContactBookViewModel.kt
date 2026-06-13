@@ -5,7 +5,7 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.connections.CircleDefinition
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactContent
@@ -24,11 +24,7 @@ import id.homebase.core.contactbook.isDeviceContactsSupported
 import id.homebase.core.contactbook.readDeviceContacts
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
-import id.homebase.core.util.resolveContentType
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -56,7 +52,7 @@ class ContactBookViewModel(
     private val _filter = MutableStateFlow(ContactFilter.ALL)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
     private val _importState = MutableStateFlow<ImportUiState?>(null)
-    private val _circles = MutableStateFlow<List<CircleDefinition>>(emptyList())
+    private val _circles = MutableStateFlow<List<CircleWithMembers>>(emptyList())
     private val _circlesLoading = MutableStateFlow(false)
     private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
 
@@ -75,7 +71,7 @@ class ContactBookViewModel(
     )
 
     private data class CirclesBundle(
-        val circles: List<CircleDefinition>,
+        val circles: List<CircleWithMembers>,
         val loading: Boolean,
         val members: CircleMembersUi?,
     )
@@ -94,17 +90,10 @@ class ContactBookViewModel(
             .keys.map { it.domainName.lowercase() }
             .toSet()
 
-        val filtered = contactsData.contacts
-            .filter { entry ->
-                when (ui.filter) {
-                    ContactFilter.ALL -> true
-                    ContactFilter.HOMEBASE -> entry.hasOdinId
-                    ContactFilter.IMPORTED -> !entry.hasOdinId
-                }
-            }
-            .filter { it.matches(ui.query) }
+        val filtered = contactsData.contacts.filter { it.matches(ui.query) }
 
         val connections = entriesForDomains(connectedDomains, contactsData.contacts)
+            .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
         ContactBookUiState(
@@ -119,7 +108,7 @@ class ContactBookViewModel(
             isLoading = !contactsData.loaded,
             searchQuery = ui.query,
             filter = ui.filter,
-            overlay = refreshOverlay(ui.overlay, contactsData.contacts),
+            overlay = ui.overlay,
             importState = ui.importState,
             importSupported = isDeviceContactsSupported(),
         )
@@ -151,17 +140,6 @@ class ContactBookViewModel(
     private val _events = MutableSharedFlow<ContactBookUiEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ContactBookUiEvent> = _events.asSharedFlow()
 
-    // Keep an open Detail overlay in sync with fresh stream data after an edit.
-    private fun refreshOverlay(
-        overlay: ContactBookOverlay?,
-        contacts: List<ContactBookEntry>,
-    ): ContactBookOverlay? = when (overlay) {
-        is ContactBookOverlay.Detail ->
-            contacts.find { it.uniqueId == overlay.entry.uniqueId }
-                ?.let { ContactBookOverlay.Detail(it) } ?: overlay
-        else -> overlay
-    }
-
     fun onAction(action: ContactBookUiAction) {
         when (action) {
             is ContactBookUiAction.TabSelected -> {
@@ -176,7 +154,12 @@ class ContactBookViewModel(
             is ContactBookUiAction.FilterChanged -> _filter.value = action.filter
             is ContactBookUiAction.ContactClicked -> {
                 _circleMembers.value = null // close the circle sheet if a member was tapped
-                _overlay.value = ContactBookOverlay.Detail(action.entry)
+                _events.tryEmit(
+                    ContactBookUiEvent.OpenDetail(
+                        uniqueId = action.entry.uniqueId.toString(),
+                        odinId = action.entry.odinId,
+                    )
+                )
             }
             ContactBookUiAction.AddClicked -> _overlay.value = ContactBookOverlay.Edit(null)
             is ContactBookUiAction.EditClicked -> _overlay.value = ContactBookOverlay.Edit(action.entry)
@@ -210,83 +193,21 @@ class ContactBookViewModel(
 
     private fun handleSave(draft: ContactDraft, editing: ContactBookEntry?, photo: PlatformFile?) {
         if (!draft.isSavable) return
-        val normalizedPhone = draft.phone.ifBlank { null }
-            ?.let { ContactFieldValidation.normalizePhone(it) }
-        // An odinId may be set on a new contact, or kept from the edited one.
-        val odinId = draft.odinId.trim().ifBlank { null } ?: editing?.odinId?.ifBlank { null }
-        val content = ContactContent(
-            odinId = odinId,
-            name = ContactName(
-                displayName = draft.displayName.ifBlank { null },
-                givenName = draft.givenName.ifBlank { null },
-                surname = draft.surname.ifBlank { null },
-            ),
-            source = editing?.source ?: ContactBookSource.MANUAL,
-            location = null,
-            phone = normalizedPhone?.let { ContactPhone(it) },
-            email = draft.email.ifBlank { null }?.let { ContactEmail(it) },
-        ).withLocationAndBirthday(draft)
-
         _overlay.value = null
         viewModelScope.launch {
-            val response = service.save(
-                content = content,
-                knownUniqueId = editing?.uniqueId,
-                knownVersionTag = editing?.versionTag,
-            )
-            if (response == null) {
-                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveFailed))
-                return@launch
+            when (val result = saveContactDraft(service, draft, editing, photo, contactTargetDrive.alias)) {
+                is ContactSaveResult.Success -> {
+                    stream.insertOrUpdateOptimistic(result.entry)
+                    if (result.photoFailed) {
+                        _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.PhotoFailed))
+                    }
+                }
+                ContactSaveResult.Forbidden ->
+                    _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveForbidden))
+                ContactSaveResult.Failed ->
+                    _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveFailed))
             }
-
-            // Upload the avatar after the contact exists (version-gated endpoint).
-            if (photo != null) {
-                val ok = uploadPhoto(response.uniqueId, response.versionTag, photo)
-                if (!ok) _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.PhotoFailed))
-            }
-
-            stream.insertOrUpdateOptimistic(
-                (editing ?: ContactBookEntry(
-                    uniqueId = response.uniqueId,
-                    fileId = response.uniqueId,
-                    versionTag = response.versionTag,
-                    displayName = draft.displayName.ifBlank { draft.phone.ifBlank { draft.email } },
-                )).copy(
-                    uniqueId = response.uniqueId,
-                    versionTag = response.versionTag,
-                    odinId = odinId,
-                    displayName = draft.displayName.ifBlank { normalizedPhone ?: draft.email }
-                        .ifBlank { "?" },
-                    givenName = draft.givenName.ifBlank { null },
-                    surname = draft.surname.ifBlank { null },
-                    phone = normalizedPhone,
-                    email = draft.email.ifBlank { null },
-                    city = draft.city.ifBlank { null },
-                    country = draft.country.ifBlank { null },
-                    birthday = draft.birthday.ifBlank { null },
-                    source = content.source,
-                ),
-            )
         }
-    }
-
-    private suspend fun uploadPhoto(uniqueId: Uuid, versionTag: Uuid, photo: PlatformFile): Boolean {
-        val bytes = try {
-            photo.readBytes()
-        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            return false
-        }
-        if (bytes.isEmpty()) return false
-        val contentType = resolveContentType(photo.name, photo.mimeType()?.toString())
-        return service.setPhoto(
-            uniqueId = uniqueId,
-            contactDriveId = contactTargetDrive.alias,
-            bytes = bytes,
-            contentType = contentType,
-            versionTag = versionTag,
-        )
     }
 
     // region Circles
@@ -295,38 +216,28 @@ class ContactBookViewModel(
         _circlesLoading.value = true
         viewModelScope.launch {
             val circles = try {
-                connectionNetworkProvider.getCircleDefinitions().filterNot { it.disabled }
+                connectionNetworkProvider.getCirclesWithMembers().filterNot { it.circle.disabled }
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "getCircleDefinitions failed" }
+                Logger.w(e, "ContactBookViewModel") { "getCirclesWithMembers failed" }
                 emptyList()
             }
-            _circles.value = circles.sortedBy { it.name.lowercase() }
+            _circles.value = circles.sortedBy { it.circle.name.lowercase() }
             _circlesLoading.value = false
         }
     }
 
-    private fun handleCircleClicked(circle: CircleDefinition) {
-        _circleMembers.value = CircleMembersUi(circleName = circle.name, isLoading = true)
-        viewModelScope.launch {
-            val domains = try {
-                connectionNetworkProvider.getCircleMembers(circle.id).map { it.domainName }
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "getCircleMembers failed for ${circle.id}" }
-                emptyList()
-            }
-            val members = entriesForDomains(domains.toSet(), stream.contacts.value)
-                .sortedBy { it.sortKey }
-            // Guard against a stale result if the user opened a different circle meanwhile.
-            _circleMembers.update { current ->
-                if (current?.circleName == circle.name) {
-                    current.copy(members = members, isLoading = false)
-                } else current
-            }
-        }
+    private fun handleCircleClicked(circle: CircleWithMembers) {
+        // Members are bundled with the circle list — resolve them to contact entries
+        // synchronously, no second network call.
+        val domains = circle.members.map { it.domainName }.toSet()
+        val members = entriesForDomains(domains, stream.contacts.value).sortedBy { it.sortKey }
+        _circleMembers.value = CircleMembersUi(
+            circleName = circle.circle.name,
+            members = members,
+            isLoading = false,
+        )
     }
 
     // endregion
@@ -432,18 +343,6 @@ class ContactBookViewModel(
     }
 
     // endregion
-}
-
-private fun ContactContent.withLocationAndBirthday(draft: ContactDraft): ContactContent {
-    val hasLocation = draft.city.isNotBlank() || draft.country.isNotBlank()
-    return copy(
-        location = if (hasLocation) id.homebase.api.client.contacts.ContactLocation(
-            city = draft.city.ifBlank { null },
-            country = draft.country.ifBlank { null },
-        ) else null,
-        birthday = draft.birthday.ifBlank { null }
-            ?.let { id.homebase.api.client.contacts.ContactBirthday(date = it) },
-    )
 }
 
 private fun DeviceContact.toContactContent(): ContactContent = ContactContent(

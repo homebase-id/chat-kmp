@@ -30,7 +30,6 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -401,7 +400,7 @@ fun SettingsUi(
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
                 modifier = Modifier.testTag("contactBookSettingsButton"),
-                imageVector = Icons.Outlined.Contacts,
+                imageVector = Icons.Outlined.People,
                 text = stringResource(MR.string.contactbook_settings_section),
                 onClick = onNavigateToContactBookSettings,
             )

@@ -22,9 +22,9 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.components.ContactBookEmptyState
 import id.homebase.core.ui.screens.contactbook.components.ContactBookRow
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_connections_empty
 import id.homebase.resources.contactbook_filter_all
-import id.homebase.resources.contactbook_filter_homebase
-import id.homebase.resources.contactbook_filter_imported
+import id.homebase.resources.contactbook_filter_connections
 import id.homebase.resources.contactbook_no_results
 import org.jetbrains.compose.resources.stringResource
 
@@ -34,6 +34,9 @@ fun ContactBookContent(
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val onConnections = uiState.filter == ContactFilter.CONNECTIONS
+    val list = if (onConnections) uiState.connections else uiState.contacts
+
     Column(modifier = modifier.fillMaxSize()) {
         FilterRow(uiState.filter, onAction)
 
@@ -43,27 +46,21 @@ fun ContactBookContent(
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
 
-            uiState.contacts.isEmpty() && uiState.searchQuery.isBlank() &&
-                uiState.filter == ContactFilter.ALL ->
+            list.isEmpty() && onConnections -> CenterText(
+                stringResource(MR.string.contactbook_connections_empty)
+            )
+
+            list.isEmpty() && uiState.searchQuery.isBlank() ->
                 ContactBookEmptyState(
                     showImport = uiState.importSupported,
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
                     onImportClick = { onAction(ContactBookUiAction.ImportClicked) },
                 )
 
-            uiState.contacts.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(MR.string.contactbook_no_results),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            list.isEmpty() -> CenterText(stringResource(MR.string.contactbook_no_results))
 
             else -> {
-                val grouped = uiState.contacts.groupBy { it.sectionKey }
+                val grouped = list.groupBy { it.sectionKey }
                 val sections = grouped.keys.sorted()
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -86,13 +83,30 @@ fun ContactBookContent(
                             ContactBookRow(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
-                                connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
+                                // Badge only in the "All" view — every row in
+                                // "Connections" is connected by definition.
+                                connected = !onConnections &&
+                                    entry.odinId?.lowercase() in uiState.connectedOdinIds,
                             )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CenterText(text: String) {
+    Box(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -113,14 +127,9 @@ private fun FilterRow(
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
         )
         FilterChip(
-            selected = filter == ContactFilter.HOMEBASE,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.HOMEBASE)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_homebase)) },
-        )
-        FilterChip(
-            selected = filter == ContactFilter.IMPORTED,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.IMPORTED)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_imported)) },
+            selected = filter == ContactFilter.CONNECTIONS,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CONNECTIONS)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_connections)) },
         )
     }
 }

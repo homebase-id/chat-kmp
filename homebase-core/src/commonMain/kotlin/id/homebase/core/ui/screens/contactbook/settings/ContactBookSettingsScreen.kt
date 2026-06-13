@@ -11,7 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Contacts
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -85,7 +85,7 @@ fun ContactBookSettingsUi(
             Spacer(modifier = Modifier.height(8.dp))
             if (showOpenContacts) {
                 SettingsItemAction(
-                    imageVector = Icons.Outlined.Contacts,
+                    imageVector = Icons.Outlined.People,
                     text = stringResource(MR.string.contactbook_settings_open),
                     onClick = { onAction(ContactBookSettingsUiAction.OpenContactsClicked) },
                 )

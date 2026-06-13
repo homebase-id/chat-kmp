@@ -178,7 +178,7 @@
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
     <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
-    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it's a Homebase ID?</string>
     <string name="login_error_generic">Login failed</string>
     <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
     <string name="login_continue_button">Continue to sign in</string>
@@ -354,7 +354,7 @@
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
     <string name="moments_push_new_post">A moment has been shared with you...</string>
-    <string name="moments_push_new_comment">Commented on a moment you\'re in</string>
+    <string name="moments_push_new_comment">Commented on a moment you're in</string>
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
@@ -390,7 +390,7 @@
     <string name="moments_add_people_confirm">Add</string>
     <string name="moments_add_people_already_shared">Already shared</string>
     <string name="moments_add_people_added">Shared with %1$d more</string>
-    <string name="moments_add_people_failed">Couldn\'t add people. Please try again.</string>
+    <string name="moments_add_people_failed">Couldn't add people. Please try again.</string>
     <string name="moments_add_people_still_posting">Moment is still being posted — try again in a moment.</string>
     <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
     <string name="moments_detail_comment_delete">Delete</string>
@@ -770,14 +770,14 @@
     <string name="chat_sticker_share">Stickers</string>
     <string name="chat_save_sticker">Save sticker</string>
     <string name="chat_sticker_saved">Sticker saved</string>
-    <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
-    <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
+    <string name="chat_sticker_save_failed">Couldn't save sticker</string>
+    <string name="chat_sticker_send_failed">Couldn't send sticker</string>
     <string name="chat_sticker_import">Import sticker</string>
     <string name="chat_stickers_empty">No saved stickers yet</string>
     <string name="chat_sticker_remove">Remove sticker</string>
     <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
     <string name="chat_sticker_removed">Sticker removed</string>
-    <string name="chat_sticker_remove_failed">Couldn\'t remove sticker</string>
+    <string name="chat_sticker_remove_failed">Couldn't remove sticker</string>
     <string name="chat_sticker_tray_title">My Stickers</string>
     <string name="cd_sticker_thumbnail">Saved sticker</string>
     <string name="cd_import_sticker">Import a sticker</string>
@@ -904,7 +904,7 @@
     <string name="upload_retrying">Retrying\u2026</string>
     <string name="upload_failed">Upload failed</string>
     <string name="upload_failed_sheet_title">Upload failed</string>
-    <string name="upload_failed_sheet_body">This moment couldn\'t be uploaded. Recipients didn\'t receive it.</string>
+    <string name="upload_failed_sheet_body">This moment couldn't be uploaded. Recipients didn't receive it.</string>
     <string name="upload_failed_action_delete">Delete moment</string>
     <string name="upload_failed_action_dismiss">Dismiss</string>
 
@@ -1064,7 +1064,7 @@
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
     <string name="chat_remove_background">Remove background</string>
-    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_remove_background_failed">Couldn't remove the background</string>
     <string name="chat_removing_background">Removing background…</string>
     <string name="send_as_sticker">Send as sticker</string>
     <string name="cd_send_as_sticker">Toggle send as sticker</string>
@@ -1100,7 +1100,7 @@
     <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
-    <string name="video_web_large_playback_unsupported">Large videos can\'t be played in the browser yet</string>
+    <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Settings section headers -->
     <string name="settings_section_general">General</string>
@@ -1198,7 +1198,7 @@
     <string name="location_label">Location</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
-    <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you\'ve been — stored on your own drive, visible to no one but you.</string>
+    <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
     <string name="location_onboarding_body_2">Set it up to mount the Location drive on this device. You choose when tracking is on.</string>
     <string name="location_onboarding_setup">Set it up</string>
     <string name="location_onboarding_dismiss">Not now</string>
@@ -1207,7 +1207,7 @@
     <string name="location_settings_open">Open Location</string>
     <string name="location_settings_show_icon">Show Location icon in bottom bar</string>
     <string name="location_tracking_switch">Track my location</string>
-    <string name="location_tracking_unavailable">Tracking isn\'t available on this device. Enable it on your phone to record location history.</string>
+    <string name="location_tracking_unavailable">Tracking isn't available on this device. Enable it on your phone to record location history.</string>
     <string name="location_perm_section">Permissions</string>
     <string name="location_perm_while_in_use">Location while using the app</string>
     <string name="location_perm_always">Location all the time (background)</string>
@@ -1232,7 +1232,7 @@
     <string name="location_find_title">Find device</string>
     <string name="location_find_last_seen">Last seen %1$s</string>
     <string name="location_find_no_data_today">No locations from this device today</string>
-    <string name="location_find_freshness">Position is as of the device\'s last upload and this device\'s last sync.</string>
+    <string name="location_find_freshness">Position is as of the device's last upload and this device's last sync.</string>
     <string name="location_find_refresh">Refresh</string>
     <string name="location_dashboard_perm_banner">Location permission needs attention — tap to fix</string>
     <string name="location_dashboard_empty_today">No locations recorded yet today</string>
@@ -1262,18 +1262,16 @@
     <string name="contactbook_onboarding_dismiss">Maybe later</string>
 
     <string name="contactbook_tab_contacts">Contacts</string>
-    <string name="contactbook_tab_connections">Connections</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
-    <string name="contactbook_connections_empty">You\'re not connected with anyone yet.</string>
-    <string name="contactbook_circles_empty">You don\'t have any circles yet.</string>
+    <string name="contactbook_connections_empty">You're not connected with anyone yet.</string>
+    <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
 
     <string name="contactbook_search_hint">Search contacts</string>
     <string name="contactbook_filter_all">All</string>
-    <string name="contactbook_filter_homebase">Homebase</string>
-    <string name="contactbook_filter_imported">Other</string>
+    <string name="contactbook_filter_connections">Connections</string>
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
@@ -1289,6 +1287,25 @@
     <string name="contactbook_detail_sync">Sync</string>
     <string name="contactbook_detail_edit">Edit</string>
     <string name="contactbook_detail_delete">Delete</string>
+    <string name="contactbook_detail_block">Block</string>
+    <string name="contactbook_detail_unblock">Unblock</string>
+    <string name="contactbook_detail_disconnect">Disconnect</string>
+    <string name="contactbook_detail_connect">Send connection request</string>
+    <string name="contactbook_detail_not_connected">Not connected</string>
+    <string name="contactbook_detail_pending">Connection request pending</string>
+    <string name="contactbook_detail_blocked">Blocked</string>
+    <string name="contactbook_detail_recent_media">Recent media</string>
+    <string name="contactbook_detail_no_recent_media">No recent media yet</string>
+    <string name="contactbook_detail_contact_details">Contact details</string>
+    <string name="contactbook_detail_none">None</string>
+    <string name="contactbook_detail_more">More</string>
+    <string name="contactbook_detail_less">Less</string>
+    <string name="contactbook_detail_block_title">Block this contact?</string>
+    <string name="contactbook_detail_block_message">They won't be able to reach you. You can unblock them later.</string>
+    <string name="contactbook_detail_disconnect_title">Disconnect?</string>
+    <string name="contactbook_detail_disconnect_message">This removes your connection. You can reconnect later.</string>
+    <string name="contactbook_detail_delete_title">Delete contact?</string>
+    <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
 
     <string name="contactbook_edit_title_new">New contact</string>
     <string name="contactbook_edit_title_edit">Edit contact</string>
@@ -1296,6 +1313,7 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_phone">Phone</string>
+    <string name="contactbook_country_search">Search countries</string>
     <string name="contactbook_edit_email">Email</string>
     <string name="contactbook_edit_city">City</string>
     <string name="contactbook_edit_country">Country</string>
@@ -1316,17 +1334,18 @@
     <string name="contactbook_import_result">Imported %1$d contacts, skipped %2$d.</string>
     <string name="contactbook_import_empty">No contacts with a phone number or email were found on this device.</string>
     <string name="contactbook_import_failed_permission">Contacts permission is needed to import. You can enable it in Settings.</string>
-    <string name="contactbook_import_failed_read">Couldn\'t read your contacts. Please try again.</string>
+    <string name="contactbook_import_failed_read">Couldn't read your contacts. Please try again.</string>
     <string name="contactbook_import_done">Done</string>
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
     <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
 
-    <string name="contactbook_error_save">Couldn\'t save the contact.</string>
-    <string name="contactbook_error_delete">Couldn\'t delete the contact.</string>
-    <string name="contactbook_error_import">Couldn\'t import contacts.</string>
-    <string name="contactbook_error_photo">The contact was saved, but the photo couldn\'t be uploaded.</string>
-    <string name="contactbook_error_message">Couldn\'t open the chat.</string>
+    <string name="contactbook_error_save">Couldn't save the contact.</string>
+    <string name="contactbook_error_forbidden">Couldn't save — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="contactbook_error_delete">Couldn't delete the contact.</string>
+    <string name="contactbook_error_import">Couldn't import contacts.</string>
+    <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
+    <string name="contactbook_error_message">Couldn't open the chat.</string>
 
 </resources>

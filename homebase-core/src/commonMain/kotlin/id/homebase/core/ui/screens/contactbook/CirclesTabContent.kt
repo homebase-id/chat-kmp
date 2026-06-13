@@ -20,14 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import id.homebase.api.client.connections.CircleDefinition
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun CirclesTabContent(
-    circles: List<CircleDefinition>,
+    circles: List<CircleWithMembers>,
     loading: Boolean,
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
@@ -53,15 +53,16 @@ fun CirclesTabContent(
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(circles, key = { it.id.toString() }) { circle ->
+            items(circles, key = { it.circle.id }) { circle ->
+                val description = circle.circle.description
                 ListItem(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onAction(ContactBookUiAction.CircleClicked(circle)) },
                     leadingContent = { Icon(Icons.Outlined.Groups, contentDescription = null) },
-                    headlineContent = { Text(circle.name) },
-                    supportingContent = if (circle.description.isNotBlank()) {
-                        { Text(circle.description) }
+                    headlineContent = { Text(circle.circle.name) },
+                    supportingContent = if (!description.isNullOrBlank()) {
+                        { Text(description) }
                     } else null,
                     trailingContent = {
                         Icon(

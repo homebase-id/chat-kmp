@@ -18,7 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Contacts
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
@@ -188,7 +188,7 @@ fun HomeUi(
             Spacer(modifier = Modifier.height(12.dp))
 
             FeatureCard(
-                icon = Icons.Outlined.Contacts,
+                icon = Icons.Outlined.People,
                 label = stringResource(MR.string.contactbook_label),
                 subtitle = stringResource(MR.string.contactbook_home_subtitle),
                 onClick = onNavigateToContacts,

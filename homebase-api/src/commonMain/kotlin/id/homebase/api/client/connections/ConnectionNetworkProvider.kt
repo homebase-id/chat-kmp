@@ -104,14 +104,15 @@ class ConnectionNetworkProvider(
     }
 
     /**
-     * Lists the owner's circle definitions. GET /circles/definitions/list. Requires the
-     * app token to hold circle-read permission; returns [] for identities with none.
+     * Lists the owner's circles, each with its members, in one round-trip.
+     * GET /api/v2/connections/circles/with-members (OwnerOrApp — guest tokens are
+     * rejected with 403). [includeSystemCircle] = false drops the built-in system circle.
      */
-    suspend fun getCircleDefinitions(includeSystemCircle: Boolean = true): List<CircleDefinition> {
+    suspend fun getCirclesWithMembers(includeSystemCircle: Boolean = true): List<CircleWithMembers> {
         val creds = requireCreds()
 
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "/circles/definitions/list"),
+            url = apiUrl(creds.domain, "/connections/circles/with-members"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = "includeSystemCircle=$includeSystemCircle",

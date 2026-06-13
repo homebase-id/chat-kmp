@@ -1,17 +1,17 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.runtime.Immutable
-import id.homebase.api.client.connections.CircleDefinition
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
-/** The three sections of the unified Contacts screen. */
-enum class ContactTab { CONTACTS, CONNECTIONS, CIRCLES }
+/** The two sections of the unified Contacts screen. */
+enum class ContactTab { CONTACTS, CIRCLES }
 
-/** Source filter for the contacts list. */
-enum class ContactFilter { ALL, HOMEBASE, IMPORTED }
+/** People-list pill: everyone, or only confirmed connections. */
+enum class ContactFilter { ALL, CONNECTIONS }
 
 /** Members of one circle, shown in a sheet/dialog. */
 @Immutable
@@ -21,11 +21,8 @@ data class CircleMembersUi(
     val isLoading: Boolean = true,
 )
 
-/** A full-screen-ish overlay shown over the contact list. */
+/** A sheet/dialog shown over the contact list. (Detail is a full-screen route now.) */
 sealed interface ContactBookOverlay {
-    /** Read-only detail for one contact. */
-    data class Detail(val entry: ContactBookEntry) : ContactBookOverlay
-
     /** Create ([entry] == null) or edit an existing contact. */
     data class Edit(val entry: ContactBookEntry?) : ContactBookOverlay
 }
@@ -90,7 +87,7 @@ data class ContactBookUiState(
     /** Connections tab: connected identities (matched to a contact when one exists). */
     val connections: List<ContactBookEntry> = emptyList(),
     /** Circles tab. */
-    val circles: List<CircleDefinition> = emptyList(),
+    val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,
     val circleMembers: CircleMembersUi? = null,
     val isLoading: Boolean = true,
@@ -103,7 +100,7 @@ data class ContactBookUiState(
 
 sealed interface ContactBookUiAction {
     data class TabSelected(val tab: ContactTab) : ContactBookUiAction
-    data class CircleClicked(val circle: CircleDefinition) : ContactBookUiAction
+    data class CircleClicked(val circle: CircleWithMembers) : ContactBookUiAction
     data object CircleMembersDismiss : ContactBookUiAction
     data class SearchChanged(val query: String) : ContactBookUiAction
     data class FilterChanged(val filter: ContactFilter) : ContactBookUiAction
@@ -138,6 +135,8 @@ sealed interface ContactBookUiEvent {
     data object RequestContactsPermission : ContactBookUiEvent
     /** Open (creating if needed) the 1:1 conversation with a contact, by id. */
     data class OpenConversation(val conversationId: Uuid) : ContactBookUiEvent
+    /** Open the full-screen detail for a contact. */
+    data class OpenDetail(val uniqueId: String, val odinId: String?) : ContactBookUiEvent
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent
@@ -145,6 +144,7 @@ sealed interface ContactBookUiEvent {
 
 enum class ContactBookError {
     SaveFailed,
+    SaveForbidden,
     DeleteFailed,
     ImportFailed,
     PhotoFailed,

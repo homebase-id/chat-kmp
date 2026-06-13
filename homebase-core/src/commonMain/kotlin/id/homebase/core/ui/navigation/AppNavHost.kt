@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Contacts
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -132,6 +132,7 @@ import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.resources.contactbook_label
@@ -348,6 +349,8 @@ fun AppNavHost(
                     navController.selectConversationOnChatList(event.conversationId)
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 }
+                is ContactBookUiEvent.OpenDetail ->
+                    navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* RequestContactsPermission + Error handled by ContactBookScreen */ }
@@ -801,6 +804,23 @@ fun AppNavHost(
                                     onBackClick = { navController.popBackStack() },
                                     onOpenContacts = openContactBook,
                                     showOpenContacts = !fromContacts,
+                                )
+                            }
+                        }
+
+                        composable<Route.ContactBookDetail> {
+                            if (isAuthenticated) {
+                                ContactDetailScreen(
+                                    viewModel = koinViewModel(),
+                                    connectRequestViewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
                                 )
                             }
                         }
@@ -1545,7 +1565,7 @@ sealed class TopLevelRoute(
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
-    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.Contacts)
+    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
 }
 
 /**

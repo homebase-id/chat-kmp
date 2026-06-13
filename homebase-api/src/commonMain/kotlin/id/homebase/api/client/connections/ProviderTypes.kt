@@ -30,16 +30,49 @@ data class GetCircleMembersRequest(
 )
 
 /**
- * A circle definition (owner-defined access group). Lean projection of the server's
- * `CircleDefinition` — only the fields the UI renders; the serializer ignores the
- * permission/drive-grant payload. [id] arrives as a GUID string.
+ * One circle plus its members, from `GET /api/v2/connections/circles/with-members`.
+ * The server bundles members so listing circles needs a single round-trip.
  */
 @Serializable
-data class CircleDefinition(
-    val id: Uuid,
+data class CircleWithMembers(
+    val circle: RedactedCircleDefinition,
+    /** Member identities, as domain strings (e.g. "sam.dotyou.cloud"). */
+    val members: List<OdinId> = emptyList(),
+)
+
+/**
+ * Redacted circle definition. GUID ids arrive as 32-char "N"-format strings (no
+ * hyphens), so they are modeled as [String], not Uuid. [created]/[lastUpdated] are
+ * epoch-millis. Optional fields may be absent on permission-only circles.
+ */
+@Serializable
+data class RedactedCircleDefinition(
+    val id: String,
     val name: String = "",
-    val description: String = "",
+    val description: String? = null,
     val disabled: Boolean = false,
+    val created: Long = 0,
+    val lastUpdated: Long = 0,
+    val permissions: RedactedPermissionSet? = null,
+    val driveGrants: List<RedactedCircleDriveGrant>? = null,
+)
+
+@Serializable
+data class RedactedCircleDriveGrant(
+    val permissionedDrive: RedactedPermissionedDrive? = null,
+)
+
+@Serializable
+data class RedactedPermissionedDrive(
+    val drive: RedactedTargetDrive? = null,
+    /** DrivePermission flags as a camelCase string, e.g. "read" or "read,write". */
+    val permission: String? = null,
+)
+
+@Serializable
+data class RedactedTargetDrive(
+    val alias: String? = null,
+    val type: String? = null,
 )
 
 @Serializable
@@ -122,7 +155,7 @@ enum class ConnectionStatus {
     @SerialName("unknown")
     Unknown,
 
-    @SerialName("pending")
+    @SerialName("none")
     Pending,
 
     @SerialName("connected")
@@ -130,9 +163,6 @@ enum class ConnectionStatus {
 
     @SerialName("blocked")
     Blocked,
-
-    @SerialName("disconnected")
-    Disconnected
 }
 
 @Serializable

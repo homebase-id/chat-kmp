@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactWriteResponse
 import id.homebase.api.client.contacts.ContactWriteResult
@@ -29,7 +30,8 @@ class ContactBookService(
      * Create-or-update via the provider's bounded merge-and-retry flow. Pass
      * [knownUniqueId] + [knownVersionTag] for an edit (goes straight to UPDATE);
      * omit them for a new contact (CREATE, falling back to UPDATE on 409).
-     * Returns the new uniqueId/versionTag, or null on failure.
+     * Returns the new uniqueId/versionTag, or null on failure. Rethrows
+     * [ForbiddenException] (403) so callers can explain the missing-permission cause.
      */
     suspend fun save(
         content: ContactContent,
@@ -42,6 +44,8 @@ class ContactBookService(
             knownVersionTag = knownVersionTag,
         )
     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: ForbiddenException) {
         throw e
     } catch (e: Exception) {
         Logger.w(e, TAG) { "saveContact failed" }

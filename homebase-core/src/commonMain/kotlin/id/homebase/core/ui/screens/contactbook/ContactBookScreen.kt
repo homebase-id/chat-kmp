@@ -33,7 +33,6 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
-import id.homebase.core.ui.screens.contactbook.components.ContactDetailSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.ui.screens.contactbook.deviceimport.ContactImportSheet
 import id.homebase.resources.MR
@@ -41,6 +40,7 @@ import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_action_import
 import id.homebase.resources.contactbook_action_settings
 import id.homebase.resources.contactbook_error_delete
+import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_import
 import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
@@ -48,7 +48,6 @@ import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
-import id.homebase.resources.contactbook_tab_connections
 import id.homebase.resources.contactbook_tab_contacts
 import org.jetbrains.compose.resources.stringResource
 
@@ -75,6 +74,7 @@ fun ContactBookScreen(
     val errImport = stringResource(MR.string.contactbook_error_import)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
+    val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -82,9 +82,11 @@ fun ContactBookScreen(
                 ContactBookUiEvent.RequestContactsPermission ->
                     permissionManager.askPermission(PermissionType.CONTACTS)
                 is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
+                is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
+                        ContactBookError.SaveForbidden -> errForbidden
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
@@ -168,11 +170,6 @@ fun ContactBookScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                ContactTab.CONNECTIONS -> ConnectionsTabContent(
-                    connections = uiState.connections,
-                    onAction = viewModel::onAction,
-                    modifier = Modifier.weight(1f),
-                )
                 ContactTab.CIRCLES -> CirclesTabContent(
                     circles = uiState.circles,
                     loading = uiState.circlesLoading,
@@ -184,14 +181,11 @@ fun ContactBookScreen(
     }
 
     when (val overlay = uiState.overlay) {
-        is ContactBookOverlay.Detail -> ContactDetailSheet(
-            entry = overlay.entry,
-            onAction = viewModel::onAction,
-            onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
-        )
         is ContactBookOverlay.Edit -> ContactEditSheet(
             editing = overlay.entry,
-            onAction = viewModel::onAction,
+            onSave = { draft, photo ->
+                viewModel.onAction(ContactBookUiAction.SaveContact(draft, overlay.entry, photo))
+            },
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
         )
         null -> {}
@@ -208,6 +202,5 @@ fun ContactBookScreen(
 
 private fun ContactTab.labelRes() = when (this) {
     ContactTab.CONTACTS -> MR.string.contactbook_tab_contacts
-    ContactTab.CONNECTIONS -> MR.string.contactbook_tab_connections
     ContactTab.CIRCLES -> MR.string.contactbook_tab_circles
 }

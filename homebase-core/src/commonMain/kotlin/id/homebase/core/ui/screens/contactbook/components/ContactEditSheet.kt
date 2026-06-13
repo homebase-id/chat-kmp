@@ -36,7 +36,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.core.image.HomebaseImage
-import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.toDraft
@@ -56,7 +55,6 @@ import id.homebase.resources.contactbook_edit_title_edit
 import id.homebase.resources.contactbook_edit_title_new
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_odinid
-import id.homebase.resources.contactbook_error_phone
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -66,7 +64,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ContactEditSheet(
     editing: ContactBookEntry?,
-    onAction: (ContactBookUiAction) -> Unit,
+    onSave: (ContactDraft, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
@@ -121,13 +119,12 @@ fun ContactEditSheet(
                 errorText = stringResource(MR.string.contactbook_error_odinid),
                 keyboardType = KeyboardType.Uri,
             ) { draft = draft.copy(odinId = it) }
-            Field(
-                value = draft.phone,
+            PhoneNumberField(
+                e164Value = draft.phone,
+                onValueChange = { draft = draft.copy(phone = it) },
                 label = stringResource(MR.string.contactbook_edit_phone),
-                isError = !draft.phoneValid,
-                errorText = stringResource(MR.string.contactbook_error_phone),
-                keyboardType = KeyboardType.Phone,
-            ) { draft = draft.copy(phone = it) }
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            )
             Field(
                 value = draft.email,
                 label = stringResource(MR.string.contactbook_edit_email),
@@ -154,7 +151,7 @@ fun ContactEditSheet(
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
                 Button(
-                    onClick = { onAction(ContactBookUiAction.SaveContact(draft, editing, photo)) },
+                    onClick = { onSave(draft, photo) },
                     enabled = draft.isSavable,
                 ) {
                     Text(stringResource(MR.string.contactbook_edit_save))

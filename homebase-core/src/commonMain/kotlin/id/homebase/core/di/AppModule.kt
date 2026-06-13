@@ -70,6 +70,7 @@ import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.ui.screens.contactbook.ContactBookService
 import id.homebase.core.ui.screens.contactbook.ContactBookStream
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
@@ -682,6 +683,7 @@ val appModule = module {
     viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
     viewModelOf(::ContactBookViewModel)
+    viewModelOf(::ContactDetailViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
