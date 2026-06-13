@@ -129,7 +129,7 @@ class OutboxSync(
     private val MAX_SENDING_THREADS = 3
     private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
     private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap
-    private val MAX_RETRIES = 20                // ~48 hours total
+    private val MAX_RETRIES = MAX_ATTEMPTS      // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
 
@@ -225,6 +225,7 @@ class OutboxSync(
                         outboxRecord.uniqueId
                     )
                 )
+                clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
                 totalSent.incrementAndGet()
             } catch (e: CancellationException) {
                 // Worker scope cancelled (logout, shutdown) — not an upload
@@ -252,6 +253,7 @@ class OutboxSync(
                         e
                     )
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
+                    clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
 
                     // Drop branch: the upload exhausted retries or hit a permanent
                     // error, so nothing else will clean up the request's payload
@@ -293,6 +295,9 @@ class OutboxSync(
                     outboxRecord.checkOutStamp!!,
                     UnixTimeUtc.now().addSeconds(n).milliseconds
                 )
+                // Remember why this attempt failed so Message Info can show the
+                // reason instead of a bare "still sending" spinner.
+                recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
 
                 eventBus.emit(
                     BackendEvent.OutboxEvent.ItemFailed(
@@ -443,8 +448,38 @@ class OutboxSync(
         return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
     }
 
+    // In-memory last upload-failure reason per (driveId, uniqueId), surfaced as
+    // the Message Info "why is it stuck" line. Deliberately NOT persisted: a
+    // schema column would force a DATABASE_VERSION bump, and the upgrade path
+    // wipes every table — including pending outbox rows (genuinely-unsent
+    // messages). The reason is re-recorded on the next retry attempt, so the
+    // only cost of keeping it in memory is a blank reason in the brief window
+    // between a process restart and the next attempt. Guarded by its own mutex
+    // (written on the drain worker, read from the UI).
+    private val lastErrorMutex = Mutex()
+    private val lastUploadErrorByRow = mutableMapOf<Pair<Uuid, Uuid>, String>()
+
+    private suspend fun recordLastUploadError(driveId: Uuid, uniqueId: Uuid, message: String?) {
+        val reason = message?.takeIf { it.isNotBlank() } ?: return
+        lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] = reason }
+    }
+
+    private suspend fun clearLastUploadError(driveId: Uuid, uniqueId: Uuid) {
+        lastErrorMutex.withLock { lastUploadErrorByRow.remove(driveId to uniqueId) }
+    }
+
+    private suspend fun lastUploadErrorFor(driveId: Uuid, uniqueId: Uuid): String? =
+        lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] }
+
+    public companion object {
+        /** Max outbox upload attempts before a row is dropped (~48h of backoff).
+         *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
+        public const val MAX_ATTEMPTS: Int = 20
+    }
+
     /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
-     *  what Message Info needs to render "still sending, next attempt in ~N min"
+     *  what Message Info needs to render "still sending, attempt N of M, next
+     *  attempt in mm:ss / waiting on an earlier message / why it last failed"
      *  without deserializing the request json. */
     public data class PendingRowSnapshot(
         /** Milliseconds epoch of the next attempt (0 / sentinel = "shortly").
@@ -455,15 +490,27 @@ class OutboxSync(
         /** True when an upload worker currently holds the row. */
         val isCheckedOut: Boolean,
         val uploadType: Long,
+        /** The message this row is queued behind, if any. */
+        val dependencyUniqueId: Uuid? = null,
+        /** True when [dependencyUniqueId] still has a row in the outbox — i.e.
+         *  this message is blocked waiting for that earlier one to send. */
+        val dependencyPending: Boolean = false,
+        /** Reason the last upload attempt failed (server message), or null when
+         *  no attempt has failed yet this session. */
+        val lastError: String? = null,
     )
 
     public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        val dependencyPending = row.dependencyUniqueId?.let { databaseManager.outbox.existsByUniqueId(it) } ?: false
         return PendingRowSnapshot(
             nextRunTime = row.nextRunTime,
             checkOutCount = row.checkOutCount,
             isCheckedOut = row.checkOutStamp != null,
             uploadType = row.uploadType,
+            dependencyUniqueId = row.dependencyUniqueId,
+            dependencyPending = dependencyPending,
+            lastError = lastUploadErrorFor(driveId, uniqueId),
         )
     }
 

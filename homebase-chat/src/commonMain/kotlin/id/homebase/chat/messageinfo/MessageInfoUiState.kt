@@ -97,6 +97,19 @@ data class MessageInfoUiState(
     /** Whole minutes until the queued message's next attempt; null = no
      *  meaningful deadline (fresh row / in-flight) → render "shortly". */
     val nextAttemptInMinutes: Long? = null,
+    /** Attempt about to run (= failed attempts + 1). Null until at least one
+     *  attempt has failed, so a normal first send shows no attempt counter. */
+    val attemptNumber: Int? = null,
+    /** Cap shown next to [attemptNumber] before the row is dropped. */
+    val maxAttempts: Int = OutboxSync.MAX_ATTEMPTS,
+    /** Absolute ms-epoch the next attempt is due — the target a live countdown
+     *  ticks toward; null = no meaningful deadline (in-flight / fresh / legacy
+     *  row) → render "shortly". */
+    val nextAttemptAtMs: Long? = null,
+    /** True when this queued message is blocked behind an earlier unsent one. */
+    val waitingOnEarlierMessage: Boolean = false,
+    /** Reason the last send attempt failed — the "why it's stuck" line. */
+    val stuckReason: String? = null,
 )
 
 sealed interface MessageInfoUiEvent {
@@ -209,4 +222,17 @@ fun retryUiState(
         canTryNow = !isCheckedOut,
         nextAttemptInMinutes = minutes,
     )
+}
+
+/**
+ * Absolute ms-epoch deadline for the queued message's next attempt — the target
+ * a live countdown ticks toward — or null when there's no meaningful deadline:
+ * the row is in flight (checked out), or [nextRunTimeRaw] is a fresh-insert
+ * sentinel / legacy seconds-epoch value below [MIN_PLAUSIBLE_MS_EPOCH]. Null
+ * renders as "shortly", matching [retryUiState]'s minutes==null/0 copy.
+ */
+fun nextAttemptDeadlineMs(isCheckedOut: Boolean, nextRunTimeRaw: Long?): Long? = when {
+    isCheckedOut -> null
+    nextRunTimeRaw == null || nextRunTimeRaw < MIN_PLAUSIBLE_MS_EPOCH -> null
+    else -> nextRunTimeRaw
 }

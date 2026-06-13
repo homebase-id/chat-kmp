@@ -105,6 +105,31 @@ class OutboxFailureClassifierTest {
     }
 
     @Test
+    fun mustChangeIvMessageIsPermanent() {
+        // The image-to-Leela stall (homebase.log 2026-06-13): a payload update
+        // that replays the original IV is rejected with the errorCode collapsed
+        // to UnhandledScenario but this title intact. Before the fix this
+        // returned null and the row looped 20× over ~48h.
+        assertNotNull(
+            classifyPermanentFailure(
+                clientException(message = "When updating a file, you must change the Iv")
+            )
+        )
+    }
+
+    @Test
+    fun mustRotateIvErrorCodeIsPermanent() {
+        assertNotNull(
+            classifyPermanentFailure(
+                clientException(
+                    errorCode = OdinClientErrorCode.MustRotateKeyHeaderIvWhenUpdating,
+                    message = "irrelevant",
+                )
+            )
+        )
+    }
+
+    @Test
     fun uploadValidationFailureIsPermanent() {
         assertNotNull(
             classifyPermanentFailure(

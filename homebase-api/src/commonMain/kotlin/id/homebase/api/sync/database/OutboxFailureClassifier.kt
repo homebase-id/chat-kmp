@@ -26,6 +26,7 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
             OdinClientErrorCode.MissingVersionTag,
             OdinClientErrorCode.VersionTagMismatch,
             OdinClientErrorCode.CannotOverwriteNonExistentFile,
+            OdinClientErrorCode.MustRotateKeyHeaderIvWhenUpdating,
             OdinClientErrorCode.UnknownId -> return reasonOf(e)
             else -> Unit
         }
@@ -57,6 +58,18 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
         // safely re-keyed in memory — those flows self-heal (location
         // re-flushes its buffer on OutboxItemDropped, chat offers Retry).
         if (msg.contains("AES key must match", ignoreCase = true)) return reasonOf(e)
+        // Encrypted-file payload IV reuse on update: the server rejects an
+        // update that re-sends a payload under its original IV ("When updating a
+        // file, you must change the Iv", errorCode collapsed to
+        // UnhandledScenario). The pre-encrypted bytes in the outbox row are
+        // sealed under that IV and can't be safely re-keyed in memory, so every
+        // retry replays the same IV — a deterministic ~48h loop (the
+        // image-to-Leela stall, homebase.log 2026-06-13). The lost-ack case
+        // (our own create already landed) is recovered upstream in
+        // DriveOutboxUploader.retryAsUpdate via serverFileIsOurLandedCreate;
+        // this is the guardrail for any residual path so it drops honestly
+        // instead of looping (chat offers Retry).
+        if (msg.contains("you must change the Iv", ignoreCase = true)) return reasonOf(e)
         // Client-side pre-flight rejections from
         // [UploadValidation.kt]. The validator throws ClientException
         // shaped like a server response so we land here on attempt 1.
