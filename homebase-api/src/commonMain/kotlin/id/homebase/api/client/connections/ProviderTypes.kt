@@ -29,6 +29,19 @@ data class GetCircleMembersRequest(
     val circleId: Uuid
 )
 
+/**
+ * A circle definition (owner-defined access group). Lean projection of the server's
+ * `CircleDefinition` — only the fields the UI renders; the serializer ignores the
+ * permission/drive-grant payload. [id] arrives as a GUID string.
+ */
+@Serializable
+data class CircleDefinition(
+    val id: Uuid,
+    val name: String = "",
+    val description: String = "",
+    val disabled: Boolean = false,
+)
+
 @Serializable
 data class CursoredResult<T>(
     val cursor: String? = null,

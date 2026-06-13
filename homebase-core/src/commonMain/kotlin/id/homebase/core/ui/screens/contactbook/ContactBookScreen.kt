@@ -1,6 +1,5 @@
 package id.homebase.core.ui.screens.contactbook
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,26 +18,24 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
+import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactDetailSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.ui.screens.contactbook.deviceimport.ContactImportSheet
-import id.homebase.core.vault.BiometricResult
-import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_action_import
@@ -49,10 +46,11 @@ import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
-import id.homebase.resources.contactbook_locked_unlock
 import id.homebase.resources.contactbook_search_hint
+import id.homebase.resources.contactbook_tab_circles
+import id.homebase.resources.contactbook_tab_connections
+import id.homebase.resources.contactbook_tab_contacts
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,29 +59,7 @@ fun ContactBookScreen(
     onNavigateToSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val preferences = koinInject<ContactBookPreferences>()
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // Optional biometric gate (off by default — opt-in via Settings).
-    val promptTitle = stringResource(MR.string.contactbook_label)
-    var authorized by remember {
-        mutableStateOf(!preferences.biometricsEnabled.value || preferences.isAuthSessionValid())
-    }
-    var unlockAttempt by remember { mutableStateOf(0) }
-    var isAuthenticating by remember { mutableStateOf(false) }
-
-    LaunchedEffect(authorized, unlockAttempt) {
-        if (authorized || isAuthenticating) return@LaunchedEffect
-        isAuthenticating = true
-        when (authenticateBiometric(promptTitle, promptTitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> {
-                preferences.recordAuthSuccess()
-                authorized = true
-            }
-            BiometricResult.Failure -> { /* stay locked */ }
-        }
-        isAuthenticating = false
-    }
 
     val permissionManager = createPermissionsManager { type, status, _ ->
         if (type == PermissionType.CONTACTS) {
@@ -122,10 +98,7 @@ fun ContactBookScreen(
         }
     }
 
-    if (!authorized) {
-        ContactBookLocked(onUnlock = { unlockAttempt++ })
-        return
-    }
+    val onContacts = uiState.selectedTab == ContactTab.CONTACTS
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -133,7 +106,7 @@ fun ContactBookScreen(
             TopAppBar(
                 title = { Text(stringResource(MR.string.contactbook_label)) },
                 actions = {
-                    if (uiState.importSupported) {
+                    if (onContacts && uiState.importSupported) {
                         IconButton(onClick = { viewModel.onAction(ContactBookUiAction.ImportClicked) }) {
                             Icon(
                                 Icons.Outlined.PersonAddAlt1,
@@ -151,11 +124,13 @@ fun ContactBookScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { viewModel.onAction(ContactBookUiAction.AddClicked) }) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = stringResource(MR.string.contactbook_action_add),
-                )
+            if (onContacts) {
+                FloatingActionButton(onClick = { viewModel.onAction(ContactBookUiAction.AddClicked) }) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = stringResource(MR.string.contactbook_action_add),
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -165,21 +140,46 @@ fun ContactBookScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            ContactBookContent(
-                uiState = uiState,
-                onAction = viewModel::onAction,
-                modifier = Modifier.weight(1f),
-            )
+            PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
+                ContactTab.entries.forEach { tab ->
+                    Tab(
+                        selected = uiState.selectedTab == tab,
+                        onClick = { viewModel.onAction(ContactBookUiAction.TabSelected(tab)) },
+                        text = { Text(stringResource(tab.labelRes())) },
+                    )
+                }
+            }
+
+            when (uiState.selectedTab) {
+                ContactTab.CONTACTS -> {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    ContactBookContent(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                ContactTab.CONNECTIONS -> ConnectionsTabContent(
+                    connections = uiState.connections,
+                    onAction = viewModel::onAction,
+                    modifier = Modifier.weight(1f),
+                )
+                ContactTab.CIRCLES -> CirclesTabContent(
+                    circles = uiState.circles,
+                    loading = uiState.circlesLoading,
+                    onAction = viewModel::onAction,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 
@@ -200,16 +200,14 @@ fun ContactBookScreen(
     uiState.importState?.let { importState ->
         ContactImportSheet(state = importState, onAction = viewModel::onAction)
     }
+
+    uiState.circleMembers?.let { members ->
+        CircleMembersSheet(state = members, onAction = viewModel::onAction)
+    }
 }
 
-@Composable
-private fun ContactBookLocked(onUnlock: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = androidx.compose.ui.Alignment.Center,
-    ) {
-        androidx.compose.material3.Button(onClick = onUnlock) {
-            Text(stringResource(MR.string.contactbook_locked_unlock))
-        }
-    }
+private fun ContactTab.labelRes() = when (this) {
+    ContactTab.CONTACTS -> MR.string.contactbook_tab_contacts
+    ContactTab.CONNECTIONS -> MR.string.contactbook_tab_connections
+    ContactTab.CIRCLES -> MR.string.contactbook_tab_circles
 }

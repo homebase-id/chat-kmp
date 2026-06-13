@@ -16,7 +16,6 @@ class ContactBookSettingsViewModel(
     private val _uiState = MutableStateFlow(
         ContactBookSettingsUiState(
             iconVisible = preferences.iconVisible.value,
-            biometricsEnabled = preferences.biometricsEnabled.value,
         )
     )
     val uiState: StateFlow<ContactBookSettingsUiState> = _uiState.asStateFlow()
@@ -25,9 +24,6 @@ class ContactBookSettingsViewModel(
         viewModelScope.launch {
             preferences.iconVisible.collect { v -> _uiState.update { it.copy(iconVisible = v) } }
         }
-        viewModelScope.launch {
-            preferences.biometricsEnabled.collect { v -> _uiState.update { it.copy(biometricsEnabled = v) } }
-        }
     }
 
     fun onAction(action: ContactBookSettingsUiAction) {
@@ -35,8 +31,6 @@ class ContactBookSettingsViewModel(
             ContactBookSettingsUiAction.OpenContactsClicked -> Unit // handled by the screen
             is ContactBookSettingsUiAction.SetIconVisible ->
                 viewModelScope.launch { preferences.setIconVisible(action.visible) }
-            is ContactBookSettingsUiAction.SetBiometricsEnabled ->
-                viewModelScope.launch { preferences.setBiometricsEnabled(action.enabled) }
         }
     }
 }

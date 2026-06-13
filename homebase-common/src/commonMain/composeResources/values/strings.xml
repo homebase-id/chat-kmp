@@ -1261,6 +1261,15 @@
     <string name="contactbook_onboarding_setup">Get started</string>
     <string name="contactbook_onboarding_dismiss">Maybe later</string>
 
+    <string name="contactbook_tab_contacts">Contacts</string>
+    <string name="contactbook_tab_connections">Connections</string>
+    <string name="contactbook_tab_circles">Circles</string>
+    <string name="contactbook_connected">Connected</string>
+    <string name="contactbook_connections_empty">You\'re not connected with anyone yet.</string>
+    <string name="contactbook_circles_empty">You don\'t have any circles yet.</string>
+    <string name="contactbook_circle_members_empty">This circle has no members.</string>
+    <string name="contactbook_circle_members_count">%1$d members</string>
+
     <string name="contactbook_search_hint">Search contacts</string>
     <string name="contactbook_filter_all">All</string>
     <string name="contactbook_filter_homebase">Homebase</string>
@@ -1270,7 +1279,6 @@
     <string name="contactbook_action_add">Add contact</string>
     <string name="contactbook_action_import">Import contacts</string>
     <string name="contactbook_action_settings">Contact settings</string>
-    <string name="contactbook_locked_unlock">Unlock</string>
 
     <string name="contactbook_empty_title">No contacts yet</string>
     <string name="contactbook_empty_body">Add a contact by hand, or import them from your phone.</string>
@@ -1314,7 +1322,6 @@
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
     <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
-    <string name="contactbook_settings_biometrics">Biometrics protection</string>
 
     <string name="contactbook_error_save">Couldn\'t save the contact.</string>
     <string name="contactbook_error_delete">Couldn\'t delete the contact.</string>

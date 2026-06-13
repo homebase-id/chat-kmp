@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Contacts
-import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsItemAction
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_settings_biometrics
 import id.homebase.resources.contactbook_settings_open
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.contactbook_settings_show_icon
@@ -100,17 +98,6 @@ fun ContactBookSettingsUi(
                     Switch(
                         checked = uiState.iconVisible,
                         onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
-                    )
-                },
-            )
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Fingerprint,
-                text = stringResource(MR.string.contactbook_settings_biometrics),
-                onClick = { onAction(ContactBookSettingsUiAction.SetBiometricsEnabled(!uiState.biometricsEnabled)) },
-                trailingContent = {
-                    Switch(
-                        checked = uiState.biometricsEnabled,
-                        onCheckedChange = { onAction(ContactBookSettingsUiAction.SetBiometricsEnabled(it)) },
                     )
                 },
             )

@@ -4,9 +4,16 @@ package id.homebase.core.ui.screens.contactbook
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.connections.CircleDefinition
+import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.common.OdinId
+import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
@@ -40,40 +47,106 @@ class ContactBookViewModel(
     private val service: ContactBookService,
     private val preferences: ContactBookPreferences,
     private val conversationService: ConversationService,
+    private val connectionService: ConnectionService,
+    private val connectionNetworkProvider: ConnectionNetworkProvider,
 ) : ViewModel() {
 
+    private val _selectedTab = MutableStateFlow(ContactTab.CONTACTS)
     private val _searchQuery = MutableStateFlow("")
     private val _filter = MutableStateFlow(ContactFilter.ALL)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
     private val _importState = MutableStateFlow<ImportUiState?>(null)
+    private val _circles = MutableStateFlow<List<CircleDefinition>>(emptyList())
+    private val _circlesLoading = MutableStateFlow(false)
+    private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
+
+    private data class ContactsBundle(
+        val contacts: List<ContactBookEntry>,
+        val loaded: Boolean,
+        val connections: ConnectionState,
+    )
+
+    private data class UiBits(
+        val query: String,
+        val filter: ContactFilter,
+        val tab: ContactTab,
+        val overlay: ContactBookOverlay?,
+        val importState: ImportUiState?,
+    )
+
+    private data class CirclesBundle(
+        val circles: List<CircleDefinition>,
+        val loading: Boolean,
+        val members: CircleMembersUi?,
+    )
 
     val uiState: StateFlow<ContactBookUiState> = combine(
-        combine(stream.contacts, stream.isLoaded) { contacts, loaded -> contacts to loaded },
-        _searchQuery,
-        _filter,
-        _overlay,
-        _importState,
-    ) { (contacts, loaded), query, filter, overlay, importState ->
-        val filtered = contacts
+        combine(stream.contacts, stream.isLoaded, connectionService.connections) { c, l, conn ->
+            ContactsBundle(c, l, conn)
+        },
+        combine(_searchQuery, _filter, _selectedTab, _overlay, _importState) { q, f, tab, o, i ->
+            UiBits(q, f, tab, o, i)
+        },
+        combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
+    ) { contactsData, ui, circlesData ->
+        val connectedDomains = contactsData.connections.map
+            .filterValues { it.status == ConnectionStatus.Connected }
+            .keys.map { it.domainName.lowercase() }
+            .toSet()
+
+        val filtered = contactsData.contacts
             .filter { entry ->
-                when (filter) {
+                when (ui.filter) {
                     ContactFilter.ALL -> true
                     ContactFilter.HOMEBASE -> entry.hasOdinId
                     ContactFilter.IMPORTED -> !entry.hasOdinId
                 }
             }
-            .filter { it.matches(query) }
+            .filter { it.matches(ui.query) }
+
+        val connections = entriesForDomains(connectedDomains, contactsData.contacts)
+            .sortedBy { it.sortKey }
+
         ContactBookUiState(
+            selectedTab = ui.tab,
             contacts = filtered,
-            totalCount = contacts.size,
-            isLoading = !loaded,
-            searchQuery = query,
-            filter = filter,
-            overlay = refreshOverlay(overlay, contacts),
-            importState = importState,
+            totalCount = contactsData.contacts.size,
+            connectedOdinIds = connectedDomains,
+            connections = connections,
+            circles = circlesData.circles,
+            circlesLoading = circlesData.loading,
+            circleMembers = circlesData.members,
+            isLoading = !contactsData.loaded,
+            searchQuery = ui.query,
+            filter = ui.filter,
+            overlay = refreshOverlay(ui.overlay, contactsData.contacts),
+            importState = ui.importState,
             importSupported = isDeviceContactsSupported(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactBookUiState())
+
+    /** Resolves a set of identity domains to entries, reusing the saved contact when one exists. */
+    private fun entriesForDomains(
+        domains: Set<String>,
+        contacts: List<ContactBookEntry>,
+    ): List<ContactBookEntry> {
+        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }
+            .associateBy { it.odinId!!.lowercase() }
+        return domains.map { domain -> byOdin[domain] ?: syntheticContact(domain) }
+    }
+
+    /** A display-only entry for a connection/member that isn't in the contact book. */
+    private fun syntheticContact(domain: String): ContactBookEntry {
+        val uid = Md5.toGuidId(domain.lowercase())
+        return ContactBookEntry(
+            uniqueId = uid,
+            fileId = uid,
+            versionTag = null,
+            odinId = domain,
+            displayName = domain,
+            source = ContactBookSource.CONNECTION,
+        )
+    }
 
     private val _events = MutableSharedFlow<ContactBookUiEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ContactBookUiEvent> = _events.asSharedFlow()
@@ -90,12 +163,21 @@ class ContactBookViewModel(
     }
 
     fun onAction(action: ContactBookUiAction) {
-        preferences.recordUserAction()
         when (action) {
+            is ContactBookUiAction.TabSelected -> {
+                _selectedTab.value = action.tab
+                if (action.tab == ContactTab.CIRCLES &&
+                    _circles.value.isEmpty() && !_circlesLoading.value
+                ) loadCircles()
+            }
+            is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
+            ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
             is ContactBookUiAction.SearchChanged -> _searchQuery.value = action.query
             is ContactBookUiAction.FilterChanged -> _filter.value = action.filter
-            is ContactBookUiAction.ContactClicked ->
+            is ContactBookUiAction.ContactClicked -> {
+                _circleMembers.value = null // close the circle sheet if a member was tapped
                 _overlay.value = ContactBookOverlay.Detail(action.entry)
+            }
             ContactBookUiAction.AddClicked -> _overlay.value = ContactBookOverlay.Edit(null)
             is ContactBookUiAction.EditClicked -> _overlay.value = ContactBookOverlay.Edit(action.entry)
             is ContactBookUiAction.DeleteClicked -> handleDelete(action.entry)
@@ -206,6 +288,48 @@ class ContactBookViewModel(
             versionTag = versionTag,
         )
     }
+
+    // region Circles
+
+    private fun loadCircles() {
+        _circlesLoading.value = true
+        viewModelScope.launch {
+            val circles = try {
+                connectionNetworkProvider.getCircleDefinitions().filterNot { it.disabled }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "getCircleDefinitions failed" }
+                emptyList()
+            }
+            _circles.value = circles.sortedBy { it.name.lowercase() }
+            _circlesLoading.value = false
+        }
+    }
+
+    private fun handleCircleClicked(circle: CircleDefinition) {
+        _circleMembers.value = CircleMembersUi(circleName = circle.name, isLoading = true)
+        viewModelScope.launch {
+            val domains = try {
+                connectionNetworkProvider.getCircleMembers(circle.id).map { it.domainName }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "getCircleMembers failed for ${circle.id}" }
+                emptyList()
+            }
+            val members = entriesForDomains(domains.toSet(), stream.contacts.value)
+                .sortedBy { it.sortKey }
+            // Guard against a stale result if the user opened a different circle meanwhile.
+            _circleMembers.update { current ->
+                if (current?.circleName == circle.name) {
+                    current.copy(members = members, isLoading = false)
+                } else current
+            }
+        }
+    }
+
+    // endregion
 
     /**
      * Opens (creating if needed) the 1:1 conversation with this contact, then

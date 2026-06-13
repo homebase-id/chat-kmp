@@ -1,13 +1,25 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.connections.CircleDefinition
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
-/** Source filter for the list. */
+/** The three sections of the unified Contacts screen. */
+enum class ContactTab { CONTACTS, CONNECTIONS, CIRCLES }
+
+/** Source filter for the contacts list. */
 enum class ContactFilter { ALL, HOMEBASE, IMPORTED }
+
+/** Members of one circle, shown in a sheet/dialog. */
+@Immutable
+data class CircleMembersUi(
+    val circleName: String,
+    val members: List<ContactBookEntry> = emptyList(),
+    val isLoading: Boolean = true,
+)
 
 /** A full-screen-ish overlay shown over the contact list. */
 sealed interface ContactBookOverlay {
@@ -69,9 +81,18 @@ sealed interface ImportUiState {
 
 @Immutable
 data class ContactBookUiState(
-    /** Already filtered + searched + A–Z sorted. */
+    val selectedTab: ContactTab = ContactTab.CONTACTS,
+    /** Contacts tab: already filtered + searched + A–Z sorted. */
     val contacts: List<ContactBookEntry> = emptyList(),
     val totalCount: Int = 0,
+    /** Domains (lowercased) that are confirmed connections — drives the "connected" badge. */
+    val connectedOdinIds: Set<String> = emptySet(),
+    /** Connections tab: connected identities (matched to a contact when one exists). */
+    val connections: List<ContactBookEntry> = emptyList(),
+    /** Circles tab. */
+    val circles: List<CircleDefinition> = emptyList(),
+    val circlesLoading: Boolean = false,
+    val circleMembers: CircleMembersUi? = null,
     val isLoading: Boolean = true,
     val searchQuery: String = "",
     val filter: ContactFilter = ContactFilter.ALL,
@@ -81,6 +102,9 @@ data class ContactBookUiState(
 )
 
 sealed interface ContactBookUiAction {
+    data class TabSelected(val tab: ContactTab) : ContactBookUiAction
+    data class CircleClicked(val circle: CircleDefinition) : ContactBookUiAction
+    data object CircleMembersDismiss : ContactBookUiAction
     data class SearchChanged(val query: String) : ContactBookUiAction
     data class FilterChanged(val filter: ContactFilter) : ContactBookUiAction
     data class ContactClicked(val entry: ContactBookEntry) : ContactBookUiAction

@@ -86,6 +86,7 @@ fun ContactBookContent(
                             ContactBookRow(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
+                                connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
                             )
                         }
                     }
