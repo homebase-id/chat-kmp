@@ -30,11 +30,12 @@
 		4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A82F3B761C00F895B5 /* FirebaseMessaging */; };
 		4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */; };
 		43AB755A2F87A7C4001EF1D3 /* NotificationServiceExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		43BEA8C5B982244B93EA8BD3 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = ADDBAA27BF461CB6B83266AB /* FirebaseCore */; };
 		43CFC1DB2F741EF200628241 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43CFC1D12F741EF200628241 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; };
+		627D7886F63E2CD21B92DACA /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBA3478FBA027B889D1BA752 /* FirebaseCore */; };
 		652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
 		65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */ = {isa = PBXBuildFile; fileRef = FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */; };
-		F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */ = {isa = PBXBuildFile; fileRef = F1207A510000000000005A01 /* fixture_iphone_spatial.mov */; };
 		87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
 		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
 		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
@@ -42,6 +43,9 @@
 		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
 		DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F72A108F8868D83B449653CC /* fixture_720p.mp4 */; };
 		E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; };
+		EEDEB518C1A6676F6AD39843 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 035D6D85BD3FD3872BA0F427 /* FirebaseCrashlytics */; };
+		F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */ = {isa = PBXBuildFile; fileRef = F1207A510000000000005A01 /* fixture_iphone_spatial.mov */; };
+		F28C3A9E05D09659D5830897 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = E7288D3F3D76A244F58F16DF /* FirebaseCrashlytics */; };
 		FA96B35DB50A41A5E8A351EF /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -124,9 +128,9 @@
 		A119F0A8E11D557B2E98503F /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E036487443061F6060AA1439 /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_4k.mp4; sourceTree = "<group>"; };
+		F1207A510000000000005A01 /* fixture_iphone_spatial.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_spatial.mov; sourceTree = "<group>"; };
 		F72A108F8868D83B449653CC /* fixture_720p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_720p.mp4; sourceTree = "<group>"; };
 		FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_hevc.mov; sourceTree = "<group>"; };
-		F1207A510000000000005A01 /* fixture_iphone_spatial.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_spatial.mov; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -208,6 +212,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				627D7886F63E2CD21B92DACA /* FirebaseCore in Frameworks */,
+				EEDEB518C1A6676F6AD39843 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -215,6 +221,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				43BEA8C5B982244B93EA8BD3 /* FirebaseCore in Frameworks */,
+				F28C3A9E05D09659D5830897 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -374,6 +382,7 @@
 				43AB754F2F87A7C4001EF1D3 /* Sources */,
 				43AB75502F87A7C4001EF1D3 /* Frameworks */,
 				43AB75512F87A7C4001EF1D3 /* Resources */,
+				9A63E5B7CC787E52F4F95063 /* Copy GoogleService-Info.plist */,
 			);
 			buildRules = (
 			);
@@ -383,6 +392,10 @@
 				43AB75542F87A7C4001EF1D3 /* NotificationServiceExtension */,
 			);
 			name = NotificationServiceExtension;
+			packageProductDependencies = (
+				DBA3478FBA027B889D1BA752 /* FirebaseCore */,
+				035D6D85BD3FD3872BA0F427 /* FirebaseCrashlytics */,
+			);
 			productName = NotificationServiceExtension;
 			productReference = 43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -394,6 +407,7 @@
 				43CFC1CD2F741EF200628241 /* Sources */,
 				43CFC1CE2F741EF200628241 /* Frameworks */,
 				43CFC1CF2F741EF200628241 /* Resources */,
+				7ABFCEFCE3F5CD578CFE2858 /* Copy GoogleService-Info.plist */,
 			);
 			buildRules = (
 			);
@@ -403,6 +417,10 @@
 				43CFC1D22F741EF200628241 /* ShareExtension */,
 			);
 			name = ShareExtension;
+			packageProductDependencies = (
+				ADDBAA27BF461CB6B83266AB /* FirebaseCore */,
+				E7288D3F3D76A244F58F16DF /* FirebaseCrashlytics */,
+			);
 			productName = ShareExtension;
 			productReference = 43CFC1D12F741EF200628241 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -490,6 +508,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		7ABFCEFCE3F5CD578CFE2858 /* Copy GoogleService-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy GoogleService-Info.plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Debug\" ] || [ \"${CONFIGURATION}\" = \"Dev\" ]; then\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Debug.plist\"\nelse\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Release.plist\"\nfi\ncp \"${plist}\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n";
+		};
 		7E556E29642577F6B7F8336E /* Compile Kotlin Framework */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -508,6 +544,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode :homebase-notifshared:embedAndSignAppleFrameworkForXcode\n";
+		};
+		9A63E5B7CC787E52F4F95063 /* Copy GoogleService-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy GoogleService-Info.plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Debug\" ] || [ \"${CONFIGURATION}\" = \"Dev\" ]; then\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Debug.plist\"\nelse\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Release.plist\"\nfi\ncp \"${plist}\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n";
 		};
 		F08E00712F8CEA1F006FE86B /* Upload Crashlytics DSYM files */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -612,7 +666,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
@@ -652,7 +706,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
@@ -692,7 +746,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = "\" $(SRCROOT)/../homebase-notifshared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NotificationServiceExtension/Info.plist;
@@ -733,7 +787,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
@@ -766,7 +820,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
@@ -1170,7 +1224,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
@@ -1261,6 +1315,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		035D6D85BD3FD3872BA0F427 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
 		4332A0A62F3B761C00F895B5 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
@@ -1272,6 +1331,21 @@
 			productName = FirebaseMessaging;
 		};
 		4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		ADDBAA27BF461CB6B83266AB /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		DBA3478FBA027B889D1BA752 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		E7288D3F3D76A244F58F16DF /* FirebaseCrashlytics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
