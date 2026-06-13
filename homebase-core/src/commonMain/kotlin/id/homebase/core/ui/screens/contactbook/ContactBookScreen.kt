@@ -45,6 +45,7 @@ import id.homebase.resources.contactbook_action_import
 import id.homebase.resources.contactbook_action_settings
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_import
+import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_locked_unlock
@@ -95,6 +96,7 @@ fun ContactBookScreen(
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errImport = stringResource(MR.string.contactbook_error_import)
+    val errPhoto = stringResource(MR.string.contactbook_error_photo)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -106,6 +108,7 @@ fun ContactBookScreen(
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
                         ContactBookError.DeleteFailed -> errDelete
+                        ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.ImportFailed,
                         ContactBookError.PermissionDenied -> errImport
                     }

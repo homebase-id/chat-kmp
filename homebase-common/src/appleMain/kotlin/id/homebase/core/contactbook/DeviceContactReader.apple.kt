@@ -36,7 +36,7 @@ actual suspend fun readDeviceContacts(): List<DeviceContact> = withContext(Dispa
     val results = ArrayList<DeviceContact>()
     runCatching {
         store.enumerateContactsWithFetchRequest(request, error = null) { contact, _ ->
-            (contact as? CNContact)?.let { results += it.toDeviceContact() }
+            contact?.let { results += it.toDeviceContact() }
         }
     }
     results

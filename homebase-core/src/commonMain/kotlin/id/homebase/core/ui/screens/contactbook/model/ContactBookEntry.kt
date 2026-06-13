@@ -3,15 +3,22 @@
 package id.homebase.core.ui.screens.contactbook.model
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.contacts.ContactBirthday
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
+import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.initials
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -46,6 +53,13 @@ data class ContactBookEntry(
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
+    // Image-display fields (carried so a stored avatar can render without a
+    // second drive read). Null when the contact has no uploaded photo.
+    val driveId: Uuid? = null,
+    val keyHeader: KeyHeader? = null,
+    val isEncrypted: Boolean = false,
+    val previewThumbnail: EmbeddedThumb? = null,
+    val imagePayload: PayloadDescriptor? = null,
 ) {
     /** Has a Homebase identity behind it (vs a plain phone/email contact). */
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()
@@ -80,6 +94,30 @@ data class ContactBookEntry(
             odinId?.lowercase()?.contains(q) == true ||
             phone?.lowercase()?.contains(q) == true ||
             email?.lowercase()?.contains(q) == true
+    }
+
+    /**
+     * Builds the [HomebaseImageData] for this contact's stored avatar payload
+     * (`prfl_pic`), or null if there is none / it isn't decodable yet. Mirrors
+     * `VaultEntry.imageDataFor`: the IV is per-payload, the AES key is the file's.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    fun profileImageData(): HomebaseImageData? {
+        val descriptor = imagePayload ?: return null
+        val kh = keyHeader ?: return null
+        val drive = driveId ?: return null
+        val iv = descriptor.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+        return HomebaseImageData(
+            driveId = drive,
+            fileId = fileId,
+            payloadKey = descriptor.key,
+            previewThumbnail = previewThumbnail,
+            loadFullPayload = false,
+            isEncrypted = isEncrypted,
+            lastModified = descriptor.lastModified,
+            payloadContentType = descriptor.contentType,
+            keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),
+        )
     }
 
     /** Rebuild the write payload from the current fields (used by edit + delete-merge). */
@@ -123,6 +161,9 @@ fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
         ?: content.email?.email?.takeIf { it.isNotBlank() }
         ?: return null  // nothing renderable — skip
 
+    val imagePayload = fileMetadata.payloads
+        ?.firstOrNull { it.key == ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY }
+
     return ContactBookEntry(
         uniqueId = uniqueId,
         fileId = fileId,
@@ -138,5 +179,10 @@ fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
         country = content.location?.country,
         birthday = content.birthday?.date,
         source = content.source,
+        driveId = driveId,
+        keyHeader = keyHeader,
+        isEncrypted = fileMetadata.isEncrypted,
+        previewThumbnail = fileMetadata.appData.previewThumbnail,
+        imagePayload = imagePayload,
     )
 }

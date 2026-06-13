@@ -1,7 +1,12 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -9,12 +14,14 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 
 /**
- * Avatar for a contact-book entry. Identity contacts (with an odinId) render the
- * published public avatar via [ContactAvatar]; plain phone/email contacts fall
- * back to coloured initials via [FallbackAvatar].
+ * Avatar for a contact-book entry, in priority order:
+ *  1. An uploaded photo stored on the contact drive ([ContactBookEntry.profileImageData]).
+ *  2. An identity contact's published public avatar ([ContactAvatar]).
+ *  3. Coloured initials ([FallbackAvatar]).
  */
 @Composable
 fun ContactBookAvatar(
@@ -22,6 +29,19 @@ fun ContactBookAvatar(
     size: Dp = 44.dp,
 ) {
     val options = AvatarOptions(size = size, fontSize = (size.value * 0.4f).sp)
+
+    val imageData = remember(entry.uniqueId, entry.imagePayload?.lastModified) {
+        entry.profileImageData()
+    }
+    if (imageData != null) {
+        HomebaseImage(
+            imageData = imageData,
+            modifier = Modifier.size(size).clip(CircleShape),
+            contentScale = ContentScale.Crop,
+        )
+        return
+    }
+
     val odinId = entry.odinId
     if (!odinId.isNullOrBlank()) {
         val parsed = remember(odinId) { runCatching { OdinId(odinId) }.getOrNull() }

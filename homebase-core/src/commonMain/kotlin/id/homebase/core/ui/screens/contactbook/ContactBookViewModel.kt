@@ -8,12 +8,18 @@ import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
+import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.contactbook.isDeviceContactsSupported
 import id.homebase.core.contactbook.readDeviceContacts
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.util.resolveContentType
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -90,7 +96,7 @@ class ContactBookViewModel(
             ContactBookUiAction.AddClicked -> _overlay.value = ContactBookOverlay.Edit(null)
             is ContactBookUiAction.EditClicked -> _overlay.value = ContactBookOverlay.Edit(action.entry)
             is ContactBookUiAction.DeleteClicked -> handleDelete(action.entry)
-            is ContactBookUiAction.SaveContact -> handleSave(action.draft, action.editing)
+            is ContactBookUiAction.SaveContact -> handleSave(action.draft, action.editing, action.photo)
             is ContactBookUiAction.MessageClicked -> {
                 action.entry.odinId?.let { _events.tryEmit(ContactBookUiEvent.OpenChat(it)) }
             }
@@ -119,10 +125,14 @@ class ContactBookViewModel(
         }
     }
 
-    private fun handleSave(draft: ContactDraft, editing: ContactBookEntry?) {
+    private fun handleSave(draft: ContactDraft, editing: ContactBookEntry?, photo: PlatformFile?) {
         if (!draft.isSavable) return
+        val normalizedPhone = draft.phone.ifBlank { null }
+            ?.let { ContactFieldValidation.normalizePhone(it) }
+        // An odinId may be set on a new contact, or kept from the edited one.
+        val odinId = draft.odinId.trim().ifBlank { null } ?: editing?.odinId?.ifBlank { null }
         val content = ContactContent(
-            odinId = editing?.odinId?.ifBlank { null },
+            odinId = odinId,
             name = ContactName(
                 displayName = draft.displayName.ifBlank { null },
                 givenName = draft.givenName.ifBlank { null },
@@ -130,7 +140,7 @@ class ContactBookViewModel(
             ),
             source = editing?.source ?: ContactBookSource.MANUAL,
             location = null,
-            phone = draft.phone.ifBlank { null }?.let { ContactPhone(it) },
+            phone = normalizedPhone?.let { ContactPhone(it) },
             email = draft.email.ifBlank { null }?.let { ContactEmail(it) },
         ).withLocationAndBirthday(draft)
 
@@ -145,6 +155,13 @@ class ContactBookViewModel(
                 _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveFailed))
                 return@launch
             }
+
+            // Upload the avatar after the contact exists (version-gated endpoint).
+            if (photo != null) {
+                val ok = uploadPhoto(response.uniqueId, response.versionTag, photo)
+                if (!ok) _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.PhotoFailed))
+            }
+
             stream.insertOrUpdateOptimistic(
                 (editing ?: ContactBookEntry(
                     uniqueId = response.uniqueId,
@@ -154,11 +171,12 @@ class ContactBookViewModel(
                 )).copy(
                     uniqueId = response.uniqueId,
                     versionTag = response.versionTag,
-                    displayName = draft.displayName.ifBlank { draft.phone.ifBlank { draft.email } }
+                    odinId = odinId,
+                    displayName = draft.displayName.ifBlank { normalizedPhone ?: draft.email }
                         .ifBlank { "?" },
                     givenName = draft.givenName.ifBlank { null },
                     surname = draft.surname.ifBlank { null },
-                    phone = draft.phone.ifBlank { null },
+                    phone = normalizedPhone,
                     email = draft.email.ifBlank { null },
                     city = draft.city.ifBlank { null },
                     country = draft.country.ifBlank { null },
@@ -167,6 +185,25 @@ class ContactBookViewModel(
                 ),
             )
         }
+    }
+
+    private suspend fun uploadPhoto(uniqueId: Uuid, versionTag: Uuid, photo: PlatformFile): Boolean {
+        val bytes = try {
+            photo.readBytes()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return false
+        }
+        if (bytes.isEmpty()) return false
+        val contentType = resolveContentType(photo.name, photo.mimeType()?.toString())
+        return service.setPhoto(
+            uniqueId = uniqueId,
+            contactDriveId = contactTargetDrive.alias,
+            bytes = bytes,
+            contentType = contentType,
+            versionTag = versionTag,
+        )
     }
 
     private fun handleDelete(entry: ContactBookEntry) {

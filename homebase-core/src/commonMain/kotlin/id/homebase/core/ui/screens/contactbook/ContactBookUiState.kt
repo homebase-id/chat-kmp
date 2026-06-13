@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.compose.runtime.Immutable
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import io.github.vinceglb.filekit.PlatformFile
 
 /** Source filter for the list. */
 enum class ContactFilter { ALL, HOMEBASE, IMPORTED }
@@ -21,6 +22,7 @@ sealed interface ContactBookOverlay {
 data class ContactDraft(
     val givenName: String = "",
     val surname: String = "",
+    val odinId: String = "",
     val phone: String = "",
     val email: String = "",
     val city: String = "",
@@ -28,13 +30,22 @@ data class ContactDraft(
     val birthday: String = "",
 ) {
     val displayName: String get() = listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ").trim()
-    val isSavable: Boolean get() = givenName.isNotBlank() || surname.isNotBlank() ||
-        phone.isNotBlank() || email.isNotBlank()
+
+    val emailValid: Boolean get() = ContactFieldValidation.isValidEmail(email)
+    val phoneValid: Boolean get() = ContactFieldValidation.isValidPhone(phone)
+    val odinIdValid: Boolean get() = ContactFieldValidation.isValidOdinId(odinId)
+
+    /** Has at least one meaningful field AND every non-empty field is well-formed. */
+    val isSavable: Boolean
+        get() = (givenName.isNotBlank() || surname.isNotBlank() ||
+            phone.isNotBlank() || email.isNotBlank() || odinId.isNotBlank()) &&
+            emailValid && phoneValid && odinIdValid
 }
 
 fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
     givenName = givenName.orEmpty().ifBlank { if (surname.isNullOrBlank()) displayName else "" },
     surname = surname.orEmpty(),
+    odinId = odinId.orEmpty(),
     phone = phone.orEmpty(),
     email = email.orEmpty(),
     city = city.orEmpty(),
@@ -75,7 +86,11 @@ sealed interface ContactBookUiAction {
     data object AddClicked : ContactBookUiAction
     data class EditClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data class DeleteClicked(val entry: ContactBookEntry) : ContactBookUiAction
-    data class SaveContact(val draft: ContactDraft, val editing: ContactBookEntry?) : ContactBookUiAction
+    data class SaveContact(
+        val draft: ContactDraft,
+        val editing: ContactBookEntry?,
+        val photo: PlatformFile? = null,
+    ) : ContactBookUiAction
     data class MessageClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data class SyncClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data object CloseOverlay : ContactBookUiAction
@@ -107,5 +122,6 @@ enum class ContactBookError {
     SaveFailed,
     DeleteFailed,
     ImportFailed,
+    PhotoFailed,
     PermissionDenied,
 }

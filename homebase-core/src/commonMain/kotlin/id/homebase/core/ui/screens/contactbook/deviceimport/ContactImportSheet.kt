@@ -18,7 +18,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.ContactBookError
+import id.homebase.core.ui.screens.contactbook.components.AdaptiveSheet
 import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ImportUiState
 import id.homebase.resources.MR
@@ -50,7 +50,7 @@ fun ContactImportSheet(
     state: ImportUiState,
     onAction: (ContactBookUiAction) -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = { onAction(ContactBookUiAction.ImportDismiss) }) {
+    AdaptiveSheet(onDismiss = { onAction(ContactBookUiAction.ImportDismiss) }) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

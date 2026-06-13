@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.contactbook
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactWriteResponse
+import id.homebase.api.client.contacts.ContactWriteResult
 import id.homebase.api.client.contacts.ContactsProvider
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -55,6 +56,33 @@ class ContactBookService(
         throw e
     } catch (e: Exception) {
         Logger.w(e, TAG) { "deleteContact failed for $uniqueId" }
+        false
+    }
+
+    /**
+     * Uploads (client-encrypts) an avatar for an existing contact via the provider's
+     * version-gated image endpoint. Must be called after [save] so [uniqueId] and
+     * [versionTag] are known. Returns true on success.
+     */
+    suspend fun setPhoto(
+        uniqueId: Uuid,
+        contactDriveId: Uuid,
+        bytes: ByteArray,
+        contentType: String,
+        versionTag: Uuid,
+    ): Boolean = try {
+        val result = contactsProvider.setContactImage(
+            uniqueId = uniqueId,
+            contactDriveId = contactDriveId,
+            imageBytes = bytes,
+            contentType = contentType,
+            versionTag = versionTag,
+        )
+        result is ContactWriteResult.Ok
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(e, TAG) { "setContactImage failed for $uniqueId" }
         false
     }
 
