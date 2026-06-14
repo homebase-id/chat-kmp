@@ -32,6 +32,10 @@ data class RawLocationPoint(
     val src: String,
     /** True when captured in foreground precise mode. */
     val fg: Boolean,
+    /** Pedometer steps since the previous accepted point (delta); set by the store. */
+    val steps: Int? = null,
+    /** Battery %, 0..100; set by the store. */
+    val bat: Int? = null,
 )
 
 /**

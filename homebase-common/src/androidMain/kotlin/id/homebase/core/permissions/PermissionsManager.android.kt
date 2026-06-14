@@ -64,6 +64,8 @@ private fun String.toPermissionType(): PermissionType? {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACCESS_BACKGROUND_LOCATION) return PermissionType.LOCATION_ALWAYS
 
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACTIVITY_RECOGNITION) return PermissionType.ACTIVITY
+
     return null
 }
 
@@ -142,6 +144,16 @@ class AndroidPermissionsManager(
                     )
                 }
             }
+
+            PermissionType.ACTIVITY -> {
+                // Runtime permission from API 29; below that the step sensor
+                // needs no grant.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    genericPermissionLauncher.launch(
+                        arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)
+                    )
+                }
+            }
         }
     }
 
@@ -214,6 +226,16 @@ class AndroidPermissionsManager(
                     ) == PackageManager.PERMISSION_GRANTED
                 } else {
                     isPermissionGranted(PermissionType.LOCATION)
+                }
+            }
+
+            PermissionType.ACTIVITY -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACTIVITY_RECOGNITION
+                    ) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
                 }
             }
         }

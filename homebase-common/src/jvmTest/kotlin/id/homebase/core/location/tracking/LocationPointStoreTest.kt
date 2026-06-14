@@ -7,6 +7,18 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+
+/** Sensors stub: fixed battery + step delta, so the store's stamping is testable. */
+private class FakeSensors(
+    private val battery: Int? = null,
+    private val delta: Int? = null,
+    private val cumulative: Long? = null,
+) : DeviceSensors {
+    override suspend fun batteryPercent(): Int? = battery
+    override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample =
+        StepSample(delta, cumulative)
+}
 
 class LocationPointStoreTest {
 
@@ -17,7 +29,10 @@ class LocationPointStoreTest {
         src: String = "gps",
     ) = RawLocationPoint(t = t, lat = lat, lon = lon, acc = 10.0, src = src, fg = true)
 
-    private fun runStoreTest(body: suspend (LocationPointStore, DatabaseManager) -> Unit) = runTest {
+    private fun runStoreTest(
+        sensors: DeviceSensors = FakeSensors(),
+        body: suspend (LocationPointStore, DatabaseManager) -> Unit,
+    ) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val db = DatabaseManager(
             { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
@@ -25,7 +40,7 @@ class LocationPointStoreTest {
             readDispatcher = dispatcher,
         )
         try {
-            body(LocationPointStore(db), db)
+            body(LocationPointStore(db, sensors), db)
         } finally {
             db.close()
         }
@@ -78,9 +93,33 @@ class LocationPointStoreTest {
     fun dedupsAgainstDbAfterColdStart() = runStoreTest { store, db ->
         store.submit(listOf(point(t = 0)))
         // Fresh store instance — in-memory lastPoint empty, must seed from DB.
-        val coldStore = LocationPointStore(db)
+        val coldStore = LocationPointStore(db, FakeSensors())
         coldStore.submit(listOf(point(t = 5_000)))
         assertEquals(1, coldStore.countPendingUpload())
+    }
+
+    @Test
+    fun stampsBatteryOnEveryPointAndStepDeltaOnNewest() = runStoreTest(
+        sensors = FakeSensors(battery = 80, delta = 42, cumulative = 1000L),
+    ) { store, db ->
+        // Two far-apart points accepted in one submit.
+        store.submit(listOf(point(t = 0), point(t = 60_000, lon = 13.01)))
+        val rows = db.locationPoint.selectByTimeRange(0, 3_600_000)
+        assertEquals(2, rows.size)
+        // Battery on both.
+        assertEquals(80, rows[0].bat)
+        assertEquals(80, rows[1].bat)
+        // Step delta only on the newest (the window since the previous point).
+        assertNull(rows[0].steps)
+        assertEquals(42, rows[1].steps)
+    }
+
+    @Test
+    fun nullSensorsLeaveStepsAndBatteryNull() = runStoreTest { store, db ->
+        store.submit(listOf(point(t = 0)))
+        val row = db.locationPoint.selectByTimeRange(0, 3_600_000).single()
+        assertNull(row.steps)
+        assertNull(row.bat)
     }
 
     @Test

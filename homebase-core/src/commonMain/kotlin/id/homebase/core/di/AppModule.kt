@@ -137,6 +137,8 @@ import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
+import id.homebase.core.location.tracking.DeviceSensors
+import id.homebase.core.location.tracking.createDeviceSensors
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
@@ -200,6 +202,7 @@ val appModule = module {
     // region Location add-on
     single { LocationPreferences(get()) }
     single { LocationDeviceId() }
+    single<DeviceSensors> { createDeviceSensors() }
     singleOf(::LocationPointStore)
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
