@@ -192,13 +192,18 @@ class MessageInfoViewModel(
                 canRetry = overlay.canRetry,
                 canTryNow = overlay.canTryNow,
                 nextAttemptInMinutes = overlay.nextAttemptInMinutes,
-                attemptNumber = effective?.takeIf { it.checkOutCount >= 1 }?.let { (it.checkOutCount + 1).toInt() },
+                // Show the attempt counter for ANY queued row — including a
+                // never-yet-attempted one (offline / first attempt) — so it isn't
+                // blank exactly when a message is stuck waiting to send.
+                attemptNumber = effective?.let { (it.checkOutCount + 1).toInt() },
                 nextAttemptAtMs = effective?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
                 waitingOnEarlierMessage = waiting,
                 stuckReason = effective?.lastError,
                 blockingRow = state.blockingRow,
                 isCheckedOut = effective?.isCheckedOut == true,
                 isActivelyUploading = effective?.isActivelyUploading == true,
+                // Offline only matters while something is actually queued.
+                outboxIsOffline = row != null && !outboxSync.isCurrentlyOnline(),
                 hasLingeringOutboxRow = row != null &&
                     (overlay.sendState == OutgoingSendState.Sent ||
                         overlay.sendState == OutgoingSendState.DeliveryFailed),

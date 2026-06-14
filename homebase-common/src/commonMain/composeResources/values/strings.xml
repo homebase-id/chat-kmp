@@ -60,6 +60,7 @@
     <string name="msg_stuck_reason">Couldn’t send: %1$s</string>
     <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn’t finish and is still checked out</string>
     <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
+    <string name="msg_waiting_for_connection">Waiting for connection</string>
     <string name="action_try_now">Try now</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
