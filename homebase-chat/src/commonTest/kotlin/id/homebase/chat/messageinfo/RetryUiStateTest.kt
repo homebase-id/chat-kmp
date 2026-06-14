@@ -24,7 +24,7 @@ class RetryUiStateTest {
     @Test
     fun noRowPassesTheBaseThroughUntouched() {
         for (base in listOf(failedBase, sendingBase, sentBase)) {
-            val result = retryUiState(base, inOutbox = false, isCheckedOut = false, checkoutIsStale = false, nextRunTimeRaw = null, nowMs = nowMs)
+            val result = retryUiState(base, inOutbox = false, isCheckedOut = false, isActivelyUploading = false, nextRunTimeRaw = null, nowMs = nowMs)
             assertEquals(base.sendState, result.sendState)
             assertEquals(base.retryMode, result.retryMode)
             assertEquals(base.canRetry, result.canRetry)
@@ -38,7 +38,7 @@ class RetryUiStateTest {
     @Test
     fun queuedRowOverridesSendingWithTryNow() {
         val result = retryUiState(
-            sendingBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+            sendingBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
             nextRunTimeRaw = nowMs + 10 * 60_000L, nowMs = nowMs,
         )
         assertEquals(OutgoingSendState.Queued, result.sendState)
@@ -50,7 +50,7 @@ class RetryUiStateTest {
     @Test
     fun queuedRowSuppressesRetryEvenForAFailedBase() {
         val result = retryUiState(
-            failedBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+            failedBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
             nextRunTimeRaw = nowMs + 60_000L, nowMs = nowMs,
         )
         assertEquals(OutgoingSendState.Queued, result.sendState)
@@ -60,27 +60,28 @@ class RetryUiStateTest {
     }
 
     @Test
-    fun checkedOutRowShowsNoTryNowAndNoDeadline() {
+    fun activelyUploadingRowShowsNoTryNowAndNoDeadline() {
+        // A live worker is genuinely uploading it → resetting is meaningless.
         val result = retryUiState(
-            sendingBase, inOutbox = true, isCheckedOut = true, checkoutIsStale = false,
+            sendingBase, inOutbox = true, isCheckedOut = true, isActivelyUploading = true,
             nextRunTimeRaw = nowMs + 60_000L, nowMs = nowMs,
         )
         assertEquals(OutgoingSendState.Queued, result.sendState)
-        assertFalse(result.canTryNow, "resetting a fresh in-flight upload is meaningless")
+        assertFalse(result.canTryNow, "resetting an actively-uploading row is meaningless")
         assertNull(result.nextAttemptInMinutes)
     }
 
     @Test
-    fun staleCheckoutOffersTryNow() {
-        // A checked-out row whose worker died (stale/zombie) — Try-now is offered
-        // so it can be revived (the in-flight no-op gate only applies to a FRESH
-        // checkout).
+    fun zombieCheckoutOffersTryNow() {
+        // Checked out in the DB but NO live worker is running it (worker died) —
+        // Try-now is offered so it can be revived. No time guess: the signal is
+        // simply "not actively uploading".
         val result = retryUiState(
-            sendingBase, inOutbox = true, isCheckedOut = true, checkoutIsStale = true,
+            sendingBase, inOutbox = true, isCheckedOut = true, isActivelyUploading = false,
             nextRunTimeRaw = nowMs + 60_000L, nowMs = nowMs,
         )
         assertEquals(OutgoingSendState.Queued, result.sendState)
-        assertTrue(result.canTryNow, "a stale (zombie) checkout must be reclaimable via Try now")
+        assertTrue(result.canTryNow, "a zombie checkout must be revivable via Try now")
     }
 
     @Test
@@ -88,7 +89,7 @@ class RetryUiStateTest {
         // A delivered message can still carry a dead/lingering row — don't
         // relabel it "Queued"; keep Sent and just offer Try-now to clear it.
         val result = retryUiState(
-            sentBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+            sentBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
             nextRunTimeRaw = nowMs + 60_000L, nowMs = nowMs,
         )
         assertEquals(OutgoingSendState.Sent, result.sendState, "a delivered message must not be relabelled Queued")
@@ -100,7 +101,7 @@ class RetryUiStateTest {
     @Test
     fun pastDeadlineFloorsToZeroMinutes() {
         val result = retryUiState(
-            sendingBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+            sendingBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
             nextRunTimeRaw = nowMs - 5_000L, nowMs = nowMs,
         )
         assertEquals(0L, result.nextAttemptInMinutes)
@@ -112,7 +113,7 @@ class RetryUiStateTest {
         // legacy seconds-epoch row written before the checkInFailed unit fix.
         for (raw in listOf(0L, 42L, 1_780_000_000L)) {
             val result = retryUiState(
-                sendingBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+                sendingBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
                 nextRunTimeRaw = raw, nowMs = nowMs,
             )
             assertEquals(
@@ -126,7 +127,7 @@ class RetryUiStateTest {
     @Test
     fun subMinuteWaitRoundsDownToShortly() {
         val result = retryUiState(
-            sendingBase, inOutbox = true, isCheckedOut = false, checkoutIsStale = false,
+            sendingBase, inOutbox = true, isCheckedOut = false, isActivelyUploading = false,
             nextRunTimeRaw = nowMs + 45_000L, nowMs = nowMs,
         )
         assertEquals(0L, result.nextAttemptInMinutes)

@@ -203,6 +203,10 @@ class OutboxSync(
                 this.send() // Try to spawn a thread for parallel outbox processing
 
             try {
+                // This row is now genuinely in flight on this worker — record its
+                // checkout stamp as live so Message Info can tell "uploading" from
+                // a dead zombie without guessing at elapsed time.
+                markCheckoutLive(outboxRecord.checkOutStamp)
                 // We sent the item, send an event
                 eventBus.emit(
                     BackendEvent.OutboxEvent.ItemStarted(
@@ -307,6 +311,12 @@ class OutboxSync(
                 )
 
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
+            } finally {
+                // No longer running on this worker — whether it completed, failed,
+                // dropped, or the scope was cancelled. (On cancellation the row
+                // stays checked out in the DB but is no longer in flight, so it
+                // correctly reads as a zombie until clearCheckout revives it.)
+                markCheckoutDone(outboxRecord.checkOutStamp)
             }
         }
     }
@@ -475,21 +485,30 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+    }
 
-        /** A checked-out row whose stamp is older than this is treated as a
-         *  zombie (its worker died — app kill / crash / dropped connection): it
-         *  strands its dependents forever (the dependency gate still sees it) and
-         *  can't be reset by setNextRunTime.
-         *
-         *  Must comfortably exceed the longest plausible SINGLE upload — a large
-         *  video on a slow/travelling connection can run minutes — because two
-         *  consumers are NOT idle-gated and rely on this bound alone: the "stuck"
-         *  flag Message Info shows, and the Try-now reclaim cutoff. (The drain
-         *  auto-reclaim is additionally idle-gated — it only runs when no worker
-         *  holds a row — so it can't clobber an in-flight upload regardless.) A
-         *  rare over-eager reclaim is non-fatal anyway: a same-uniqueId re-send
-         *  hits ExistingFileWithUniqueId → recover-as-Sent. */
-        public const val STALE_CHECKOUT_MS: Long = 600_000L // 10 minutes
+    // Checkout stamps of rows currently held by a LIVE upload worker in THIS
+    // process. This is the exact "in-flight vs dead" signal — NO time-based
+    // guessing (an upload can legitimately run for an hour): a checked-out DB row
+    // whose stamp is NOT in here has no worker running it, so it's a zombie (the
+    // worker died, or the process was killed — which empties this in-memory set,
+    // so after a restart every still-checked-out row is correctly seen as dead).
+    private val liveCheckoutMutex = Mutex()
+    private val liveCheckoutStamps = mutableSetOf<Long>()
+
+    private suspend fun markCheckoutLive(stamp: Long?) {
+        stamp ?: return
+        liveCheckoutMutex.withLock { liveCheckoutStamps.add(stamp) }
+    }
+
+    private suspend fun markCheckoutDone(stamp: Long?) {
+        stamp ?: return
+        liveCheckoutMutex.withLock { liveCheckoutStamps.remove(stamp) }
+    }
+
+    private suspend fun isCheckoutLive(stamp: Long?): Boolean {
+        stamp ?: return false
+        return liveCheckoutMutex.withLock { stamp in liveCheckoutStamps }
     }
 
     /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
@@ -502,13 +521,17 @@ class OutboxSync(
          *  seconds-epoch value — display code must normalize. */
         val nextRunTime: Long,
         val checkOutCount: Long,
-        /** True when an upload worker currently holds the row. */
+        /** True when the row is checked out in the DB. NOTE: this alone does not
+         *  mean it's uploading — a zombie (dead worker) is also checked out. Use
+         *  [isActivelyUploading] to tell them apart. */
         val isCheckedOut: Boolean,
         val uploadType: Long,
-        /** Checkout stamp (~ms epoch when checked out), or null if not checked
-         *  out. `now - checkOutStamp > STALE_CHECKOUT_MS` ⇒ a zombie (worker
-         *  died); the UI shows "checked out / stuck" and offers Try now. */
-        val checkOutStamp: Long? = null,
+        /** True when a LIVE upload worker is genuinely running this checkout right
+         *  now (its stamp is held in [liveCheckoutStamps]). Exact, with no
+         *  time-based guess — an upload may legitimately run for an hour.
+         *  `isCheckedOut && !isActivelyUploading` ⇒ a zombie: the UI shows
+         *  "stuck" and offers Try now. */
+        val isActivelyUploading: Boolean = false,
         /** The message this row is queued behind, if any. */
         val dependencyUniqueId: Uuid? = null,
         /** True when [dependencyUniqueId] still has a row in the outbox — i.e.
@@ -531,7 +554,7 @@ class OutboxSync(
             checkOutCount = checkOutCount,
             isCheckedOut = checkOutStamp != null,
             uploadType = uploadType,
-            checkOutStamp = checkOutStamp,
+            isActivelyUploading = isCheckoutLive(checkOutStamp),
             dependencyUniqueId = dependencyUniqueId,
             dependencyPending = dependencyPending,
             lastError = lastUploadErrorFor(driveId, uniqueId),

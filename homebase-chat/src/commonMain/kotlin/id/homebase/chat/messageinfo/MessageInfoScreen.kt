@@ -288,9 +288,9 @@ fun MessageInfoUi(
                                     val statusText = when {
                                         uiState.waitingOnEarlierMessage ->
                                             stringResource(MR.string.msg_waiting_on_earlier_message)
-                                        uiState.isCheckedOut && uiState.checkoutIsStale ->
+                                        uiState.isCheckedOut && !uiState.isActivelyUploading ->
                                             stringResource(MR.string.msg_outbox_checked_out_stuck)
-                                        uiState.isCheckedOut ->
+                                        uiState.isActivelyUploading ->
                                             stringResource(MR.string.msg_status_sending)
                                         else -> stringResource(
                                             MR.string.msg_still_in_outbox,
@@ -307,8 +307,8 @@ fun MessageInfoUi(
                                 if (uiState.waitingOnEarlierMessage && uiState.isCheckedOut) {
                                     Text(
                                         text = stringResource(
-                                            if (uiState.checkoutIsStale) MR.string.msg_outbox_checked_out_stuck
-                                            else MR.string.msg_status_sending
+                                            if (uiState.isActivelyUploading) MR.string.msg_status_sending
+                                            else MR.string.msg_outbox_checked_out_stuck
                                         ),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -385,8 +385,8 @@ fun MessageInfoUi(
                             if (uiState.isCheckedOut) {
                                 Text(
                                     text = stringResource(
-                                        if (uiState.checkoutIsStale) MR.string.msg_outbox_checked_out_stuck
-                                        else MR.string.msg_status_sending
+                                        if (uiState.isActivelyUploading) MR.string.msg_status_sending
+                                        else MR.string.msg_outbox_checked_out_stuck
                                     ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

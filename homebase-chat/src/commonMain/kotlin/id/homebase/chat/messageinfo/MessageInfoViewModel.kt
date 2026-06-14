@@ -176,7 +176,7 @@ class MessageInfoViewModel(
                 base = result,
                 inOutbox = row != null,
                 isCheckedOut = row?.isCheckedOut == true,
-                checkoutIsStale = row.isStaleCheckout(nowMs),
+                isActivelyUploading = row?.isActivelyUploading == true,
                 nextRunTimeRaw = row?.nextRunTime,
                 nowMs = nowMs,
             )
@@ -198,7 +198,7 @@ class MessageInfoViewModel(
                 stuckReason = effective?.lastError,
                 blockingRow = state.blockingRow,
                 isCheckedOut = effective?.isCheckedOut == true,
-                checkoutIsStale = effective.isStaleCheckout(nowMs),
+                isActivelyUploading = effective?.isActivelyUploading == true,
                 hasLingeringOutboxRow = row != null &&
                     (overlay.sendState == OutgoingSendState.Sent ||
                         overlay.sendState == OutgoingSendState.DeliveryFailed),

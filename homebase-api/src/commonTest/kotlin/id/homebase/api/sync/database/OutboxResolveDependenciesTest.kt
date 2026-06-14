@@ -77,20 +77,25 @@ class OutboxResolveDependenciesTest {
     }
 
     @Test
-    fun pendingRowSnapshotExposesCheckOutStamp() = outboxTest { db ->
+    fun checkedOutWithoutLiveWorkerReadsAsZombieNotUploading() = outboxTest { db ->
+        // The exact "in-flight vs dead" signal — no time guess. A row checked out
+        // in the DB but with NO live upload worker holding its stamp (here: a
+        // direct checkout, not via the send worker; in production: a worker that
+        // died / a killed process that emptied the live set) is a zombie.
         val drive = Uuid.random()
         val id = Uuid.random()
         db.insertRow(drive, id, dep = null)
         val s = sync(db)
 
-        assertFalse(assertNotNull(s.pendingRowSnapshot(drive, id)).isCheckedOut)
+        val before = assertNotNull(s.pendingRowSnapshot(drive, id))
+        assertFalse(before.isCheckedOut)
+        assertFalse(before.isActivelyUploading)
 
-        val checkedOut = assertNotNull(db.outbox.checkout())
-        assertEquals(id, checkedOut.uniqueId)
+        assertEquals(id, assertNotNull(db.outbox.checkout()).uniqueId)
 
         val snap = assertNotNull(s.pendingRowSnapshot(drive, id))
-        assertTrue(snap.isCheckedOut)
-        assertNotNull(snap.checkOutStamp, "a checked-out row must expose its stamp for staleness display")
+        assertTrue(snap.isCheckedOut, "checked out in the DB")
+        assertFalse(snap.isActivelyUploading, "but no live worker holds it → a zombie, not in-flight")
     }
 
     @Test
