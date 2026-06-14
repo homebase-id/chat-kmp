@@ -71,6 +71,8 @@ import id.homebase.resources.error_delivery_failed
 import id.homebase.resources.action_try_now
 import id.homebase.resources.msg_next_attempt_countdown
 import id.homebase.resources.msg_next_attempt_shortly
+import id.homebase.resources.msg_outbox_checked_out_stuck
+import id.homebase.resources.msg_outbox_entry_lingering
 import id.homebase.resources.msg_send_attempt
 import id.homebase.resources.msg_stuck_reason
 import id.homebase.resources.msg_waiting_on_earlier_message
@@ -270,9 +272,10 @@ fun MessageInfoUi(
                             // Still in the outbox: it WILL be sent (after its
                             // backoff). Honest copy — attempt count, a live
                             // countdown to the next try (or "waiting on an
-                            // earlier message"), and the last failure reason —
-                            // plus a Try-now escape hatch, instead of an
-                            // indefinite "Sending…" spinner.
+                            // earlier message", or "checked out / stuck"), and
+                            // the last failure reason. The Try-now button is
+                            // rendered once after the when (shared with the
+                            // lingering-row case below).
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -282,10 +285,14 @@ fun MessageInfoUi(
                                         modifier = Modifier.size(16.dp),
                                         strokeWidth = 2.dp,
                                     )
-                                    val statusText = if (uiState.waitingOnEarlierMessage) {
-                                        stringResource(MR.string.msg_waiting_on_earlier_message)
-                                    } else {
-                                        stringResource(
+                                    val statusText = when {
+                                        uiState.waitingOnEarlierMessage ->
+                                            stringResource(MR.string.msg_waiting_on_earlier_message)
+                                        uiState.isCheckedOut && !uiState.isActivelyUploading ->
+                                            stringResource(MR.string.msg_outbox_checked_out_stuck)
+                                        uiState.isActivelyUploading ->
+                                            stringResource(MR.string.msg_status_sending)
+                                        else -> stringResource(
                                             MR.string.msg_still_in_outbox,
                                             rememberNextAttemptText(uiState.nextAttemptAtMs),
                                         )
@@ -293,6 +300,19 @@ fun MessageInfoUi(
                                     Text(
                                         text = statusText,
                                         style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                                // Blocked on an earlier message → surface that
+                                // message's (the blocker's) checked-out/stuck state.
+                                if (uiState.waitingOnEarlierMessage && uiState.isCheckedOut) {
+                                    Text(
+                                        text = stringResource(
+                                            if (uiState.isActivelyUploading) MR.string.msg_status_sending
+                                            else MR.string.msg_outbox_checked_out_stuck
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 2.dp),
                                     )
                                 }
                                 uiState.attemptNumber?.let { attempt ->
@@ -314,14 +334,6 @@ fun MessageInfoUi(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 2.dp),
                                     )
-                                }
-                            }
-                            if (uiState.canTryNow) {
-                                OutlinedButton(
-                                    onClick = { onUiAction(MessageInfoUiAction.TryNowClicked) },
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                ) {
-                                    Text(stringResource(MR.string.action_try_now))
                                 }
                             }
                         }
@@ -356,6 +368,61 @@ fun MessageInfoUi(
                         }
 
                         null -> {}
+                    }
+
+                    // A delivered message can still carry a dead/lingering outbox
+                    // row (the row lifecycle is decoupled from server-confirmed
+                    // delivery). Surface it with the row's real state so it's
+                    // visible — and clearable via Try now below — rather than
+                    // silently hidden behind a "Sent".
+                    if (uiState.hasLingeringOutboxRow) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                            Text(
+                                text = stringResource(MR.string.msg_outbox_entry_lingering),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (uiState.isCheckedOut) {
+                                Text(
+                                    text = stringResource(
+                                        if (uiState.isActivelyUploading) MR.string.msg_status_sending
+                                        else MR.string.msg_outbox_checked_out_stuck
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                            uiState.attemptNumber?.let { attempt ->
+                                Text(
+                                    text = stringResource(MR.string.msg_send_attempt, attempt, uiState.maxAttempts),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                            uiState.stuckReason?.let { reason ->
+                                Text(
+                                    text = stringResource(MR.string.msg_stuck_reason, reason),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    // Try now — shown for a queued message AND for a delivered
+                    // message with a lingering/dead outbox row. Resolves the
+                    // blocker chain (reviving a checked-out zombie via the
+                    // idle-gated cleanup) so the send completes, without deleting.
+                    if (uiState.canTryNow) {
+                        OutlinedButton(
+                            onClick = { onUiAction(MessageInfoUiAction.TryNowClicked) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            Text(stringResource(MR.string.action_try_now))
+                        }
                     }
 
                     // A failed message must never show a bare failure headline

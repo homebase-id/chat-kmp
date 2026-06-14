@@ -432,6 +432,12 @@ class AuthConnectionCoordinator(
                             if (_connectionState.value.isConnected) {
                                 _connectionState.update { it.copy(isConnecting = false) }
                             }
+                            // Instrumentation: confirm the post-connect cleanup
+                            // actually runs (this is the only place zombie
+                            // checked-out outbox rows get revived). A missing
+                            // "onConnected → clearCheckout" line in the log means
+                            // onConnected never fired (no clean WS handshake).
+                            Logger.i(tag = "AuthLifecycle") { "AuthCC: onConnected → clearCheckout() + setOnline(true) + send()" }
                             outboxSync.clearCheckout()
                             outboxSync.setOnline(true)
                             outboxSync.send()

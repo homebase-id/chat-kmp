@@ -58,6 +58,13 @@ class OutboxWrapper(
             delegate.existsByUniqueId(uniqueId).executeAsOne() > 0L
         }
 
+    /** The row for [uniqueId] across drives (or null) — used to walk a
+     *  dependency chain from a message to the earlier one it's blocked on. */
+    suspend fun selectByUniqueId(uniqueId: Uuid): Outbox? =
+        databaseManager.readValue("outbox.selectByUniqueId") {
+            delegate.selectByUniqueId(uniqueId).executeAsOneOrNull()
+        }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 

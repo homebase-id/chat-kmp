@@ -120,6 +120,17 @@ WHERE driveId = ? AND uniqueId = ?;
 existsByUniqueId:
 SELECT COUNT(*) FROM Outbox WHERE uniqueId = ?;
 
+-- The single row for a uniqueId (across drives), to walk a dependency chain:
+-- given a dependencyUniqueId, fetch that row's own driveId/dependencyUniqueId/
+-- state so Message Info can report the blocker and "Try now" can resolve it.
+-- Outbox is UNIQUE(driveId,uniqueId); a uniqueId on >1 drive is not expected, so
+-- LIMIT 1 is safe.
+selectByUniqueId:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE uniqueId = ?
+LIMIT 1;
+
 -- Select checked out item
 selectCheckedOut:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
