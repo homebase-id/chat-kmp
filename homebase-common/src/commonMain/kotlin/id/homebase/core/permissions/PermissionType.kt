@@ -16,4 +16,11 @@ enum class PermissionType {
      * [LOCATION] is granted; on iOS it is the Always authorization escalation.
      */
     LOCATION_ALWAYS,
+
+    /**
+     * Physical-activity / motion access for the pedometer: Android
+     * `ACTIVITY_RECOGNITION` (runtime permission API 29+; auto-granted below),
+     * iOS Core Motion. Best-effort — denial just omits step counts.
+     */
+    ACTIVITY,
 }

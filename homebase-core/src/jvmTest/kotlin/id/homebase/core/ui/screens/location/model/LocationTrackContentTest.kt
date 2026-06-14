@@ -4,6 +4,7 @@ import id.homebase.api.sync.database.BufferedLocationPoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -21,9 +22,11 @@ class LocationTrackContentTest {
         hdg: Double? = 271.0,
         src: String = "gps",
         fg: Boolean = true,
+        steps: Int? = null,
+        bat: Int? = null,
     ) = BufferedLocationPoint(
         t = hourStart + offsetMs, lat = lat, lon = lon, acc = acc,
-        spd = spd, hdg = hdg, src = src, fg = fg,
+        spd = spd, hdg = hdg, src = src, fg = fg, steps = steps, bat = bat,
     )
 
     @Test
@@ -144,5 +147,46 @@ class LocationTrackContentTest {
         assertEquals(points.first(), thinned.first())
         assertEquals(points.last(), thinned.last())
         assertEquals(thinned, thinned.sortedBy { it.t })
+    }
+
+    @Test
+    fun headerCarriesStepsAndFirstPointBattery() {
+        val points = listOf(
+            point(0, steps = null, bat = 88),       // first → battery source
+            point(20_000, lat = 52.31301, steps = 23, bat = 70),
+        )
+        val (json, stored) = LocationTrackCodec.encodeHeader(deviceId, hourStart, points)
+        assertEquals(2, stored.size)
+        val decoded = assertNotNull(LocationTrackCodec.decodeHeader(json))
+        assertEquals(88, decoded.battery)               // first point's battery
+        assertNull(decoded.points[0].steps)
+        assertEquals(23, decoded.points[1].steps)
+    }
+
+    @Test
+    fun payloadCarriesStepsLossless() {
+        val points = listOf(
+            point(0, steps = null),
+            point(60_000, lat = 52.4, steps = 117),
+        )
+        val json = LocationTrackCodec.encodePayload(deviceId, hourStart, points)
+        val decoded = assertNotNull(LocationTrackCodec.decodePayload(json))
+        assertNull(decoded.points[0].steps)
+        assertEquals(117, decoded.points[1].steps)
+    }
+
+    @Test
+    fun decodesLegacyHeaderWithoutStepsOrBattery() {
+        // A header written before steps/bat existed: 7-element points, no "bat".
+        val legacy = """
+            {"v":1,"deviceId":"$deviceId","hourStart":$hourStart,"count":1,"t0":${hourStart / 1000},
+             "bbox":[5231235,1342346,5231235,1342346],
+             "pts":[[0,5231235,1342346,12,14,271,1]]}
+        """.trimIndent().replace("\n", "")
+        val decoded = assertNotNull(LocationTrackCodec.decodeHeader(legacy))
+        assertNull(decoded.battery)
+        assertEquals(1, decoded.points.size)
+        assertNull(decoded.points[0].steps)
+        assertEquals("gps", decoded.points[0].src)
     }
 }

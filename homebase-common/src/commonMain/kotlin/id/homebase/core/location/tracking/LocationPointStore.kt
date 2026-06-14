@@ -1,6 +1,7 @@
 package id.homebase.core.location.tracking
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,7 @@ import kotlin.math.sqrt
  */
 class LocationPointStore(
     private val databaseManager: DatabaseManager,
+    private val deviceSensors: DeviceSensors,
 ) : LocationPointSink {
 
     private val logger = Logger.withTag("LocationPointStore")
@@ -32,7 +34,8 @@ class LocationPointStore(
     override suspend fun submit(points: List<RawLocationPoint>) {
         if (points.isEmpty()) return
         val accepted = mutableListOf<RawLocationPoint>()
-        var last = _lastPoint.value ?: databaseManager.locationPoint.selectLatest()?.toRaw()
+        val prevPoint = _lastPoint.value ?: databaseManager.locationPoint.selectLatest()?.toRaw()
+        var last = prevPoint
         for (p in points.sortedBy { it.t }) {
             if (last != null && p.t <= last.t) continue
             // Thin stationary noise: skip fixes that moved < MIN_DISPLACEMENT_M
@@ -45,9 +48,41 @@ class LocationPointStore(
             last = p
         }
         if (accepted.isEmpty()) return
-        databaseManager.locationPoint.insertPoints(accepted.map { it.toBuffered() })
+
+        // Device readings. Battery (free, permission-less) is stamped on every
+        // point — the encoder surfaces only the hour's first, but any point may
+        // be it. The step delta covers the window since the previous accepted
+        // point and is attributed to the newest point of this batch (exact
+        // per-point in foreground; a batch window's steps in background).
+        val battery = runCatching { deviceSensors.batteryPercent() }
+            .onFailure { logger.d(it) { "battery read failed" } }.getOrNull()
+        val sample = runCatching { deviceSensors.stepsSince(prevPoint?.t, loadCumulative()) }
+            .onFailure { logger.d(it) { "step read failed" } }.getOrNull()
+        sample?.cumulative?.let { saveCumulative(it) }
+
+        val lastIndex = accepted.lastIndex
+        val buffered = accepted.mapIndexed { i, p ->
+            p.toBuffered().copy(
+                bat = battery,
+                steps = if (i == lastIndex) sample?.deltaSteps else null,
+            )
+        }
+        databaseManager.locationPoint.insertPoints(buffered)
         _lastPoint.value = last
-        logger.d { "Buffered ${accepted.size}/${points.size} points (last src=${last?.src})" }
+        logger.d {
+            "Buffered ${accepted.size}/${points.size} points " +
+                "(last src=${last?.src} bat=$battery steps=${sample?.deltaSteps})"
+        }
+    }
+
+    private fun loadCumulative(): Long? = runCatching {
+        if (SharedPreferences.contains(STEP_CUMULATIVE_KEY)) {
+            SharedPreferences.getLong(STEP_CUMULATIVE_KEY)
+        } else null
+    }.getOrNull()
+
+    private fun saveCumulative(value: Long) {
+        runCatching { SharedPreferences.putLong(STEP_CUMULATIVE_KEY, value) }
     }
 
     /** Rows still buffered on this device — the UI's "waiting to upload" count. */
@@ -84,6 +119,10 @@ class LocationPointStore(
         // fix is stationary noise — drop it before it costs DB and upload bytes.
         const val MIN_DISPLACEMENT_M = 8.0
         const val MIN_INTERVAL_MS = 20_000L
+
+        // Persisted (survives process death like the device id) so the Android
+        // background receiver can compute a step delta after a cold wake.
+        private const val STEP_CUMULATIVE_KEY = "location_last_step_cumulative"
 
         fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val dLat = (lat2 - lat1) * PI / 180.0
