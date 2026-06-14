@@ -24,6 +24,8 @@ enum class PermissionType {
      * and their permission stubs always report granted.
      */
     CONTACTS,
+
+    /**
      * Physical-activity / motion access for the pedometer: Android
      * `ACTIVITY_RECOGNITION` (runtime permission API 29+; auto-granted below),
      * iOS Core Motion. Best-effort — denial just omits step counts.

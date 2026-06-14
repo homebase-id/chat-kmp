@@ -191,6 +191,14 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 // prior decision thereafter; iOS never re-prompts after a denial, so a
                 // denied result is treated as permanent (settings is the only way back).
                 CNContactStore().requestAccessForEntityType(CNEntityType.CNEntityTypeContacts) { granted, _ ->
+                    onPermissionResult(
+                        permission,
+                        if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                        !granted,
+                    )
+                }
+            }
+
             PermissionType.ACTIVITY -> {
                 // A throwaway pedometer query surfaces the Core Motion prompt;
                 // the result is reported via the status read afterwards.

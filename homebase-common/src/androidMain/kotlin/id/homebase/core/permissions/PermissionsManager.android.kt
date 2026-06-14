@@ -148,6 +148,8 @@ class AndroidPermissionsManager(
 
             PermissionType.CONTACTS -> {
                 genericPermissionLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
+            }
+
             PermissionType.ACTIVITY -> {
                 // Runtime permission from API 29; below that the step sensor
                 // needs no grant.
@@ -236,6 +238,8 @@ class AndroidPermissionsManager(
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.READ_CONTACTS
                 ) == PackageManager.PERMISSION_GRANTED
+            }
+
             PermissionType.ACTIVITY -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     ContextCompat.checkSelfPermission(
