@@ -167,15 +167,24 @@ class MessageInfoViewModel(
                 serverPresence = state.serverPresence,
             )
             // The outbox row (when present) overrides the tag/server view —
-            // a queued item is "still sending", whatever the tags claim.
+            // a queued item is "still sending", whatever the tags claim — but a
+            // delivered message can still carry a dead/lingering row (handled in
+            // retryUiState, which keeps the settled status + offers Try-now).
+            val nowMs = UnixTimeUtc.now().milliseconds
             val row = state.outboxRow.takeIf { isOwn }
             val overlay = retryUiState(
                 base = result,
                 inOutbox = row != null,
                 isCheckedOut = row?.isCheckedOut == true,
+                checkoutIsStale = row.isStaleCheckout(nowMs),
                 nextRunTimeRaw = row?.nextRunTime,
-                nowMs = UnixTimeUtc.now().milliseconds,
+                nowMs = nowMs,
             )
+            // When blocked on an earlier message, the meaningful progress (attempt
+            // #, countdown, reason, checked-out/stuck) is the BLOCKER's, not this
+            // gated row's — that's the message that has to send first.
+            val waiting = row?.dependencyPending == true
+            val effective = if (waiting) state.blockingRow else row
             state.copy(
                 isOwnMessage = isOwn,
                 sendState = overlay.sendState,
@@ -183,11 +192,16 @@ class MessageInfoViewModel(
                 canRetry = overlay.canRetry,
                 canTryNow = overlay.canTryNow,
                 nextAttemptInMinutes = overlay.nextAttemptInMinutes,
-                // Diagnostic detail for a queued/backed-off message.
-                attemptNumber = row?.takeIf { it.checkOutCount >= 1 }?.let { (it.checkOutCount + 1).toInt() },
-                nextAttemptAtMs = row?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
-                waitingOnEarlierMessage = row?.dependencyPending == true,
-                stuckReason = row?.lastError,
+                attemptNumber = effective?.takeIf { it.checkOutCount >= 1 }?.let { (it.checkOutCount + 1).toInt() },
+                nextAttemptAtMs = effective?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
+                waitingOnEarlierMessage = waiting,
+                stuckReason = effective?.lastError,
+                blockingRow = state.blockingRow,
+                isCheckedOut = effective?.isCheckedOut == true,
+                checkoutIsStale = effective.isStaleCheckout(nowMs),
+                hasLingeringOutboxRow = row != null &&
+                    (overlay.sendState == OutgoingSendState.Sent ||
+                        overlay.sendState == OutgoingSendState.DeliveryFailed),
             )
         }
     }
@@ -203,7 +217,10 @@ class MessageInfoViewModel(
         val state = _uiState.value
         val message = state.message ?: return
         if (!message.isAuthoredBy(state.ownerSession?.odinId)) return
-        if (!message.isPendingSend && !message.isFailedSend) return
+        // Always read the row for an own message — NOT only when the tag says
+        // pending/failed. A delivered (Sent/Read) message can still carry a
+        // dead/zombie outbox row that strands later messages; gating on the tag
+        // hid it entirely. If no row exists this is a cheap no-op.
 
         outboxReadStarted = true
         viewModelScope.launch { refreshOutboxRow() }
@@ -212,7 +229,15 @@ class MessageInfoViewModel(
     private suspend fun refreshOutboxRow() {
         val message = _uiState.value.message ?: return
         val row = outboxSync.pendingRowSnapshot(chatTargetDrive.alias, message.id)
-        _uiState.update { it.copy(outboxRow = row) }
+        // When this row is blocked on an earlier message, fetch that blocker's
+        // own row so the UI can report its real state (checked-out/stuck,
+        // attempt, countdown) rather than a bare "waiting".
+        val blocker = if (row?.dependencyPending == true) {
+            outboxSync.blockingRowSnapshot(chatTargetDrive.alias, message.id)
+        } else {
+            null
+        }
+        _uiState.update { it.copy(outboxRow = row, blockingRow = blocker) }
         recomputeSendStatus()
     }
 
@@ -268,7 +293,10 @@ class MessageInfoViewModel(
         if (!state.canTryNow) return
         _uiState.update { it.copy(canTryNow = false, nextAttemptInMinutes = 0L) }
         viewModelScope.launch {
-            outboxSync.runNow(chatTargetDrive.alias, message.id)
+            // Resolve the whole blocked chain, not just this row: reclaims a dead
+            // (stale checked-out) blocker and resets every still-pending ancestor
+            // so the chain drains in order and this message can finally send.
+            outboxSync.runNowResolvingDependencies(chatTargetDrive.alias, message.id)
             delay(POST_TRY_NOW_REFRESH_MS)
             refreshOutboxRow()
         }

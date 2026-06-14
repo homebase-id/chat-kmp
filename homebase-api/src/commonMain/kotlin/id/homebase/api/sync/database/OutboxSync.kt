@@ -475,6 +475,21 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+
+        /** A checked-out row whose stamp is older than this is treated as a
+         *  zombie (its worker died — app kill / crash / dropped connection): it
+         *  strands its dependents forever (the dependency gate still sees it) and
+         *  can't be reset by setNextRunTime.
+         *
+         *  Must comfortably exceed the longest plausible SINGLE upload — a large
+         *  video on a slow/travelling connection can run minutes — because two
+         *  consumers are NOT idle-gated and rely on this bound alone: the "stuck"
+         *  flag Message Info shows, and the Try-now reclaim cutoff. (The drain
+         *  auto-reclaim is additionally idle-gated — it only runs when no worker
+         *  holds a row — so it can't clobber an in-flight upload regardless.) A
+         *  rare over-eager reclaim is non-fatal anyway: a same-uniqueId re-send
+         *  hits ExistingFileWithUniqueId → recover-as-Sent. */
+        public const val STALE_CHECKOUT_MS: Long = 600_000L // 10 minutes
     }
 
     /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
@@ -490,6 +505,10 @@ class OutboxSync(
         /** True when an upload worker currently holds the row. */
         val isCheckedOut: Boolean,
         val uploadType: Long,
+        /** Checkout stamp (~ms epoch when checked out), or null if not checked
+         *  out. `now - checkOutStamp > STALE_CHECKOUT_MS` ⇒ a zombie (worker
+         *  died); the UI shows "checked out / stuck" and offers Try now. */
+        val checkOutStamp: Long? = null,
         /** The message this row is queued behind, if any. */
         val dependencyUniqueId: Uuid? = null,
         /** True when [dependencyUniqueId] still has a row in the outbox — i.e.
@@ -502,16 +521,43 @@ class OutboxSync(
 
     public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
-        val dependencyPending = row.dependencyUniqueId?.let { databaseManager.outbox.existsByUniqueId(it) } ?: false
+        return row.toSnapshot()
+    }
+
+    private suspend fun Outbox.toSnapshot(): PendingRowSnapshot {
+        val dependencyPending = dependencyUniqueId?.let { databaseManager.outbox.existsByUniqueId(it) } ?: false
         return PendingRowSnapshot(
-            nextRunTime = row.nextRunTime,
-            checkOutCount = row.checkOutCount,
-            isCheckedOut = row.checkOutStamp != null,
-            uploadType = row.uploadType,
-            dependencyUniqueId = row.dependencyUniqueId,
+            nextRunTime = nextRunTime,
+            checkOutCount = checkOutCount,
+            isCheckedOut = checkOutStamp != null,
+            uploadType = uploadType,
+            checkOutStamp = checkOutStamp,
+            dependencyUniqueId = dependencyUniqueId,
             dependencyPending = dependencyPending,
             lastError = lastUploadErrorFor(driveId, uniqueId),
         )
+    }
+
+    /**
+     * Snapshot of the row at the head of [uniqueId]'s dependency chain — the
+     * earlier message it's actually blocked on. Walks `dependencyUniqueId`
+     * pointers (which still have a row) to the deepest pending ancestor and
+     * returns its snapshot, so Message Info can report the blocker's real state
+     * (checked-out/stuck, attempt #, next-attempt countdown, last error) instead
+     * of a bare "waiting". Returns null when nothing is blocking. Bounded by a
+     * visited-set + depth cap against a malformed cycle.
+     */
+    public suspend fun blockingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
+        val visited = mutableSetOf(uniqueId)
+        var dep = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)?.dependencyUniqueId
+        var head: Outbox? = null
+        var guard = 0
+        while (dep != null && visited.add(dep) && guard++ < MAX_ATTEMPTS) {
+            val depRow = databaseManager.outbox.selectByUniqueId(dep) ?: break
+            head = depRow
+            dep = depRow.dependencyUniqueId
+        }
+        return head?.toSnapshot()
     }
 
     /**
@@ -553,6 +599,41 @@ class OutboxSync(
             scope.launch { send() }
         }
         return changed > 0
+    }
+
+    /**
+     * "Try now" that also resolves the blocker(s): the row for (driveId,
+     * uniqueId) may be waiting on an earlier message that is either backed off
+     * or whose own row is a checked-out zombie (its worker died — a checked-out
+     * row strands its dependents via the gate and can't be reset by
+     * setNextRunTime). This:
+     *  1. runs [clearCheckout] — the existing, idle-gated reconnect cleanup
+     *     (waits until no worker is active, then checks zombies back in) — so a
+     *     dead blocker can run again, using the same safe mechanism the WS
+     *     reconnect does rather than an age-bounded background reclaim;
+     *  2. resets this row and every still-pending ancestor in its dependency
+     *     chain to run immediately, and kicks the send loop.
+     * The chain then drains in dependency order: the head runs (recover-as-Sent
+     * / drop) → its row clears → the gate opens → dependents flow. Resolves a
+     * stuck "waiting on an earlier message" without deleting anything. Returns
+     * true when at least one row was reset.
+     */
+    public suspend fun runNowResolvingDependencies(driveId: Uuid, uniqueId: Uuid): Boolean {
+        // Reuse the reconnect-style cleanup (idle-gated, safe — never clears a
+        // row while a worker holds it) to revive a checked-out zombie blocker.
+        clearCheckout()
+        var changed = 0L
+        val visited = mutableSetOf<Uuid>()
+        var row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        var guard = 0
+        while (row != null && visited.add(row.uniqueId) && guard++ <= MAX_ATTEMPTS) {
+            changed += databaseManager.outbox.setNextRunTime(row.driveId, row.uniqueId, 0L)
+            val dep = row.dependencyUniqueId ?: break
+            row = databaseManager.outbox.selectByUniqueId(dep)
+        }
+        Logger.i("OutboxSync: runNowResolvingDependencies reset $changed row(s) in the chain for uniqueId=$uniqueId")
+        scope.launch { send() }
+        return changed > 0L
     }
 
     public suspend fun tryEnqueue(
@@ -761,17 +842,29 @@ class OutboxSync(
 
     suspend fun clearCheckout(timeoutMs: Long = 10_000) {
         val start = UnixTimeUtc.now().milliseconds
+        // Instrumentation: this is the only path that revives zombie checked-out
+        // rows (it runs from AuthConnectionCoordinator.onConnected). If a row
+        // stays stranded across restarts, the log here tells us which leg failed:
+        // never called (onConnected never fired), timed out (a worker is wedged),
+        // or ran and cleared N rows.
+        val outstanding = activeThreads.value
+        Logger.i("OutboxSync: clearCheckout() ENTER — activeWorkers=$outstanding (waiting for idle, timeout=${timeoutMs}ms)")
 
         while (activeThreads.value > 0) {
             if (UnixTimeUtc.now().milliseconds - start > timeoutMs) {
-                Logger.w("clearCheckout timed out waiting for outbox to become idle")
+                Logger.w(
+                    "OutboxSync: clearCheckout() TIMED OUT after ${timeoutMs}ms with " +
+                        "${activeThreads.value} worker(s) still active — checked-out rows NOT cleared; " +
+                        "any zombie stays stranded until the next idle reconnect"
+                )
                 return
             }
             delay(50)
         }
 
-        checkoutMutex.withLock {
+        val cleared = checkoutMutex.withLock {
             databaseManager.outbox.clearCheckedOut()
         }
+        Logger.i("OutboxSync: clearCheckout() DONE — checked $cleared row(s) back in (waited ${UnixTimeUtc.now().milliseconds - start}ms)")
     }
 }
