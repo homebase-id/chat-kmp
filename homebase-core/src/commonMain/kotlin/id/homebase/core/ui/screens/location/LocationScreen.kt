@@ -92,6 +92,20 @@ fun LocationScreen(
         recheckPermissions()
     }
 
+    // Best-effort activity/motion permission for the pedometer: requested once,
+    // after location is granted and the disclosure (which covers steps) was
+    // accepted. Denial is ignored — location tracking and the rest of the
+    // feature continue, steps just stay null.
+    var activityRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState.whileInUseGranted, uiState.disclosureAccepted) {
+        if (uiState.whileInUseGranted && uiState.disclosureAccepted && !activityRequested) {
+            activityRequested = true
+            if (!permissionsManager.isPermissionGranted(PermissionType.ACTIVITY)) {
+                permissionsManager.askPermission(PermissionType.ACTIVITY)
+            }
+        }
+    }
+
     // Returning from the system settings screen must refresh both permission rows.
     var resumeTick by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {

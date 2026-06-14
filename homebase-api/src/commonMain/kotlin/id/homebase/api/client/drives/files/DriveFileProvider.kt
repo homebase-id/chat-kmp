@@ -263,6 +263,21 @@ public class DriveFileProvider(
     ) = driveCache.cacheThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified)
 
     /**
+     * Move a file's seeded cache entries (payloads + thumbnails) from the
+     * optimistic client-minted fileId to the server-assigned one at sync-back,
+     * so the sender's own media keeps hitting the cache after the local record
+     * adopts the server fileId. [payloads] must be the SYNCED file's
+     * descriptors (their `lastModified` becomes part of the thumb cache key).
+     * Counterpart to the seed APIs above.
+     */
+    suspend fun rekeyCachedFile(
+        driveId: Uuid,
+        oldFileId: Uuid,
+        newFileId: Uuid,
+        payloads: List<PayloadDescriptor>,
+    ) = driveCache.rekeyCachedFile(driveId, oldFileId, newFileId, payloads)
+
+    /**
      * Fetch the raw (still-encrypted) bytes for a specific byterange of a payload, going through
      * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
      * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).

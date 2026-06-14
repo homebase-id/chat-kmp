@@ -41,6 +41,11 @@ import platform.UserNotifications.UNAuthorizationStatusEphemeral
 import platform.UserNotifications.UNAuthorizationStatusNotDetermined
 import platform.UserNotifications.UNAuthorizationStatusProvisional
 import platform.UserNotifications.UNUserNotificationCenter
+import platform.CoreMotion.CMAuthorizationStatusAuthorized
+import platform.CoreMotion.CMPedometer
+import platform.Foundation.NSDate
+import platform.Foundation.dateWithTimeIntervalSince1970
+import platform.Foundation.timeIntervalSince1970
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -98,6 +103,27 @@ private object LocationPermissionRequester {
         // on resume, so a silently dropped callback is fine.
         pending = onResult
         manager.requestAlwaysAuthorization()
+    }
+}
+
+/**
+ * Core Motion (pedometer) authorization. The first pedometer query triggers the
+ * system motion prompt; the auth status afterward reflects the user's choice.
+ */
+private object MotionPermissionRequester {
+    fun isAuthorized(): Boolean =
+        CMPedometer.authorizationStatus() == CMAuthorizationStatusAuthorized
+
+    fun request(onResult: (Boolean) -> Unit) {
+        if (!CMPedometer.isStepCountingAvailable()) {
+            onResult(false)
+            return
+        }
+        val now = NSDate()
+        val from = NSDate.dateWithTimeIntervalSince1970(now.timeIntervalSince1970 - 1.0)
+        CMPedometer().queryPedometerDataFromDate(from, now) { _, _ ->
+            onResult(CMPedometer.authorizationStatus() == CMAuthorizationStatusAuthorized)
+        }
     }
 }
 
@@ -165,6 +191,10 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 // prior decision thereafter; iOS never re-prompts after a denial, so a
                 // denied result is treated as permanent (settings is the only way back).
                 CNContactStore().requestAccessForEntityType(CNEntityType.CNEntityTypeContacts) { granted, _ ->
+            PermissionType.ACTIVITY -> {
+                // A throwaway pedometer query surfaces the Core Motion prompt;
+                // the result is reported via the status read afterwards.
+                MotionPermissionRequester.request { granted ->
                     onPermissionResult(
                         permission,
                         if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
@@ -223,6 +253,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 CNContactStore.authorizationStatusForEntityType(CNEntityType.CNEntityTypeContacts) ==
                     CNAuthorizationStatusAuthorized
             }
+            PermissionType.ACTIVITY -> MotionPermissionRequester.isAuthorized()
         }
     }
 

@@ -78,6 +78,8 @@ data class LocationTrackHour(
     val points: List<BufferedLocationPoint>,
     /** Raw captured count for the hour; > points.size when the header trace was thinned. */
     val fullCount: Int,
+    /** Battery % at the hour's first point (header only); null for payload/older files. */
+    val battery: Int? = null,
 ) {
     /** True when a full-resolution payload rides alongside the header trace. */
     val hasOverflowPayload: Boolean get() = fullCount > points.size
@@ -86,13 +88,16 @@ data class LocationTrackHour(
 /**
  * Compact positional encoding of the header trace:
  * ```
- * { "v":1, "deviceId":"…", "hourStart":…, "count":n, "full":N?, "t0":ms,
+ * { "v":1, "deviceId":"…", "hourStart":…, "count":n, "full":N?, "t0":ms, "bat":pct?,
  *   "bbox":[minLatE5,minLonE5,maxLatE5,maxLonE5],
- *   "pts":[[dtSec,latE5,lonE5,accM,spdE1,hdgDeg,flags],…] }
+ *   "pts":[[dtSec,latE5,lonE5,accM,spdE1,hdgDeg,flags,steps?],…] }
  * ```
  * lat/lon as integer 1e-5 degrees (≈1.1 m — below GPS accuracy), dt as whole
  * seconds from t0, speed as 0.1 m/s, heading as whole degrees; flags bit0 = fg,
- * bits1+ = source index. Integers keep the JSON dense and avoid double-repr noise.
+ * bits1+ = source index; steps = pedometer delta since the previous point (or
+ * null); bat = battery % at the hour's first point. Integers keep the JSON
+ * dense. Trailing optional fields are appended, so older 7-element points and
+ * `bat`-less summaries still decode.
  */
 object LocationTrackCodec {
 
@@ -136,6 +141,9 @@ object LocationTrackCodec {
             put("count", stored.size)
             if (fullCount > stored.size) put("full", fullCount)
             put("t0", t0)
+            // Battery for the hour = the first point's reading (chaining hour
+            // files reconstructs the curve). thinUniform always keeps point 0.
+            stored.first().bat?.let { put("bat", it) }
             put("bbox", buildJsonArray {
                 add(JsonPrimitive(stored.minOf { it.lat.toE5() }))
                 add(JsonPrimitive(stored.minOf { it.lon.toE5() }))
@@ -152,6 +160,7 @@ object LocationTrackCodec {
                         add(p.spd?.let { JsonPrimitive((it * 10).roundToInt()) } ?: JsonNull)
                         add(p.hdg?.let { JsonPrimitive(it.roundToInt()) } ?: JsonNull)
                         add(JsonPrimitive(flagsOf(p)))
+                        add(p.steps?.let { JsonPrimitive(it) } ?: JsonNull)
                     })
                 }
             })
@@ -176,6 +185,8 @@ object LocationTrackCodec {
                 hdg = a[5].jsonPrimitive.intOrNull?.toDouble(),
                 src = sources.getOrElse(flags shr 1) { "gps" },
                 fg = flags and 1 == 1,
+                // Index 7 appended later — null on older 7-element points.
+                steps = a.getOrNull(7)?.jsonPrimitive?.intOrNull,
             )
         }
         LocationTrackHour(
@@ -183,13 +194,14 @@ object LocationTrackCodec {
             hourStartMs = hourStart,
             points = pts,
             fullCount = obj["full"]?.jsonPrimitive?.intOrNull ?: pts.size,
+            battery = obj["bat"]?.jsonPrimitive?.intOrNull,
         )
     }.getOrNull()
 
     /**
      * Full-resolution payload for overflow hours — same positional shape, but
      * absolute ms timestamps and unrounded doubles, plus alt/altAcc:
-     * `[t,lat,lon,acc,alt,altAcc,spd,hdg,flags]`.
+     * `[t,lat,lon,acc,alt,altAcc,spd,hdg,flags,steps?]`.
      */
     fun encodePayload(deviceId: Uuid, hourStartMs: Long, points: List<BufferedLocationPoint>): String {
         val obj = buildJsonObject {
@@ -208,6 +220,7 @@ object LocationTrackCodec {
                         add(p.spd?.let { JsonPrimitive(it) } ?: JsonNull)
                         add(p.hdg?.let { JsonPrimitive(it) } ?: JsonNull)
                         add(JsonPrimitive(flagsOf(p)))
+                        add(p.steps?.let { JsonPrimitive(it) } ?: JsonNull)
                     })
                 }
             })
@@ -231,6 +244,7 @@ object LocationTrackCodec {
                 hdg = a[7].jsonPrimitive.contentOrNullDouble(),
                 src = sources.getOrElse(flags shr 1) { "gps" },
                 fg = flags and 1 == 1,
+                steps = a.getOrNull(9)?.jsonPrimitive?.intOrNull,
             )
         }
         LocationTrackHour(

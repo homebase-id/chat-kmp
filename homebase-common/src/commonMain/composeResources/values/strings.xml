@@ -53,7 +53,13 @@
     <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
     <string name="msg_still_in_outbox">Still sending — next attempt %1$s</string>
     <string name="msg_next_attempt_minutes">in about %1$d min</string>
+    <string name="msg_next_attempt_countdown">in %1$s</string>
     <string name="msg_next_attempt_shortly">shortly</string>
+    <string name="msg_send_attempt">Attempt %1$d of %2$d</string>
+    <string name="msg_waiting_on_earlier_message">Waiting for an earlier message to send first</string>
+    <string name="msg_stuck_reason">Couldn’t send: %1$s</string>
+    <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn’t finish and is still checked out</string>
+    <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
     <string name="action_try_now">Try now</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
@@ -1237,7 +1243,7 @@
     <string name="location_dashboard_perm_banner">Location permission needs attention — tap to fix</string>
     <string name="location_dashboard_empty_today">No locations recorded yet today</string>
     <string name="location_consent_title">Your private location history</string>
-    <string name="location_consent_text">Your app will collect location data to record your private location history and store it on your private Homebase Location drive — even when this app is closed or not in use. Your history is end-to-end encrypted to your personal drive; no one but you, not even your cloud operator, can read it.</string>
+    <string name="location_consent_text">Your app will collect location data — and, while tracking, your step count and battery level — to record your private location history and store it on your private Homebase Location drive, even when this app is closed or not in use. Your history is end-to-end encrypted to your personal drive; no one but you, not even your cloud operator, can read it.</string>
     <string name="location_consent_agree">Agree</string>
     <string name="location_consent_decline">No thanks</string>
     <string name="location_history_title">History</string>

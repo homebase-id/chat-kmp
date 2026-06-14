@@ -32,6 +32,13 @@
          PendingIntent registration after a reboot. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Location add-on: pedometer (steps per GPS point). ACTIVITY_RECOGNITION
+         lives in src/debug/AndroidManifest.xml ONLY: Google Play rejects any
+         store bundle declaring it with 403 "You must let us know whether your
+         app includes any health features" until the Play Console Health Apps
+         declaration is completed. Sideloaded debug builds keep step capture;
+         store builds (dev/release) record GPS + battery and leave steps null
+         until the declaration clears, at which point this moves back here. -->
 
     <!-- Devices running Android 13 (API level 33) or higher -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

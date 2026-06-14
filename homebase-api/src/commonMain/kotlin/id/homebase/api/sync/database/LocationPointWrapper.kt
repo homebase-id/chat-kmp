@@ -18,6 +18,10 @@ data class BufferedLocationPoint(
     val hdg: Double? = null,
     val src: String,
     val fg: Boolean,
+    /** Pedometer steps since the previous point on this device (delta), or null. */
+    val steps: Int? = null,
+    /** Battery %, 0..100, or null. */
+    val bat: Int? = null,
 )
 
 /**
@@ -46,6 +50,8 @@ class LocationPointWrapper(
                     hdg = p.hdg,
                     src = p.src,
                     fg = if (p.fg) 1L else 0L,
+                    steps = p.steps?.toLong(),
+                    bat = p.bat?.toLong(),
                 )
             }
         }
@@ -66,6 +72,7 @@ class LocationPointWrapper(
                 t = it.t, lat = it.lat, lon = it.lon, acc = it.acc,
                 alt = it.alt, altAcc = it.altAcc, spd = it.spd, hdg = it.hdg,
                 src = it.src, fg = it.fg != 0L,
+                steps = it.steps?.toInt(), bat = it.bat?.toInt(),
             )
         }
     }
@@ -112,6 +119,7 @@ class LocationPointWrapper(
             t = row.t, lat = row.lat, lon = row.lon, acc = row.acc,
             alt = row.alt, altAcc = row.altAcc, spd = row.spd, hdg = row.hdg,
             src = row.src, fg = row.fg != 0L,
+            steps = row.steps?.toInt(), bat = row.bat?.toInt(),
         )
     }
 

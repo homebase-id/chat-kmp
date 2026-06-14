@@ -17,12 +17,14 @@ CREATE TABLE IF NOT EXISTS LocationPoint(
   hdg REAL,                        -- heading/bearing, degrees
   src TEXT NOT NULL,               -- gps | net | fused | slc
   fg INTEGER NOT NULL,             -- 1 when captured in foreground precise mode
+  steps INTEGER,                   -- pedometer steps since the previous point (delta), or null
+  bat INTEGER,                     -- battery %, 0..100, or null
   flushedFileUid BLOB AS Uuid      -- hour-file uniqueId once part of an enqueued flush
 );
 
 insertPoint:
-INSERT OR REPLACE INTO LocationPoint(t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, flushedFileUid)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);
+INSERT OR REPLACE INTO LocationPoint(t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat, flushedFileUid)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);
 
 -- Hours (epoch ms / 3600000) that still have rows not yet part of an enqueued flush.
 selectPendingHours:
@@ -33,7 +35,7 @@ ORDER BY hourBucket;
 
 -- Every row of an hour (marked and unmarked) — a flush re-serializes the full hour.
 selectByTimeRange:
-SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat
 FROM LocationPoint
 WHERE t >= ? AND t < ?
 ORDER BY t;
@@ -68,7 +70,7 @@ SELECT COUNT(*) FROM LocationPoint
 WHERE t >= ? AND flushedFileUid IS NULL;
 
 selectLatest:
-SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat
 FROM LocationPoint
 ORDER BY t DESC
 LIMIT 1;

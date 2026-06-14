@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Debug-only until the Play Console Health Apps declaration is approved —
+         see the note in src/main/AndroidManifest.xml. Sideloaded debug builds
+         keep pedometer step capture; Play-uploaded build types (dev, release)
+         omit the permission so the androidpublisher edit commit isn't rejected
+         with 403 "You must let us know whether your app includes any health
+         features". The DB columns, codec and sensor code stay regardless —
+         store builds simply record null steps until the permission returns. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+</manifest>

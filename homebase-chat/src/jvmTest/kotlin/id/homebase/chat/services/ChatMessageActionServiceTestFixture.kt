@@ -195,6 +195,8 @@ class ChatMessageActionServiceTestFixture(
                 fileProvider = fileProvider,
                 operationsProvider = DriveFileOperationsProvider(httpClient, credentialsManager),
                 reactionProvider = reactionProvider,
+                databaseManager = dbm,
+                credentialsManager = credentialsManager,
             )
         } else {
             ThrowingOutboxUploader

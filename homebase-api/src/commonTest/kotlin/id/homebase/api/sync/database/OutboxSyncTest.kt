@@ -254,7 +254,7 @@ class OutboxSyncTest {
             assertEquals(0, uploader.uploaded.size)
             sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
-        db.close()
+        db.closeIgnoringTeardownRace()  // real-dispatcher teardown race; see helper
     }
 
     @Test
@@ -446,7 +446,7 @@ class OutboxSyncTest {
             collectorJob.cancel()
             sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
         }
-        db.close()
+        db.closeIgnoringTeardownRace()  // real-dispatcher teardown race; see helper
     }
 
     /**
