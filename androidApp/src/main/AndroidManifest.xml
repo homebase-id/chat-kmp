@@ -30,6 +30,10 @@
          PendingIntent registration after a reboot. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Location add-on: pedometer (steps per GPS point). Runtime permission on
+         API 29+; best-effort, location tracking continues if denied. No Play
+         declaration gate, but the Data safety form must disclose activity data. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Devices running Android 13 (API level 33) or higher -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
