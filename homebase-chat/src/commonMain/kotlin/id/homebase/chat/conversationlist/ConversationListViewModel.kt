@@ -259,11 +259,13 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
         // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
-        // drive is granted. Instant once granted; on first use it waits for the user to
-        // complete the flow so the upload isn't enqueued to an ungranted (unsynced) drive.
+        // drive is granted and activated. Instant once activated; on first use it waits for the
+        // user to complete the flow, then registers + mounts the drive BEFORE the caller writes
+        // — so the upload isn't enqueued to an ungranted/unmounted (unsynced) drive.
         awaitDriveGranted = {
             stickerPermissionViewModel.recheckPermissions()
             stickerPermissionViewModel.permissionsGranted.first { it }
+            stickerService.activate()
         },
     )
 
@@ -289,9 +291,12 @@ class ConversationListViewModel(
             )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
+        // Suspend until the Stickers drive is granted and activated, then register + mount it
+        // BEFORE the caller writes (same guarantee as the StickerHandler gate above).
         awaitDriveGranted = {
             stickerPermissionViewModel.recheckPermissions()
             stickerPermissionViewModel.permissionsGranted.first { it }
+            stickerService.activate()
         },
     )
 
