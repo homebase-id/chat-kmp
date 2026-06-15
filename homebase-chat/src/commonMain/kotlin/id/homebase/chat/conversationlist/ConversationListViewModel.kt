@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -143,6 +144,7 @@ class ConversationListViewModel(
     private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     companion object {
@@ -318,10 +320,18 @@ class ConversationListViewModel(
             stickerPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
-                        .onFailure { e ->
-                            Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
-                        }
+                    // Skip the mount when the drive is already mounted (AuthConnectionCoordinator's
+                    // login pre-mount loop mounts a registered Stickers drive before the WS connects).
+                    // Mirrors the Moments/Location first-activation guard so a redundant grant event
+                    // can't trigger a needless WebSocket reconnect; a genuine first grant still mounts.
+                    val alreadyMounted = driveSyncManager.driveStatuses.value
+                        .containsKey(stickerLabeledDrive.drive.alias)
+                    if (!alreadyMounted) {
+                        runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
+                            .onFailure { e ->
+                                Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
+                            }
+                    }
                     stickerStream.start()
                 }
         }

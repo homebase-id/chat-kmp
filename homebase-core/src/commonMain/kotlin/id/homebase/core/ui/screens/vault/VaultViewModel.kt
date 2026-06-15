@@ -122,14 +122,13 @@ class VaultViewModel(
                     val hasDrive = isVaultRegistered()
                     _isActivated.value = hasDrive
                     Logger.i(tag = TAG) { "isLoaded→true: isActivated=$hasDrive" }
-                    if (hasDrive) {
-                        try {
-                            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
-                            driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
-                        } catch (e: Exception) {
-                            Logger.w(e, TAG) { "mountDrive/sync failed (non-fatal)" }
-                        }
-                    }
+                    // Intentionally NO eager mount here. A registered vault is mounted by
+                    // AuthConnectionCoordinator's login-time pre-mount loop (it's in the
+                    // DriveRegistry) before the WebSocket connects, and observeDriveSyncStatus()
+                    // confirms activation once the drive appears in driveStatuses. Mounting it
+                    // again from here raced that pre-mount and triggered a redundant WS reconnect
+                    // → second syncAll → the post-login "0 records" sync-screen regression.
+                    // First-time activation still mounts via handleActivation().
                 }
             }
         }

@@ -630,6 +630,7 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
+            driveSyncManager = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
