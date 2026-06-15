@@ -143,6 +143,23 @@ val locationLabeledDrive = LabeledDrive(
     label = "Location",
 )
 
+// Lists drive — collaborative shared lists add-on. Modeled on [locationLabeledDrive]
+// (app-generated stable alias GUID + drive type GUID). One optional drive per identity
+// (not in [mandatorySyncDrives]); requested via the extend-permissions flow and mounted
+// when the user activates the Lists add-on. Every list lives on this one drive,
+// partitioned by groupId = listId (see Shared Lists design spec). ownerOdinId is null —
+// each identity owns its own Lists drive, exactly like chat.
+//
+// The type GUID is a placeholder until the server team provisions the real Lists drive
+// type (same caveat as Vault/Location above).
+val listsLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"),
+        type = Uuid.parse("b7a1c9d3-4e62-4f8a-9c0d-1e2f3a4b5c6d"),
+    ),
+    label = "Lists",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -352,6 +369,30 @@ fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = locationTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
+
+// Lists-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Location optional-drive permission shape. Phase 1 requests only self
+// Read + Write; the connected-identities circle write-grant required for cross-identity
+// collaboration is added in Phase 4 (see Shared Lists design spec, "Risks").
+val listsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = listsLabeledDrive.drive.alias.toString(),
+        type = listsLabeledDrive.drive.type.toString(),
+        name = "Lists Drive",
+        description = "Drive which contains your shared lists",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getListsPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = listsTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
     )
