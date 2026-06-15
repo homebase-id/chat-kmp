@@ -24,6 +24,14 @@ import kotlin.math.sqrt
 class LocationPointStore(
     private val databaseManager: DatabaseManager,
     private val deviceSensors: DeviceSensors,
+    /**
+     * Invoked after a non-empty batch lands in the buffer, on submit()'s
+     * coroutine. Wired in AppModule to the uploader's rate-gated flushIfDue so
+     * EVERY capture path triggers a drain — the Android background receiver AND
+     * the iOS CLLocationManager delegate, which previously had no background
+     * flush trigger and let points pile up unsent. Default no-op for tests.
+     */
+    private val onPointsBuffered: suspend () -> Unit = {},
 ) : LocationPointSink {
 
     private val logger = Logger.withTag("LocationPointStore")
@@ -69,10 +77,18 @@ class LocationPointStore(
         }
         databaseManager.locationPoint.insertPoints(buffered)
         _lastPoint.value = last
-        logger.d {
-            "Buffered ${accepted.size}/${points.size} points " +
+        // Info (not debug) so the background capture/upload pipeline is auditable
+        // in homebase.log — pending is the not-yet-uploaded backlog that the
+        // iPhone stall would have shown climbing without a flush.
+        val pending = runCatching { databaseManager.locationPoint.countUnmarked() }.getOrDefault(-1L)
+        logger.i {
+            "Buffered ${accepted.size}/${points.size} points pending=$pending " +
                 "(last src=${last?.src} bat=$battery steps=${sample?.deltaSteps})"
         }
+        // Trigger a drain from common code so iOS gets the same background flush
+        // as Android. flushIfDue is rate-gated, so calling it per batch is cheap.
+        runCatching { onPointsBuffered() }
+            .onFailure { logger.e(it) { "onPointsBuffered (flush trigger) failed" } }
     }
 
     private fun loadCumulative(): Long? = runCatching {
@@ -85,8 +101,12 @@ class LocationPointStore(
         runCatching { SharedPreferences.putLong(STEP_CUMULATIVE_KEY, value) }
     }
 
-    /** Rows still buffered on this device — the UI's "waiting to upload" count. */
-    suspend fun countPendingUpload(): Long = databaseManager.locationPoint.countAll()
+    /**
+     * Rows not yet part of an enqueued hour file — the UI's "waiting to upload"
+     * count. Marked rows are already uploaded (kept only until the hour closes),
+     * so they must not count here.
+     */
+    suspend fun countPendingUpload(): Long = databaseManager.locationPoint.countUnmarked()
 
     suspend fun countSince(fromInclusiveMs: Long): Long =
         databaseManager.locationPoint.countSince(fromInclusiveMs)

@@ -39,10 +39,10 @@ class LocationUpdatesReceiver : BroadcastReceiver(), KoinComponent {
         val pendingResult = goAsync()
         scope.launch {
             try {
+                // submit() drains via its onPointsBuffered hook (wired to the
+                // uploader's rate-gated flushIfDue in AppModule) — the same
+                // common trigger iOS now uses, so no platform-specific call here.
                 get<LocationPointStore>().submit(points)
-                // Opportunistic drain — we're awake anyway; the coordinator
-                // forwards to the uploader's rate-gated flushIfDue.
-                get<LocationTrackingCoordinator>().onBackgroundPointsDelivered()
             } finally {
                 pendingResult.finish()
             }
