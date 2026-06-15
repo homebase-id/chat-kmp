@@ -1274,4 +1274,23 @@
     <string name="lists_home_subtitle">Shared to-do lists</string>
     <string name="lists_empty_title">No lists yet</string>
     <string name="lists_empty_body">Create a list to start collaborating with your family.</string>
+    <!-- Lists Phase 3: overview + detail UI -->
+    <string name="list_overview_new">New list</string>
+    <string name="list_overview_create_title">New list</string>
+    <string name="list_overview_name_hint">List name</string>
+    <string name="list_overview_progress">%1$d / %2$d</string>
+    <string name="list_overview_rename_title">Rename list</string>
+    <string name="list_overview_more">List options</string>
+    <string name="list_delete_title">Delete list?</string>
+    <string name="list_delete_body">This permanently deletes the list and all of its items.</string>
+    <string name="list_action_rename">Rename</string>
+    <string name="list_action_delete_list">Delete list</string>
+    <string name="list_detail_add_hint">Add an item</string>
+    <string name="list_detail_add_action">Add item</string>
+    <string name="list_detail_empty_title">No items yet</string>
+    <string name="list_detail_empty_body">Add your first item below.</string>
+    <string name="list_item_more">Item options</string>
+    <string name="list_item_edit_title">Edit item</string>
+    <string name="list_item_check_desc">Toggle item completed</string>
+    <string name="list_item_reorder_desc">Drag to reorder</string>
 </resources>
