@@ -141,6 +141,7 @@ import id.homebase.core.lists.services.ListFileWriter
 import id.homebase.core.lists.services.ListItemSenderService
 import id.homebase.core.lists.services.ListService
 import id.homebase.core.lists.services.ListStream
+import id.homebase.core.ui.screens.lists.ListOverviewViewModel
 import id.homebase.core.ui.screens.lists.ListsSettingsViewModel
 import id.homebase.core.ui.screens.lists.ListsViewModel
 import id.homebase.core.location.LocationPreferences
@@ -680,6 +681,7 @@ val appModule = module {
     viewModel(ListsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getListsPermissionExtensionConfig()) }
     viewModel { ListsViewModel(get(), get(ListsPermissionQualifier), get()) }
     viewModelOf(::ListsSettingsViewModel)
+    viewModelOf(::ListOverviewViewModel)
     viewModel(LocationPermissionQualifier) {
         ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
     }
