@@ -172,6 +172,18 @@ sealed class Route {
     data object MomentsSettings : Route()
 
     @Serializable
+    @SerialName("lists")
+    data object Lists : Route()
+
+    @Serializable
+    @SerialName("lists-onboarding")
+    data object ListsOnboarding : Route()
+
+    @Serializable
+    @SerialName("lists-settings")
+    data object ListsSettings : Route()
+
+    @Serializable
     @SerialName("location")
     data object Location : Route()
 
