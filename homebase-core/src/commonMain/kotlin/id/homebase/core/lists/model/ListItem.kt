@@ -19,7 +19,7 @@ data class ListItem(
 ) {
     fun isValid(): Boolean {
         if (body.isBlank()) return false
-        if (body.codePointLength() > ListsProtocol.MaxItemBodyCodePoints) return false
+        if (body.exceedsCodePoints(ListsProtocol.MaxItemBodyCodePoints)) return false
         if (sortKey.isBlank()) return false
         if (!checked && checkedByOdinId != null) return false
         if (schemaVersion < 1) return false

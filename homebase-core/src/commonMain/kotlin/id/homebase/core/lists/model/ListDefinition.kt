@@ -1,6 +1,7 @@
 package id.homebase.core.lists.model
 
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.lists.ListsProtocol
 import kotlinx.serialization.Serializable
 
@@ -24,20 +25,12 @@ data class ListDefinition(
 ) {
     fun isValid(): Boolean {
         if (title.isBlank()) return false
-        if (title.codePointLength() > ListsProtocol.MaxTitleCodePoints) return false
-        if ((colorOrEmoji?.codePointLength() ?: 0) > 16) return false
+        if (title.exceedsCodePoints(ListsProtocol.MaxTitleCodePoints)) return false
+        if (colorOrEmoji != null && colorOrEmoji.exceedsCodePoints(16)) return false
         if (schemaVersion < 1) return false
         return true
     }
 }
 
-/** UTF-16-safe code-point count (emoji are surrogate pairs). */
-internal fun String.codePointLength(): Int {
-    var count = 0
-    var i = 0
-    while (i < length) {
-        i += if (i + 1 < length && this[i].isHighSurrogate() && this[i + 1].isLowSurrogate()) 2 else 1
-        count++
-    }
-    return count
-}
+/** True iff [this] is longer than [max] code points — reuses the surrogate-safe truncate helper. */
+internal fun String.exceedsCodePoints(max: Int): Boolean = truncateToCodePoints(max) != this

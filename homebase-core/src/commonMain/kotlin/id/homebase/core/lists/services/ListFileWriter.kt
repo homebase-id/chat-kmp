@@ -18,6 +18,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.listsLabeledDrive
+import co.touchlab.kermit.Logger
 import kotlin.uuid.Uuid
 
 /**
@@ -74,7 +75,16 @@ class ListFileWriter(
             originalRecipientCount = recipients.size,
             fileSystemType = FileSystemType.Standard,
         )
-        return outboxSync.tryEnqueue(request).enqueued
+        val enqueued = outboxSync.tryEnqueue(request).enqueued
+        if (!enqueued) {
+            // The upload was never queued (e.g. DB error): drop the optimistic row so it
+            // doesn't linger forever as a local-only ghost that never reaches the server.
+            Logger.w(tag = "ListFileWriter") {
+                "createFile enqueue failed for $uniqueId — rolling back optimistic write"
+            }
+            optimisticWriter.removeOptimisticFile(listsDrive, uniqueId)
+        }
+        return enqueued
     }
 
     /** Update a header-only file's content by uniqueId (last-writer-wins via versionTag). */

@@ -6,6 +6,8 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.lists.ListsProtocol
 import id.homebase.core.lists.model.ListItem
 import id.homebase.core.lists.model.ListSortKeys
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 /** Add / edit / check / reorder / delete list items (ListItem files, fileType 9101). */
@@ -13,6 +15,12 @@ class ListItemSenderService(
     private val writer: ListFileWriter,
     private val listStream: ListStream,
 ) {
+    // Serializes appends and remembers the last sort key we issued per list, so two rapid
+    // addItem calls get distinct increasing keys even before the optimistic write has been
+    // merged back into listStream.itemsByList (which updates asynchronously via BatchReceived).
+    private val addMutex = Mutex()
+    private val lastIssuedSortKey = mutableMapOf<Uuid, String>()
+
     private fun membersOf(listId: Uuid): List<OdinId> =
         listStream.lists.value.lists.find { it.listId == listId }?.definition?.members ?: emptyList()
 
@@ -20,10 +28,13 @@ class ListItemSenderService(
         listStream.itemsByList.value[listId]?.find { it.itemId == itemId }
 
     /** Append a new item to the end of the list. Returns the new itemId. */
-    suspend fun addItem(listId: Uuid, body: String): Uuid {
+    suspend fun addItem(listId: Uuid, body: String): Uuid = addMutex.withLock {
         val itemId = Uuid.random()
-        val lastKey = listStream.itemsByList.value[listId]?.lastOrNull()?.item?.sortKey
+        val streamLast = listStream.itemsByList.value[listId]?.lastOrNull()?.item?.sortKey
+        // High-water mark of the highest key known, whether from the stream or our own pending adds.
+        val lastKey = listOfNotNull(streamLast, lastIssuedSortKey[listId]).maxOrNull()
         val sortKey = if (lastKey == null) ListSortKeys.first() else ListSortKeys.after(lastKey)
+        lastIssuedSortKey[listId] = sortKey
         val item = ListItem(
             body = body.truncateToCodePoints(ListsProtocol.MaxItemBodyCodePoints),
             sortKey = sortKey,
@@ -35,7 +46,7 @@ class ListItemSenderService(
             contentJson = OdinSystemSerializer.serialize(item),
             recipients = writer.recipientsExcludingSelf(membersOf(listId)),
         )
-        return itemId
+        itemId
     }
 
     private suspend fun updateItem(listId: Uuid, itemId: Uuid, transform: (ListItem) -> ListItem) {

@@ -29,4 +29,36 @@ class ListSortKeysTest {
             hi = mid
         }
     }
+
+    @Test
+    fun `between with null lower bound is strictly below the upper bound`() {
+        // regression: the old position-0 clamp could return a key == the upper bound
+        val hi = ListSortKeys.first()                 // "n"
+        val mid = ListSortKeys.between(null, hi)
+        assertTrue(mid < hi)
+    }
+
+    @Test
+    fun `repeated insert-at-top stays strictly below and ordered`() {
+        var hi = ListSortKeys.first()
+        repeat(20) {
+            val mid = ListSortKeys.between(null, hi)
+            assertTrue(mid < hi)
+            hi = mid
+        }
+    }
+
+    @Test
+    fun `equal or inverted bounds append after a instead of crashing`() {
+        val k = ListSortKeys.first()
+        assertTrue(ListSortKeys.between(k, k) > k)     // a == b → after(a)
+        assertTrue(ListSortKeys.between("z", "a") > "z") // inverted → after("z")
+    }
+
+    @Test
+    fun `after is always strictly greater than its input`() {
+        for (k in listOf("a", "n", "z", "az", "n=")) {
+            assertTrue(ListSortKeys.after(k) > k)
+        }
+    }
 }
