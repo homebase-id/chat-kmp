@@ -1259,4 +1259,19 @@
     <string name="location_history_devices">%1$d devices</string>
     <string name="location_history_span">%1$s – %2$s</string>
 
+
+    <!-- Lists add-on -->
+    <string name="lists_label">Lists</string>
+    <string name="nav_lists">Lists</string>
+    <string name="lists_onboarding_title">Shared lists for everyone</string>
+    <string name="lists_onboarding_body_1">Lists is a shared space where you and your family build and check off lists together.</string>
+    <string name="lists_onboarding_body_2">Set it up to mount the Lists drive on this device and start collaborating.</string>
+    <string name="lists_onboarding_setup">Set it up</string>
+    <string name="lists_onboarding_dismiss">Not now</string>
+    <string name="lists_settings_section">Lists</string>
+    <string name="lists_settings_open">Open Lists</string>
+    <string name="lists_settings_show_icon">Show Lists icon in bottom bar</string>
+    <string name="lists_home_subtitle">Shared to-do lists</string>
+    <string name="lists_empty_title">No lists yet</string>
+    <string name="lists_empty_body">Create a list to start collaborating with your family.</string>
 </resources>
