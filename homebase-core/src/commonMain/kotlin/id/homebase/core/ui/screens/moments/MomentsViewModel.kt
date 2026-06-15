@@ -4,23 +4,25 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MomentsViewModel(
     private val momentsPreferences: MomentsPreferences,
     private val momentsPermissionViewModel: ExtendPermissionViewModel,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MomentsUiState())
@@ -32,18 +34,34 @@ class MomentsViewModel(
     val momentsExtendPermissionViewModel: ExtendPermissionViewModel
         get() = momentsPermissionViewModel
 
+    /**
+     * Whether Moments is activated, derived from the mounted-drive state — the
+     * cross-device source of truth. A registered drive is mounted by
+     * AuthConnectionCoordinator's login pre-mount loop (so this is true on every device
+     * the user has logged into), and first-time activation flips it true once the mount
+     * lands. Replaces the former device-local `activated` preference flag, which could
+     * disagree with the registry across devices.
+     */
+    val isActivated: StateFlow<Boolean> =
+        optionalDriveActivation.isActivatedFlow(momentsLabeledDrive)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                optionalDriveActivation.isActivated(momentsLabeledDrive),
+            )
+
     init {
         viewModelScope.launch {
             momentsPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    if (!momentsPreferences.activated.value) {
+                    if (!isActivated.value) {
                         // Auto-activate as soon as the drive is authorized — including the
-                        // passive launch-time autoCheck grant. Activation persists the flag
-                        // and mounts the drive; it does not move the user.
+                        // passive launch-time autoCheck grant. mountDrive registers the drive
+                        // (persist=true) and mounts it; the drive appearing in driveStatuses
+                        // flips isActivated true. It does not move the user.
                         val initiatedByUser = _uiState.value.setupInitiated
-                        momentsPreferences.setActivated(true)
-                        authConnectionCoordinator.mountDrive(momentsLabeledDrive)
+                        optionalDriveActivation.activate(momentsLabeledDrive)
                         _uiState.update {
                             it.copy(isCheckingPermissions = false, setupInitiated = false)
                         }

@@ -4,22 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
@@ -27,7 +29,7 @@ import kotlin.time.Clock
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
     private val locationPermissionViewModel: ExtendPermissionViewModel,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val trackingCoordinator: LocationTrackingCoordinator,
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
@@ -35,11 +37,26 @@ class LocationViewModel(
     tracker: LocationTracker,
 ) : ViewModel() {
 
+    /**
+     * Whether Location is activated, derived from the mounted-drive state — the
+     * cross-device source of truth (a registered drive is mounted by
+     * AuthConnectionCoordinator's login pre-mount loop on every device). Replaces the
+     * former device-local `activated` preference flag, which could disagree with the
+     * registry across devices.
+     */
+    val isActivated: StateFlow<Boolean> =
+        optionalDriveActivation.isActivatedFlow(locationLabeledDrive)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                optionalDriveActivation.isActivated(locationLabeledDrive),
+            )
+
     private val _uiState = MutableStateFlow(
         LocationUiState(
             trackingAvailable = tracker.isAvailable,
             trackingEnabled = locationPreferences.trackingEnabled.value,
-            activated = locationPreferences.activated.value,
+            activated = isActivated.value,
             showMapTiles = locationPreferences.showMapTiles.value,
         )
     )
@@ -56,13 +73,13 @@ class LocationViewModel(
             locationPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    if (!locationPreferences.activated.value) {
+                    if (!isActivated.value) {
                         // Auto-activate as soon as the drive is authorized — including the
-                        // passive launch-time autoCheck grant. Activation persists the flag
-                        // and mounts the drive; it does not move the user.
+                        // passive launch-time autoCheck grant. mountDrive registers the drive
+                        // (persist=true) and mounts it; the drive appearing in driveStatuses
+                        // flips isActivated true. It does not move the user.
                         val initiatedByUser = _uiState.value.setupInitiated
-                        locationPreferences.setActivated(true)
-                        authConnectionCoordinator.mountDrive(locationLabeledDrive)
+                        optionalDriveActivation.activate(locationLabeledDrive)
                         _uiState.update {
                             it.copy(isCheckingPermissions = false, setupInitiated = false)
                         }
@@ -96,7 +113,7 @@ class LocationViewModel(
             }
         }
         viewModelScope.launch {
-            locationPreferences.activated.collect { activated ->
+            isActivated.collect { activated ->
                 _uiState.update { it.copy(activated = activated) }
             }
         }
@@ -136,13 +153,12 @@ class LocationViewModel(
                 // leaves Setup visibly doing nothing (observed on emulator:
                 // four taps, dialog stuck at Idle, no navigation).
                 when {
-                    locationPreferences.activated.value -> {
+                    isActivated.value -> {
                         _events.tryEmit(LocationUiEvent.Activated)
                     }
 
                     locationPermissionViewModel.permissionsGranted.value -> {
-                        locationPreferences.setActivated(true)
-                        authConnectionCoordinator.mountDrive(locationLabeledDrive)
+                        optionalDriveActivation.activate(locationLabeledDrive)
                         _events.tryEmit(LocationUiEvent.Activated)
                     }
 

@@ -201,7 +201,7 @@ fun AppNavHost(
         }
     }
     val openMoments: () -> Unit = {
-        if (momentsPreferences.activated.value) {
+        if (momentsViewModel.isActivated.value) {
             navController.navigate(Route.Moments) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
@@ -212,7 +212,7 @@ fun AppNavHost(
         }
     }
     val openLocation: () -> Unit = {
-        if (locationPreferences.activated.value) {
+        if (locationViewModel.isActivated.value) {
             navController.navigate(Route.Location) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
@@ -374,11 +374,11 @@ fun AppNavHost(
                     val momentId = Uuid.parseOrNull(event.momentId)
                     Logger.i(tag = "AppNavHost") {
                         "OpenMoment received: id=$momentId openComments=${event.openComments} " +
-                                "activated=${momentsPreferences.activated.value}"
+                                "activated=${momentsViewModel.isActivated.value}"
                     }
                     // Only route when Moments is activated (receiving a moment push
                     // implies the moments drive is subscribed, so this normally holds).
-                    if (momentId != null && momentsPreferences.activated.value) {
+                    if (momentId != null && momentsViewModel.isActivated.value) {
                         // Cold-start safety: a tap can arrive while the NavHost is
                         // still on Route.AppLoading (startDestination). AppLoadingScreen
                         // finishes by navigating to ChatList with
@@ -413,7 +413,7 @@ fun AppNavHost(
 
                 is NotificationNavigationEvent.OpenMomentCompose -> {
                     Logger.i(tag = "AppNavHost") {
-                        "OpenMomentCompose received: activated=${momentsPreferences.activated.value}"
+                        "OpenMomentCompose received: activated=${momentsViewModel.isActivated.value}"
                     }
                     // The share flow seeded MomentCreateFlowState before launching
                     // us; MomentComposeViewModel reads that draft on init. Gate on
@@ -421,7 +421,7 @@ fun AppNavHost(
                     // Moment" when it is) and mirror the OpenMoment back-stack
                     // handling: push Moments first so back-press from the composer
                     // lands on the feed, then open the composer.
-                    if (momentsPreferences.activated.value) {
+                    if (momentsViewModel.isActivated.value) {
                         navController.currentBackStack.firstContaining {
                             it.destination.hasRoute(Route.ChatList::class)
                         }

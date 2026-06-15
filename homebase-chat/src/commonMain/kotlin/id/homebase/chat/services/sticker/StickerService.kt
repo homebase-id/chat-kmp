@@ -24,8 +24,8 @@ import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.stickerLabeledDrive
+import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -45,7 +45,7 @@ private const val TAG = "StickerService"
  *  - [resolveForSend] downloads + decrypts a saved sticker's bytes to a temp file so the
  *    composer can re-stage it as a normal image attachment with `forceSticker = true`.
  *  - [deleteSticker] enqueues a local-file delete (mirror of VaultService.deleteEntry).
- *  - [ensureDriveMounted] lazily mounts the optional Stickers drive on first use.
+ *  - [activate] registers + mounts the optional Stickers drive on first-time grant.
  *
  * Reuses all existing crypto/outbox machinery — no hand-rolled encryption, no new table.
  */
@@ -55,21 +55,29 @@ class StickerService(
     private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
     private val driveId = stickerLabeledDrive.drive.alias
 
     /**
-     * Lazily mount the optional Stickers drive (mirrors Moments' on-demand mount).
-     * Mounting is idempotent in [AuthConnectionCoordinator]; safe to call on every
-     * tray-open / save without a "first time" flag.
+     * Activate the optional Stickers drive via [OptionalDriveActivation]: register it in
+     * the cross-device [id.homebase.core.sync.DriveRegistry] and mount it, then cold-load
+     * the saved-sticker stream. This is the SINGLE sanctioned mount path for stickers —
+     * invoked once when the user first grants the Stickers permission. On every subsequent
+     * app start the drive is already in the registry, so the login pre-mount loop mounts it
+     * automatically before the WebSocket connects; feature code does not re-mount.
+     *
+     * Idempotent: [OptionalDriveActivation.activate] is a no-op (and skips the WS-refresh)
+     * when the drive is already mounted, so a redundant call after the login pre-mount costs
+     * nothing.
      */
-    suspend fun ensureDriveMounted() {
+    suspend fun activate() {
         try {
-            authConnectionCoordinator.mountDrive(stickerLabeledDrive)
+            optionalDriveActivation.activate(stickerLabeledDrive)
+            stickerStream.start()
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to mount Stickers drive" }
+            Logger.e(e, TAG) { "Failed to activate Stickers drive" }
         }
     }
 
@@ -96,7 +104,9 @@ class StickerService(
          */
         sourceFileId: Uuid? = null,
     ): Uuid? {
-        ensureDriveMounted()
+        // The Stickers drive is already mounted by the time a save runs — either
+        // auto-mounted at login (registered) or activated when the user granted the
+        // Stickers permission (StickerHandler.awaitDriveGranted gates on that). No mount here.
 
         // Mirror VaultUploaderService: convert HEIC/HEIF to JPEG so the drive and receivers
         // get a web image format. A directly-saved transparent HEIC would otherwise upload as

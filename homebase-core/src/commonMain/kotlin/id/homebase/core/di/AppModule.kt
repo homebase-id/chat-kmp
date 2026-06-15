@@ -94,6 +94,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationEntry
@@ -226,7 +227,7 @@ val appModule = module {
             credentialsManager = get(),
             eventBus = get(),
             deviceId = get(),
-            preferences = get(),
+            optionalDriveActivation = get(),
             scope = get(),
         )
     }
@@ -295,6 +296,10 @@ val appModule = module {
             // ),
         )
     }
+
+    // Shared activation primitive for optional add-on drives (Vault, Moments, Location,
+    // Stickers) — see OptionalDriveActivation.
+    single { OptionalDriveActivation(get(), get()) }
 
     // Bound here rather than in homebase-api's ApiModule because the logout hook
     // needs platform singletons (Coil ImageLoader, FileOperationsProvider) that
@@ -630,7 +635,6 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
-            driveSyncManager = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -669,7 +673,7 @@ val appModule = module {
         LocationViewModel(
             locationPreferences = get(),
             locationPermissionViewModel = get(LocationPermissionQualifier),
-            authConnectionCoordinator = get(),
+            optionalDriveActivation = get(),
             trackingCoordinator = get(),
             pointStore = get(),
             uploaderService = get(),
@@ -745,7 +749,7 @@ val appModule = module {
             vaultService = get(),
             vaultUploaderService = get(),
             eventBus = get(),
-            authConnectionCoordinator = get(),
+            optionalDriveActivation = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
             fileOperationsProvider = get(),

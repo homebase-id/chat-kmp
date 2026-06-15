@@ -12,11 +12,11 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
@@ -55,7 +55,7 @@ class VaultViewModel(
     private val vaultService: VaultService,
     private val vaultUploaderService: VaultUploaderService,
     private val eventBus: EventBus,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val driveRegistry: DriveRegistry,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val fileOperationsProvider: FileOperationsProvider,
@@ -168,11 +168,11 @@ class VaultViewModel(
         val alreadyRegistered = isVaultRegistered()
         if (!alreadyRegistered) {
             Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
             createDefaultSections()
         } else {
             Logger.i(tag = TAG) { "activation: vault already registered — mounting drive" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
         }
         _isActivated.update { true }
         _events.tryEmit(VaultUiEvent.Activated)
