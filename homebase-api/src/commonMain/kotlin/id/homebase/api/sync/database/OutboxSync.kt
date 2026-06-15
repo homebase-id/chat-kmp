@@ -126,6 +126,11 @@ class OutboxSync(
         isOnline = online
     }
 
+    /** Whether the outbox is currently allowed to send (the connection is up).
+     *  When false, queued items can't even attempt — Message Info shows
+     *  "waiting for connection" rather than a meaningless backoff countdown. */
+    fun isCurrentlyOnline(): Boolean = isOnline
+
     private val MAX_SENDING_THREADS = 3
     private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
     private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap

@@ -124,6 +124,9 @@ data class MessageInfoUiState(
     /** The message reads Sent/Delivered, yet a (dead/lingering) outbox row still
      *  exists for it — surfaced honestly with a Try-now to clear it. */
     val hasLingeringOutboxRow: Boolean = false,
+    /** The outbox is offline (no connection), so a queued message can't even
+     *  attempt — show "waiting for connection" instead of a backoff countdown. */
+    val outboxIsOffline: Boolean = false,
 )
 
 sealed interface MessageInfoUiEvent {
