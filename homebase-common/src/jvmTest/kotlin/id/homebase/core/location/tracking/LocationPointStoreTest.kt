@@ -123,6 +123,33 @@ class LocationPointStoreTest {
     }
 
     @Test
+    fun firesFlushTriggerWhenPointsAreBuffered() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val db = DatabaseManager(
+            { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
+            dispatcher = dispatcher,
+            readDispatcher = dispatcher,
+        )
+        try {
+            var triggers = 0
+            val store = LocationPointStore(db, FakeSensors(), onPointsBuffered = { triggers++ })
+            // First batch accepts a point → one trigger.
+            store.submit(listOf(point(t = 0)))
+            assertEquals(1, triggers)
+            // A stationary-noise-only batch buffers nothing → no trigger (the
+            // common flush trigger is the iOS background-flush fix; it must not
+            // fire on dropped fixes).
+            store.submit(listOf(point(t = 5_000, lon = 13.00008)))
+            assertEquals(1, triggers)
+            // A far-enough point is accepted → another trigger.
+            store.submit(listOf(point(t = 25_000, lon = 13.001)))
+            assertEquals(2, triggers)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun haversineSanity() {
         // One degree of longitude at the equator ≈ 111.3 km.
         val d = LocationPointStore.haversineMeters(0.0, 0.0, 0.0, 1.0)

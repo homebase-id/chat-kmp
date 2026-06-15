@@ -3,9 +3,12 @@ import kotlin.uuid.Uuid;
 -- Local buffer for GPS points captured by the Location add-on, drained into
 -- per-device per-UTC-hour track files on the Location drive by
 -- LocationTrackUploaderService. Drain semantics: rows are stamped with the
--- target file's uniqueId on enqueue (markFlushed), deleted when the outbox
--- confirms the upload (deleteByFlushUid), and un-stamped on failure
--- (clearFlushMark) so the next flush retries them.
+-- target file's uniqueId on enqueue (markFlushed) but KEPT — marked, not
+-- deleted — until the hour they belong to has closed, so every flush
+-- re-serializes the complete hour (the file is a whole-document replace). The
+-- outbox confirmation deletes them only once the hour is closed
+-- (deleteFlushedIfHourClosed); failures un-stamp them (clearFlushMark) so the
+-- next flush retries.
 CREATE TABLE IF NOT EXISTS LocationPoint(
   t INTEGER NOT NULL PRIMARY KEY,  -- capture time, epoch ms; INSERT OR REPLACE dedups
   lat REAL NOT NULL,
@@ -54,9 +57,34 @@ deleteByFlushUid:
 DELETE FROM LocationPoint
 WHERE flushedFileUid = ?;
 
--- Rows still on this device (enqueued or not) — the UI's "waiting to upload" count.
+-- Rows still on this device (enqueued or not).
 countAll:
 SELECT COUNT(*) FROM LocationPoint;
+
+-- Rows not yet part of an enqueued hour file — the UI's "waiting to upload"
+-- count. (Marked rows are already uploaded and kept only until the hour closes,
+-- so they must NOT count as pending.)
+countUnmarked:
+SELECT COUNT(*) FROM LocationPoint
+WHERE flushedFileUid IS NULL;
+
+-- Distinct hour buckets (epoch ms / 3600000) that still hold any rows. Used to
+-- finalize a closed hour (flush its complete contents one last time) even when
+-- no new points have arrived to put it in selectPendingHours.
+selectHoursWithRows:
+SELECT DISTINCT (t / 3600000) AS hourBucket
+FROM LocationPoint
+ORDER BY hourBucket;
+
+-- Drain a confirmed hour's rows, but ONLY once the hour has closed (its bucket
+-- is strictly before the current one). While the hour is still open we keep the
+-- marked rows so the next flush re-serializes the COMPLETE hour — the hour file
+-- is a whole-document replace, so dropping rows mid-hour truncates it. All rows
+-- of a given flush share one hour, so this deletes all-or-nothing.
+deleteFlushedIfHourClosed:
+DELETE FROM LocationPoint
+WHERE flushedFileUid = :fileUid
+  AND (t / 3600000) < (:nowMs / 3600000);
 
 countSince:
 SELECT COUNT(*) FROM LocationPoint
