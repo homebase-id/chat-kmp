@@ -20,6 +20,8 @@ import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -46,7 +48,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import id.homebase.chat.widget.ChatMarkdown
+import id.homebase.core.util.applyMarkDownContent
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
@@ -59,8 +64,9 @@ import id.homebase.resources.list_detail_add_action
 import id.homebase.resources.list_detail_add_hint
 import id.homebase.resources.list_detail_empty_body
 import id.homebase.resources.list_detail_empty_title
-import id.homebase.resources.list_overview_more
+import id.homebase.resources.list_item_edit_title
 import id.homebase.resources.list_item_more
+import id.homebase.resources.list_overview_more
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import kotlinx.coroutines.flow.collectLatest
@@ -78,6 +84,7 @@ fun ListDetailScreen(
     var renameDialog by remember { mutableStateOf(false) }
     var deleteListDialog by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var editTarget by remember { mutableStateOf<ListDetailItem?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
@@ -139,7 +146,7 @@ fun ListDetailScreen(
                     ListItemRow(
                         item = item,
                         onToggle = { viewModel.setChecked(item.itemId, !item.checked) },
-                        onEdit = { /* Task 6 */ },
+                        onEdit = { editTarget = item },
                         onDelete = { viewModel.deleteItem(item.itemId) },
                     )
                 }
@@ -167,6 +174,14 @@ fun ListDetailScreen(
             dismissButton = {
                 TextButton(onClick = { deleteListDialog = false }) { Text(stringResource(MR.string.cancel)) }
             },
+        )
+    }
+
+    editTarget?.let { target ->
+        EditItemSheet(
+            initialBody = target.body,
+            onSave = { newBody -> viewModel.editItem(target.itemId, newBody); editTarget = null },
+            onDismiss = { editTarget = null },
         )
     }
 }
@@ -270,6 +285,40 @@ private fun ListDetailTitleDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditItemSheet(
+    initialBody: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val richTextState = rememberRichTextState()
+    // Seed the editor ONCE with the existing markdown body (LaunchedEffect(Unit) so it does not
+    // re-apply on recomposition and clobber the user's edits).
+    LaunchedEffect(Unit) { richTextState.applyMarkDownContent(initialBody) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier.fillMaxWidth().imePadding().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(MR.string.list_item_edit_title), style = MaterialTheme.typography.titleMedium)
+            RichTextEditor(
+                state = richTextState,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+                TextButton(
+                    onClick = { onSave(richTextState.toMarkdown()) },
+                    enabled = richTextState.annotatedString.text.isNotBlank(),
+                ) { Text(stringResource(MR.string.save)) }
+            }
+        }
+    }
 }
 
 @Composable
