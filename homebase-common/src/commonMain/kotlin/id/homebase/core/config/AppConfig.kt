@@ -143,6 +143,17 @@ val locationLabeledDrive = LabeledDrive(
     label = "Location",
 )
 
+// Lists add-on drive — optional, per-identity (not in [mandatorySyncDrives]), mounted via
+// extend-permissions on activation. `type` reuses the Moments app-content drive type (the
+// server only recognises provisioned types); the unique random `alias` is the per-drive id.
+val listsLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("a44e7a26-51f4-4a26-ad12-5d7627b35d0e"),
+        type = Uuid.parse("4338d7d2-f217-486a-8790-a4982644c15f"), // = Moments drive type
+    ),
+    label = "Lists",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -352,6 +363,30 @@ fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = locationTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
+
+// Lists-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Location optional-drive permission shape. Phase 1 requests only self
+// Read + Write; the connected-identities circle write-grant required for cross-identity
+// collaboration is added in Phase 4 (see Shared Lists design spec, "Risks").
+val listsTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = listsLabeledDrive.drive.alias.toString(),
+        type = listsLabeledDrive.drive.type.toString(),
+        name = "Lists Drive",
+        description = "Drive which contains your shared lists",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getListsPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = listsTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
     )
