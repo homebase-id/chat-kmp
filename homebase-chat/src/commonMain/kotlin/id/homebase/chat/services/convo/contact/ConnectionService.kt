@@ -1,7 +1,9 @@
 package id.homebase.chat.services.convo.contact
 
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -22,6 +24,32 @@ data class ConnectionState(
     val map: Map<OdinId, RedactedIdentityConnectionRegistration>
 )
 
+/**
+ * Owner circles (including system circles) with their members, fetched alongside the
+ * connection map on every [ConnectionService.refresh]. Powers circle-membership reads:
+ * the contact-list "Confirmed" / "Introduced" pills (via the two system-circle ids) and
+ * the contact-detail "circles this person is in" list. Not cached — it repopulates on the
+ * next refresh, so on a cold start consumers fall back until the first refresh lands.
+ */
+data class CircleMembershipState(
+    val isLoaded: Boolean = false,
+    val circles: List<CircleWithMembers> = emptyList(),
+) {
+    /** Lowercased member domains of the circle whose id matches [circleId] (32-char N-format). */
+    fun membersOf(circleId: String): Set<String> =
+        circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) }
+            ?.members?.map { it.domainName.lowercase() }?.toSet()
+            ?: emptySet()
+
+    /** Circle definitions the identity [odinId] is a member of. */
+    fun circlesFor(odinId: String): List<RedactedCircleDefinition> {
+        val domain = odinId.lowercase()
+        return circles
+            .filter { cwm -> cwm.members.any { it.domainName.lowercase() == domain } }
+            .map { it.circle }
+    }
+}
+
 class ConnectionService(
     private val provider: ConnectionNetworkProvider,
     private val eventBus: EventBus,
@@ -34,6 +62,9 @@ class ConnectionService(
 
     val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
+
+    private val _circles = MutableStateFlow(CircleMembershipState())
+    val circles: StateFlow<CircleMembershipState> = _circles.asStateFlow()
 
     // One-shot — prevents the AppModule preload and the ConversationListViewModel
     // init from each running hydrate+refresh on cold boot. WS-reconnect refreshes
@@ -106,6 +137,7 @@ class ConnectionService(
         refreshJob = null
         started = false
         _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
+        _circles.value = CircleMembershipState()
     }
 
     private suspend fun hydrateFromCache() {
@@ -129,6 +161,15 @@ class ConnectionService(
                 Logger.d { "Fetching connected and blocked connections in parallel..." }
                 val connectedDeferred = async { provider.getConnected(1000, null) }
                 val blockedDeferred = async { provider.getBlocked(1000, null) }
+                // Circles ride along on the same refresh. A failure here must not break the
+                // connection map, so it is caught independently and leaves prior circles intact.
+                val circlesDeferred = async {
+                    runCatching { provider.getCirclesWithMembers(includeSystemCircle = true) }
+                        .getOrElse { e ->
+                            Logger.w(e) { "ConnectionService: getCirclesWithMembers failed" }
+                            null
+                        }
+                }
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
@@ -136,6 +177,15 @@ class ConnectionService(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
                 )
+                circlesDeferred.await()?.let { circles ->
+                    _circles.value = CircleMembershipState(isLoaded = true, circles = circles)
+                    // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
+                    // actually come back here so the membership-driven pills are reliable.
+                    Logger.d {
+                        "ConnectionService circles: " +
+                            circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                    }
+                }
                 runCatching {
                     cache.persistConnections(
                         connected = connected.results.map { it.odinId },

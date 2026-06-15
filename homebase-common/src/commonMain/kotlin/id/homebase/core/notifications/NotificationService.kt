@@ -905,8 +905,9 @@ internal const val SUMMARY_ID_OFFSET = 100_000
  * without touching any other. Must reproduce exactly what the display path used:
  *  - per-message id = [PushNotificationPayloadOptions.conversationNotificationId]
  *    (the raw, unmasked `typeId.hashCode()`), and
- *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash (see
- *    RichNotificationDisplayer.postSummaryNotification).
+ *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash reduced modulo
+ *    (Int.MAX_VALUE - [SUMMARY_ID_OFFSET]) so the offset can't overflow Int (see
+ *    RichNotificationDisplayer.postSummaryNotification, which delegates here).
  *
  * Degenerate case: if `conversationId.hashCode() == 0` the display path posts the
  * per-message notification under a random id instead, so a derived cancel would
@@ -914,6 +915,11 @@ internal const val SUMMARY_ID_OFFSET = 100_000
  */
 fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val messageId = conversationId.hashCode()
-    val summaryId = SUMMARY_ID_OFFSET + (conversationId.hashCode() and 0x7FFFFFFF)
+    // Reduce the (non-negative) masked hash into [0, Int.MAX_VALUE - SUMMARY_ID_OFFSET)
+    // so the offset can never overflow Int into a negative summary id. Without the
+    // modulo, `SUMMARY_ID_OFFSET + maskedHash` wrapped past Int.MAX_VALUE for the ~0.005%
+    // of hashes within SUMMARY_ID_OFFSET of the top, producing a negative id.
+    val maskedHash = (conversationId.hashCode() and 0x7FFFFFFF) % (Int.MAX_VALUE - SUMMARY_ID_OFFSET)
+    val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }
