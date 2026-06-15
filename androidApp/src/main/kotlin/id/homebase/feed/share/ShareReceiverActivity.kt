@@ -192,7 +192,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "initShareFlow: reached setContent (picker path)" }
         setContent {
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
-            val momentsActivated by optionalDriveActivation.isActivatedFlow(momentsLabeledDrive)
+            val momentsActivatedFlow = remember { optionalDriveActivation.isActivatedFlow(momentsLabeledDrive) }
+            val momentsActivated by momentsActivatedFlow
                 .collectAsStateWithLifecycle(optionalDriveActivation.isActivated(momentsLabeledDrive))
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark

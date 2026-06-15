@@ -258,15 +258,7 @@ class ConversationListViewModel(
         chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
-        // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
-        // drive is granted and activated. Instant once activated; on first use it waits for the
-        // user to complete the flow, then registers + mounts the drive BEFORE the caller writes
-        // — so the upload isn't enqueued to an ungranted/unmounted (unsynced) drive.
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
-            stickerService.activate()
-        },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
 
     private val stickerCreator = StickerCreator(
@@ -291,14 +283,21 @@ class ConversationListViewModel(
             )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
-        // Suspend until the Stickers drive is granted and activated, then register + mount it
-        // BEFORE the caller writes (same guarantee as the StickerHandler gate above).
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
-            stickerService.activate()
-        },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
+
+    /**
+     * Gate the sticker save/create paths: surface the extend-permissions dialog if needed,
+     * suspend until the Stickers drive is granted, then register + mount it BEFORE the caller
+     * writes — so the upload isn't enqueued to an ungranted/unmounted (unsynced) drive. Instant
+     * for an already-activated user ([StickerService.activate] is idempotent); on first use it
+     * waits for the user to complete the permission flow.
+     */
+    private suspend fun ensureStickerDriveReady() {
+        stickerPermissionViewModel.recheckPermissions()
+        stickerPermissionViewModel.permissionsGranted.first { it }
+        stickerService.activate()
+    }
 
     /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
     val stickerCreateState: StateFlow<StickerCreateState?> = stickerCreator.state

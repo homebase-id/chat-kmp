@@ -50,12 +50,18 @@ class MomentsViewModel(
                 optionalDriveActivation.isActivated(momentsLabeledDrive),
             )
 
+    // Synchronous one-shot guard for the auto-activate collector below. isActivated only flips
+    // true after activate()'s mount lands and the derived flow catches up, so a second grant
+    // emission arriving in that window would otherwise re-enter; this latches before the suspend.
+    private var activationKicked = false
+
     init {
         viewModelScope.launch {
             momentsPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    if (!isActivated.value) {
+                    if (!activationKicked && !isActivated.value) {
+                        activationKicked = true
                         // Auto-activate as soon as the drive is authorized — including the
                         // passive launch-time autoCheck grant. mountDrive registers the drive
                         // (persist=true) and mounts it; the drive appearing in driveStatuses

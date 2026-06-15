@@ -26,6 +26,7 @@ import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -76,6 +77,8 @@ class StickerService(
         try {
             optionalDriveActivation.activate(stickerLabeledDrive)
             stickerStream.start()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to activate Stickers drive" }
         }
