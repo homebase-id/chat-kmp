@@ -175,10 +175,20 @@ fun ContactDetailScreen(
                             onSeeAll = { viewModel.onAction(ContactDetailAction.SeeAllMediaClicked) },
                         )
 
-                        GroupsInCommonSection(
-                            groups = uiState.groupsInCommon,
-                            onOpenGroup = { viewModel.onAction(ContactDetailAction.OpenGroup(it)) },
-                        )
+                        // Circles + groups-in-common only apply to Homebase identities;
+                        // for those they always show (with empty / not-connected hints).
+                        if (uiState.hasOdinId) {
+                            GroupsInCommonSection(
+                                groups = uiState.groupsInCommon,
+                                isConnected = uiState.isConnected,
+                                onOpenGroup = { viewModel.onAction(ContactDetailAction.OpenGroup(it)) },
+                            )
+
+                            CirclesSection(
+                                circles = uiState.circles,
+                                isConnected = uiState.isConnected,
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(28.dp))
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

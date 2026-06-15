@@ -22,9 +22,11 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.components.ContactBookEmptyState
 import id.homebase.core.ui.screens.contactbook.components.ContactBookRow
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_connections_empty
+import id.homebase.resources.contactbook_confirmed_empty
 import id.homebase.resources.contactbook_filter_all
-import id.homebase.resources.contactbook_filter_connections
+import id.homebase.resources.contactbook_filter_confirmed
+import id.homebase.resources.contactbook_filter_introduced
+import id.homebase.resources.contactbook_introduced_empty
 import id.homebase.resources.contactbook_no_results
 import org.jetbrains.compose.resources.stringResource
 
@@ -34,8 +36,11 @@ fun ContactBookContent(
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val onConnections = uiState.filter == ContactFilter.CONNECTIONS
-    val list = if (onConnections) uiState.connections else uiState.contacts
+    val list = when (uiState.filter) {
+        ContactFilter.ALL -> uiState.contacts
+        ContactFilter.INTRODUCED -> uiState.introduced
+        ContactFilter.CONFIRMED -> uiState.confirmed
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         FilterRow(uiState.filter, onAction)
@@ -46,18 +51,22 @@ fun ContactBookContent(
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
 
-            list.isEmpty() && onConnections -> CenterText(
-                stringResource(MR.string.contactbook_connections_empty)
-            )
+            list.isEmpty() && uiState.searchQuery.isNotBlank() ->
+                CenterText(stringResource(MR.string.contactbook_no_results))
 
-            list.isEmpty() && uiState.searchQuery.isBlank() ->
-                ContactBookEmptyState(
+            list.isEmpty() -> when (uiState.filter) {
+                ContactFilter.INTRODUCED ->
+                    CenterText(stringResource(MR.string.contactbook_introduced_empty))
+
+                ContactFilter.CONFIRMED ->
+                    CenterText(stringResource(MR.string.contactbook_confirmed_empty))
+
+                ContactFilter.ALL -> ContactBookEmptyState(
                     showImport = uiState.importSupported,
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
                     onImportClick = { onAction(ContactBookUiAction.ImportClicked) },
                 )
-
-            list.isEmpty() -> CenterText(stringResource(MR.string.contactbook_no_results))
+            }
 
             else -> {
                 val grouped = list.groupBy { it.sectionKey }
@@ -83,10 +92,11 @@ fun ContactBookContent(
                             ContactBookRow(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
-                                // Badge only in the "All" view — every row in
-                                // "Connections" is connected by definition.
-                                connected = !onConnections &&
-                                    entry.odinId?.lowercase() in uiState.connectedOdinIds,
+                                // Check shows whenever the identity is connected, in every
+                                // filter (an introduced contact is still a connection).
+                                connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
+                                introducedBy = entry.odinId?.lowercase()
+                                    ?.let { uiState.introducedByDomain[it] },
                             )
                         }
                     }
@@ -127,9 +137,14 @@ private fun FilterRow(
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
         )
         FilterChip(
-            selected = filter == ContactFilter.CONNECTIONS,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CONNECTIONS)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_connections)) },
+            selected = filter == ContactFilter.INTRODUCED,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.INTRODUCED)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_introduced)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.CONFIRMED,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CONFIRMED)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_confirmed)) },
         )
     }
 }

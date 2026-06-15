@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
+import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.contactbook_connected
 import org.jetbrains.compose.resources.stringResource
 
@@ -29,6 +30,8 @@ fun ContactBookRow(
     entry: ContactBookEntry,
     onClick: () -> Unit,
     connected: Boolean = false,
+    /** When non-null, the contact was connected via this introducer (display name). */
+    introducedBy: String? = null,
 ) {
     Row(
         modifier = Modifier
@@ -53,6 +56,16 @@ fun ContactBookRow(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (introducedBy != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(MR.string.connections_introduced_by, introducedBy),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

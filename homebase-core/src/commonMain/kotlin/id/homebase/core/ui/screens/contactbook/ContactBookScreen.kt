@@ -142,6 +142,18 @@ fun ContactBookScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
+            // Search lives above the tabs so it filters both Contacts and Circles.
+            OutlinedTextField(
+                value = uiState.searchQuery,
+                onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+
             PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
                 ContactTab.entries.forEach { tab ->
                     Tab(
@@ -153,23 +165,11 @@ fun ContactBookScreen(
             }
 
             when (uiState.selectedTab) {
-                ContactTab.CONTACTS -> {
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                    ContactBookContent(
-                        uiState = uiState,
-                        onAction = viewModel::onAction,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                ContactTab.CONTACTS -> ContactBookContent(
+                    uiState = uiState,
+                    onAction = viewModel::onAction,
+                    modifier = Modifier.weight(1f),
+                )
                 ContactTab.CIRCLES -> CirclesTabContent(
                     circles = uiState.circles,
                     loading = uiState.circlesLoading,

@@ -4,6 +4,8 @@ package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,7 +48,12 @@ import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_detail_block
+import id.homebase.resources.contactbook_detail_circles
+import id.homebase.resources.contactbook_detail_circles_connect
+import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
+import id.homebase.resources.contactbook_detail_groups_connect
+import id.homebase.resources.contactbook_detail_groups_empty
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_disconnect
 import id.homebase.resources.contactbook_detail_less
@@ -103,13 +111,16 @@ fun RecentMediaSection(
     }
 }
 
-/** "Groups in common" list. Renders nothing if empty. */
+/**
+ * "Groups in common" list. Always shows the header; falls back to an empty state, or a
+ * "must be connected" hint when [isConnected] is false and there's nothing to show.
+ */
 @Composable
 fun GroupsInCommonSection(
     groups: List<GroupInCommonItem>,
+    isConnected: Boolean,
     onOpenGroup: (kotlin.uuid.Uuid) -> Unit,
 ) {
-    if (groups.isEmpty()) return
     Spacer(modifier = Modifier.height(20.dp))
     Text(
         text = stringResource(MR.string.conversation_groups_in_common),
@@ -117,19 +128,79 @@ fun GroupsInCommonSection(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     )
     Spacer(modifier = Modifier.height(8.dp))
-    groups.forEach { group ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpenGroup(group.conversationId) }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ConversationAvatar(avatarModel = group.avatarModel, options = AvatarOptions(size = 40.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = group.name, style = MaterialTheme.typography.bodyLarge)
+    when {
+        groups.isNotEmpty() -> groups.forEach { group ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenGroup(group.conversationId) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ConversationAvatar(avatarModel = group.avatarModel, options = AvatarOptions(size = 40.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(text = group.name, style = MaterialTheme.typography.bodyLarge)
+            }
         }
+
+        !isConnected -> SectionHint(stringResource(MR.string.contactbook_detail_groups_connect))
+        else -> SectionHint(stringResource(MR.string.contactbook_detail_groups_empty))
     }
+}
+
+/**
+ * User-defined circles this contact belongs to, as chips. Always shows the header; falls
+ * back to an empty state, or a "must be connected" hint when [isConnected] is false.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CirclesSection(circles: List<String>, isConnected: Boolean) {
+    Spacer(modifier = Modifier.height(20.dp))
+    Text(
+        text = stringResource(MR.string.contactbook_detail_circles),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    when {
+        circles.isNotEmpty() -> FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            circles.forEach { name -> CircleChip(name) }
+        }
+
+        !isConnected -> SectionHint(stringResource(MR.string.contactbook_detail_circles_connect))
+        else -> SectionHint(stringResource(MR.string.contactbook_detail_circles_empty))
+    }
+}
+
+/** Non-interactive pill showing a circle name (these are display tags, not actions). */
+@Composable
+private fun CircleChip(name: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/** Muted single-line hint used by sections for their empty / not-connected states. */
+@Composable
+private fun SectionHint(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 /**

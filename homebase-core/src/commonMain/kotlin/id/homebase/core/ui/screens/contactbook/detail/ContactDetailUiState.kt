@@ -21,6 +21,8 @@ data class ContactDetailUiState(
     val isLoading: Boolean = true,
     /** Connection status for this contact's odinId; null when not a connection / unknown. */
     val connectionStatus: ConnectionStatus? = null,
+    /** User-defined circles this contact belongs to (system circles excluded), A–Z. */
+    val circles: List<String> = emptyList(),
     /** The existing 1:1 conversation, if one exists (never created just to view details). */
     val conversationId: Uuid? = null,
     val overview: ConversationOverview? = null,

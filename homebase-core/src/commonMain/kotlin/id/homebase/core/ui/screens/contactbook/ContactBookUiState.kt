@@ -10,8 +10,8 @@ import kotlin.uuid.Uuid
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab { CONTACTS, CIRCLES }
 
-/** People-list pill: everyone, or only confirmed connections. */
-enum class ContactFilter { ALL, CONNECTIONS }
+/** People-list pill: everyone, introduced connections, or confirmed (direct) connections. */
+enum class ContactFilter { ALL, INTRODUCED, CONFIRMED }
 
 /** Members of one circle, shown in a sheet/dialog. */
 @Immutable
@@ -82,10 +82,14 @@ data class ContactBookUiState(
     /** Contacts tab: already filtered + searched + A–Z sorted. */
     val contacts: List<ContactBookEntry> = emptyList(),
     val totalCount: Int = 0,
-    /** Domains (lowercased) that are confirmed connections — drives the "connected" badge. */
+    /** Domains (lowercased) that are connected — drives the "connected" badge. */
     val connectedOdinIds: Set<String> = emptySet(),
-    /** Connections tab: connected identities (matched to a contact when one exists). */
-    val connections: List<ContactBookEntry> = emptyList(),
+    /** Introduced filter: connections established via an introduction. */
+    val introduced: List<ContactBookEntry> = emptyList(),
+    /** Confirmed filter: direct connections (Connected, not via an introduction). */
+    val confirmed: List<ContactBookEntry> = emptyList(),
+    /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
+    val introducedByDomain: Map<String, String> = emptyMap(),
     /** Circles tab. */
     val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,

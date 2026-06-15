@@ -16,6 +16,8 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.ContactBookService
@@ -68,9 +70,13 @@ class ContactDetailViewModel(
     init {
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
-            combine(contactBookStream.contacts, connectionService.connections) { contacts, conn ->
-                contacts to conn
-            }.collect { (contacts, conn) ->
+            combine(
+                contactBookStream.contacts,
+                connectionService.connections,
+                connectionService.circles,
+            ) { contacts, conn, circ ->
+                Triple(contacts, conn, circ)
+            }.collect { (contacts, conn, circ) ->
                 val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 val domain = entry?.odinId
@@ -78,8 +84,27 @@ class ContactDetailViewModel(
                     conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
                         ?.value?.status
                 }
+                // User-defined circles only — the Confirmed/Auto system circles are surfaced
+                // through the connection status, not as chips.
+                val circleNames = domain?.let { d ->
+                    circ.circlesFor(d)
+                        .filterNot { it.disabled }
+                        .filterNot {
+                            it.id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
+                                it.id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
+                        }
+                        .map { it.name }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                        .sorted()
+                }.orEmpty()
                 _uiState.update {
-                    it.copy(entry = entry, connectionStatus = status, isLoading = false)
+                    it.copy(
+                        entry = entry,
+                        connectionStatus = status,
+                        circles = circleNames,
+                        isLoading = false,
+                    )
                 }
             }
         }

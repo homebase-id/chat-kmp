@@ -7,13 +7,16 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
+import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
@@ -60,6 +63,7 @@ class ContactBookViewModel(
         val contacts: List<ContactBookEntry>,
         val loaded: Boolean,
         val connections: ConnectionState,
+        val circles: CircleMembershipState,
     )
 
     private data class UiBits(
@@ -77,22 +81,63 @@ class ContactBookViewModel(
     )
 
     val uiState: StateFlow<ContactBookUiState> = combine(
-        combine(stream.contacts, stream.isLoaded, connectionService.connections) { c, l, conn ->
-            ContactsBundle(c, l, conn)
+        combine(
+            stream.contacts,
+            stream.isLoaded,
+            connectionService.connections,
+            connectionService.circles,
+        ) { c, l, conn, circ ->
+            ContactsBundle(c, l, conn, circ)
         },
         combine(_searchQuery, _filter, _selectedTab, _overlay, _importState) { q, f, tab, o, i ->
             UiBits(q, f, tab, o, i)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
     ) { contactsData, ui, circlesData ->
-        val connectedDomains = contactsData.connections.map
+        val connectedRegs = contactsData.connections.map
             .filterValues { it.status == ConnectionStatus.Connected }
+        val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
+
+        // Introduced and Confirmed are orthogonal, so a contact who was introduced and then
+        // confirmed shows under both pills:
+        //  - Introduced = provenance: the connection originated from an introduction. This is
+        //    permanent (it stays true after confirmation), which is what "we connected via an
+        //    intro" means, and it rides in the connection data so it needs no circle load.
+        //  - Confirmed = membership in the Confirmed Connections system circle (the explicit
+        //    confirm action). Until the circle list loads we fall back to "connected and not
+        //    introduced" so the pill isn't empty on a cold start.
+        val introducedDomains = connectedRegs
+            .filterValues { it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction }
             .keys.map { it.domainName.lowercase() }
             .toSet()
+        val confirmedDomains = if (contactsData.circles.isLoaded) {
+            connectedDomains intersect contactsData.circles.membersOf(CONFIRMED_CONNECTIONS_CIRCLE_ID)
+        } else {
+            connectedDomains - introducedDomains
+        }
+
+        // contact-domain (lowercase) → introducer display name, resolved to a saved
+        // contact's name when we have one, else the raw introducer domain.
+        val contactsByOdin = contactsData.contacts
+            .filter { !it.odinId.isNullOrBlank() }
+            .associateBy { it.odinId!!.lowercase() }
+        val introducedByDomain = connectedRegs
+            .filterValues {
+                it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction &&
+                    it.introducerOdinId != null
+            }
+            .entries.associate { (odinId, reg) ->
+                val introducer = reg.introducerOdinId!!.domainName
+                odinId.domainName.lowercase() to
+                    (contactsByOdin[introducer.lowercase()]?.displayName ?: introducer)
+            }
 
         val filtered = contactsData.contacts.filter { it.matches(ui.query) }
 
-        val connections = entriesForDomains(connectedDomains, contactsData.contacts)
+        val introduced = entriesForDomains(introducedDomains, contactsData.contacts)
+            .filter { it.matches(ui.query) }
+            .sortedBy { it.sortKey }
+        val confirmed = entriesForDomains(confirmedDomains, contactsData.contacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
@@ -101,8 +146,10 @@ class ContactBookViewModel(
             contacts = filtered,
             totalCount = contactsData.contacts.size,
             connectedOdinIds = connectedDomains,
-            connections = connections,
-            circles = circlesData.circles,
+            introduced = introduced,
+            confirmed = confirmed,
+            introducedByDomain = introducedByDomain,
+            circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
             circleMembers = circlesData.members,
             isLoading = !contactsData.loaded,
@@ -343,6 +390,14 @@ class ContactBookViewModel(
     }
 
     // endregion
+}
+
+/** Name/description match for the search box, which now spans both tabs. */
+private fun CircleWithMembers.matchesQuery(query: String): Boolean {
+    if (query.isBlank()) return true
+    val q = query.trim().lowercase()
+    return circle.name.lowercase().contains(q) ||
+        circle.description?.lowercase()?.contains(q) == true
 }
 
 private fun DeviceContact.toContactContent(): ContactContent = ContactContent(
