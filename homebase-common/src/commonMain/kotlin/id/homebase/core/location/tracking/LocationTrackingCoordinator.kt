@@ -72,11 +72,6 @@ class LocationTrackingCoordinator(
         logger.i { "Tracking ${if (enabled) "enabled" else "disabled"}" }
     }
 
-    /** Called by the Android background receiver after buffering a batch. */
-    suspend fun onBackgroundPointsDelivered() {
-        onFlushDue()
-    }
-
     /**
      * Re-evaluate after a logout/login wipe. The pref StateFlow was reset by
      * LocationPreferences.reset() before this runs; if the wipe turned the

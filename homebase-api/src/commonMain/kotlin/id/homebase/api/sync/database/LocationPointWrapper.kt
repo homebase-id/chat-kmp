@@ -100,6 +100,30 @@ class LocationPointWrapper(
             delegate.countAll().executeAsOne()
         }
 
+    /** Rows not yet part of an enqueued hour file — the UI's "waiting to upload" count. */
+    suspend fun countUnmarked(): Long =
+        databaseManager.readValue("locationPoint.countUnmarked") {
+            delegate.countUnmarked().executeAsOne()
+        }
+
+    /** Distinct hour buckets (epoch ms / 3_600_000) that still hold any rows, marked or not. */
+    suspend fun selectHoursWithRows(): List<Long> =
+        databaseManager.readValue("locationPoint.selectHoursWithRows") {
+            delegate.selectHoursWithRows().executeAsList()
+        }
+
+    /**
+     * Drains rows flushed under [fileUid], but only if the hour they belong to
+     * has closed (its bucket is strictly before the bucket of [nowMs]). A no-op
+     * while the hour is still open — the marked rows stay so the next flush
+     * re-serializes the complete hour.
+     */
+    suspend fun deleteFlushedIfHourClosed(fileUid: Uuid, nowMs: Long) {
+        databaseManager.withWrite { db ->
+            db.locationPointQueries.deleteFlushedIfHourClosed(fileUid, nowMs)
+        }
+    }
+
     suspend fun countSince(fromInclusiveMs: Long): Long =
         databaseManager.readValue("locationPoint.countSince") {
             delegate.countSince(fromInclusiveMs).executeAsOne()
