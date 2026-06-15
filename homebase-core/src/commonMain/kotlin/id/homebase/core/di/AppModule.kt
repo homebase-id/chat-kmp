@@ -137,6 +137,10 @@ import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getListsPermissionExtensionConfig
 import id.homebase.core.lists.ListsPreferences
+import id.homebase.core.lists.services.ListFileWriter
+import id.homebase.core.lists.services.ListItemSenderService
+import id.homebase.core.lists.services.ListService
+import id.homebase.core.lists.services.ListStream
 import id.homebase.core.ui.screens.lists.ListsSettingsViewModel
 import id.homebase.core.ui.screens.lists.ListsViewModel
 import id.homebase.core.location.LocationPreferences
@@ -198,6 +202,10 @@ val appModule = module {
     }
     singleOf(::MomentsRecipientLookupService)
     singleOf(::MomentsFeedService)
+    singleOf(::ListFileWriter)
+    singleOf(::ListStream)
+    singleOf(::ListService)
+    singleOf(::ListItemSenderService)
     singleOf(::MomentsVideoSession)
     singleOf(::MomentCommentsService)
     singleOf(::MomentActionService)
@@ -419,6 +427,7 @@ val appModule = module {
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
                 get<ListsPreferences>().reset()
+                get<ListStream>().apply { reset(); start() }
 
                 // Location add-on: re-seed prefs from the (possibly wiped) DB,
                 // clear in-memory capture state, restart the flusher's outbox
