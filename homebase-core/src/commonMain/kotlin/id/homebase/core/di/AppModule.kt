@@ -135,6 +135,10 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.config.getListsPermissionExtensionConfig
+import id.homebase.core.lists.ListsPreferences
+import id.homebase.core.ui.screens.lists.ListsSettingsViewModel
+import id.homebase.core.ui.screens.lists.ListsViewModel
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -156,10 +160,12 @@ val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
 val StickerPermissionQualifier = named("stickerPermission")
 val LocationPermissionQualifier = named("locationPermission")
+val ListsPermissionQualifier = named("listsPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
     single { MomentsPreferences(get()) }
+    single { ListsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
     // the write path (DriveFileProvider.getFileHeaderByUid + DriveUploadProvider
@@ -661,6 +667,9 @@ val appModule = module {
     }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
+    viewModel(ListsPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getListsPermissionExtensionConfig()) }
+    viewModel { ListsViewModel(get(), get(ListsPermissionQualifier), get()) }
+    viewModelOf(::ListsSettingsViewModel)
     viewModel(LocationPermissionQualifier) {
         ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
     }

@@ -107,6 +107,14 @@ import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
+import androidx.compose.material.icons.automirrored.outlined.ListAlt
+import id.homebase.core.lists.ListsPreferences
+import id.homebase.core.ui.screens.lists.ListsOnboardingScreen
+import id.homebase.core.ui.screens.lists.ListsScreen
+import id.homebase.core.ui.screens.lists.ListsSettingsScreen
+import id.homebase.core.ui.screens.lists.ListsUiEvent
+import id.homebase.core.ui.screens.lists.ListsViewModel
+import id.homebase.resources.nav_lists
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
@@ -190,13 +198,17 @@ fun AppNavHost(
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible) {
+    val listsPreferences = koinInject<ListsPreferences>()
+    val listsIconVisible by listsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val listsViewModel: ListsViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, listsIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
+            if (listsIconVisible) add(TopLevelRoute.Lists)
             add(TopLevelRoute.Home)
         }
     }
@@ -209,6 +221,17 @@ fun AppNavHost(
             }
         } else {
             navController.navigate(Route.MomentsOnboarding)
+        }
+    }
+    val openLists: () -> Unit = {
+        if (listsPreferences.activated.value) {
+            navController.navigate(Route.Lists) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.ListsOnboarding)
         }
     }
     val openLocation: () -> Unit = {
@@ -454,6 +477,22 @@ fun AppNavHost(
         }
     }
 
+    // Translate Lists onboarding one-shot events into nav-stack changes.
+    LaunchedEffect(Unit) {
+        listsViewModel.events.collect { event ->
+            when (event) {
+                ListsUiEvent.Activated -> {
+                    navController.popBackStack(Route.ListsOnboarding, inclusive = true)
+                    navController.navigate(Route.Lists) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+                ListsUiEvent.CloseOnboarding -> navController.popBackStack()
+            }
+        }
+    }
+
     // Translate Location onboarding one-shot events into nav-stack changes.
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
@@ -509,6 +548,7 @@ fun AppNavHost(
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
                                     topLevelRoute is TopLevelRoute.Location -> openLocation()
+                                    topLevelRoute is TopLevelRoute.Lists -> openLists()
                                     else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
@@ -544,6 +584,7 @@ fun AppNavHost(
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
                                         topLevelRoute is TopLevelRoute.Location -> openLocation()
+                                        topLevelRoute is TopLevelRoute.Lists -> openLists()
                                         else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
@@ -718,6 +759,7 @@ fun AppNavHost(
                                     onNavigateToVault = openVault,
                                     onNavigateToMoments = openMoments,
                                     onNavigateToLocation = openLocation,
+                                    onNavigateToLists = openLists,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
@@ -1056,6 +1098,9 @@ fun AppNavHost(
                                     onNavigateToLocationSettings = {
                                         navController.navigate(Route.LocationSettings)
                                     },
+                                    onNavigateToListsSettings = {
+                                        navController.navigate(Route.ListsSettings)
+                                    },
                                 )
                             }
                         }
@@ -1165,6 +1210,29 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                     onOpenMoments = openMoments,
+                                )
+                            }
+                        }
+
+                        composable<Route.ListsOnboarding> {
+                            if (isAuthenticated) {
+                                ListsOnboardingScreen(
+                                    viewModel = listsViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+                        composable<Route.Lists> {
+                            if (isAuthenticated) {
+                                ListsScreen()
+                            }
+                        }
+                        composable<Route.ListsSettings> {
+                            if (isAuthenticated) {
+                                ListsSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenLists = openLists,
                                 )
                             }
                         }
@@ -1452,7 +1520,8 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true ||
-            this?.hasRoute(Route.Location::class) == true
+            this?.hasRoute(Route.Location::class) == true ||
+            this?.hasRoute(Route.Lists::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
@@ -1474,6 +1543,7 @@ sealed class TopLevelRoute(
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
+    data object Lists : TopLevelRoute(Route.Lists, MR.string.nav_lists, Icons.AutoMirrored.Outlined.ListAlt)
 }
 
 /**

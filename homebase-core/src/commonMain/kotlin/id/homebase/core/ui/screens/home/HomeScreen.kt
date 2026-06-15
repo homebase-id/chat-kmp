@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -53,6 +54,8 @@ import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.location_home_subtitle
 import id.homebase.resources.location_label
+import id.homebase.resources.lists_home_subtitle
+import id.homebase.resources.lists_label
 import id.homebase.resources.moments_home_subtitle
 import id.homebase.resources.moments_label
 import id.homebase.resources.vault_home_subtitle
@@ -66,6 +69,7 @@ fun HomeScreen(
     onNavigateToVault: () -> Unit,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
+    onNavigateToLists: () -> Unit,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,6 +123,7 @@ fun HomeScreen(
         onNavigateToVault = onNavigateToVault,
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
+        onNavigateToLists = onNavigateToLists,
     )
 }
 
@@ -130,6 +135,7 @@ fun HomeUi(
     onNavigateToVault: () -> Unit = {},
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
+    onNavigateToLists: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
     Scaffold(
@@ -177,6 +183,15 @@ fun HomeUi(
                 label = stringResource(MR.string.location_label),
                 subtitle = stringResource(MR.string.location_home_subtitle),
                 onClick = onNavigateToLocation,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.AutoMirrored.Outlined.ListAlt,
+                label = stringResource(MR.string.lists_label),
+                subtitle = stringResource(MR.string.lists_home_subtitle),
+                onClick = onNavigateToLists,
             )
 
             Spacer(modifier = Modifier.height(48.dp))
