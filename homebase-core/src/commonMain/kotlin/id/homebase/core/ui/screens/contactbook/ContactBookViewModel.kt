@@ -41,6 +41,20 @@ import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/**
+ * Unlike the optional add-ons (Vault, Moments, Location, Stickers), the Contact Book has
+ * **no drive-mount/activation step** — by design, not omission. It operates on the system
+ * `contactLabeledDrive`, which is in [id.homebase.core.config.mandatorySyncDrives] and is
+ * mounted unconditionally by `AuthConnectionCoordinator.ensureMandatoryMounted()` before
+ * bootstrap. So this ViewModel never injects [id.homebase.core.sync.OptionalDriveActivation]
+ * and never mounts: `isActivated(contactLabeledDrive)` would be a constant `true`.
+ *
+ * This is the same end-state the vault login-mount-race fix reached for Vault — no eager
+ * re-mount at login, rely on the drive already being mounted by the login pre-mount path —
+ * the only difference being mandatory-pre-mount here vs. registry-pre-mount there. The
+ * post-login "0 records" race that fix addressed therefore cannot occur for Contacts.
+ * See also [id.homebase.core.contactbook.ContactBookPreferences] (no `activated` flag).
+ */
 class ContactBookViewModel(
     private val stream: ContactBookStream,
     private val service: ContactBookService,
