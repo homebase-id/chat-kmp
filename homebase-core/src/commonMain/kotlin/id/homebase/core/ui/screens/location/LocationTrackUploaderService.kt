@@ -81,6 +81,8 @@ class LocationTrackUploaderService(
     private val deviceId: LocationDeviceId,
     private val preferences: LocationPreferences,
     private val scope: CoroutineScope,
+    /** Injectable for tests; production reads the wall clock. */
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val logger = Logger.withTag(TAG)
     private val driveId = locationLabeledDrive.drive.alias
@@ -103,7 +105,7 @@ class LocationTrackUploaderService(
      */
     fun start() {
         scope.launch {
-            buffer.deleteOlderThan(Clock.System.now().toEpochMilliseconds() - RETENTION_MS)
+            buffer.deleteOlderThan(nowMs() - RETENTION_MS)
             refreshPendingCount()
         }
         if (observerStarted) return
@@ -120,14 +122,15 @@ class LocationTrackUploaderService(
 
     /** Rate-gated flush — the entry point for tickers and background batch wakes. */
     suspend fun flushIfDue() {
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = nowMs()
         if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
         flush()
     }
 
     suspend fun flush() {
         flushMutex.withLock {
-            lastFlushAttemptMs = Clock.System.now().toEpochMilliseconds()
+            val now = nowMs()
+            lastFlushAttemptMs = now
             if (!preferences.activated.value) {
                 logger.d { "Flush skipped: Location add-on not activated" }
                 return
@@ -140,13 +143,25 @@ class LocationTrackUploaderService(
             val hours = runCatching { buffer.selectPendingHours() }
                 .onFailure { logger.e(it) { "selectPendingHours failed" } }
                 .getOrNull() ?: return
-            if (hours.isNotEmpty()) {
+            // Closed hours that still hold rows but no UN-marked ones (so they
+            // never appear in selectPendingHours): their confirmation arrived
+            // while the hour was open, so the drain kept the rows. Re-flush each
+            // once now that it has closed — the resulting ItemCompleted finally
+            // drains them. Without this they'd linger until the 7-day sweep.
+            val currentHour = now / HOUR_MS
+            val finalizeHours = runCatching { buffer.selectHoursWithRows() }
+                .onFailure { logger.e(it) { "selectHoursWithRows failed" } }
+                .getOrNull().orEmpty()
+                .filter { it < currentHour && it !in hours }
+
+            if (hours.isNotEmpty() || finalizeHours.isNotEmpty()) {
                 // Only devices that actually capture points register an identity —
                 // viewer devices (desktop/web) never reach this branch.
                 runCatching { ensureDeviceProfile() }
                     .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
+                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize" }
             }
-            for (hourBucket in hours) {
+            for (hourBucket in hours + finalizeHours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
                     .onFailure { logger.e(it) { "flushHour($hourBucket) failed" } }
             }
@@ -175,6 +190,15 @@ class LocationTrackUploaderService(
                 "Flushed hour=$hourStartMs uid=$uid points=${points.size} stored=${stored.size} " +
                     "overflowPayload=$overflow mode=${if (existing == null) "create" else "update"}"
             }
+        } else {
+            // replaceEnqueue declined (e.g. outbox backpressure): the rows stay
+            // UN-marked and a later flush retries the hour. Surfaced loudly
+            // because a silent enqueued==false is exactly what hid the iPhone
+            // "105 points waiting for hours" stall from the log.
+            logger.w {
+                "Flush NOT enqueued hour=$hourStartMs uid=$uid points=${points.size} " +
+                    "mode=${if (existing == null) "create" else "update"} — rows stay buffered, will retry"
+            }
         }
     }
 
@@ -191,7 +215,7 @@ class LocationTrackUploaderService(
      */
     suspend fun countPointsToday(): Int {
         val creds = credentialsManager.getActiveCredentials() ?: return 0
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = nowMs()
         val dayStart = now - now % DAY_MS
         val hourUids = (0 until 24)
             .map { dayStart + it * HOUR_MS }
@@ -410,10 +434,15 @@ class LocationTrackUploaderService(
             when (bufferActionFor(event, driveId)) {
                 BufferAction.DrainFlushed -> {
                     val uid = (event as BackendEvent.OutboxEvent.ItemCompleted).uniqueId
-                    logger.i { "Hour-file upload confirmed uid=$uid — draining buffer rows" }
-                    runCatching { buffer.deleteByFlushUid(uid) }
-                        .onFailure { logger.e(it) { "deleteByFlushUid failed" } }
-                    _lastFlushTime.value = Clock.System.now().toEpochMilliseconds()
+                    val now = nowMs()
+                    // Delete the hour's rows ONLY if the hour has closed; while
+                    // still open they stay marked so the next flush re-serializes
+                    // the complete hour (otherwise the file is truncated to the
+                    // points captured since the last drain — the original bug).
+                    logger.i { "Hour-file upload confirmed uid=$uid — draining rows if hour closed" }
+                    runCatching { buffer.deleteFlushedIfHourClosed(uid, now) }
+                        .onFailure { logger.e(it) { "deleteFlushedIfHourClosed failed" } }
+                    _lastFlushTime.value = now
                     refreshPendingCount()
                 }
 
@@ -437,7 +466,9 @@ class LocationTrackUploaderService(
     }
 
     private suspend fun refreshPendingCount() {
-        _pendingCount.value = runCatching { buffer.countAll() }.getOrDefault(0L)
+        // Unmarked rows only: marked rows are already uploaded and kept just
+        // until the hour closes, so they must NOT show as "waiting to upload".
+        _pendingCount.value = runCatching { buffer.countUnmarked() }.getOrDefault(0L)
     }
 
     private companion object {

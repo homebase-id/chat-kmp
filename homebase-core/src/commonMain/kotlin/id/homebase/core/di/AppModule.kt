@@ -216,7 +216,17 @@ val appModule = module {
     single { LocationPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
-    singleOf(::LocationPointStore)
+    single {
+        LocationPointStore(
+            databaseManager = get(),
+            deviceSensors = get(),
+            // Every buffered batch drains immediately (rate-gated by the
+            // uploader). Lazy get() avoids the construction-time cycle; resolved
+            // at flush time. This is the iOS background-flush fix — the Apple
+            // tracker funnels through submit() and now triggers a flush too.
+            onPointsBuffered = { get<LocationTrackUploaderService>().flushIfDue() },
+        )
+    }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
         LocationTrackUploaderService(

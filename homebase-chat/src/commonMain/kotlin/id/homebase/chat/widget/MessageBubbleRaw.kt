@@ -201,12 +201,18 @@ fun MessageBubbleRaw(
     // overflow a screenful, on mobile only. Transient (no rememberSaveable) and reset per
     // message identity so recycled bubbles don't inherit a stale expanded state.
     var bodyExpanded by remember(message.id) { mutableStateOf(false) }
+    val isMobileDevice = isMobile()
     // Desktop always shows the full body and never an expander.
-    val bodyMaxLines = if (isMobile() && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
-    // Derive truncation from the captured layout result rather than measuring screen height.
-    // hasVisualOverflow is true exactly when the line cap clipped the body.
-    val isBodyTruncated =
-        isMobile() && !bodyExpanded && (textLayoutResult?.hasVisualOverflow == true)
+    val bodyMaxLines = if (isMobileDevice && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
+    // Whether a "Read more" affordance is *eligible* for this bubble. This is deliberately
+    // derived WITHOUT the post-layout textLayoutResult, so the chip's presence as a custom-
+    // Layout child is stable across the first measure→layout pass. Whether the chip is
+    // actually placed (and contributes height) is decided inside the Layout below from the
+    // freshly-written textLayoutResult, in the SAME measure pass that produces it. Gating the
+    // chip on textLayoutResult HERE instead would lag one frame behind onTextLayout: the
+    // bubble would lay out without the chip, then grow by the chip's height a frame later —
+    // the "bounce" seen as a clipped message scrolls into view.
+    val canShowReadMore = !bodyExpanded && (message.hasMore || isMobileDevice)
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
 
@@ -666,9 +672,14 @@ fun MessageBubbleRaw(
                             // OR clipped by the mobile line cap. Tapping downloads the spilled
                             // payload when present AND expands, in a single action — there is
                             // no collapse-back ("Read more" only).
-                            val showReadMore = !bodyExpanded && (message.hasMore || isBodyTruncated)
+                            //
+                            // The chip is *composed* whenever it is eligible (canShowReadMore);
+                            // whether it is actually placed and contributes height is decided in
+                            // the Layout's measure pass from the freshly-written
+                            // textLayoutResult. Composing it here on a layout-independent flag is
+                            // what keeps the bubble from growing a frame after it appears.
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                if (showReadMore) {
+                                if (canShowReadMore) {
                                     Text(
                                         text = stringResource(MR.string.chat_message_read_more),
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
@@ -761,6 +772,17 @@ fun MessageBubbleRaw(
 
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
+
+                        // Decide read-more visibility HERE, from the layout result written
+                        // during THIS measure pass (the body was measured just above), so a
+                        // clipped body sizes the chip in on its first frame. hasMore is known
+                        // pre-layout; the mobile line-cap case reads hasVisualOverflow off the
+                        // fresh result. canShowReadMore (composition) guarantees the chip child
+                        // exists whenever this is true, so we never place an absent child.
+                        val showReadMore = !bodyExpanded &&
+                            (message.hasMore || (isMobileDevice && layoutResult?.hasVisualOverflow == true))
+                        val readMoreHeight = if (showReadMore) showMorePlaceable.height else 0
+
                         val rawPotentialFinalWidth: Int
 
                         if (layoutResult != null && layoutResult.lineCount > 0) {
@@ -849,7 +871,7 @@ fun MessageBubbleRaw(
                                     placeables.sumOf { it.height } +
                                             replyHeight +
                                             textPlaceable.height +
-                                            (showMorePlaceable.height)
+                                            readMoreHeight
                             } else {
                                 finalWidth = maxOf(
                                     mediaWidth,
@@ -865,7 +887,7 @@ fun MessageBubbleRaw(
                                     placeables.sumOf { it.height } +
                                             replyHeight +
                                             textPlaceable.height +
-                                            (showMorePlaceable.height) +
+                                            readMoreHeight +
                                             infoPlaceable.height +
                                             8.dp.roundToPx() +
                                             4.dp.roundToPx()
@@ -879,10 +901,10 @@ fun MessageBubbleRaw(
                                 authorWidth
                             )
                             infoY =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + readMoreHeight
                             infoX = finalWidth - infoPlaceable.width
                             finalHeight =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height + 4.dp.roundToPx()
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + readMoreHeight + infoPlaceable.height + 4.dp.roundToPx()
                         }
 
                         // Same containment as `potentialFinalWidth`: never report a width
@@ -907,8 +929,13 @@ fun MessageBubbleRaw(
                             textPlaceable.placeRelative(0, yPos)
                             yPos += textPlaceable.height
 
-                            showMorePlaceable.placeRelative(0, yPos)
-                            yPos += showMorePlaceable.height
+                            // Only place (and advance past) the chip when the measure pass
+                            // above decided to show it; readMoreHeight in finalHeight/infoY
+                            // matches this so the timestamp never overlaps an absent chip.
+                            if (showReadMore) {
+                                showMorePlaceable.placeRelative(0, yPos)
+                                yPos += showMorePlaceable.height
+                            }
 
                             infoPlaceable.placeRelative(clampedInfoX, infoY)
                         }

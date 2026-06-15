@@ -75,6 +75,7 @@ import id.homebase.resources.msg_outbox_checked_out_stuck
 import id.homebase.resources.msg_outbox_entry_lingering
 import id.homebase.resources.msg_send_attempt
 import id.homebase.resources.msg_stuck_reason
+import id.homebase.resources.msg_waiting_for_connection
 import id.homebase.resources.msg_waiting_on_earlier_message
 import id.homebase.resources.msg_status_delivery_details_unavailable
 import id.homebase.resources.msg_status_failed_to_send
@@ -292,6 +293,8 @@ fun MessageInfoUi(
                                             stringResource(MR.string.msg_outbox_checked_out_stuck)
                                         uiState.isActivelyUploading ->
                                             stringResource(MR.string.msg_status_sending)
+                                        uiState.outboxIsOffline ->
+                                            stringResource(MR.string.msg_waiting_for_connection)
                                         else -> stringResource(
                                             MR.string.msg_still_in_outbox,
                                             rememberNextAttemptText(uiState.nextAttemptAtMs),

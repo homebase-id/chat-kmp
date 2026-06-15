@@ -104,6 +104,60 @@ class LocationPointWrapperTest {
     }
 
     @Test
+    fun countUnmarkedExcludesEnqueuedRows() = runDbTest { buffer ->
+        buffer.insertPoints(listOf(point(1), point(2), point(hourMs + 1)))
+        assertEquals(3, buffer.countUnmarked())
+        // Mark hour 0's two rows as flushed; only hour 1's row stays unmarked.
+        buffer.markFlushed(Uuid.random(), 0, hourMs)
+        assertEquals(1, buffer.countUnmarked())
+        assertEquals(3, buffer.countAll())
+    }
+
+    @Test
+    fun selectHoursWithRowsReturnsMarkedAndUnmarkedHours() = runDbTest { buffer ->
+        buffer.insertPoints(listOf(point(1), point(hourMs + 1), point(2 * hourMs + 1)))
+        // Mark hour 0 — it must STILL appear (rows are kept until the hour closes).
+        buffer.markFlushed(Uuid.random(), 0, hourMs)
+        assertEquals(listOf(0L, 1L, 2L), buffer.selectHoursWithRows())
+        // selectPendingHours, by contrast, drops the marked hour.
+        assertEquals(listOf(1L, 2L), buffer.selectPendingHours())
+    }
+
+    @Test
+    fun drainKeepsRowsWhileHourOpenAndDeletesOnceClosed() = runDbTest { buffer ->
+        // Hour 0 holds two points; flush marks them under uid.
+        val uid = Uuid.random()
+        buffer.insertPoints(listOf(point(1), point(2)))
+        buffer.markFlushed(uid, 0, hourMs)
+
+        // Confirmation arrives while hour 0 is still the current hour (now within
+        // hour 0): rows must be KEPT so the next flush re-serializes the full hour.
+        buffer.deleteFlushedIfHourClosed(uid, nowMs = 1_000)
+        assertEquals(2, buffer.countAll())
+        // The complete hour is still re-serializable (marked rows included).
+        assertEquals(2, buffer.selectByTimeRange(0, hourMs).size)
+
+        // Confirmation after the hour has closed (now in hour 1): rows drained.
+        buffer.deleteFlushedIfHourClosed(uid, nowMs = hourMs + 1)
+        assertEquals(0, buffer.countAll())
+    }
+
+    @Test
+    fun drainOnlyTouchesTheConfirmedUidsHour() = runDbTest { buffer ->
+        // Two closed hours, each flushed under its own uid.
+        val uid0 = Uuid.random()
+        val uid1 = Uuid.random()
+        buffer.insertPoints(listOf(point(1), point(hourMs + 1)))
+        buffer.markFlushed(uid0, 0, hourMs)
+        buffer.markFlushed(uid1, hourMs, 2 * hourMs)
+
+        // Now is well past both hours, but only hour 0's confirmation arrives.
+        buffer.deleteFlushedIfHourClosed(uid0, nowMs = 5 * hourMs)
+        assertEquals(listOf(1L), buffer.selectHoursWithRows())
+        assertEquals(1, buffer.countAll())
+    }
+
+    @Test
     fun countSinceAndLatestAndRetention() = runDbTest { buffer ->
         buffer.insertPoints(listOf(point(1000), point(5000), point(9000)))
         assertEquals(2, buffer.countSince(5000))
