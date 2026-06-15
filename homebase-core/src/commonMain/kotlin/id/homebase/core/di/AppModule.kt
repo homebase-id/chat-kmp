@@ -418,6 +418,7 @@ val appModule = module {
                 get<VaultStream>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
+                get<ListsPreferences>().reset()
 
                 // Location add-on: re-seed prefs from the (possibly wiped) DB,
                 // clear in-memory capture state, restart the flusher's outbox
