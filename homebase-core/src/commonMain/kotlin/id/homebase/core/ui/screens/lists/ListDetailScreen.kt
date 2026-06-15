@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -66,11 +68,14 @@ import id.homebase.resources.list_detail_empty_body
 import id.homebase.resources.list_detail_empty_title
 import id.homebase.resources.list_item_edit_title
 import id.homebase.resources.list_item_more
+import id.homebase.resources.list_item_reorder_desc
 import id.homebase.resources.list_overview_more
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import kotlinx.coroutines.flow.collectLatest
 import org.jetbrains.compose.resources.stringResource
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +90,15 @@ fun ListDetailScreen(
     var deleteListDialog by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var editTarget by remember { mutableStateOf<ListDetailItem?>(null) }
+    val lazyListState = rememberLazyListState()
+    // Local working copy the drag mutates live; re-seeded from the stream whenever no drag is active.
+    var localItems by remember { mutableStateOf<List<ListDetailItem>>(emptyList()) }
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        localItems = localItems.toMutableList().apply { add(to.index, removeAt(from.index)) }
+    }
+    LaunchedEffect(uiState.items) {
+        if (!reorderableState.isAnyItemDragging) localItems = uiState.items
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
@@ -139,16 +153,38 @@ fun ListDetailScreen(
             }
             uiState.items.isEmpty() -> DetailEmptyState(Modifier.fillMaxSize().padding(innerPadding))
             else -> LazyColumn(
+                state = lazyListState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(uiState.items, key = { it.itemId.toString() }) { item ->
-                    ListItemRow(
-                        item = item,
-                        onToggle = { viewModel.setChecked(item.itemId, !item.checked) },
-                        onEdit = { editTarget = item },
-                        onDelete = { viewModel.deleteItem(item.itemId) },
-                    )
+                items(localItems, key = { it.itemId.toString() }) { item ->
+                    ReorderableItem(reorderableState, key = item.itemId.toString()) { _ ->
+                        ListItemRow(
+                            item = item,
+                            dragHandle = {
+                                Icon(
+                                    imageVector = Icons.Filled.DragHandle,
+                                    contentDescription = stringResource(MR.string.list_item_reorder_desc),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.draggableHandle(
+                                        onDragStopped = {
+                                            val idx = localItems.indexOfFirst { it.itemId == item.itemId }
+                                            if (idx >= 0) {
+                                                viewModel.reorder(
+                                                    itemId = item.itemId,
+                                                    aboveItemId = localItems.getOrNull(idx - 1)?.itemId,
+                                                    belowItemId = localItems.getOrNull(idx + 1)?.itemId,
+                                                )
+                                            }
+                                        },
+                                    ),
+                                )
+                            },
+                            onToggle = { viewModel.setChecked(item.itemId, !item.checked) },
+                            onEdit = { editTarget = item },
+                            onDelete = { viewModel.deleteItem(item.itemId) },
+                        )
+                    }
                 }
             }
         }
@@ -190,6 +226,7 @@ fun ListDetailScreen(
 @Composable
 private fun ListItemRow(
     item: ListDetailItem,
+    dragHandle: @Composable () -> Unit,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -199,6 +236,7 @@ private fun ListItemRow(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        dragHandle()
         Checkbox(
             checked = item.checked,
             onCheckedChange = { onToggle() },
