@@ -10,11 +10,25 @@ import kotlin.uuid.Uuid
 class ListsDriveConfigTest {
 
     @Test
-    fun `lists drive has valid distinct guids`() {
+    fun `lists drive reuses the moments app-content drive type with its own unique alias`() {
+        // `type` is a shared category (Moments is the app-content drive type the server
+        // provisions); `alias` is the unique per-drive id. Lists deliberately reuses the
+        // Moments type and MUST keep a distinct alias so it is a separate drive. If someone
+        // "fixes" the type back to a random GUID, the server won't recognise the drive.
+        assertEquals(momentsLabeledDrive.drive.type, listsLabeledDrive.drive.type)
+        assertNotEquals(momentsLabeledDrive.drive.alias, listsLabeledDrive.drive.alias)
         assertNotEquals(listsLabeledDrive.drive.alias, listsLabeledDrive.drive.type)
-        assertNotEquals(listsLabeledDrive.drive.alias, locationLabeledDrive.drive.alias)
-        assertNotEquals(listsLabeledDrive.drive.type, locationLabeledDrive.drive.type)
         assertEquals("Lists", listsLabeledDrive.label)
+    }
+
+    @Test
+    fun `lists drive alias is unique across all optional drives`() {
+        // The alias is the effective driveId — a collision would silently mount the wrong drive.
+        val aliases = listOf(
+            momentsLabeledDrive, vaultLabeledDrive, stickerLabeledDrive,
+            locationLabeledDrive, listsLabeledDrive,
+        ).map { it.drive.alias }
+        assertEquals(aliases.size, aliases.toSet().size)
     }
 
     @Test

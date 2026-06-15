@@ -143,19 +143,27 @@ val locationLabeledDrive = LabeledDrive(
     label = "Location",
 )
 
-// Lists drive — collaborative shared lists add-on. Modeled on [locationLabeledDrive]
-// (app-generated stable alias GUID + drive type GUID). One optional drive per identity
+// Lists drive — collaborative shared lists add-on. One optional drive per identity
 // (not in [mandatorySyncDrives]); requested via the extend-permissions flow and mounted
 // when the user activates the Lists add-on. Every list lives on this one drive,
 // partitioned by groupId = listId (see Shared Lists design spec). ownerOdinId is null —
 // each identity owns its own Lists drive, exactly like chat.
 //
-// The type GUID is a placeholder until the server team provisions the real Lists drive
-// type (same caveat as Vault/Location above).
+// Drive identity is the (alias, type) pair (TargetDrive.toKey = type + alias):
+//  - alias: an app-chosen stable RANDOM GUID — the real per-drive identifier (the client
+//    mounts / registers / websockets by alias; cf. TargetDrive's "rename alias to driveId"
+//    TODO). Must be unique across drives.
+//  - type:  REUSES the Moments app-content drive type (4338d7d2-…), NOT a freshly invented
+//    one. In this system `type` is a category that drives share — profile/wallet/
+//    homePageConfig all share one type, and Vault reuses the Contact drive type — and the
+//    server only honours provisioned types, so an invented type would not be recognised.
+//    Lists is the same kind of app-content drive as Moments; a shared type with a distinct
+//    alias is still a distinct drive. (Swap to a dedicated Lists type here if the server
+//    team ever provisions one.)
 val listsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
-        alias = Uuid.parse("c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"),
-        type = Uuid.parse("b7a1c9d3-4e62-4f8a-9c0d-1e2f3a4b5c6d"),
+        alias = Uuid.parse("a44e7a26-51f4-4a26-ad12-5d7627b35d0e"),
+        type = Uuid.parse("4338d7d2-f217-486a-8790-a4982644c15f"), // = momentsLabeledDrive.drive.type
     ),
     label = "Lists",
 )
