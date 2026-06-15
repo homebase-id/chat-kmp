@@ -6,14 +6,13 @@ import id.homebase.core.lists.model.ListSortKeys
 import id.homebase.core.lists.services.ListItemSenderService
 import id.homebase.core.lists.services.ListService
 import id.homebase.core.lists.services.ListStream
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 /** Fractional key for an item dropped between [aboveSortKey] and [belowSortKey] (either may be null at an edge). */
@@ -49,8 +48,27 @@ class ListDetailViewModel(
             initialValue = ListDetailUiState(isLoading = true),
         )
 
-    private val _events = MutableSharedFlow<ListDetailEvent>(extraBufferCapacity = 4)
-    val events: SharedFlow<ListDetailEvent> = _events.asSharedFlow()
+    // A reorder write merges back asynchronously (optimistic write -> BatchReceived -> re-sort), so
+    // two quick drags would otherwise both resolve neighbour keys from the SAME stale stream and
+    // could collide on an identical between-key. Serialize reorders and remember each issued key
+    // until the stream confirms it, so a follow-up drag resolves neighbours against the in-flight
+    // key. Mirrors the addMutex + lastIssuedSortKey hardening in ListItemSenderService.addItem.
+    private val reorderMutex = Mutex()
+    private val pendingSortKeys = mutableMapOf<Uuid, String>()
+
+    init {
+        // Drop a pending key once the stream confirms it (the item's sortKey == the key we issued).
+        // Collect the raw stream (not uiState) so this internal subscriber doesn't change uiState's
+        // WhileSubscribed sharing.
+        viewModelScope.launch {
+            listStream.itemsByList.collect { byList ->
+                if (pendingSortKeys.isEmpty()) return@collect
+                byList[listId].orEmpty().forEach { rec ->
+                    if (pendingSortKeys[rec.itemId] == rec.item.sortKey) pendingSortKeys.remove(rec.itemId)
+                }
+            }
+        }
+    }
 
     fun addItem(body: String) {
         val trimmed = body.trim()
@@ -74,15 +92,31 @@ class ListDetailViewModel(
 
     /**
      * Persist a drag-drop. [aboveItemId]/[belowItemId] are the items now directly above/below the
-     * moved item in the final visual order (null at an edge). Resolves their sortKeys against the
-     * latest state and issues ONE reorder write.
+     * moved item in the final visual order (null at an edge). Resolves their sortKeys (preferring an
+     * in-flight pending key over the possibly-stale stream), skips a no-op move, and issues ONE
+     * reorder write under [reorderMutex] so rapid successive drags can't collide on a shared key.
      */
     fun reorder(itemId: Uuid, aboveItemId: Uuid?, belowItemId: Uuid?) {
-        val items = uiState.value.items
-        val aboveKey = aboveItemId?.let { id -> items.find { it.itemId == id }?.sortKey }
-        val belowKey = belowItemId?.let { id -> items.find { it.itemId == id }?.sortKey }
-        val newKey = computeReorderKey(aboveKey, belowKey)
-        viewModelScope.launch { itemSender.reorderItem(listId, itemId, newKey) }
+        viewModelScope.launch {
+            reorderMutex.withLock {
+                val items = uiState.value.items
+                fun keyOf(id: Uuid): String? = pendingSortKeys[id] ?: items.find { it.itemId == id }?.sortKey
+                val aboveKey = aboveItemId?.let { keyOf(it) }
+                val belowKey = belowItemId?.let { keyOf(it) }
+                val currentKey = keyOf(itemId)
+                // No-op: the item already sits strictly between these neighbours (e.g. dropped in
+                // place, or the only item in the list) — don't churn an optimistic write + transit.
+                if (currentKey != null &&
+                    (aboveKey == null || currentKey > aboveKey) &&
+                    (belowKey == null || currentKey < belowKey)
+                ) {
+                    return@withLock
+                }
+                val newKey = computeReorderKey(aboveKey, belowKey)
+                pendingSortKeys[itemId] = newKey
+                itemSender.reorderItem(listId, itemId, newKey)
+            }
+        }
     }
 
     fun renameList(newTitle: String) {
@@ -92,9 +126,6 @@ class ListDetailViewModel(
     }
 
     fun deleteList() {
-        viewModelScope.launch {
-            listService.deleteList(listId)
-            _events.tryEmit(ListDetailEvent.ListDeleted)
-        }
+        viewModelScope.launch { listService.deleteList(listId) }
     }
 }

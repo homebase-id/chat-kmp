@@ -72,7 +72,6 @@ import id.homebase.resources.list_item_reorder_desc
 import id.homebase.resources.list_overview_more
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
-import kotlinx.coroutines.flow.collectLatest
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -99,13 +98,15 @@ fun ListDetailScreen(
     LaunchedEffect(uiState.items) {
         if (!reorderableState.isAnyItemDragging) localItems = uiState.items
     }
+    // Render the stream order normally; only show the locally-dragged order WHILE a drag is active.
+    // This keeps the empty/list branch and the rendered list reading the SAME source (no first-frame
+    // blank flash) and lets the list re-sync to the stream the instant a drag ends.
+    val displayItems = if (reorderableState.isAnyItemDragging) localItems else uiState.items
 
-    LaunchedEffect(Unit) {
-        viewModel.events.collectLatest { event ->
-            when (event) {
-                is ListDetailEvent.ListDeleted -> onNavigateBack()
-            }
-        }
+    // Leave the screen when the list is gone — local delete, a collaborator delete (Phase 4), or an
+    // invalid deep-linked listId. One guard covers all three (replaces a local-only delete event).
+    LaunchedEffect(uiState.isLoading, uiState.exists) {
+        if (!uiState.isLoading && !uiState.exists) onNavigateBack()
     }
 
     Scaffold(
@@ -151,13 +152,13 @@ fun ListDetailScreen(
             uiState.isLoading -> Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            uiState.items.isEmpty() -> DetailEmptyState(Modifier.fillMaxSize().padding(innerPadding))
+            displayItems.isEmpty() -> DetailEmptyState(Modifier.fillMaxSize().padding(innerPadding))
             else -> LazyColumn(
                 state = lazyListState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(localItems, key = { it.itemId.toString() }) { item ->
+                items(displayItems, key = { it.itemId.toString() }) { item ->
                     ReorderableItem(reorderableState, key = item.itemId.toString()) { _ ->
                         ListItemRow(
                             item = item,
@@ -334,9 +335,10 @@ private fun EditItemSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val richTextState = rememberRichTextState()
-    // Seed the editor ONCE with the existing markdown body (LaunchedEffect(Unit) so it does not
-    // re-apply on recomposition and clobber the user's edits).
-    LaunchedEffect(Unit) { richTextState.applyMarkDownContent(initialBody) }
+    // Seed the editor with the existing markdown body. Keyed on [initialBody] (not Unit) so it
+    // re-seeds if the same sheet is ever reused for a different item, but does NOT re-apply on
+    // unrelated recompositions and clobber the user's in-progress edits.
+    LaunchedEffect(initialBody) { richTextState.applyMarkDownContent(initialBody) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(

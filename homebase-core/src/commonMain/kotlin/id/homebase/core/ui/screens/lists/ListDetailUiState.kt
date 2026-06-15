@@ -15,8 +15,3 @@ data class ListDetailUiState(
     val title: String = "",
     val items: List<ListDetailItem> = emptyList(),
 )
-
-sealed interface ListDetailEvent {
-    /** The list was deleted (here or by a collaborator) — the screen should pop. */
-    data object ListDeleted : ListDetailEvent
-}
