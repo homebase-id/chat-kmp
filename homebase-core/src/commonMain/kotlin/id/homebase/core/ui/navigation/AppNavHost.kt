@@ -1224,7 +1224,12 @@ fun AppNavHost(
                         }
                         composable<Route.Lists> {
                             if (isAuthenticated) {
-                                ListsScreen()
+                                ListsScreen(
+                                    viewModel = koinViewModel(),
+                                    onOpenList = { listId ->
+                                        navController.navigate(Route.ListDetail(listId.toString()))
+                                    },
+                                )
                             }
                         }
                         composable<Route.ListsSettings> {
