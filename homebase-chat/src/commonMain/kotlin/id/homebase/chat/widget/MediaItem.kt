@@ -561,8 +561,9 @@ fun MediaItem(
         }
 
         else -> {
-            // Unsupported media type
-            println("Unsupported media type: $contentType")
+            // Unsupported media type — log to the app log (Kermit) rather than
+            // stdout so it actually lands in homebase.log for diagnosis.
+            Logger.w(tag = "MediaItem") { "Unsupported media type: $contentType" }
             MediaPlaceholder(
                 emoji = "❓",
                 label = "Unknown",

@@ -30,9 +30,11 @@ import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
+import id.homebase.core.logging.crashlyticsRecordException
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.screens.appearance.getIconForTheme
@@ -270,6 +272,21 @@ private fun setupCrashHandler() {
     val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
 
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        // A transient connectivity failure (timeout, dropped socket, DNS) that
+        // leaked from a network call on a scope without its own
+        // CoroutineExceptionHandler should not kill the app. Record it (no-op on
+        // Desktop, where no crash backend is wired) + log, then return without
+        // invoking the default (killing) handler. Non-network crashes still
+        // terminate normally below.
+        if (throwable.isTransientNetworkFailure()) {
+            crashlyticsRecordException(throwable)
+            Logger.w(tag = "CrashHandler") {
+                "Transient network failure leaked to '${thread.name}' (no local handler); " +
+                    "app not crashing: ${throwable.message}"
+            }
+            return@setDefaultUncaughtExceptionHandler
+        }
+
         try {
             CrashLogger.logCrash(thread.name, throwable)
         } catch (e: Exception) {

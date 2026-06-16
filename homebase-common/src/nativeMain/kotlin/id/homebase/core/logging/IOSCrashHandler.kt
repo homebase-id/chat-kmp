@@ -1,6 +1,7 @@
 package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.isTransientNetworkFailure
 import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.staticCFunction
@@ -87,6 +88,25 @@ fun setupIOSCrashHandler() {
     // accessed-before-initialized ambiguity around setUnhandledExceptionHook's return.
     var previousHook: ((Throwable) -> Unit)? = null
     previousHook = setUnhandledExceptionHook { throwable ->
+        // Parity with the Android/Desktop uncaught handlers: a transient
+        // connectivity failure (timeout, dropped socket, DNS) that leaked from a
+        // network call on a scope without its own CoroutineExceptionHandler must
+        // NOT abort the app. Record it as a non-fatal (full stack + breadcrumb) so
+        // it stays debuggable, then return WITHOUT terminating. Any non-network
+        // throwable falls through and still crashes normally below.
+        if (throwable.isTransientNetworkFailure()) {
+            try {
+                crashlyticsRecordException(throwable)
+                crashlyticsLogFatalBreadcrumb(throwable)
+                Logger.w(tag = TAG) {
+                    "Transient network failure (no local handler); app not crashing: ${throwable.message}"
+                }
+            } catch (e: Throwable) {
+                println("IOSCrashHandler (network non-fatal) failed: ${e.message}")
+            }
+            return@setUnhandledExceptionHook
+        }
+
         try {
             // Record to Crashlytics — a Kotlin/Native exception aborts the process
             // without raising an NSException, so the SDK never sees it unless we
