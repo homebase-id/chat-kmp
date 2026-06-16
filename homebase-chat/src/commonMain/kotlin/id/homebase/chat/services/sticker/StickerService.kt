@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -174,6 +175,9 @@ class StickerService(
                 PayloadDescriptor(
                     key = p.key,
                     contentType = p.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the tray tile requests a native size
+                    // (availableThumbSizes) and hits the seed below during upload.
+                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(p.key),
                     iv = p.iv?.let { Base64.encode(it) },
                     descriptorContent = p.descriptorContent,
                     previewThumbnail = p.previewThumbnail?.let {
