@@ -31,6 +31,9 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.api.client.isTransientNetworkFailure
+import id.homebase.app.crash.CrashRecoveryDialog
+import id.homebase.core.crash.CrashMetadata
+import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
@@ -70,6 +73,16 @@ fun main() {
             logsDir.mkdirs()
         }
         LoggerConfig.initialize(logDirectory = Path(logsDir.absolutePath))
+        CrashReporting.install(
+            metadata = CrashMetadata(
+                appVersion = System.getProperty("jpackage.app-version") ?: "dev",
+                buildType = "desktop",
+                platform = "${System.getProperty("os.name")} ${System.getProperty("os.version")}",
+                device = System.getProperty("os.arch") ?: "?",
+                buildTime = BuildConfig.APP_BUILD_TIME,
+            ),
+            logDir = Path(File(JvmFileSystemUtil.getAppDataDirectory(), "logs").absolutePath),
+        )
     } catch (e: Exception) {
         Logger.e("Main", e, "Failed to initialize file logging")
     }
@@ -269,15 +282,8 @@ fun main() {
 }
 
 private fun setupCrashHandler() {
-    val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        // A transient connectivity failure (timeout, dropped socket, DNS) that
-        // leaked from a network call on a scope without its own
-        // CoroutineExceptionHandler should not kill the app. Record it (no-op on
-        // Desktop, where no crash backend is wired) + log, then return without
-        // invoking the default (killing) handler. Non-network crashes still
-        // terminate normally below.
+        // Preserve PR #737: don't crash on a transient network blip.
         if (throwable.isTransientNetworkFailure()) {
             crashlyticsRecordException(throwable)
             Logger.w(tag = "CrashHandler") {
@@ -286,14 +292,14 @@ private fun setupCrashHandler() {
             }
             return@setDefaultUncaughtExceptionHandler
         }
-
         try {
             CrashLogger.logCrash(thread.name, throwable)
-        } catch (e: Exception) {
+            val reportPath = CrashReporting.writeReport(thread.name, throwable)
+            // Modal dialog; it handles Restart/Reveal/Quit and owns termination.
+            CrashRecoveryDialog.showAndBlock(reportPath?.toString())
+        } catch (e: Throwable) {
             e.printStackTrace()
-        } finally {
-            // Call the original handler to let the app crash normally
-            defaultHandler?.uncaughtException(thread, throwable)
+            kotlin.system.exitProcess(1)
         }
     }
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Homebase brand colors for the native crash screen (dark). Mirrors
+     homebase-common DarkColors. -->
+<resources>
+    <color name="crash_primary">#B6C5FA</color>
+    <color name="crash_on_primary">#1E2438</color>
+    <color name="crash_primary_container">#464B5C</color>
+    <color name="crash_on_primary_container">#DBE1FC</color>
+    <color name="crash_secondary_container">#414659</color>
+    <color name="crash_on_secondary_container">#DCE1F9</color>
+    <color name="crash_surface">#1B1C1F</color>
+    <color name="crash_on_surface">#E2E1E5</color>
+    <color name="crash_surface_variant">#303133</color>
+    <color name="crash_on_surface_variant">#BEBFC5</color>
+</resources>

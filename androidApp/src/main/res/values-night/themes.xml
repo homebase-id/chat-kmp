@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night variant: inherits Theme.Homebase.Crash.Base (colors come from
+         values-night/colors.xml); only the status-bar icon polarity flips. -->
+    <style name="Theme.Homebase.Crash" parent="Theme.Homebase.Crash.Base">
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

@@ -149,6 +149,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jetbrains.compose.material3)
     implementation(libs.jetbrains.compose.material.icons.extended)
+    implementation(libs.android.material)
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)
