@@ -111,6 +111,7 @@ import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import id.homebase.core.lists.ListsPreferences
 import id.homebase.core.ui.screens.lists.ListsOnboardingScreen
 import id.homebase.core.ui.screens.lists.ListsScreen
+import id.homebase.core.ui.screens.lists.ListDetailScreen
 import id.homebase.core.ui.screens.lists.ListsSettingsScreen
 import id.homebase.core.ui.screens.lists.ListsUiEvent
 import id.homebase.core.ui.screens.lists.ListsViewModel
@@ -1224,7 +1225,26 @@ fun AppNavHost(
                         }
                         composable<Route.Lists> {
                             if (isAuthenticated) {
-                                ListsScreen()
+                                ListsScreen(
+                                    viewModel = koinViewModel(),
+                                    onOpenList = { listId ->
+                                        navController.navigate(Route.ListDetail(listId.toString()))
+                                    },
+                                )
+                            }
+                        }
+                        composable<Route.ListDetail> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ListDetail>()
+                                ListDetailScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.listId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(Uuid.parse(route.listId))
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
                             }
                         }
                         composable<Route.ListsSettings> {

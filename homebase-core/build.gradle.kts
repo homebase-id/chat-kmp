@@ -115,6 +115,7 @@ kotlin {
             implementation(libs.markdown.renderer)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.markdown.renderer.coil3)
+            implementation(libs.reorderable)
             implementation(libs.filekit.dialogs.compose)
         }
         nativeMain.dependencies {

@@ -184,6 +184,10 @@ sealed class Route {
     data object ListsSettings : Route()
 
     @Serializable
+    @SerialName("list-detail")
+    data class ListDetail(val listId: String) : Route()
+
+    @Serializable
     @SerialName("location")
     data object Location : Route()
 

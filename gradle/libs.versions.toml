@@ -88,6 +88,7 @@ play-app-update = "2.1.0"
 play-services-location = "21.3.0"
 mlkit-subject-segmentation = "16.0.0-beta1"
 metadataExtractor = "2.19.0"
+reorderable = "3.1.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -218,6 +219,7 @@ play-app-update = { module = "com.google.android.play:app-update-ktx", version.r
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
 mlkit-subject-segmentation = { module = "com.google.android.gms:play-services-mlkit-subject-segmentation", version.ref = "mlkit-subject-segmentation" }
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
 nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }
 nucleus-notification-macos = { module = "io.github.kdroidfilter:nucleus.notification-macos", version.ref = "nucleus" }
