@@ -122,6 +122,12 @@ class HomebaseImageLoader(
             return loadFullPayload(data, retryConfig)
         }
 
+        // Snap the measured display size to the best native thumbnail the server
+        // actually stores. Keying the request (and thus the disk cache) by the
+        // native size deduplicates entries across measured sizes/devices and lets
+        // the read hit what the sender seeded under the optimistic fileId.
+        val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
+
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
             val response = try {
@@ -130,8 +136,8 @@ class HomebaseImageLoader(
                     fileId = data.fileId,
                     payloadKey = data.payloadKey,
                     keyHeader = data.keyHeader,
-                    width = targetSize.pixelWidth,
-                    height = targetSize.pixelHeight,
+                    width = nativeSize.pixelWidth,
+                    height = nativeSize.pixelHeight,
                     lastModified = data.lastModified,
                 )
             } catch (e: CancellationException) {
@@ -143,7 +149,7 @@ class HomebaseImageLoader(
                         driveId = data.driveId,
                         fileId = data.fileId,
                         payloadKey = data.payloadKey,
-                        size = targetSize,
+                        size = nativeSize,
                         lastModified = data.lastModified,
                         causeClass = e::class.simpleName
                     ),
@@ -152,7 +158,7 @@ class HomebaseImageLoader(
             } ?: return@withRetry null
 
             CachedImage(
-                bytes = response.bytes, contentType = response.contentType, size = targetSize
+                bytes = response.bytes, contentType = response.contentType, size = nativeSize
             )
         }
     }

@@ -372,6 +372,44 @@ class DriveFileProviderCachedTest {
     }
 
     /**
+     * The finalizing-blur fix at the cache layer. The sender seeds thumbs under
+     * their NATIVE generated sizes; the thumb cache key embeds width:height, so:
+     *   - a read keyed by the native size (what loadThumbnail does after snapping
+     *     via selectThumbSize) hits the seed with NO network — the bubble shows a
+     *     sharp thumbnail through "finalizing", and
+     *   - a read keyed by an arbitrary measured size (the old behaviour) MISSES the
+     *     native-keyed seed and falls through to the network (which 404s while the
+     *     optimistic fileId is not yet on the server) — which is why the bubble used
+     *     to drop back to the blurry 20px embedded preview.
+     * lastModified is null on both sides pre-sync, so only width:height differs.
+     */
+    @Test
+    fun `seeded native-size thumb is hit by a native-size read but missed by a measured-size read`() = runTest {
+        val nativeW = 320
+        val nativeH = 240
+        val bytes = ByteArray(48) { (it * 5).toByte() }
+        provider.cacheThumbBytesEncrypted(driveId, fileId, key, nativeW, nativeH, bytes, "image/webp")
+
+        // Native-keyed read: served by the seed, network must not be touched.
+        nextException = IOException("native-size read must be served from the seed, not the network")
+        val hit = provider.getThumbBytesRaw(driveId, fileId, key, nativeW, nativeH)
+        assertEquals(0, requestCount, "native-keyed read must be served by the seed")
+        assertEquals(200, hit.status)
+        assertContentEquals(bytes, hit.bytes)
+
+        // Measured-size read (e.g. a 712x950 layout): misses the native-keyed seed
+        // and reaches the network — demonstrating the pre-fix behaviour.
+        nextException = null
+        nextStatus = HttpStatusCode.OK
+        val miss = provider.getThumbBytesRaw(driveId, fileId, key, 712, 950)
+        assertTrue(
+            requestCount > 0,
+            "measured-size read must miss the native-keyed seed and hit the network"
+        )
+        assertEquals(200, miss.status)
+    }
+
+    /**
      * A pre-send 404 lookup (e.g. a bubble probing a payload before the seed
      * landed) must not shadow the seeded entry: seeding clears the in-memory
      * notFound marker for the key.
