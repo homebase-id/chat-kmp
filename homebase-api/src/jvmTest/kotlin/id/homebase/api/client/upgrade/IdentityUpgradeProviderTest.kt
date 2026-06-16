@@ -1,8 +1,10 @@
 package id.homebase.api.client.upgrade
 
+import id.homebase.api.client.NetworkException
 import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import io.ktor.client.HttpClient
@@ -15,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class IdentityUpgradeProviderTest {
 
@@ -106,10 +109,17 @@ class IdentityUpgradeProviderTest {
     }
 
     @Test
-    fun throwsOnNetworkError() = runTest {
+    fun throwsTypedNetworkExceptionOnTransportFailure() = runTest {
+        // A raw transport IOException from the engine must surface as the typed,
+        // catchable NetworkException (not a bare IOException), with the original
+        // exception preserved as the cause for diagnosis.
         val engine = MockEngine { throw java.io.IOException("timeout") }
-        assertFailsWith<java.io.IOException> {
+        val thrown = assertFailsWith<NetworkException> {
             createProvider(engine).checkUpgradeStatus()
         }
+        // Cause preserved (Ktor may rewrap the engine's IOException, so assert the
+        // type/chain rather than instance identity) so the real stack survives.
+        assertTrue(thrown.cause is java.io.IOException, "cause should be the transport IOException")
+        assertTrue(thrown.isTransientNetworkFailure())
     }
 }

@@ -28,6 +28,8 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.parameter
 import io.ktor.utils.io.charsets.Charsets
 import io.ktor.utils.io.charsets.name
+import kotlinx.coroutines.CancellationException
+import kotlinx.io.IOException
 
 typealias UploadProgress = suspend (bytesSent: Long, totalBytes: Long?) -> Unit
 
@@ -80,12 +82,33 @@ abstract class OdinApiProviderBase(
     // Core request primitive
     // ------------------------------------------------------------
 
+    /**
+     * Run a network operation, mapping any transport failure (timeout,
+     * connection refused, DNS, dropped socket) to a typed [NetworkException].
+     * Cancellation is rethrown untouched so structured concurrency still works.
+     * Non-network failures (decrypt, parse) are NOT caught here — they fall
+     * outside [block] and propagate unchanged.
+     */
+    private suspend fun <T> networkCall(block: suspend () -> T): T =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw NetworkException(e)
+        }
+
     protected suspend fun request(
         block: suspend () -> HttpResponse,
         secret: SecureByteArray?
     ): ApiResponse {
-        val response = block()
-        val rawBody = response.body<String>()
+        // The connect AND the body read are both network I/O — a socket can drop
+        // mid-read — so both run under networkCall, which maps transport failures
+        // to a typed NetworkException instead of leaking a raw IOException.
+        val (response, rawBody) = networkCall {
+            val r = block()
+            r to r.body<String>()
+        }
 
         // Decrypt when the server flags it (X-SSE) OR the body is unmistakably the shared-secret
         // envelope. The header is the fast path used on native; but browsers strip non-safelisted
@@ -128,8 +151,10 @@ abstract class OdinApiProviderBase(
         block: suspend () -> HttpResponse
     ): ByteApiResponse {
 
-        val response = block()
-        val bytes = response.readRawBytes()
+        val (response, bytes) = networkCall {
+            val r = block()
+            r to r.readRawBytes()
+        }
 
         val contentType =
             response.headers["decryptedcontenttype"]
