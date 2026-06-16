@@ -61,6 +61,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -281,6 +282,11 @@ fun MediaItem(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
+                            // Native thumbnail sizes this image actually has, so the
+                            // loader requests/caches by a native size — matching the
+                            // sender's optimistic seed (sharp thumb through finalizing)
+                            // and deduplicating the disk cache across measured sizes.
+                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
                             isEncrypted = true,
                             // Pass the real payload content type so the loader

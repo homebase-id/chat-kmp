@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.thumbSizesFrom
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
@@ -99,6 +100,7 @@ fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL):
         payloadKey = payloadKey,
         previewThumbnail = previewThumbnail,
         requestedSize = requestedSize,
+        availableThumbSizes = thumbSizesFrom(payloadDescriptor.thumbnails),
         loadFullPayload = false,
         isEncrypted = true,
         lastModified = payloadDescriptor.lastModified,
