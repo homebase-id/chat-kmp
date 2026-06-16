@@ -34,6 +34,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.chat.services.PayloadCacheSeeder
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -62,6 +63,7 @@ class MomentsPostSenderService(
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
@@ -194,8 +196,9 @@ class MomentsPostSenderService(
             _pendingLocalPreviews.update { it.put(momentUniqueId, previewModel) }
         }
 
+        val optimisticFileId: Uuid
         try {
-            optimisticWriter.writeNewFile(
+            optimisticFileId = optimisticWriter.writeNewFile(
                 driveId = drive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = placeholderMetadata,
@@ -221,6 +224,7 @@ class MomentsPostSenderService(
         scope.launch {
             finalizeMomentSend(
                 momentUniqueId = momentUniqueId,
+                optimisticFileId = optimisticFileId,
                 attachments = attachments,
                 description = description,
                 recipients = recipients,
@@ -246,6 +250,7 @@ class MomentsPostSenderService(
      */
     private suspend fun finalizeMomentSend(
         momentUniqueId: Uuid,
+        optimisticFileId: Uuid,
         attachments: List<AttachmentInput>,
         description: String,
         recipients: List<OdinId>,
@@ -400,6 +405,21 @@ class MomentsPostSenderService(
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the tile can request a native size
+                    // (availableThumbSizes) and hit the seed below during sending —
+                    // mirrors ChatMessageSenderService. content=null: the bytes live
+                    // in the seeded cache, not inline on the descriptor.
+                    thumbnails = encrypted.thumbnails
+                        .filter { it.key == payload.key }
+                        .map {
+                            ThumbnailDescriptor(
+                                pixelWidth = it.pixelWidth,
+                                pixelHeight = it.pixelHeight,
+                                contentType = it.contentType,
+                                content = null,
+                            )
+                        }
+                        .ifEmpty { null },
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = previewThumb,
@@ -414,6 +434,11 @@ class MomentsPostSenderService(
                     payloadDescriptors = payloadDescriptors,
                 )
                 Logger.d(tag = TAG) { "finalizeMomentSend: optimistic update complete moment=$momentUniqueId" }
+                // Seed the encrypted thumb/payload bytes under the optimistic fileId
+                // so the just-promoted tile shows its sharp thumbnail through the
+                // upload window instead of the blurry embedded preview. rekeyCache
+                // AfterCreate later moves these to the server fileId.
+                payloadCacheSeeder.seed(drive, optimisticFileId, encrypted)
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) {
                     "finalizeMomentSend: optimistic update failed (non-fatal) moment=$momentUniqueId"

@@ -25,6 +25,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.PayloadCacheSeeder
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
@@ -53,6 +54,7 @@ class VaultUploaderService(
     private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val vaultService: VaultService,
 ) {
@@ -132,6 +134,20 @@ class VaultUploaderService(
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the grid tile can request a native
+                    // size (availableThumbSizes) and hit the seed below during
+                    // upload — mirrors ChatMessageSenderService.
+                    thumbnails = encryptedBundle.thumbnails
+                        .filter { it.key == payload.key }
+                        .map {
+                            ThumbnailDescriptor(
+                                pixelWidth = it.pixelWidth,
+                                pixelHeight = it.pixelHeight,
+                                contentType = it.contentType,
+                                content = null,
+                            )
+                        }
+                        .ifEmpty { null },
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = payload.previewThumbnail?.let {
@@ -156,7 +172,7 @@ class VaultUploaderService(
             val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
-                    optimisticWriter.writeNewFile(
+                    val optimisticFileId = optimisticWriter.writeNewFile(
                         driveId = driveId,
                         keyHeader = keyHeader,
                         unecryptedMetadata = unencryptedMetadata,
@@ -165,6 +181,10 @@ class VaultUploaderService(
                         payloadDescriptors = payloadDescriptors,
                     )
                     Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
+                    // Seed the encrypted thumb/payload bytes under the optimistic
+                    // fileId so the grid tile shows its sharp thumbnail through the
+                    // upload window instead of the blurry embedded preview.
+                    payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
                 } catch (e: Exception) {
                     Logger.e(e, TAG) { "Optimistic write failed (non-fatal): $entryName" }
                 }

@@ -60,6 +60,7 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
@@ -175,6 +176,7 @@ fun VaultGalleryDetailSheet(
                                     fileId = file.fileId,
                                     payloadKey = descriptor.key,
                                     previewThumbnail = file.previewThumbnail,
+                                    availableThumbSizes = thumbSizesFrom(descriptor.thumbnails),
                                     lastModified = descriptor.lastModified,
                                     isEncrypted = file.isEncrypted,
                                     keyHeader = KeyHeader(

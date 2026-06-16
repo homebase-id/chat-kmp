@@ -136,6 +136,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             optimisticWriter = optimisticWriter,
             fileOperationsProvider = SenderNoopFileOperationsProvider(),
             driveFileProvider = driveFileProvider,
+            payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, SenderNoopFileOperationsProvider()),
             shareSuggestionDonor = ShareSuggestionDonor(),
         )
     }
