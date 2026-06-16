@@ -1259,6 +1259,40 @@
     <string name="location_history_devices">%1$d devices</string>
     <string name="location_history_span">%1$s – %2$s</string>
 
+
+    <!-- Lists add-on -->
+    <string name="lists_label">Lists</string>
+    <string name="nav_lists">Lists</string>
+    <string name="lists_onboarding_title">Shared lists for everyone</string>
+    <string name="lists_onboarding_body_1">Lists is a shared space where you and your family build and check off lists together.</string>
+    <string name="lists_onboarding_body_2">Set it up to mount the Lists drive on this device and start collaborating.</string>
+    <string name="lists_onboarding_setup">Set it up</string>
+    <string name="lists_onboarding_dismiss">Not now</string>
+    <string name="lists_settings_section">Lists</string>
+    <string name="lists_settings_open">Open Lists</string>
+    <string name="lists_settings_show_icon">Show Lists icon in bottom bar</string>
+    <string name="lists_home_subtitle">Shared to-do lists</string>
+    <string name="lists_empty_title">No lists yet</string>
+    <string name="lists_empty_body">Create a list to start collaborating with your family.</string>
+    <!-- Lists Phase 3: overview + detail UI -->
+    <string name="list_overview_new">New list</string>
+    <string name="list_overview_create_title">New list</string>
+    <string name="list_overview_name_hint">List name</string>
+    <string name="list_overview_progress">%1$d / %2$d</string>
+    <string name="list_overview_rename_title">Rename list</string>
+    <string name="list_overview_more">List options</string>
+    <string name="list_delete_title">Delete list?</string>
+    <string name="list_delete_body">This permanently deletes the list and all of its items.</string>
+    <string name="list_action_rename">Rename</string>
+    <string name="list_action_delete_list">Delete list</string>
+    <string name="list_detail_add_hint">Add an item</string>
+    <string name="list_detail_add_action">Add item</string>
+    <string name="list_detail_empty_title">No items yet</string>
+    <string name="list_detail_empty_body">Add your first item below.</string>
+    <string name="list_item_more">Item options</string>
+    <string name="list_item_edit_title">Edit item</string>
+    <string name="list_item_check_desc">Toggle item completed</string>
+    <string name="list_item_reorder_desc">Drag to reorder</string>
     <!-- Contact Book (contact manager add-on) -->
     <string name="contactbook_label">Contacts</string>
     <string name="contactbook_home_subtitle">Manage your address book</string>
