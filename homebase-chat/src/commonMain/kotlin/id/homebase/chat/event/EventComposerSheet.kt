@@ -1,24 +1,18 @@
 package id.homebase.chat.event
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
@@ -56,18 +50,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.composer.ComposerEditableField
+import id.homebase.chat.composer.ComposerRow
+import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.close
@@ -97,9 +91,6 @@ import org.koin.compose.koinInject
 
 private const val MAX_TITLE_CODEPOINTS = 200
 private const val MAX_DESCRIPTION_CODEPOINTS = 4000
-
-/** Vertical gap reserved for the icon column so unlabeled sub-rows align under the row text. */
-private val RowIconGap = 20.dp
 
 /**
  * Bottom-sheet composer for an Event message, modeled on the Google Calendar
@@ -141,13 +132,6 @@ private fun EventComposerContent(
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
     val brand = HomebaseTheme.extendedColors.bubbleSentSurface
-
-    // Keyboard inset — matches Vault/Chat. Pad by the PURE ime height (ime minus
-    // the home-indicator inset that WindowInsets.ime double-counts on iOS) so the
-    // last field sits flush above the keyboard. Raw imePadding() leaves a
-    // home-indicator-sized gray gap on iOS (see ImeOffsetUtils).
-    val imeState = rememberImeOffsetState()
-    val pureImeBottomDp = with(imeState.density) { imeState.pureImeBottomPx.toDp() }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -283,43 +267,21 @@ private fun EventComposerContent(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                // Pure-IME bottom inset OUTSIDE verticalScroll shrinks the scroll
-                // viewport by exactly the keyboard height; the focused-field
-                // auto-scroll then parks the last row just above the keyboard
-                // (matches Vault/Chat — no gray home-indicator gap on iOS).
-                .padding(bottom = pureImeBottomDp)
                 .verticalScroll(rememberScrollState())
+                // imePadding INSIDE the scroll pads the content (not the viewport) so
+                // the focused field scrolls above the keyboard. The ModalBottomSheet
+                // already lifts for the IME, so shrinking the viewport here would
+                // double-count and collapse the sheet on Android. Matches
+                // ConnectRequestBottomSheet / VaultNewSectionSheet.
+                .imePadding()
                 .padding(horizontal = 20.dp),
         ) {
             // Title — borderless headline with a brand-blue underline indicator.
-            val titleInteraction = remember { MutableInteractionSource() }
-            val titleFocused by titleInteraction.collectIsFocusedAsState()
-            BasicTextField(
+            ComposerTitleField(
                 value = title,
                 onValueChange = { title = it },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.headlineSmall.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                ),
-                cursorBrush = SolidColor(brand),
-                interactionSource = titleInteraction,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (title.isEmpty()) {
-                            Text(
-                                text = stringResource(MR.string.chat_event_title_hint),
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        inner()
-                    }
-                },
-            )
-            HorizontalDivider(
-                thickness = if (titleFocused) 2.dp else 1.dp,
-                color = if (titleFocused) brand else MaterialTheme.colorScheme.outlineVariant,
+                placeholder = stringResource(MR.string.chat_event_title_hint),
+                brand = brand,
             )
 
             Spacer(Modifier.height(12.dp))
@@ -375,7 +337,7 @@ private fun EventComposerContent(
 
             // Meeting link.
             ComposerRow(icon = Icons.Default.Videocam, filled = meetingUrl.isNotEmpty()) {
-                EditableField(
+                ComposerEditableField(
                     value = meetingUrl,
                     onValueChange = { meetingUrl = it },
                     placeholder = stringResource(MR.string.chat_event_meeting_url_hint),
@@ -406,7 +368,7 @@ private fun EventComposerContent(
                     }
                 },
             ) {
-                EditableField(
+                ComposerEditableField(
                     value = locationText,
                     onValueChange = {
                         locationText = it
@@ -429,7 +391,7 @@ private fun EventComposerContent(
                 filled = description.isNotEmpty(),
                 verticalAlignment = Alignment.Top,
             ) {
-                EditableField(
+                ComposerEditableField(
                     value = description,
                     onValueChange = { description = it },
                     placeholder = stringResource(MR.string.chat_event_description_hint),
@@ -493,68 +455,6 @@ private fun EventComposerContent(
             onDismiss = { showEndTime = false },
         )
     }
-}
-
-/** A flat, icon-led row: leading icon + [content] + optional [trailing]. */
-@Composable
-private fun ComposerRow(
-    icon: ImageVector,
-    filled: Boolean,
-    modifier: Modifier = Modifier,
-    verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
-    trailing: @Composable (() -> Unit)? = null,
-    content: @Composable RowScope.() -> Unit,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = 10.dp),
-        verticalAlignment = verticalAlignment,
-        horizontalArrangement = Arrangement.spacedBy(RowIconGap),
-    ) {
-        Icon(
-            imageVector = icon,
-            // Decorative — the adjacent text/field conveys the row's meaning.
-            contentDescription = null,
-            tint = if (filled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        content()
-        trailing?.invoke()
-    }
-}
-
-/** Inline, borderless editable text used inside a [ComposerRow] (no box chrome). */
-@Composable
-private fun RowScope.EditableField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    singleLine: Boolean,
-    cursorColor: androidx.compose.ui.graphics.Color,
-    keyboardType: KeyboardType = KeyboardType.Text,
-) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        singleLine = singleLine,
-        textStyle = MaterialTheme.typography.bodyLarge.copy(
-            color = MaterialTheme.colorScheme.onSurface,
-        ),
-        cursorBrush = SolidColor(cursorColor),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.weight(1f),
-        decorationBox = { inner ->
-            Box {
-                if (value.isEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                inner()
-            }
-        },
-    )
 }
 
 /** One "date · time" line where the date and the time are independently tappable. */
