@@ -1,7 +1,9 @@
 package id.homebase.core.image
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import kotlin.math.max
 import kotlin.uuid.Uuid
 
 /**
@@ -20,6 +22,16 @@ data class HomebaseImageData(
     val previewThumbnail: EmbeddedThumb? = null,
     /** Desired resolution for thumbnail loading */
     val requestedSize: ImageSize? = null,
+    /**
+     * Native sizes of the server-side thumbnails this image actually has, taken
+     * from the payload descriptor. The loader snaps each measured display size to
+     * the best of these via [selectThumbSize] so the request — and therefore the
+     * disk cache key — matches what the sender seeded under the optimistic fileId
+     * (and what every other device requests), instead of minting a fresh cache
+     * entry per measured size. Empty when the caller has no descriptor (link
+     * previews, avatars), in which case the measured size is requested unchanged.
+     */
+    val availableThumbSizes: List<ImageSize> = emptyList(),
     /** If true, load full resolution payload instead of thumbnail */
     val loadFullPayload: Boolean = false,
     /** Whether the image is encrypted */
@@ -94,4 +106,40 @@ data class ImageSize(val pixelWidth: Int, val pixelHeight: Int) {
         val THUMB_LARGE = ImageSize(1080, 1080)
         val THUMB_XLARGE = ImageSize(1600, 1600)
     }
+}
+
+/**
+ * Map a payload's [ThumbnailDescriptor] list to the concrete native [ImageSize]s
+ * the server actually stores, dropping the embedded preview thumbnail (carried
+ * separately) and any descriptor with missing or non-positive dimensions.
+ */
+fun thumbSizesFrom(thumbnails: List<ThumbnailDescriptor>?): List<ImageSize> =
+    thumbnails.orEmpty().mapNotNull { t ->
+        val w = t.pixelWidth ?: return@mapNotNull null
+        val h = t.pixelHeight ?: return@mapNotNull null
+        if (w <= 0 || h <= 0) null else ImageSize(w, h)
+    }
+
+/**
+ * Pick which thumbnail size to actually request for a given measured display size.
+ *
+ * The server only stores thumbnails at the sender's native sizes; asking for an
+ * arbitrary size returns the nearest native thumbnail's bytes regardless. Snapping
+ * to a native size makes the disk cache key honest — one entry per native size,
+ * shared across every measured size and device — and lets it match the entry the
+ * sender seeded under the optimistic fileId, so a freshly sent image shows its
+ * sharp thumbnail through "finalizing" instead of the blurry embedded preview.
+ *
+ * Selection compares on the longest edge (consistent with thumbnail generation's
+ * `maxPixelDimension`): the smallest native whose longest edge covers the request
+ * (never upscale → no added blur), clamped to the largest native when the request
+ * exceeds all of them. Returns [requested] unchanged when [available] is empty so
+ * callers without a descriptor keep requesting an arbitrary size.
+ */
+fun selectThumbSize(requested: ImageSize, available: List<ImageSize>): ImageSize {
+    if (available.isEmpty()) return requested
+    val reqMax = max(requested.pixelWidth, requested.pixelHeight)
+    return available.filter { max(it.pixelWidth, it.pixelHeight) >= reqMax }
+        .minByOrNull { max(it.pixelWidth, it.pixelHeight) }
+        ?: available.maxByOrNull { max(it.pixelWidth, it.pixelHeight) }!!
 }
