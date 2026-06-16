@@ -23,7 +23,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       // Run Koin, logging, and database init before any UI framework setup.
       // This keeps the main-thread run-loop free between heavy init and the
       // first Compose frame, preventing the iOS text-rendering race condition.
-      MainViewControllerKt.initializeApp()
+      //
+      // Arm crash handling FIRST (no Koin/DB) and check for a crash from last run.
+      // If there is one, DEFER heavy init until the user taps Continue (avoids an
+      // init-time crash loop). Otherwise initialize normally.
+      if let pending = MainViewControllerKt.armCrashHandlingAndCheckPending() {
+          CrashRecoveryModel.shared.pendingReportPath = pending
+      } else {
+          MainViewControllerKt.initializeApp()
+      }
 
       //By default showPushNotification value is true.
       //When set showPushNotification to false foreground push  notification will not be shown.

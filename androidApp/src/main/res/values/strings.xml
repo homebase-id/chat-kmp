@@ -6,4 +6,12 @@
     <string name="share_sent_multiple">Sent to %1$d conversations</string>
     <string name="share_preview_title_single">Conversation</string>
     <string name="share_preview_title_others">%1$s +%2$d others</string>
+    <string name="crash_emoji">(╯°□°)╯︵ ┻━┻</string>
+    <string name="crash_title">Well, this is awkward.</string>
+    <string name="crash_body">Homebase tripped over its own feet and had to sit down for a second. You really shouldn\'t be seeing this — but here we are. Let\'s get you back.</string>
+    <string name="crash_reassurance">Your stuff is safe. Sharing the report helps us fix this.</string>
+    <string name="crash_restart">Restart</string>
+    <string name="crash_share">Share crash report</string>
+    <string name="crash_details_toggle">Technical details</string>
+    <string name="crash_report_unavailable">(crash report unavailable)</string>
 </resources>

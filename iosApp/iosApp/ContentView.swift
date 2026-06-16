@@ -36,8 +36,20 @@ struct ContentView: View {
     // fontCacheUsed=6889 count=4, 3/3 field captures). Latched true forever after — backgrounding
     // later must NOT tear the view down.
     @State private var hasBeenActive = false
+    // Crash recovery: when a crash report from the previous run is pending, show the
+    // native SwiftUI recovery screen INSTEAD of Compose until the user taps Continue
+    // (which runs the deferred heavy init and flips pendingReportPath back to nil).
+    @ObservedObject private var crashModel = CrashRecoveryModel.shared
 
     var body: some View {
+        if let reportPath = crashModel.pendingReportPath {
+            CrashRecoveryView(reportPath: reportPath)
+        } else {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
         ZStack {
             if hasBeenActive || scenePhase == .active {
                 ComposeView()
