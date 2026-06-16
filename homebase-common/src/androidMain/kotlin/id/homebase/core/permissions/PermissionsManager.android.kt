@@ -64,6 +64,7 @@ private fun String.toPermissionType(): PermissionType? {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACCESS_BACKGROUND_LOCATION) return PermissionType.LOCATION_ALWAYS
 
+    if (this == Manifest.permission.READ_CONTACTS) return PermissionType.CONTACTS
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACTIVITY_RECOGNITION) return PermissionType.ACTIVITY
 
     return null
@@ -143,6 +144,10 @@ class AndroidPermissionsManager(
                         arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                     )
                 }
+            }
+
+            PermissionType.CONTACTS -> {
+                genericPermissionLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
             }
 
             PermissionType.ACTIVITY -> {
@@ -227,6 +232,12 @@ class AndroidPermissionsManager(
                 } else {
                     isPermissionGranted(PermissionType.LOCATION)
                 }
+            }
+
+            PermissionType.CONTACTS -> {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.READ_CONTACTS
+                ) == PackageManager.PERMISSION_GRANTED
             }
 
             PermissionType.ACTIVITY -> {

@@ -66,6 +66,12 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.ContactBookService
+import id.homebase.core.ui.screens.contactbook.ContactBookStream
+import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
+import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
@@ -198,6 +204,13 @@ val appModule = module {
     singleOf(::MomentGroupService)
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
+
+    // Contact Book add-on (contact manager). Reads from the mandatory Contacts
+    // drive; writes through the api-layer ContactsProvider. No optional-drive
+    // activation — the drive is always mounted.
+    single { ContactBookPreferences(get()) }
+    singleOf(::ContactBookStream)
+    single { ContactBookService(get()) }
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -410,6 +423,10 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Contact Book: re-seed prefs + reload the contact list for the new
+                // identity (singletons survive logout — clear stale in-memory state).
+                get<ContactBookPreferences>().reset()
+                get<ContactBookStream>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
 
@@ -678,6 +695,9 @@ val appModule = module {
     }
     viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
+    viewModelOf(::ContactBookViewModel)
+    viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
         FindDeviceViewModel(

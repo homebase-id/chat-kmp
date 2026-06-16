@@ -1,6 +1,9 @@
 package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
+import platform.Contacts.CNAuthorizationStatusAuthorized
+import platform.Contacts.CNContactStore
+import platform.Contacts.CNEntityType
 import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
@@ -183,6 +186,19 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 }
             }
 
+            PermissionType.CONTACTS -> {
+                // requestAccessForEntityType prompts on first call and returns the
+                // prior decision thereafter; iOS never re-prompts after a denial, so a
+                // denied result is treated as permanent (settings is the only way back).
+                CNContactStore().requestAccessForEntityType(CNEntityType.CNEntityTypeContacts) { granted, _ ->
+                    onPermissionResult(
+                        permission,
+                        if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                        !granted,
+                    )
+                }
+            }
+
             PermissionType.ACTIVITY -> {
                 // A throwaway pedometer query surfaces the Core Motion prompt;
                 // the result is reported via the status read afterwards.
@@ -241,6 +257,10 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 LocationPermissionRequester.status == kCLAuthorizationStatusAuthorizedAlways
             }
 
+            PermissionType.CONTACTS -> {
+                CNContactStore.authorizationStatusForEntityType(CNEntityType.CNEntityTypeContacts) ==
+                    CNAuthorizationStatusAuthorized
+            }
             PermissionType.ACTIVITY -> MotionPermissionRequester.isAuthorized()
         }
     }

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -127,6 +128,14 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.ContactBookScreen
+import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
+import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
+import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
+import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
+import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
@@ -190,14 +199,26 @@ fun AppNavHost(
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible) {
+    val contactBookPreferences = koinInject<ContactBookPreferences>()
+    val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
+    val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
+    val contactBookViewModel: ContactBookViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, contactBookIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
+            if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
             add(TopLevelRoute.Home)
+        }
+    }
+    val openContactBook: () -> Unit = {
+        navController.navigate(Route.ContactBook) {
+            popUpTo(Route.ChatList) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
         }
     }
     val openMoments: () -> Unit = {
@@ -314,6 +335,25 @@ fun AppNavHost(
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
+            }
+        }
+    }
+
+    // Contact Book events → navigation. OpenConversation lands the chat list on
+    // the (created-if-needed) 1:1 conversation; CloseOnboarding pops back out of
+    // the contacts tab after a skip.
+    LaunchedEffect(Unit) {
+        contactBookViewModel.events.collect { event ->
+            when (event) {
+                is ContactBookUiEvent.OpenConversation -> {
+                    navController.selectConversationOnChatList(event.conversationId)
+                    navController.popBackStack(Route.ChatList, inclusive = false)
+                }
+                is ContactBookUiEvent.OpenDetail ->
+                    navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
+                ContactBookUiEvent.CloseOnboarding ->
+                    navController.popBackStack(Route.ChatList, inclusive = false)
+                else -> { /* RequestContactsPermission + Error handled by ContactBookScreen */ }
             }
         }
     }
@@ -509,6 +549,7 @@ fun AppNavHost(
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
                                     topLevelRoute is TopLevelRoute.Location -> openLocation()
+                                    topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
                                     else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
@@ -718,6 +759,7 @@ fun AppNavHost(
                                     onNavigateToVault = openVault,
                                     onNavigateToMoments = openMoments,
                                     onNavigateToLocation = openLocation,
+                                    onNavigateToContacts = openContactBook,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
@@ -733,6 +775,51 @@ fun AppNavHost(
                                             launchSingleTop = true
                                             restoreState = true
                                         }
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ContactBook> {
+                            if (isAuthenticated) {
+                                if (!contactBookOnboardingComplete) {
+                                    ContactBookOnboardingScreen(viewModel = contactBookViewModel)
+                                } else {
+                                    ContactBookScreen(
+                                        viewModel = contactBookViewModel,
+                                        onNavigateToSettings = {
+                                            navController.navigate(Route.ContactBookSettings)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        composable<Route.ContactBookSettings> {
+                            if (isAuthenticated) {
+                                val fromContacts = navController.previousBackStackEntry
+                                    ?.destination?.hasRoute(Route.ContactBook::class) == true
+                                ContactBookSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenContacts = openContactBook,
+                                    showOpenContacts = !fromContacts,
+                                )
+                            }
+                        }
+
+                        composable<Route.ContactBookDetail> {
+                            if (isAuthenticated) {
+                                ContactDetailScreen(
+                                    viewModel = koinViewModel(),
+                                    connectRequestViewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
                                     },
                                 )
                             }
@@ -1055,6 +1142,9 @@ fun AppNavHost(
                                     },
                                     onNavigateToLocationSettings = {
                                         navController.navigate(Route.LocationSettings)
+                                    },
+                                    onNavigateToContactBookSettings = {
+                                        navController.navigate(Route.ContactBookSettings)
                                     },
                                 )
                             }
@@ -1452,7 +1542,8 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true ||
-            this?.hasRoute(Route.Location::class) == true
+            this?.hasRoute(Route.Location::class) == true ||
+            this?.hasRoute(Route.ContactBook::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
@@ -1474,6 +1565,7 @@ sealed class TopLevelRoute(
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
+    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
 }
 
 /**
