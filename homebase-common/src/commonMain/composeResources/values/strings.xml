@@ -816,7 +816,7 @@
     <string name="chat_groodle_field_title">Title</string>
     <string name="chat_groodle_field_description">Description (optional)</string>
     <string name="chat_groodle_field_timezone">Time zone</string>
-    <string name="chat_groodle_allow_maybe">Allow \"Maybe\"</string>
+    <string name="chat_groodle_allow_maybe">Allow “Maybe”</string>
     <string name="chat_groodle_deadline">Voting deadline</string>
     <string name="chat_groodle_deadline_24h">24 hours</string>
     <string name="chat_groodle_deadline_48h">48 hours</string>

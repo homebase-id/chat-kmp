@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,7 +70,6 @@ import id.homebase.chat.event.friendlyZoneLabel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.ok
@@ -169,13 +169,6 @@ private fun GroodleComposerContent(
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
     val brand = HomebaseTheme.extendedColors.bubbleSentSurface
-
-    // Keyboard inset — matches Vault/Chat. Pad by the PURE ime height (ime minus
-    // the home-indicator inset that WindowInsets.ime double-counts on iOS) so the
-    // focused field sits flush above the keyboard with no gray gap (see
-    // ImeOffsetUtils).
-    val imeState = rememberImeOffsetState()
-    val pureImeBottomDp = with(imeState.density) { imeState.pureImeBottomPx.toDp() }
 
     val systemTz = remember { TimeZone.currentSystemDefault() }
     val today = remember { Clock.System.now().toLocalDateTime(systemTz).date }
@@ -282,12 +275,13 @@ private fun GroodleComposerContent(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                // Pure-IME bottom inset OUTSIDE verticalScroll shrinks the scroll
-                // viewport by the keyboard height; the focused-field auto-scroll
-                // then parks the active field just above the keyboard (matches
-                // Vault/Chat — no gray home-indicator gap on iOS).
-                .padding(bottom = pureImeBottomDp)
                 .verticalScroll(rememberScrollState())
+                // imePadding INSIDE the scroll pads the content (not the viewport) so
+                // the focused field scrolls above the keyboard. The ModalBottomSheet
+                // already lifts for the IME, so shrinking the viewport here would
+                // double-count and collapse the sheet on Android. Matches
+                // ConnectRequestBottomSheet / VaultNewSectionSheet.
+                .imePadding()
                 .padding(horizontal = 20.dp),
         ) {
             // Title — borderless headline with a brand-blue underline indicator.
@@ -300,73 +294,82 @@ private fun GroodleComposerContent(
 
             Spacer(Modifier.height(12.dp))
 
-            // WHEN group — the candidate time options + the add button.
+            // WHEN group — candidate time options + the add control.
+            val hasSlots = slots.isNotEmpty()
             ComposerRow(
                 icon = Icons.Default.Schedule,
-                filled = slots.isNotEmpty(),
-                verticalAlignment = Alignment.Top,
+                filled = hasSlots,
+                // Empty state is a single line, so center it with the clock icon like
+                // the other rows; once slots exist, top-align the icon with the list.
+                verticalAlignment = if (hasSlots) Alignment.Top else Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    slots.forEachIndexed { i, draft ->
-                        SlotEditLine(
-                            draft = draft,
-                            onPickDate = { datePickerForId = draft.id },
-                            onPickTime = { timePickerForId = draft.id },
-                            onDurationChange = { delta ->
-                                val idx = slots.indexOfFirst { it.id == draft.id }
-                                if (idx >= 0) {
-                                    val next = (slots[idx].durationMinutes + delta).coerceIn(MIN_DURATION_MINUTES, MAX_DURATION_MINUTES)
-                                    slots[idx] = slots[idx].copy(durationMinutes = next)
-                                }
-                            },
-                            onRemove = { slots.removeAll { it.id == draft.id } },
+                if (!hasSlots) {
+                    Text(
+                        text = stringResource(MR.string.chat_groodle_add_time),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showAddDate = true }
+                            .padding(vertical = 6.dp),
+                    )
+                } else {
+                    Column(modifier = Modifier.weight(1f)) {
+                        slots.forEachIndexed { i, draft ->
+                            SlotEditLine(
+                                draft = draft,
+                                onPickDate = { datePickerForId = draft.id },
+                                onPickTime = { timePickerForId = draft.id },
+                                onDurationChange = { delta ->
+                                    val idx = slots.indexOfFirst { it.id == draft.id }
+                                    if (idx >= 0) {
+                                        val next = (slots[idx].durationMinutes + delta).coerceIn(MIN_DURATION_MINUTES, MAX_DURATION_MINUTES)
+                                        slots[idx] = slots[idx].copy(durationMinutes = next)
+                                    }
+                                },
+                                onRemove = { slots.removeAll { it.id == draft.id } },
+                            )
+                            if (i < slots.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                        }
+
+                        // Plain-text action (no leading icon) so the label left-aligns
+                        // with the rows above, matching the Event composer.
+                        TextButton(
+                            onClick = { showAddDate = true },
+                            enabled = slots.size < MAX_SLOTS,
+                            modifier = Modifier.offset(x = (-12).dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        ) {
+                            Text(stringResource(MR.string.chat_groodle_add_time))
+                        }
+                        Text(
+                            text = stringResource(MR.string.chat_groodle_max_options, MAX_SLOTS),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (i < slots.lastIndex) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+
+                        if (!allTimesSet) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(MR.string.chat_groodle_err_times_missing),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
                             )
                         }
-                    }
-
-                    TextButton(
-                        onClick = { showAddDate = true },
-                        enabled = slots.size < MAX_SLOTS,
-                        // Negative offset cancels the wider horizontal content
-                        // padding so the label aligns under the rows above while
-                        // the hover/ripple splash reads wider.
-                        modifier = Modifier.offset(x = (-12).dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(MR.string.chat_groodle_add_time))
-                    }
-                    Text(
-                        text = stringResource(MR.string.chat_groodle_max_options, MAX_SLOTS),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    if (slots.isNotEmpty() && !allTimesSet) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(MR.string.chat_groodle_err_times_missing),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    if (hasDuplicate) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(MR.string.chat_groodle_err_duplicate),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                        if (hasDuplicate) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(MR.string.chat_groodle_err_duplicate),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }
