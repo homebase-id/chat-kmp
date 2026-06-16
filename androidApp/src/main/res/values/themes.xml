@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Branded Material 3 theme for CrashActivity. Color @refs adapt to dark via
+         values-night/colors.xml; windowLightStatusBar is flipped in values-night. -->
+    <style name="Theme.Homebase.Crash.Base" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/crash_primary</item>
+        <item name="colorOnPrimary">@color/crash_on_primary</item>
+        <item name="colorPrimaryContainer">@color/crash_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/crash_on_primary_container</item>
+        <item name="colorSecondaryContainer">@color/crash_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/crash_on_secondary_container</item>
+        <item name="android:colorBackground">@color/crash_surface</item>
+        <item name="colorSurface">@color/crash_surface</item>
+        <item name="colorOnSurface">@color/crash_on_surface</item>
+        <item name="colorSurfaceVariant">@color/crash_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/crash_on_surface_variant</item>
+        <item name="android:statusBarColor">@color/crash_surface</item>
+        <item name="android:navigationBarColor">@color/crash_surface</item>
+        <!-- Shown immediately while the :crash process cold-starts, so the user
+             sees the branded surface instead of a black/blank gap. -->
+        <item name="android:windowBackground">@color/crash_surface</item>
+    </style>
+
+    <style name="Theme.Homebase.Crash" parent="Theme.Homebase.Crash.Base">
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

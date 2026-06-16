@@ -23,11 +23,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
-import id.homebase.api.client.isTransientNetworkFailure
-import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
-import id.homebase.core.logging.crashlyticsRecordException
 import id.homebase.core.logging.StartupLogger
+import id.homebase.feed.crash.GlobalCrashHandler
 import id.homebase.core.util.PlatformInfo
 import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.notifications.NotificationService
@@ -64,6 +62,11 @@ class MainApplication : Application(), KoinComponent {
         // way. Activity-scoped access still goes through ActivityProvider.initialize.
         ActivityProvider.initializeApplicationContext(this)
 
+        // Install the global crash handler as early as possible — before Koin/DB —
+        // so even an init-time crash gets a written report + the native recovery
+        // screen. It needs only Context + PackageManager + static BuildConfig.
+        GlobalCrashHandler.install(this)
+
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)
         SharedPreferences.initialize(this) // TODO: Maybe we should use injectable UserPreferences
@@ -99,9 +102,6 @@ class MainApplication : Application(), KoinComponent {
 
         val platformInfo = get<PlatformInfo>()
         StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
-
-        // Set up uncaught exception handler for crash logging
-        setupCrashHandler()
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
         // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
@@ -215,35 +215,5 @@ class MainApplication : Application(), KoinComponent {
         }
     }
 
-    private fun setupCrashHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
 
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            // A transient connectivity failure (timeout, dropped socket, DNS) that
-            // leaked from a network call on a scope without its own
-            // CoroutineExceptionHandler should NOT kill the app. Record it as a
-            // Crashlytics non-fatal — full stack, plus the coroutine-name/thread
-            // custom keys GlobalCoroutineExceptionHandler already stamped — so it
-            // stays debuggable, then return without invoking the default (killing)
-            // handler. Any non-network crash still terminates normally below.
-            if (throwable.isTransientNetworkFailure()) {
-                crashlyticsRecordException(throwable)
-                Logger.w(tag = "CrashHandler") {
-                    "Transient network failure leaked to '${thread.name}' (no local handler); " +
-                        "recorded as non-fatal, app not crashing: ${throwable.message}"
-                }
-                return@setDefaultUncaughtExceptionHandler
-            }
-
-            try {
-                CrashLogger.logCrash(thread.name, throwable)
-            } catch (e: Exception) {
-                // If crash logging fails, still call the default handler
-                e.printStackTrace()
-            } finally {
-                // Call the original handler to let the app crash normally
-                defaultHandler?.uncaughtException(thread, throwable)
-            }
-        }
-    }
 }
