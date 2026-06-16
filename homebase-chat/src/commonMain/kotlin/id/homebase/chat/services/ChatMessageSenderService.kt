@@ -333,17 +333,7 @@ class ChatMessageSenderService(
             PayloadDescriptor(
                 key = payload.key,
                 contentType = payload.contentType.ifEmpty { null },
-                thumbnails = encryptedBundle.thumbnails
-                    .filter { it.key == payload.key }
-                    .map {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = null,
-                        )
-                    }
-                    .ifEmpty { null },
+                thumbnails = encryptedBundle.thumbnailDescriptorsFor(payload.key),
                 iv = payload.iv?.let { Base64.encode(it) },
                 descriptorContent = payload.descriptorContent,
                 previewThumbnail = payload.previewThumbnail?.let {

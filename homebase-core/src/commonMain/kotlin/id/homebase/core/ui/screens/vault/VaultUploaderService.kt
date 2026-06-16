@@ -26,6 +26,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
@@ -135,19 +136,8 @@ class VaultUploaderService(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
                     // Native thumbnail sizes so the grid tile can request a native
-                    // size (availableThumbSizes) and hit the seed below during
-                    // upload — mirrors ChatMessageSenderService.
-                    thumbnails = encryptedBundle.thumbnails
-                        .filter { it.key == payload.key }
-                        .map {
-                            ThumbnailDescriptor(
-                                pixelWidth = it.pixelWidth,
-                                pixelHeight = it.pixelHeight,
-                                contentType = it.contentType,
-                                content = null,
-                            )
-                        }
-                        .ifEmpty { null },
+                    // size (availableThumbSizes) and hit the seed below during upload.
+                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(payload.key),
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = payload.previewThumbnail?.let {

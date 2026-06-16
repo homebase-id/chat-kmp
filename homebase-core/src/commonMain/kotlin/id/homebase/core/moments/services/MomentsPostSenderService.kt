@@ -35,6 +35,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -406,20 +407,8 @@ class MomentsPostSenderService(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
                     // Native thumbnail sizes so the tile can request a native size
-                    // (availableThumbSizes) and hit the seed below during sending —
-                    // mirrors ChatMessageSenderService. content=null: the bytes live
-                    // in the seeded cache, not inline on the descriptor.
-                    thumbnails = encrypted.thumbnails
-                        .filter { it.key == payload.key }
-                        .map {
-                            ThumbnailDescriptor(
-                                pixelWidth = it.pixelWidth,
-                                pixelHeight = it.pixelHeight,
-                                contentType = it.contentType,
-                                content = null,
-                            )
-                        }
-                        .ifEmpty { null },
+                    // (availableThumbSizes) and hit the seed below during sending.
+                    thumbnails = encrypted.thumbnailDescriptorsFor(payload.key),
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = previewThumb,
