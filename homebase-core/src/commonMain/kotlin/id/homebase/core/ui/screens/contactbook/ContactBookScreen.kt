@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material.icons.outlined.Settings
@@ -14,20 +16,28 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
@@ -49,9 +59,12 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
 import id.homebase.resources.contactbook_tab_contacts
+import id.homebase.resources.clear_input
+import id.homebase.resources.menu_back
+import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ContactBookScreen(
     viewModel: ContactBookViewModel,
@@ -102,28 +115,91 @@ fun ContactBookScreen(
 
     val onContacts = uiState.selectedTab == ContactTab.CONTACTS
 
+    // Search is hidden behind a top-bar icon; it expands into the app-bar title when tapped
+    // and collapses (clearing the query) on back/close. Mirrors the conversation-list pattern.
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+
+    val collapseSearch = {
+        searchActive = false
+        viewModel.onAction(ContactBookUiAction.SearchChanged(""))
+    }
+
+    LaunchedEffect(searchActive) {
+        if (searchActive) searchFocusRequester.requestFocus()
+    }
+    @Suppress("DEPRECATION") BackHandler(enabled = searchActive) { collapseSearch() }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.contactbook_label)) },
-                actions = {
-                    if (onContacts && uiState.importSupported) {
-                        IconButton(onClick = { viewModel.onAction(ContactBookUiAction.ImportClicked) }) {
+            if (searchActive) {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = collapseSearch) {
                             Icon(
-                                Icons.Outlined.PersonAddAlt1,
-                                contentDescription = stringResource(MR.string.contactbook_action_import),
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
                             )
                         }
-                    }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            Icons.Outlined.Settings,
-                            contentDescription = stringResource(MR.string.contactbook_action_settings),
+                    },
+                    title = {
+                        TextField(
+                            value = uiState.searchQuery,
+                            onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
+                            placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
+                            singleLine = true,
+                            trailingIcon = {
+                                if (uiState.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        viewModel.onAction(ContactBookUiAction.SearchChanged(""))
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = stringResource(MR.string.clear_input),
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester),
                         )
-                    }
-                },
-            )
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(MR.string.contactbook_label)) },
+                    actions = {
+                        IconButton(onClick = { searchActive = true }) {
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = stringResource(MR.string.search),
+                            )
+                        }
+                        if (onContacts && uiState.importSupported) {
+                            IconButton(onClick = { viewModel.onAction(ContactBookUiAction.ImportClicked) }) {
+                                Icon(
+                                    Icons.Outlined.PersonAddAlt1,
+                                    contentDescription = stringResource(MR.string.contactbook_action_import),
+                                )
+                            }
+                        }
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(
+                                Icons.Outlined.Settings,
+                                contentDescription = stringResource(MR.string.contactbook_action_settings),
+                            )
+                        }
+                    },
+                )
+            }
         },
         floatingActionButton = {
             if (onContacts) {
@@ -142,18 +218,8 @@ fun ContactBookScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            // Search lives above the tabs so it filters both Contacts and Circles.
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.onAction(ContactBookUiAction.SearchChanged(it)) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                placeholder = { Text(stringResource(MR.string.contactbook_search_hint)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-
+            // The search query (driven from the top-bar search field) filters both the
+            // Contacts and Circles tabs.
             PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
                 ContactTab.entries.forEach { tab ->
                     Tab(

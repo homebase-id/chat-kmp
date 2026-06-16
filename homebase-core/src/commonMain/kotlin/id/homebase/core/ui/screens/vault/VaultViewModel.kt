@@ -12,11 +12,11 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
@@ -55,7 +55,7 @@ class VaultViewModel(
     private val vaultService: VaultService,
     private val vaultUploaderService: VaultUploaderService,
     private val eventBus: EventBus,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val driveRegistry: DriveRegistry,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val fileOperationsProvider: FileOperationsProvider,
@@ -122,14 +122,13 @@ class VaultViewModel(
                     val hasDrive = isVaultRegistered()
                     _isActivated.value = hasDrive
                     Logger.i(tag = TAG) { "isLoaded→true: isActivated=$hasDrive" }
-                    if (hasDrive) {
-                        try {
-                            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
-                            driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
-                        } catch (e: Exception) {
-                            Logger.w(e, TAG) { "mountDrive/sync failed (non-fatal)" }
-                        }
-                    }
+                    // Intentionally NO eager mount here. A registered vault is mounted by
+                    // AuthConnectionCoordinator's login-time pre-mount loop (it's in the
+                    // DriveRegistry) before the WebSocket connects, and observeDriveSyncStatus()
+                    // confirms activation once the drive appears in driveStatuses. Mounting it
+                    // again from here raced that pre-mount and triggered a redundant WS reconnect
+                    // → second syncAll → the post-login "0 records" sync-screen regression.
+                    // First-time activation still mounts via handleActivation().
                 }
             }
         }
@@ -169,11 +168,11 @@ class VaultViewModel(
         val alreadyRegistered = isVaultRegistered()
         if (!alreadyRegistered) {
             Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
             createDefaultSections()
         } else {
             Logger.i(tag = TAG) { "activation: vault already registered — mounting drive" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
         }
         _isActivated.update { true }
         _events.tryEmit(VaultUiEvent.Activated)

@@ -258,13 +258,7 @@ class ConversationListViewModel(
         chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
-        // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
-        // drive is granted. Instant once granted; on first use it waits for the user to
-        // complete the flow so the upload isn't enqueued to an ungranted (unsynced) drive.
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
-        },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
 
     private val stickerCreator = StickerCreator(
@@ -289,11 +283,21 @@ class ConversationListViewModel(
             )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
-        },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
+
+    /**
+     * Gate the sticker save/create paths: surface the extend-permissions dialog if needed,
+     * suspend until the Stickers drive is granted, then register + mount it BEFORE the caller
+     * writes — so the upload isn't enqueued to an ungranted/unmounted (unsynced) drive. Instant
+     * for an already-activated user ([StickerService.activate] is idempotent); on first use it
+     * waits for the user to complete the permission flow.
+     */
+    private suspend fun ensureStickerDriveReady() {
+        stickerPermissionViewModel.recheckPermissions()
+        stickerPermissionViewModel.permissionsGranted.first { it }
+        stickerService.activate()
+    }
 
     /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
     val stickerCreateState: StateFlow<StickerCreateState?> = stickerCreator.state
@@ -310,20 +314,15 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
-        // Mirror MomentsViewModel: once the Stickers drive is authorized (the user
-        // completed the extend-permissions flow, or it was already granted), hot-mount
-        // it so the sync engine begins pulling saved stickers. Mounting is idempotent in
-        // AuthConnectionCoordinator, so a repeated grant is a no-op.
+        // Once the Stickers drive is authorized (the user completed the extend-permissions
+        // flow, or it was already granted), delegate activation to StickerService — it
+        // registers + mounts the drive (idempotently) and cold-loads the tray. This VM owns
+        // the sticker permission UI but does no mounting itself; on subsequent app starts the
+        // registered drive is auto-mounted by AuthConnectionCoordinator's login pre-mount loop.
         viewModelScope.launch {
             stickerPermissionViewModel.permissionsGranted
                 .filter { it }
-                .collect {
-                    runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
-                        .onFailure { e ->
-                            Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
-                        }
-                    stickerStream.start()
-                }
+                .collect { stickerService.activate() }
         }
 
         viewModelScope.launch {

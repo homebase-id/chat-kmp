@@ -41,7 +41,8 @@ import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.FullScreenAttachmentEditor
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.moments.MomentsPreferences
+import id.homebase.core.config.momentsLabeledDrive
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
@@ -86,7 +87,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val userPreferences: UserPreferences by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val momentCreateFlowState: MomentCreateFlowState by inject()
-    private val momentsPreferences: MomentsPreferences by inject()
+    private val optionalDriveActivation: OptionalDriveActivation by inject()
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
@@ -191,7 +192,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) { "initShareFlow: reached setContent (picker path)" }
         setContent {
             val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
-            val momentsActivated by momentsPreferences.activated.collectAsStateWithLifecycle()
+            val momentsActivatedFlow = remember { optionalDriveActivation.isActivatedFlow(momentsLabeledDrive) }
+            val momentsActivated by momentsActivatedFlow
+                .collectAsStateWithLifecycle(optionalDriveActivation.isActivated(momentsLabeledDrive))
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 

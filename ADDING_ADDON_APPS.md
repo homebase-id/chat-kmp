@@ -32,7 +32,7 @@ Assuming a new add-on called **Foo**:
 homebase-common/src/
   commonMain/kotlin/id/homebase/core/foo/
     FooBiometricAuth.kt          # expect (only if biometric-gated)
-    FooPreferences.kt            # activated / iconVisible / biometricsEnabled flags
+    FooPreferences.kt            # iconVisible / biometricsEnabled flags (NO `activated`)
   androidMain/.../foo/FooBiometricAuth.android.kt
   appleMain/.../foo/FooBiometricAuth.apple.kt
   jvmMain/.../foo/FooBiometricAuth.jvm.kt   # returns Unavailable
@@ -139,21 +139,46 @@ There is no "first-startup seeds Feed" behaviour. A fresh install starts with ma
 only. Feed (or any other add-on) appears on all devices only after the user explicitly
 activates it once, somewhere.
 
-### Activating an add-on drive at runtime
+### Activation is the drive lifecycle — use `OptionalDriveActivation`
 
-When the user completes the *Extend Permissions* flow for a new add-on, call the single
-entry point on `AuthConnectionCoordinator`:
+An optional add-on has no `activated` boolean of its own. **Activation == the drive is
+mounted.** Reading and performing activation both go through one shared, injectable helper,
+`id.homebase.core.sync.OptionalDriveActivation` (registered as a `single` in `AppModule.kt`):
 
 ```kotlin
-// Persists in DriveRegistry, hot-mounts in DriveSyncManager (HTTP polling starts
-// immediately) and schedules a debounced WebSocket reconnect (~500ms) so real-time
-// push arrives without waiting for an app restart. Safe to call multiple times in
-// quick succession — the reconnects coalesce.
-authConnectionCoordinator.mountDrive(fooLabeledDrive)
+class OptionalDriveActivation(driveSyncManager, authConnectionCoordinator) {
+    // READ: drive is mounted right now (mandatory + already-registered drives read true;
+    // a not-yet-activated optional drive reads false). Reflects the cross-device DriveRegistry.
+    fun isActivated(drive: LabeledDrive): Boolean
+    fun isActivatedFlow(drive: LabeledDrive): Flow<Boolean>   // reactive form for a ViewModel
+
+    // WRITE: register (persist to DriveRegistry) + mount. Idempotent; only the user-enable
+    // path calls it — pre-mounted/already-registered drives need no call.
+    suspend fun activate(drive: LabeledDrive)
+}
 ```
 
-The symmetric `authConnectionCoordinator.unmountDrive(driveId)` handles user-initiated
-removal the same way (registry + sync manager + WS refresh).
+Two kinds of caller, and the helper serves both without conflating them:
+
+- **Pre-mounted drives** — mandatory drives (Chat, Contacts) are always mounted, and an
+  optional drive activated in a previous session is mounted at login by
+  `AuthConnectionCoordinator`'s registry pre-mount loop. For these, activation is a pure
+  read: `isActivated()` returns true, nothing to mount. **Feature code never re-mounts at
+  login** — the pre-mount loop owns that.
+- **Enable-on-demand drives** — an optional app the user has not activated yet calls
+  `activate()` exactly **once**, when the user completes the *Extend Permissions* flow. From
+  then on it is a pre-mounted drive on every subsequent start.
+
+> Do NOT keep a device-local `activated` preference flag. It diverges across devices
+> (activated on Device A, but Device B's local flag stays `false`), and a feature gating on
+> it re-mounts at login and races the pre-mount loop — the exact bug `OptionalDriveActivation`
+> exists to prevent. Vault, Moments, Location, and Stickers all derive activation from the
+> drive; copy that, not a flag.
+
+`activate()` is `AuthConnectionCoordinator.mountDrive(drive, persist = true)` under the hood —
+it persists to `DriveRegistry`, hot-mounts in `DriveSyncManager`, and schedules a debounced
+WebSocket reconnect (~500ms) so real-time push arrives without an app restart. The symmetric
+`authConnectionCoordinator.unmountDrive(driveId)` handles user-initiated removal.
 
 ### Unmounting on 403 Forbidden
 
@@ -168,11 +193,12 @@ startup, which is intentional (session-only unmount, not a permanent removal).
 
 Reference: `homebase-common/src/commonMain/kotlin/id/homebase/core/vault/VaultPreferences.kt`.
 
-One class with three `StateFlow<Boolean>` backed by `DatabaseManager.keyValue`:
+A class of device-local UI flags backed by `DatabaseManager.keyValue`. **No `activated`
+flag** — activation is the drive's mount state, read via `OptionalDriveActivation` (see
+above). Preferences hold only what is genuinely device-local:
 
 | Flag | Default | Set by |
 | --- | --- | --- |
-| `activated` | `false` | *Extend* button on the permission dialog |
 | `iconVisible` | `true` | Settings switch; also flipped to `false` when user dismisses onboarding |
 | `biometricsEnabled` | `true` | Settings switch; gates `FooScreen` on entry |
 
@@ -183,21 +209,14 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _activated = MutableStateFlow(readBoolean(ACTIVATED_KEY, default = false))
-    val activated: StateFlow<Boolean> = _activated.asStateFlow()
-
     private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
 
-    suspend fun setActivated(value: Boolean) {
-        if (_activated.value == value) return
-        keyValue.upsertValue(ACTIVATED_KEY, encode(value))
-        _activated.value = value
-    }
-    // setIconVisible / setBiometricsEnabled follow the same shape
+    // setIconVisible / setBiometricsEnabled follow the same upsert-then-update shape.
+    // There is NO setActivated — activation is the drive's mount state (OptionalDriveActivation).
 
     /**
      * Clear all in-memory state for a clean login. Called from
@@ -206,7 +225,6 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
      * zeroes biometric session timestamps.
      */
     fun reset() {
-        _activated.value = readBoolean(ACTIVATED_KEY, default = false)
         _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
         // Clear any in-memory session state (biometric timestamps, flags, etc.)
@@ -223,8 +241,8 @@ class FooPreferences(private val databaseManager: DatabaseManager) {
 
     companion object {
         // Bump the penultimate byte for each new add-on — see the ownership
-        // table below for the next free 0a0Nxx slot.
-        val ACTIVATED_KEY:   Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N01")
+        // table below for the next free 0a0Nxx slot. The `0a0N01` slot is the
+        // retired ACTIVATED_KEY (activation now derives from the drive); leave it unused.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N02")
         val BIOMETRICS_KEY:  Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0N03")
     }
@@ -289,12 +307,25 @@ Two VMs. The onboarding VM mixes a `StateFlow<FooUiState>` (for the dialog-visib
 flag) with a **`SharedFlow<FooUiEvent>`** (for one-time navigation signals):
 
 ```kotlin
-class FooViewModel(private val fooPreferences: FooPreferences) : ViewModel() {
+class FooViewModel(
+    private val fooPreferences: FooPreferences,
+    private val optionalDriveActivation: OptionalDriveActivation,
+) : ViewModel() {
     private val _uiState = MutableStateFlow(FooUiState())
     val uiState: StateFlow<FooUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<FooUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<FooUiEvent> = _events.asSharedFlow()
+
+    // Activation derived from the mounted drive — the cross-device source of truth.
+    // AppNavHost reads this to route the Foo icon to the feature vs. onboarding.
+    val isActivated: StateFlow<Boolean> =
+        optionalDriveActivation.isActivatedFlow(fooLabeledDrive)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                optionalDriveActivation.isActivated(fooLabeledDrive),
+            )
 
     fun onAction(action: FooUiAction) {
         when (action) {
@@ -307,7 +338,9 @@ class FooViewModel(private val fooPreferences: FooPreferences) : ViewModel() {
             }
 
             FooUiAction.PermissionExtendClicked -> viewModelScope.launch {
-                fooPreferences.setActivated(true)
+                // Register + mount the drive ONCE on first enable. isActivated flips true
+                // when the mount lands in driveStatuses; no local `activated` flag to set.
+                optionalDriveActivation.activate(fooLabeledDrive)
                 _uiState.update { it.copy(showPermissionDialog = false) }
                 _events.tryEmit(FooUiEvent.Activated)
             }
@@ -337,10 +370,9 @@ The **Settings VM** is simpler — one flat `FooSettingsUiState` mirroring the
 preferences, kept in sync via two `viewModelScope.launch { prefs.xxx.collect { … } }`
 blocks in `init`.
 
-> Step 9b extends `FooViewModel`'s constructor with `AuthConnectionCoordinator`
-> so the *Extend Permissions* click can run the single-call activation
-> (persist + hot-mount + WS refresh). The snippet above only shows the
-> preferences dependency to keep the onboarding state flow readable in isolation.
+> `FooViewModel` takes `OptionalDriveActivation` (the shared add-on drive primitive)
+> so the *Extend Permissions* click can register + mount the drive, and so `isActivated`
+> can be derived from the drive's mount state. See Step 9b.
 
 > **Rule (from CLAUDE.md):** one-time events go in `SharedFlow`, persistent state in
 > `StateFlow`. Composables must use `collectAsStateWithLifecycle()`.
@@ -357,8 +389,8 @@ paragraphs, a `FilledTonalButton` (*Set it up*), a `TextButton` (*Dismiss*).
 - **Dismiss** → `onAction(DismissOnboardingClicked)` — VM sets `iconVisible = false`
   and emits `CloseOnboarding`.
 - **Set it up** → `onAction(SetupClicked)` — VM opens the permission `Dialog`.
-- **Extend** inside the dialog → `onAction(PermissionExtendClicked)` — VM sets
-  `activated = true` and emits `Activated`.
+- **Extend** inside the dialog → `onAction(PermissionExtendClicked)` — VM calls
+  `optionalDriveActivation.activate(fooLabeledDrive)` (register + mount) and emits `Activated`.
 - **Cancel** inside the dialog → `onAction(PermissionCancelClicked)` — closes dialog.
 
 ---
@@ -840,7 +872,9 @@ val topLevelRoutes = remember(fooIconVisible) {
 
 ```kotlin
 val openFoo: () -> Unit = {
-    if (fooPreferences.activated.value) {
+    // Activation = drive mounted, read from the VM (NOT a preference). By tap time the
+    // login pre-mount has populated driveStatuses, so this is reliable for a tap handler.
+    if (fooViewModel.isActivated.value) {
         navController.navigate(Route.Foo) {
             popUpTo(Route.ChatList) { saveState = true }
             launchSingleTop = true
@@ -957,25 +991,29 @@ val fooLabeledDrive = LabeledDrive(
 
 ### 9b — Activation wiring (`FooViewModel.kt`)
 
-When the user taps *Extend* in the permission dialog, call the single entry point on
-`AuthConnectionCoordinator`. It persists to `DriveRegistry`, hot-mounts in
-`DriveSyncManager`, and schedules a debounced WebSocket reconnect so real-time push
-notifications begin within ~500ms:
+When the user taps *Extend* in the permission dialog, call `optionalDriveActivation.activate(fooLabeledDrive)`
+(register + mount). There is no local `activated` flag to set — `isActivated` flips true on
+its own when the mount lands in `driveStatuses`:
 
 ```kotlin
 FooUiAction.PermissionExtendClicked -> viewModelScope.launch {
-    fooPreferences.setActivated(true)
-    authConnectionCoordinator.mountDrive(fooLabeledDrive)
+    optionalDriveActivation.activate(fooLabeledDrive)
     _uiState.update { it.copy(showPermissionDialog = false) }
     _events.tryEmit(FooUiEvent.Activated)
 }
 ```
 
-Inject `AuthConnectionCoordinator` into `FooViewModel` and register it in `AppModule.kt`.
+Inject `OptionalDriveActivation` into `FooViewModel` and register it in `AppModule.kt`.
 
-> **Activation is now hot.** `mountDrive()` coalesces bursts into a single WS reconnect,
-> so activating two add-ons back-to-back still results in one close+reopen. For the
-> symmetric removal path use `authConnectionCoordinator.unmountDrive(driveId)`.
+> **Activation is hot and idempotent.** `activate()` (→ `mountDrive()`) coalesces bursts into a
+> single WS reconnect, and a redundant call when already mounted is a no-op (skips the
+> reconnect) — so an already-activated/returning user pays nothing. For the symmetric removal
+> path use `authConnectionCoordinator.unmountDrive(driveId)`.
+>
+> **Never re-mount at login.** A registered drive is auto-mounted by `AuthConnectionCoordinator`'s
+> login pre-mount loop. If a ViewModel also mounts it at startup (e.g. gated on a local flag), it
+> races that pre-mount and triggers a redundant WS reconnect → a second `syncAll` → the
+> post-login "0 records" sync-screen regression. Only the user-enable path calls `activate()`.
 
 ---
 
@@ -986,13 +1024,13 @@ Reference: `AppModule.kt`.
 ```kotlin
 single { FooPreferences(get()) }
 
-// AuthConnectionCoordinator is already wired to DriveRegistry and DriveSyncManager —
-// no per-add-on changes needed here. authConnectionCoordinator.mountDrive(fooLabeledDrive)
-// at activation time is the only registration step.
+// OptionalDriveActivation is already registered (single) and wired to DriveRegistry +
+// DriveSyncManager + AuthConnectionCoordinator — no per-add-on changes needed there.
+// optionalDriveActivation.activate(fooLabeledDrive) at first-enable is the only registration step.
 
-// ViewModels — inject AuthConnectionCoordinator if the onboarding flow needs to activate
-// a drive mid-session (i.e. every onboarding flow).
-viewModelOf(::FooViewModel)       // constructor: FooPreferences, AuthConnectionCoordinator
+// ViewModels — inject OptionalDriveActivation (every add-on's onboarding needs it to
+// activate the drive and to expose isActivated).
+viewModelOf(::FooViewModel)       // constructor: FooPreferences, OptionalDriveActivation
 viewModelOf(::FooSettingsViewModel)
 ```
 
@@ -1073,8 +1111,9 @@ Copy this into your PR description and tick off each wiring point:
       `viewModelOf(::FooSettingsViewModel)`
 - [ ] `onPostAuthenticated`: `FooPreferences.reset()` + `FooStream.reset(); start()`
       (clears stale in-memory state across logout/login)
-- [ ] Drive sync: `mountDrive()` called during activation; `driveRegistry.hasDrive()`
-      checked before creating defaults (prevents AES key mismatch on re-login)
+- [ ] Drive sync: `optionalDriveActivation.activate()` called once on first-enable (never
+      re-mounted at login); `isActivated` derived via `optionalDriveActivation.isActivatedFlow()`;
+      `driveRegistry.hasDrive()` checked before creating defaults (prevents AES key mismatch on re-login)
 
 **Quality:**
 
@@ -1112,10 +1151,11 @@ Copy this into your PR description and tick off each wiring point:
   the dialog's Cancel button, tap-outside dismissal, and the owner-console
   `PermissionsExtensionCanceled` event. Also reset it on successful
   activation so the flag never lingers.
-- **Activation briefly drops the WebSocket.** `authConnectionCoordinator.mountDrive()`
-  debounces by ~500ms and then close+reopens the WS so the new drive joins the
+- **Activation briefly drops the WebSocket.** `optionalDriveActivation.activate()` (→
+  `mountDrive()`) debounces by ~500ms and then close+reopens the WS so the new drive joins the
   subscription. The user sees the online indicator blink. Coalescing means two rapid
-  activations produce one reconnect, not two, but expect *some* reconnect.
+  activations produce one reconnect, not two, but expect *some* reconnect on first enable.
+  A redundant `activate()` on an already-mounted drive is a no-op and causes **no** reconnect.
 - **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
   unmounts it automatically, clearing the sync indicator. The drive will be attempted again
   on the next startup. This path deliberately does NOT trigger a WS refresh — reconnecting
@@ -1135,27 +1175,29 @@ Copy this into your PR description and tick off each wiring point:
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
 - **Dismiss is sticky.** Dismissing onboarding only hides the icon
-  (`iconVisible = false`) — it never flips `activated`. The user must re-enable
+  (`iconVisible = false`) — it never activates the drive. The user must re-enable
   the icon via Settings → *Show Foo icon in bottom bar* to see the onboarding
   flow again.
 - **Koin binds by class name.** `viewModelOf(::FooViewModel)` breaks silently if
   you rename the VM without updating `AppModule.kt`.
 - **Fresh UUID namespace per add-on.** Reusing Vault's `0a01xx` range will corrupt
   user preferences across both features.
-- **Drive data won't sync without `mountDrive()`.** The add-on drive is NOT in
-  `mandatorySyncDrives`. If `authConnectionCoordinator.mountDrive(fooLabeledDrive)`
-  is never called, uploads work (outbox pushes directly to the server) but the drive
-  is never pulled down. On reinstall or logout+login the data disappears from the UI
-  because `DriveSyncManager` doesn't know about the drive. The fix: always call
-  `mountDrive()` during activation — `DriveRegistry.addDrive()` is idempotent so
-  calling it twice is safe.
-- **`Preferences.activated` is device-local — use `DriveRegistry` as source of truth.**
-  After logout+login, `activated` resets to `false`. If you blindly re-create default
-  content (sections, folders, etc.) with new AES keys, the server rejects with
-  "AES key must match." Before creating defaults, check
-  `driveRegistry.hasDrive(fooDriveId)` — if the drive is already registered, the
-  feature was set up before. Just restore the local `activated` flag and let sync
-  pull existing data. Only create defaults when the drive is genuinely new.
+- **Drive data won't sync without `activate()`.** The add-on drive is NOT in
+  `mandatorySyncDrives`. If `optionalDriveActivation.activate(fooLabeledDrive)` is never
+  called on first enable, uploads work (outbox pushes directly to the server) but the drive
+  is never registered, so it isn't pulled down — and on reinstall or logout+login the data
+  disappears from the UI because the registry pre-mount loop has nothing to mount. The fix:
+  call `activate()` once on first enable; `DriveRegistry.addDrive()` is idempotent so a repeat
+  is safe.
+- **Activation is the drive, not a flag — and `isActivated` derives from it.** Because there
+  is no device-local `activated` preference, activation can't diverge across devices: a drive
+  activated on Device A is in the cross-device `DriveRegistry`, so Device B's login pre-mount
+  mounts it and `isActivated` reads true there too — no per-device re-activation. The one place
+  to still consult the registry directly is **before creating default content** (sections,
+  folders, etc.): re-creating defaults with new AES keys on a drive that already exists makes
+  the server reject with "AES key must match." Gate default-creation on
+  `driveRegistry.hasDrive(fooDriveId)` (or, like Vault, an `isVaultRegistered()` check) — only
+  seed defaults when the drive is genuinely new; otherwise let sync pull the existing data.
 - **Optimistic writes make files visible before payloads upload.**
   `OptimisticWriter.writeNewFile()` inserts file metadata into the local DB and emits
   `BatchReceived`. The UI sees the file immediately, but the payload bytes are still
