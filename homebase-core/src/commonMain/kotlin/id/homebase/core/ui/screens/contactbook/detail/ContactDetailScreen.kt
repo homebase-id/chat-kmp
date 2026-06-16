@@ -73,6 +73,7 @@ import id.homebase.resources.contactbook_detail_edit
 import id.homebase.resources.contactbook_detail_message
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
+import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
@@ -94,6 +95,7 @@ fun ContactDetailScreen(
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
+    val errConnectionForbidden = stringResource(MR.string.contactbook_error_connection_forbidden)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -103,6 +105,8 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Back -> onBack()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
+                ContactDetailEvent.ConnectionForbidden ->
+                    snackbarHostState.showSnackbar(errConnectionForbidden)
                 ContactDetailEvent.PhotoError -> snackbarHostState.showSnackbar(errPhoto)
             }
         }

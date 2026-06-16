@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.common.OdinId
@@ -215,9 +216,21 @@ class ContactDetailViewModel(
         val domain = odinId ?: return
         viewModelScope.launch {
             runCatching { connectionNetworkProvider.unblock(OdinId(domain)) }
-                .onFailure { _events.tryEmit(ContactDetailEvent.Error) }
-            connectionService.refresh()
+                .onSuccess { connectionService.refresh() }
+                .onFailure { emitConnectionError(it) }
         }
+    }
+
+    /**
+     * The server returns 200 for no-ops and never echoes the new state, so we only refresh
+     * after a successful call. A 403 means this app wasn't granted manage-connections
+     * permission — surface that distinctly from a generic/transient failure.
+     */
+    private fun emitConnectionError(error: Throwable) {
+        _events.tryEmit(
+            if (error is ForbiddenException) ContactDetailEvent.ConnectionForbidden
+            else ContactDetailEvent.Error
+        )
     }
 
     private fun handleConfirm() {
@@ -239,15 +252,15 @@ class ContactDetailViewModel(
                 ContactDetailConfirm.BLOCK -> {
                     if (domain != null) {
                         runCatching { connectionNetworkProvider.block(OdinId(domain)) }
-                            .onFailure { _events.tryEmit(ContactDetailEvent.Error) }
-                        connectionService.refresh()
+                            .onSuccess { connectionService.refresh() }
+                            .onFailure { emitConnectionError(it) }
                     }
                 }
                 ContactDetailConfirm.DISCONNECT -> {
                     if (domain != null) {
                         runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
-                            .onFailure { _events.tryEmit(ContactDetailEvent.Error) }
-                        connectionService.refresh()
+                            .onSuccess { connectionService.refresh() }
+                            .onFailure { emitConnectionError(it) }
                     }
                 }
             }

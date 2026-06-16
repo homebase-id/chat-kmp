@@ -63,5 +63,7 @@ sealed interface ContactDetailEvent {
     data object Error : ContactDetailEvent
     /** 403 — app lacks manage-contacts permission. */
     data object Forbidden : ContactDetailEvent
+    /** 403 on block/unblock/disconnect — app lacks manage-connections permission. */
+    data object ConnectionForbidden : ContactDetailEvent
     data object PhotoError : ContactDetailEvent
 }
