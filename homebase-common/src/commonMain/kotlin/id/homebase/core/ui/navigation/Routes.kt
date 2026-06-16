@@ -123,6 +123,18 @@ sealed class Route {
     ) : Route()
 
     @Serializable
+    @SerialName("contactbook")
+    data object ContactBook : Route()
+
+    @Serializable
+    @SerialName("contactbook-settings")
+    data object ContactBookSettings : Route()
+
+    @Serializable
+    @SerialName("contactbook-detail")
+    data class ContactBookDetail(val uniqueId: String, val odinId: String? = null) : Route()
+
+    @Serializable
     @SerialName("feed")
     data object Feed : Route()
 

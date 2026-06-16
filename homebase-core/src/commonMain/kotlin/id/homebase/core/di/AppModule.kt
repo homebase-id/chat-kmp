@@ -66,6 +66,12 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.ContactBookService
+import id.homebase.core.ui.screens.contactbook.ContactBookStream
+import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
+import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
@@ -94,6 +100,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationEntry
@@ -215,6 +222,13 @@ val appModule = module {
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
 
+    // Contact Book add-on (contact manager). Reads from the mandatory Contacts
+    // drive; writes through the api-layer ContactsProvider. No optional-drive
+    // activation — the drive is always mounted.
+    single { ContactBookPreferences(get()) }
+    singleOf(::ContactBookStream)
+    single { ContactBookService(get()) }
+
     // region Location add-on
     single { LocationPreferences(get()) }
     single { LocationDeviceId() }
@@ -242,7 +256,7 @@ val appModule = module {
             credentialsManager = get(),
             eventBus = get(),
             deviceId = get(),
-            preferences = get(),
+            optionalDriveActivation = get(),
             scope = get(),
         )
     }
@@ -311,6 +325,10 @@ val appModule = module {
             // ),
         )
     }
+
+    // Shared activation primitive for optional add-on drives (Vault, Moments, Location,
+    // Stickers) — see OptionalDriveActivation.
+    single { OptionalDriveActivation(get(), get()) }
 
     // Bound here rather than in homebase-api's ApiModule because the logout hook
     // needs platform singletons (Coil ImageLoader, FileOperationsProvider) that
@@ -426,6 +444,10 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Contact Book: re-seed prefs + reload the contact list for the new
+                // identity (singletons survive logout — clear stale in-memory state).
+                get<ContactBookPreferences>().reset()
+                get<ContactBookStream>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
                 get<ListsPreferences>().reset()
@@ -698,7 +720,7 @@ val appModule = module {
         LocationViewModel(
             locationPreferences = get(),
             locationPermissionViewModel = get(LocationPermissionQualifier),
-            authConnectionCoordinator = get(),
+            optionalDriveActivation = get(),
             trackingCoordinator = get(),
             pointStore = get(),
             uploaderService = get(),
@@ -708,6 +730,9 @@ val appModule = module {
     }
     viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
+    viewModelOf(::ContactBookViewModel)
+    viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
         FindDeviceViewModel(
@@ -774,7 +799,7 @@ val appModule = module {
             vaultService = get(),
             vaultUploaderService = get(),
             eventBus = get(),
-            authConnectionCoordinator = get(),
+            optionalDriveActivation = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
             fileOperationsProvider = get(),

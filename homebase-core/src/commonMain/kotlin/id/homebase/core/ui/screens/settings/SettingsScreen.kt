@@ -95,6 +95,7 @@ import id.homebase.resources.settings_section_general
 import id.homebase.resources.location_settings_section
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.lists_settings_section
+import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -111,6 +112,7 @@ fun SettingsScreen(
     onNavigateToVaultSettings: () -> Unit,
     onNavigateToLocationSettings: () -> Unit,
     onNavigateToListsSettings: () -> Unit,
+    onNavigateToContactBookSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -171,6 +173,7 @@ fun SettingsScreen(
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
             onNavigateToLocationSettings = onNavigateToLocationSettings,
             onNavigateToListsSettings = onNavigateToListsSettings,
+            onNavigateToContactBookSettings = onNavigateToContactBookSettings,
         )
 
         if (uiState.isLoggingOut) {
@@ -234,6 +237,7 @@ fun SettingsUi(
     onNavigateToVaultSettings: () -> Unit = {},
     onNavigateToLocationSettings: () -> Unit = {},
     onNavigateToListsSettings: () -> Unit = {},
+    onNavigateToContactBookSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -404,6 +408,13 @@ fun SettingsUi(
                 imageVector = Icons.AutoMirrored.Outlined.ListAlt,
                 text = stringResource(MR.string.lists_settings_section),
                 onClick = onNavigateToListsSettings,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                modifier = Modifier.testTag("contactBookSettingsButton"),
+                imageVector = Icons.Outlined.People,
+                text = stringResource(MR.string.contactbook_settings_section),
+                onClick = onNavigateToContactBookSettings,
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

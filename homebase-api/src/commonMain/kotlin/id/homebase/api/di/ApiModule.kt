@@ -8,6 +8,8 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.contacts.ContactHeaderReader
+import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
@@ -105,6 +107,16 @@ val apiModule = module {
     }
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
+    // Single so the per-contact AES-key cache used by setContactImage survives across calls.
+    // ContactHeaderReader adapts DriveFileProvider's header-by-uid read so ContactsProvider stays
+    // off the heavier drive-file/caching graph.
+    single<ContactHeaderReader> {
+        val driveFileProvider = get<DriveFileProvider>()
+        ContactHeaderReader { driveId, uniqueId ->
+            driveFileProvider.getFileHeaderByUid(driveId, uniqueId)
+        }
+    }
+    singleOf(::ContactsProvider)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)

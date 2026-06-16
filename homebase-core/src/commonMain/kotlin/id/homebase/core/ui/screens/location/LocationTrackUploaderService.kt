@@ -26,11 +26,11 @@ import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.locationLabeledDrive
-import id.homebase.core.location.LocationPreferences
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.deviceDisplayName
 import id.homebase.core.location.tracking.devicePlatform
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.model.HOUR_MS
 import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
 import id.homebase.core.ui.screens.location.model.LOCATION_DEVICE_FILE_TYPE
@@ -79,7 +79,7 @@ class LocationTrackUploaderService(
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
     private val deviceId: LocationDeviceId,
-    private val preferences: LocationPreferences,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val scope: CoroutineScope,
     /** Injectable for tests; production reads the wall clock. */
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
@@ -131,8 +131,8 @@ class LocationTrackUploaderService(
         flushMutex.withLock {
             val now = nowMs()
             lastFlushAttemptMs = now
-            if (!preferences.activated.value) {
-                logger.d { "Flush skipped: Location add-on not activated" }
+            if (!optionalDriveActivation.isActivated(locationLabeledDrive)) {
+                logger.d { "Flush skipped: Location add-on not activated (drive not mounted)" }
                 return
             }
             if (credentialsManager.getActiveCredentials() == null) {

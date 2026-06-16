@@ -60,9 +60,9 @@ class ListsPreferences(private val databaseManager: DatabaseManager) {
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
-        // Stable namespace for Lists. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx;
-        // Lists is the next free slot (0a04xx).
-        val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0401")
-        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0402")
+        // Stable namespace for Lists. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
+        // Contact Book 0a04xx; Lists is the next free slot (0a05xx).
+        val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0501")
+        val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0502")
     }
 }

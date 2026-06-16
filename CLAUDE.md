@@ -291,7 +291,11 @@ serialization.
 - `take`/`substring` remain correct for known-ASCII content: URLs, hex/base64, UUIDs,
   device tokens, byte arrays.
 
-## Adding New Top-Level Features (Add-on Apps)
+### `strings.xml` apostrophes
+
+Do **not** escape apostrophes as `\'` in `composeResources/values/strings.xml`. Compose
+Resources is not Android aapt — a plain `'` is correct and is the existing convention
+(e.g. `Couldn't save the contact.`). Write `won't`, `doesn't`, `you're`, not `won\'t`.
 
 When adding a self-contained feature that surfaces as an icon in the bottom navigation bar
 (Vault-style — onboarding flow, extend-permissions dialog, settings toggle for icon
