@@ -2,6 +2,7 @@ package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.isTransientNetworkFailure
+import id.homebase.core.crash.CrashReporting
 import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.staticCFunction
@@ -73,6 +74,13 @@ fun setupIOSCrashHandler() {
                     }
                 )
 
+                CrashReporting.writeReportRaw(
+                    thread = "ObjC/NSException",
+                    name = objcName,
+                    reason = objcReason,
+                    stack = objcStack,
+                )
+
                 // Give the file log writer a moment to flush before the process dies.
                 NSThread.sleepForTimeInterval(0.1)
             } catch (e: Exception) {
@@ -121,6 +129,7 @@ fun setupIOSCrashHandler() {
             crashlyticsRecordException(throwable)
             crashlyticsLogFatalBreadcrumb(throwable)
             CrashLogger.logCrash(thread = "Kotlin/Native", exception = throwable)
+            CrashReporting.writeReport(thread = "Kotlin/Native", throwable = throwable)
             // Give the file log writer a moment to flush before the process dies.
             NSThread.sleepForTimeInterval(0.1)
         } catch (e: Throwable) {
