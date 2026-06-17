@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PersonRemove
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +53,7 @@ import id.homebase.resources.contactbook_detail_circles
 import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
+import id.homebase.resources.contactbook_detail_danger_zone
 import id.homebase.resources.contactbook_detail_groups_connect
 import id.homebase.resources.contactbook_detail_groups_empty
 import id.homebase.resources.contactbook_detail_delete
@@ -61,6 +63,7 @@ import id.homebase.resources.contactbook_detail_more
 import id.homebase.resources.contactbook_detail_none
 import id.homebase.resources.contactbook_detail_no_recent_media
 import id.homebase.resources.contactbook_detail_recent_media
+import id.homebase.resources.contactbook_detail_sync
 import id.homebase.resources.contactbook_detail_unblock
 import id.homebase.resources.conversation_groups_in_common
 import id.homebase.resources.conversation_media_see_all
@@ -259,11 +262,28 @@ fun ManagementSection(
     uiState: ContactDetailUiState,
     onAction: (ContactDetailAction) -> Unit,
 ) {
+    // Pull the latest public profile into this contact — only meaningful for Homebase identities.
+    if (uiState.hasOdinId) {
+        ManagementAction(
+            Icons.Outlined.Sync,
+            stringResource(MR.string.contactbook_detail_sync),
+        ) { onAction(ContactDetailAction.SyncClicked) }
+    }
+
+    // Danger zone — disconnect / block / delete.
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = stringResource(MR.string.contactbook_detail_danger_zone),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
     if (uiState.hasOdinId) {
         if (uiState.isConnected) {
             ManagementAction(
                 Icons.Outlined.PersonRemove,
                 stringResource(MR.string.contactbook_detail_disconnect),
+                destructive = true,
             ) { onAction(ContactDetailAction.DisconnectClicked) }
         }
         if (uiState.isBlocked) {
@@ -275,6 +295,7 @@ fun ManagementSection(
             ManagementAction(
                 Icons.Outlined.Block,
                 stringResource(MR.string.contactbook_detail_block),
+                destructive = true,
             ) { onAction(ContactDetailAction.BlockClicked) }
         }
     }

@@ -1361,12 +1361,14 @@
     <string name="contactbook_detail_disconnect_message">This permanently removes your connection and the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
     <string name="contactbook_detail_delete_title">Delete contact?</string>
     <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
+    <string name="contactbook_detail_danger_zone">Danger zone</string>
 
     <string name="contactbook_edit_title_new">New contact</string>
     <string name="contactbook_edit_title_edit">Edit contact</string>
     <string name="contactbook_edit_given_name">First name</string>
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
+    <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
     <string name="contactbook_edit_phone">Phone</string>
     <string name="contactbook_country_search">Search countries</string>
     <string name="contactbook_edit_email">Email</string>
@@ -1408,5 +1410,6 @@
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
     <string name="contactbook_action_disconnected">Disconnected.</string>
+    <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
 
 </resources>

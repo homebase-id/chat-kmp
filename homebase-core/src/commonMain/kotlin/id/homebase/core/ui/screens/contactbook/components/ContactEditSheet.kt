@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import id.homebase.resources.contactbook_edit_country
 import id.homebase.resources.contactbook_edit_email
 import id.homebase.resources.contactbook_edit_given_name
 import id.homebase.resources.contactbook_edit_odinid
+import id.homebase.resources.contactbook_edit_odinid_locked
 import id.homebase.resources.contactbook_edit_phone
 import id.homebase.resources.contactbook_edit_save
 import id.homebase.resources.contactbook_edit_surname
@@ -66,6 +68,7 @@ fun ContactEditSheet(
     editing: ContactBookEntry?,
     onSave: (ContactDraft, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
+    odinIdLocked: Boolean = false,
 ) {
     var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
     var photo by remember { mutableStateOf<PlatformFile?>(null) }
@@ -112,12 +115,19 @@ fun ContactEditSheet(
             Field(draft.surname, stringResource(MR.string.contactbook_edit_surname)) {
                 draft = draft.copy(surname = it)
             }
+            val odinIdLockNote =
+                if (odinIdLocked) stringResource(MR.string.contactbook_edit_odinid_locked) else null
             Field(
                 value = draft.odinId,
                 label = stringResource(MR.string.contactbook_edit_odinid),
                 isError = !draft.odinIdValid,
                 errorText = stringResource(MR.string.contactbook_error_odinid),
                 keyboardType = KeyboardType.Uri,
+                readOnly = odinIdLocked,
+                helperText = odinIdLockNote,
+                trailingIcon = if (odinIdLocked) {
+                    { Icon(Icons.Outlined.Lock, contentDescription = odinIdLockNote) }
+                } else null,
             ) { draft = draft.copy(odinId = it) }
             PhoneNumberField(
                 e164Value = draft.phone,
@@ -198,6 +208,9 @@ private fun Field(
     isError: Boolean = false,
     errorText: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
+    readOnly: Boolean = false,
+    helperText: String? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
     onChange: (String) -> Unit,
 ) {
     val showError = isError && value.isNotBlank()
@@ -207,10 +220,14 @@ private fun Field(
         label = { Text(label) },
         singleLine = true,
         isError = showError,
+        readOnly = readOnly,
+        trailingIcon = trailingIcon,
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
-        supportingText = if (showError && errorText != null) {
-            { Text(errorText) }
-        } else null,
+        supportingText = when {
+            showError && errorText != null -> { { Text(errorText) } }
+            helperText != null -> { { Text(helperText) } }
+            else -> null
+        },
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     )
 }
