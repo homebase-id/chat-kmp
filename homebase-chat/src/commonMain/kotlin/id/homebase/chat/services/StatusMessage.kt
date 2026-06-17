@@ -31,4 +31,9 @@ enum class StatusMessage() {
      *  passing `recipientOverride = emptyList()` (see GroupHealService.handleIncomingHealRequest);
      *  a peer-authored copy of this status must NOT be rendered (see MessageMapper). */
     GroupHealLocalCleanup,
+
+    /** Posted by the poll creator when they close a poll via [id.homebase.chat.poll.PollDetailDialog].
+     *  Carries [StatusMessageData.pollQuestion] and [StatusMessageData.pollMessageId] so
+     *  the system line can reference the question. */
+    PollEnded,
 }

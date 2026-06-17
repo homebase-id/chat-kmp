@@ -26,16 +26,25 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.StatusMessage
+import id.homebase.chat.services.StatusMessageData
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.contact.ContactService
+import kotlinx.coroutines.launch
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
@@ -49,7 +58,7 @@ import id.homebase.resources.chat_poll_one_vote
 import id.homebase.resources.chat_poll_question_section
 import id.homebase.resources.chat_poll_vote_count
 import id.homebase.resources.chat_poll_you
-import id.homebase.resources.menu_back
+import id.homebase.resources.close
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
@@ -58,8 +67,8 @@ import org.koin.compose.koinInject
 /**
  * Fullscreen read-only roster for a Poll message. Shows the question in a tonal
  * box, then per-option sections with a count and the voter roster (avatar + name,
- * "You" for the current user). Only the organizer can end the poll (Task 7 button
- * placeholder). Votes are NOT editable here — voting is done in [PollBubble].
+ * "You" for the current user). Only the organizer can end an open poll via the
+ * End poll button. Votes are NOT editable here — voting is done in [PollBubble].
  *
  * Mirrors [id.homebase.chat.event.EventDetailDialog]'s roster load pattern
  * (`produceState` + `ContactService`) and
@@ -100,6 +109,9 @@ private fun PollDetailContent(
     val actionService: ChatMessageActionService = koinInject()
     val contactService: ContactService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
+    val sender: ChatMessageSenderService = koinInject()
+    val messageStream: ChatMessageStream = koinInject()
+    val scope = rememberCoroutineScope()
 
     val selfOdinId = ownerSession.user.value?.odinId
 
@@ -132,7 +144,7 @@ private fun PollDetailContent(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(MR.string.menu_back),
+                            contentDescription = stringResource(MR.string.close),
                         )
                     }
                 },
@@ -183,12 +195,42 @@ private fun PollDetailContent(
             }
 
             // End poll button — only for the organizer of an open poll.
-            // Task 7: end-poll handler (updateMessage + status line) lands here.
             if (showEndButton) {
                 Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = {
-                        // Task 7: end-poll handler (updateMessage + status line) lands here.
+                        scope.launch {
+                            runCatching {
+                                val live = messageStream.getMessage(messageId)
+                                    ?: error("poll message not found: $messageId")
+                                val closedDescriptor = descriptor.copy(closed = true)
+                                sender.updateMessage(
+                                    messageId = messageId,
+                                    versionTag = live.versionTag,
+                                    content = MessageContentParser.serialize(
+                                        MessageContent.Poll(closedDescriptor)
+                                    ),
+                                )
+                                sender.sendStatusMessage(
+                                    messageUniqueId = Uuid.random(),
+                                    conversationId = conversationId,
+                                    statusMessage = StatusMessageData(
+                                        statusMessage = StatusMessage.PollEnded,
+                                        pollQuestion = descriptor.question,
+                                        pollMessageId = messageId,
+                                    ),
+                                    previousMessageUniqueId = null,
+                                    payloadBundle = null,
+                                    additionalRecipients = emptyList(),
+                                    recipientOverride = null,
+                                )
+                            }.onFailure { t ->
+                                Logger.w(tag = "PollDetailDialog", throwable = t) {
+                                    "End poll failed for messageId=$messageId"
+                                }
+                            }
+                            onDismiss()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
