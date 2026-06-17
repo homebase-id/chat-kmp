@@ -876,6 +876,7 @@
     <string name="chat_poll_question_section">Question</string>
     <string name="chat_poll_you">You</string>
     <string name="chat_poll_end">End poll</string>
+    <string name="chat_poll_end_failed">Couldn't end the poll. Please try again.</string>
     <string name="chat_poll_ended_self">You ended the poll: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s ended the poll: "%2$s"</string>
 

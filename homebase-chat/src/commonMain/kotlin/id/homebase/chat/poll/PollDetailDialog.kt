@@ -20,12 +20,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,7 @@ import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
 import id.homebase.resources.chat_poll_details_title
 import id.homebase.resources.chat_poll_end
+import id.homebase.resources.chat_poll_end_failed
 import id.homebase.resources.chat_poll_no_votes
 import id.homebase.resources.chat_poll_one_vote
 import id.homebase.resources.chat_poll_question_section
@@ -112,6 +116,7 @@ private fun PollDetailContent(
     val sender: ChatMessageSenderService = koinInject()
     val messageStream: ChatMessageStream = koinInject()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val selfOdinId = ownerSession.user.value?.odinId
 
@@ -128,9 +133,11 @@ private fun PollDetailContent(
 
     val detailsTitleText = stringResource(MR.string.chat_poll_details_title)
     val endPollText = stringResource(MR.string.chat_poll_end)
+    val endFailedMessage = stringResource(MR.string.chat_poll_end_failed)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -224,12 +231,14 @@ private fun PollDetailContent(
                                     additionalRecipients = emptyList(),
                                     recipientOverride = null,
                                 )
+                            }.onSuccess {
+                                onDismiss()
                             }.onFailure { t ->
                                 Logger.w(tag = "PollDetailDialog", throwable = t) {
                                     "End poll failed for messageId=$messageId"
                                 }
+                                snackbarHostState.showSnackbar(endFailedMessage)
                             }
-                            onDismiss()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
