@@ -48,7 +48,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -2141,6 +2140,7 @@ private fun CommentsPanelContent(
                     onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
                     onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
                     onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                    onDelete = { onAction(MomentDetailUiAction.RequestDeleteMoment) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2288,6 +2288,23 @@ internal fun MomentCommentsSheet(
         scrimColor = Color.Transparent,
         sheetState = sheetState,
     )
+
+    // The description menu's Delete lands here. Wired in this entry point (the
+    // timeline feed sheet) the same way DetailContent wires it for reels — this
+    // path doesn't go through DetailContent, so without this the RequestDelete
+    // action would toggle showDeleteDialog with no dialog ever rendered.
+    if (uiState.showDeleteDialog) {
+        DeleteMomentDialog(
+            allowDeleteForEveryone = uiState.isMine,
+            onDeleteForMe = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = false))
+            },
+            onDeleteForEveryone = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = true))
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteDialog) },
+        )
+    }
 
     val deleteCommentTarget = uiState.deleteCommentDialogTarget
     if (deleteCommentTarget != null) {
@@ -2926,6 +2943,7 @@ private fun MomentDescriptionSection(
     onDraftChanged: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -2987,16 +3005,55 @@ private fun MomentDescriptionSection(
                         .padding(top = 8.dp),
                 )
                 if (isMine) {
-                    IconButton(onClick = onStartEdit) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = stringResource(
-                                MR.string.moments_detail_edit_description,
-                            ),
-                        )
-                    }
+                    MomentDescriptionMenu(
+                        onEdit = onStartEdit,
+                        onDelete = onDelete,
+                    )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Author-only overflow next to a moment's description. Replaces the standalone
+ * edit pencil with a [MoreVert] menu so the same surface offers both **Edit
+ * description** and **Delete** — and because this description section is shown
+ * from both the reels detail pane and the timeline's [MomentCommentsSheet],
+ * surfacing delete here is what gives the feed a delete path (the reels-only
+ * immersive top-bar [MomentOverflowMenu] never appears over the feed).
+ */
+@Composable
+private fun MomentDescriptionMenu(
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = stringResource(MR.string.moments_detail_menu_more),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_edit_description)) },
+                onClick = {
+                    expanded = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_menu_delete)) },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                },
+            )
         }
     }
 }
