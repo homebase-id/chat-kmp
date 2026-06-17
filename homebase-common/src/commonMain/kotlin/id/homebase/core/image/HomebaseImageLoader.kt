@@ -128,18 +128,6 @@ class HomebaseImageLoader(
         // the read hit what the sender seeded under the optimistic fileId.
         val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
 
-        // TEMP diagnostic (optimistic-seed investigation): only logs for callers
-        // that pass availableThumbSizes (Chat/Moments/Vault/Stickers), so it isn't
-        // noisy. Shows the snapped request key to compare against PayloadCacheSeeder.
-        if (data.availableThumbSizes.isNotEmpty()) {
-            Logger.d(tag = TAG) {
-                "loadThumbnail: fileId=${data.fileId} key=${data.payloadKey} " +
-                    "measured=${targetSize.pixelWidth}x${targetSize.pixelHeight} " +
-                    "available=${data.availableThumbSizes.map { "${it.pixelWidth}x${it.pixelHeight}" }} " +
-                    "snapped=${nativeSize.pixelWidth}x${nativeSize.pixelHeight} lastMod=${data.lastModified}"
-            }
-        }
-
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
             val response = try {

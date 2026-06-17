@@ -28,10 +28,6 @@ class PayloadCacheSeeder(
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
     suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
-        Logger.d(tag = TAG) {
-            "seed: driveId=$driveId fileId=$fileId payloads=${bundle.payloads.map { it.key }} " +
-                "thumbs=${bundle.thumbnails.map { "${it.key}:${it.pixelWidth}x${it.pixelHeight}" }}"
-        }
         for (payload in bundle.payloads) {
             try {
                 driveFileProvider.cachePayloadBytesEncrypted(
