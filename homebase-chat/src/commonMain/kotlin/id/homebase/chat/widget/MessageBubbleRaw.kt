@@ -197,6 +197,7 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.Poll -> Unit // bubble not yet implemented — fall through to text + media rendering
         null -> Unit // fall through to text + media rendering
     }
 
