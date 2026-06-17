@@ -36,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,7 +112,12 @@ private fun PollComposerContent(
     val brand = HomebaseTheme.extendedColors.bubbleSentSurface
 
     var question by remember { mutableStateOf("") }
-    val options = remember { mutableStateListOf(OptionDraft(0, ""), OptionDraft(1, "")) }
+    // ReorderableColumn keys its fixed-size internal offset arrays on the LIST
+    // INSTANCE (remember(list, spacing)), so the list must be an immutable List
+    // reassigned wholesale on every change — a mutated-in-place SnapshotStateList
+    // keeps the same instance, the arrays never resize, and a newly added row
+    // indexes past their end (IndexOutOfBoundsException during placement).
+    var options by remember { mutableStateOf(listOf(OptionDraft(0, ""), OptionDraft(1, ""))) }
     var nextId by remember { mutableStateOf(2L) }
     var allowMultiple by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
@@ -214,7 +218,9 @@ private fun PollComposerContent(
             val canRemove = options.size > PollDescriptor.MIN_OPTIONS
             ReorderableColumn(
                 list = options,
-                onSettle = { from, to -> options.add(to, options.removeAt(from)) },
+                onSettle = { from, to ->
+                    options = options.toMutableList().apply { add(to, removeAt(from)) }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) { index, item, _ ->
@@ -232,11 +238,9 @@ private fun PollComposerContent(
                             ComposerEditableField(
                                 value = item.text,
                                 onValueChange = { new ->
-                                    val i = options.indexOfFirst { it.id == item.id }
-                                    if (i >= 0) {
-                                        options[i] = options[i].copy(
-                                            text = new.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP),
-                                        )
+                                    val capped = new.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP)
+                                    options = options.map {
+                                        if (it.id == item.id) it.copy(text = capped) else it
                                     }
                                 },
                                 placeholder = optionHint,
@@ -245,7 +249,7 @@ private fun PollComposerContent(
                             )
                             if (canRemove) {
                                 // Default IconButton sizing keeps the 48dp touch target.
-                                IconButton(onClick = { options.removeAll { it.id == item.id } }) {
+                                IconButton(onClick = { options = options.filterNot { it.id == item.id } }) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
                                         contentDescription = removeLabel,
@@ -276,7 +280,7 @@ private fun PollComposerContent(
             TextButton(
                 onClick = {
                     if (options.size < PollDescriptor.MAX_OPTIONS) {
-                        options.add(OptionDraft(nextId, ""))
+                        options = options + OptionDraft(nextId, "")
                         nextId += 1
                     }
                 },
