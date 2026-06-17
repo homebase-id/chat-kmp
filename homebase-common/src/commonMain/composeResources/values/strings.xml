@@ -728,6 +728,9 @@
     <string name="chat_event_location_hint">Add location</string>
     <string name="chat_event_meeting_url_hint">Add meeting link</string>
     <string name="chat_event_description_hint">Add description</string>
+    <string name="chat_event_add_photo">Add photo</string>
+    <string name="chat_event_remove_photo">Remove photo</string>
+    <string name="chat_event_cover_photo">Event photo</string>
     <string name="chat_event_organized_by">Organized by</string>
     <string name="chat_event_tz_picker_title">Time zone</string>
     <string name="chat_event_tz_picker_search">Search city or zone</string>

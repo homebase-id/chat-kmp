@@ -145,6 +145,13 @@ fun MessageBubbleRaw(
     // own slice.
     when (val content = message.messageContent) {
         is MessageContent.Event -> {
+            // Optional cover photo rides as a chat_web* image payload on the event
+            // message. EventBubble renders it rounded above the card (tapping it
+            // opens the event detail, not the media viewer) and in the detail too.
+            val coverPayload = message.payloads?.firstOrNull {
+                it.contentType?.startsWith("image/") == true &&
+                    it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+            }
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
@@ -154,6 +161,10 @@ fun MessageBubbleRaw(
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
                 onLongClick = onLongClick,
+                coverPayload = coverPayload,
+                coverFileId = message.fileId,
+                coverKeyHeader = message.keyHeader,
+                coverPreviewThumbnail = message.previewThumbnail,
             )
             return
         }

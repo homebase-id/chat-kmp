@@ -50,15 +50,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
@@ -103,6 +109,10 @@ fun EventDetailDialog(
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
     organizer: OdinId? = null,
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -116,6 +126,10 @@ fun EventDetailDialog(
             counts = counts,
             onDismiss = onDismiss,
             organizer = organizer,
+            coverPayload = coverPayload,
+            coverFileId = coverFileId,
+            coverKeyHeader = coverKeyHeader,
+            coverPreviewThumbnail = coverPreviewThumbnail,
         )
     }
 }
@@ -130,6 +144,10 @@ private fun EventDetailContent(
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
     organizer: OdinId?,
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     val actionService: ChatMessageActionService = koinInject()
     val contactService: ContactService = koinInject()
@@ -178,6 +196,25 @@ private fun EventDetailContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
+            if (coverPayload != null && coverFileId != null && coverKeyHeader != null) {
+                MediaItem(
+                    payload = coverPayload,
+                    fileId = coverFileId,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = coverPreviewThumbnail,
+                    keyHeader = coverKeyHeader,
+                    imageSize = ImageSize.THUMB_LARGE,
+                    preserveAspectRatio = true,
+                    shape = RoundedCornerShape(16.dp),
+                    // ponytail: static cover in the dialog — no nested full-screen
+                    // viewer. Add tap-to-zoom if a viewer is ever hoisted above this Dialog.
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
             HeroHeader(descriptor = descriptor, times = times)
 
             organizer?.let { host ->
