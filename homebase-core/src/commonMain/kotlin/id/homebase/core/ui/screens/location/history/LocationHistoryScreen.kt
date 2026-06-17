@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -131,22 +132,31 @@ fun LocationHistoryScreen(
             }
 
             // ── Trace canvas ──
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                LocationTraceCanvas(
-                    traces = uiState.traces,
-                    showMapTiles = uiState.showMapTiles,
-                    fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                    traceColors = mapTraceColors,
-                )
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else if (uiState.isEmpty) {
-                    Text(
-                        text = stringResource(MR.string.location_history_empty),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Center).padding(24.dp),
+            // Card clips and insets the map so it doesn't run into the day-nav
+            // controls above or the stats row below.
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LocationTraceCanvas(
+                        traces = uiState.traces,
+                        showMapTiles = uiState.showMapTiles,
+                        fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                        traceColors = mapTraceColors,
                     )
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (uiState.isEmpty) {
+                        Text(
+                            text = stringResource(MR.string.location_history_empty),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                        )
+                    }
                 }
             }
 
