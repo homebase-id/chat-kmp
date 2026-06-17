@@ -35,7 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
@@ -89,6 +92,15 @@ fun EventBubble(
     onLongClick: (() -> Unit)? = null,
     contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    // Cover-photo support. When a cover is present the caller renders the image
+    // above this card and passes a top-flat [cardShape] so the two read as one
+    // bubble; the cover descriptor is forwarded to the detail dialog so it shows
+    // there too. All null/default when there's no cover.
+    cardShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     if (descriptor == null) {
         UnparseableEventBubble(modifier = modifier, contentColor = contentColor, containerColor = containerColor)
@@ -118,7 +130,7 @@ fun EventBubble(
     val isPast = phase is LiveStatus.Past
     val baseModifier = modifier
         .widthIn(min = 240.dp, max = 320.dp)
-        .clip(RoundedCornerShape(16.dp))
+        .clip(cardShape)
         .background(containerColor)
         .let {
             // combinedClickable (not clickable) so the parent message bubble's
@@ -191,6 +203,10 @@ fun EventBubble(
             counts = remember(reactionSummary) { EventRsvp.counts(reactionSummary) },
             onDismiss = { showDetail = false },
             organizer = organizer,
+            coverPayload = coverPayload,
+            coverFileId = coverFileId,
+            coverKeyHeader = coverKeyHeader,
+            coverPreviewThumbnail = coverPreviewThumbnail,
         )
     }
 }

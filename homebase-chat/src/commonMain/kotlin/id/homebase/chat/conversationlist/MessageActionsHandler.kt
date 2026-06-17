@@ -25,6 +25,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.renderer.PayloadRenderer
@@ -638,30 +639,9 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
-                        var filePath = attachment.file.toUploadPath(fileOperationsProvider)
-                        var contentType = resolveContentType(
-                            fileName = attachment.file.name,
-                            platformMimeType = attachment.file.mimeType()?.toString(),
-                        )
-                        if (contentType == "image/heic" || contentType == "image/heif") {
-                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                            val jpegBytes = convertHeicToJpeg(heicBytes)
-                            if (jpegBytes != null) {
-                                filePath = fileOperationsProvider.writeBytesToTempFile(
-                                    jpegBytes,
-                                    "heic_converted_",
-                                    ".jpg"
-                                )
-                                contentType = "image/jpeg"
-                            }
-                        }
                         attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.file.name,
-                                forceSticker = attachment.forceSticker,
-                            )
+                            attachment.file.toImageAttachmentInput(fileOperationsProvider)
+                                .copy(forceSticker = attachment.forceSticker),
                         )
                     }
 
