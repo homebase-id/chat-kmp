@@ -192,10 +192,6 @@ sealed class Route {
     data object LocationOnboarding : Route()
 
     @Serializable
-    @SerialName("location-settings")
-    data object LocationSettings : Route()
-
-    @Serializable
     @SerialName("location-history")
     data object LocationHistory : Route()
 

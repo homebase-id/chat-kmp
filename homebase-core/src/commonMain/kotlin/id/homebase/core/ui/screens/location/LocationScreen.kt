@@ -39,7 +39,6 @@ import id.homebase.resources.location_menu_dashboard
 import id.homebase.resources.location_menu_find_device
 import id.homebase.resources.location_menu_more
 import id.homebase.resources.location_menu_setup
-import id.homebase.resources.location_settings
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
@@ -48,7 +47,6 @@ import kotlin.uuid.Uuid
 @Composable
 fun LocationScreen(
     viewModel: LocationViewModel,
-    onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToFindDevice: (Uuid?) -> Unit,
 ) {
@@ -129,11 +127,16 @@ fun LocationScreen(
 
     fun execute(action: LocationUiAction) {
         when (action) {
-            LocationUiAction.RequestWhileInUseClicked ->
+            LocationUiAction.RequestWhileInUseClicked -> {
+                // Arm auto-enable so the grant turns tracking on by itself.
+                viewModel.armTrackingAutoEnableOnGrant()
                 permissionsManager.askPermission(PermissionType.LOCATION)
+            }
 
-            LocationUiAction.RequestAlwaysClicked ->
+            LocationUiAction.RequestAlwaysClicked -> {
+                viewModel.armTrackingAutoEnableOnGrant()
                 permissionsManager.askPermission(PermissionType.LOCATION_ALWAYS)
+            }
 
             LocationUiAction.OpenSystemSettingsClicked ->
                 permissionsManager.launchSettings()
@@ -208,13 +211,6 @@ fun LocationScreen(
                                 },
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.location_settings)) },
-                            onClick = {
-                                menuOpen = false
-                                onNavigateToSettings()
-                            },
-                        )
                     }
                 },
             )

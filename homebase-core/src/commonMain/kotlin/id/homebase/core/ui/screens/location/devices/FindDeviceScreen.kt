@@ -35,7 +35,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_find_freshness
 import id.homebase.resources.location_find_last_seen
-import id.homebase.resources.location_find_no_data_today
+import id.homebase.resources.location_find_no_location
 import id.homebase.resources.location_find_refresh
 import id.homebase.resources.location_find_title
 import id.homebase.resources.menu_back
@@ -137,7 +137,7 @@ fun FindDeviceScreen(
 
                         trace == null ->
                             Text(
-                                text = stringResource(MR.string.location_find_no_data_today),
+                                text = stringResource(MR.string.location_find_no_location),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.align(Alignment.Center).padding(24.dp),

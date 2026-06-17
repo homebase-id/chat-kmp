@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.location
 
+import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.DeviceTrace
 
@@ -10,6 +11,8 @@ data class LocationUiState(
     val activated: Boolean = false,
     val trackingEnabled: Boolean = false,
     val trackingAvailable: Boolean = false,
+    /** Bottom-nav icon visibility (soft-launch opt-in), toggled on the Setup screen. */
+    val iconVisible: Boolean = false,
     /** Google Play prominent-disclosure consent (persisted; gates first grant/enable). */
     val disclosureAccepted: Boolean = false,
     val whileInUseGranted: Boolean = false,
@@ -25,8 +28,11 @@ data class LocationUiState(
     // Dashboard state
     val devices: List<LocationDeviceInfo> = emptyList(),
     val todayTraces: List<DeviceTrace> = emptyList(),
-    val showMapTiles: Boolean = false,
-)
+    val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
+) {
+    /** Only OSM tiles are implemented today; the canvas takes a boolean. */
+    val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
+}
 
 /**
  * Main-screen body switch: dashboard once the add-on runs, setup otherwise.
@@ -45,6 +51,8 @@ sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
     data object DismissOnboardingClicked : LocationUiAction
     data class SetTrackingEnabled(val enabled: Boolean) : LocationUiAction
+    data class SetIconVisible(val visible: Boolean) : LocationUiAction
+    data class SetMapProvider(val provider: LocationMapProvider) : LocationUiAction
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction

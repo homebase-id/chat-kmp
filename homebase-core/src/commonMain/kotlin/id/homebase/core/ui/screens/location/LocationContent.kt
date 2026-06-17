@@ -11,19 +11,27 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
+import id.homebase.resources.location_history_map_disclosure
+import id.homebase.resources.location_map_none
+import id.homebase.resources.location_map_osm
+import id.homebase.resources.location_map_section
 import id.homebase.resources.location_perm_always
 import id.homebase.resources.location_perm_always_hint
 import id.homebase.resources.location_perm_grant
@@ -31,6 +39,7 @@ import id.homebase.resources.location_perm_granted
 import id.homebase.resources.location_perm_open_settings
 import id.homebase.resources.location_perm_section
 import id.homebase.resources.location_perm_while_in_use
+import id.homebase.resources.location_settings_show_icon
 import id.homebase.resources.location_status_last_fix
 import id.homebase.resources.location_status_last_flush
 import id.homebase.resources.location_status_never
@@ -128,6 +137,50 @@ fun LocationContent(
             }
         }
 
+        // ── Map ──
+        SectionHeader(stringResource(MR.string.location_map_section))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                LocationMapProvider.entries.forEachIndexed { index, provider ->
+                    if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    MapOptionRow(
+                        label = mapProviderLabel(provider),
+                        selected = uiState.mapProvider == provider,
+                        onSelect = { onAction(LocationUiAction.SetMapProvider(provider)) },
+                    )
+                }
+            }
+        }
+        if (uiState.mapProvider == LocationMapProvider.OpenStreetMap) {
+            Text(
+                text = stringResource(MR.string.location_history_map_disclosure),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
+
+        // ── Display ──
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(MR.string.location_settings_show_icon),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = uiState.iconVisible,
+                    onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
+                )
+            }
+        }
+
         // ── Status ──
         SectionHeader(stringResource(MR.string.location_status_section))
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -212,6 +265,30 @@ private fun PermissionRow(
                 Text(stringResource(MR.string.location_perm_grant))
             }
         }
+    }
+}
+
+@Composable
+private fun mapProviderLabel(provider: LocationMapProvider): String = when (provider) {
+    LocationMapProvider.None -> stringResource(MR.string.location_map_none)
+    LocationMapProvider.OpenStreetMap -> stringResource(MR.string.location_map_osm)
+}
+
+@Composable
+private fun MapOptionRow(label: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
 

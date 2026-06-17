@@ -108,7 +108,7 @@ fun SettingsScreen(
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit,
-    onNavigateToLocationSettings: () -> Unit,
+    onNavigateToLocation: () -> Unit,
     onNavigateToContactBookSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -168,7 +168,7 @@ fun SettingsScreen(
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp,
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
-            onNavigateToLocationSettings = onNavigateToLocationSettings,
+            onNavigateToLocation = onNavigateToLocation,
             onNavigateToContactBookSettings = onNavigateToContactBookSettings,
         )
 
@@ -231,7 +231,7 @@ fun SettingsUi(
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit = {},
-    onNavigateToLocationSettings: () -> Unit = {},
+    onNavigateToLocation: () -> Unit = {},
     onNavigateToContactBookSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
@@ -395,7 +395,7 @@ fun SettingsUi(
                 modifier = Modifier.testTag("locationSettingsButton"),
                 imageVector = Icons.Outlined.LocationOn,
                 text = stringResource(MR.string.location_settings_section),
-                onClick = onNavigateToLocationSettings,
+                onClick = onNavigateToLocation,
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

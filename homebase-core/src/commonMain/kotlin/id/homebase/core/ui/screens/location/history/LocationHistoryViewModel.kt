@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.location.history
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,15 +23,17 @@ class LocationHistoryViewModel(
     private val _uiState = MutableStateFlow(
         LocationHistoryUiState(
             dayStartMs = localDayStart(Clock.System.now().toEpochMilliseconds()),
-            showMapTiles = locationPreferences.showMapTiles.value,
+            showMapTiles = locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap,
         )
     )
     val uiState: StateFlow<LocationHistoryUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            locationPreferences.showMapTiles.collect { show ->
-                _uiState.update { it.copy(showMapTiles = show) }
+            locationPreferences.mapProvider.collect { provider ->
+                _uiState.update {
+                    it.copy(showMapTiles = provider == LocationMapProvider.OpenStreetMap)
+                }
             }
         }
         loadDay(_uiState.value.dayStartMs)
@@ -41,9 +44,6 @@ class LocationHistoryViewModel(
             is LocationHistoryUiAction.SelectDay -> loadDay(localDayStart(action.dayStartMs))
             LocationHistoryUiAction.PreviousDay -> loadDay(shiftDay(_uiState.value.dayStartMs, -1))
             LocationHistoryUiAction.NextDay -> loadDay(shiftDay(_uiState.value.dayStartMs, 1))
-            is LocationHistoryUiAction.SetShowMapTiles -> viewModelScope.launch {
-                locationPreferences.setShowMapTiles(action.show)
-            }
         }
     }
 
