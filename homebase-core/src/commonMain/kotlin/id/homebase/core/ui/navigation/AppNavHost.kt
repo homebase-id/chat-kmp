@@ -114,7 +114,6 @@ import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
-import id.homebase.core.ui.screens.location.settings.LocationSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -1140,9 +1139,7 @@ fun AppNavHost(
                                     onNavigateToVaultSettings = {
                                         navController.navigate(Route.VaultSettings)
                                     },
-                                    onNavigateToLocationSettings = {
-                                        navController.navigate(Route.LocationSettings)
-                                    },
+                                    onNavigateToLocation = openLocation,
                                     onNavigateToContactBookSettings = {
                                         navController.navigate(Route.ContactBookSettings)
                                     },
@@ -1272,9 +1269,6 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 LocationScreen(
                                     viewModel = locationViewModel,
-                                    onNavigateToSettings = {
-                                        navController.navigate(Route.LocationSettings)
-                                    },
                                     onNavigateToHistory = {
                                         navController.navigate(Route.LocationHistory)
                                     },
@@ -1314,16 +1308,6 @@ fun AppNavHost(
                                             Route.LocationFindDevice(deviceId.toString())
                                         )
                                     },
-                                )
-                            }
-                        }
-
-                        composable<Route.LocationSettings> {
-                            if (isAuthenticated) {
-                                LocationSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onOpenLocation = openLocation,
                                 )
                             }
                         }

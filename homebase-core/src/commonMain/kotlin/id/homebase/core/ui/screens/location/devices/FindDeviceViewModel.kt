@@ -3,16 +3,14 @@ package id.homebase.core.ui.screens.location.devices
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.history.DeviceTrace
-import id.homebase.core.ui.screens.location.history.localDayStart
-import id.homebase.core.ui.screens.location.history.shiftDay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 data class FindDeviceUiState(
@@ -20,7 +18,7 @@ data class FindDeviceUiState(
     val deviceId: Uuid? = null,
     val devices: List<LocationDeviceInfo> = emptyList(),
     val device: LocationDeviceInfo? = null,
-    /** The selected device's trace for today (its last point is the position). */
+    /** A single-point trace at the device's last known position (the "dot"). */
     val deviceTrace: DeviceTrace? = null,
     val isLoading: Boolean = true,
     val showMapTiles: Boolean = false,
@@ -37,7 +35,8 @@ class FindDeviceViewModel(
     private val _uiState = MutableStateFlow(
         FindDeviceUiState(
             deviceId = deviceIdArg,
-            showMapTiles = locationPreferences.showMapTiles.value,
+            showMapTiles =
+                locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap,
         )
     )
     val uiState: StateFlow<FindDeviceUiState> = _uiState.asStateFlow()
@@ -53,12 +52,11 @@ class FindDeviceViewModel(
                 .onFailure { logger.e(it) { "loadDevices failed" } }
                 .getOrDefault(emptyList())
             val device = deviceIdArg?.let { id -> devices.firstOrNull { it.deviceId == id } }
-            val trace = if (deviceIdArg != null) {
-                val dayStart = localDayStart(Clock.System.now().toEpochMilliseconds())
-                runCatching { deviceDirectory.loadDayTraces(dayStart, shiftDay(dayStart, 1)) }
-                    .getOrDefault(emptyList())
-                    .firstOrNull { it.deviceId == deviceIdArg }
-            } else null
+            // Just the last known position as one point — "find my device", not a
+            // day's trail. loadDevices() already resolved each device's freshest fix.
+            val trace = device?.lastFix?.let { fix ->
+                DeviceTrace(deviceId = device.deviceId, segments = listOf(listOf(fix)))
+            }
             _uiState.update {
                 it.copy(devices = devices, device = device, deviceTrace = trace, isLoading = false)
             }

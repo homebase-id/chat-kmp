@@ -156,7 +156,6 @@ import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
-import id.homebase.core.ui.screens.location.settings.LocationSettingsViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -702,7 +701,6 @@ val appModule = module {
             tracker = get(),
         )
     }
-    viewModelOf(::LocationSettingsViewModel)
     viewModelOf(::LocationHistoryViewModel)
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
