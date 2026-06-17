@@ -1,0 +1,629 @@
+2026-06-16T19:37:49.554236Z Info: (HomeViewModel) Log cleared by user
+2026-06-16T19:37:49.832153Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/bc52e419-e051-6200-6389-3de0a7e5d21b/payload/convo_img/thumb
+2026-06-16T19:37:50.629703Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=133688204)
+2026-06-16T19:37:50.630232Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=47573738)
+2026-06-16T19:37:53.527779Z Info: (ConversationListViewModel) loadMessagesForConversation id=44df02c6-c40f-4f30-b5bc-220b8d731196 hasCached=false trigger=Navigation
+2026-06-16T19:37:53.5308Z Info: (ConversationListViewModel) selectedConversationId set id=44df02c6-c40f-4f30-b5bc-220b8d731196 (pending messages) trigger=Navigation
+2026-06-16T19:37:53.536654Z Debug: (ChatPaging) open conversationId=44df02c6-c40f-4f30-b5bc-220b8d731196 hasCached=false scrollToBottom=false savedAnchor=7ad7442a-f8e9-de19-b2c5-c0b5c1896bab messageIdForScroll=null → loadAround(7ad7442a-f8e9-de19-b2c5-c0b5c1896bab)
+2026-06-16T19:37:53.538857Z Info: (ConversationListUi) Navigating to detail for 44df02c6-c40f-4f30-b5bc-220b8d731196
+2026-06-16T19:37:53.554469Z Info: Pre-initializing empty scroll position: id=44df02c6-c40f-4f30-b5bc-220b8d731196
+2026-06-16T19:37:53.661962Z Debug: (ChatPaging) loadAround(44df02c6-c40f-4f30-b5bc-220b8d731196, 7ad7442a-f8e9-de19-b2c5-c0b5c1896bab) anchor not in DB; falling back to loadConversation
+2026-06-16T19:37:53.662404Z Debug: ChatMessageStream: loadConversation(44df02c6-c40f-4f30-b5bc-220b8d731196)
+2026-06-16T19:37:53.663212Z Info: (ConversationListUi) Restore detail pane for 44df02c6-c40f-4f30-b5bc-220b8d731196
+2026-06-16T19:37:53.664448Z Info: (ConversationListUi) detailPane render: contentKey=44df02c6-c40f-4f30-b5bc-220b8d731196, conversationFound=true, activeConversationsSize=60
+2026-06-16T19:37:53.721585Z Debug: ChatMessageStream: loadConversation(44df02c6-c40f-4f30-b5bc-220b8d731196) → 75 messages in 59.085806ms (hasMore=true)
+2026-06-16T19:37:53.726838Z Info: Landing on new-messages separator at index 94
+2026-06-16T19:37:53.727384Z Info: (ConversationListViewModel) messages first emission id=44df02c6-c40f-4f30-b5bc-220b8d731196 messageCount=97 sinceSelected=200.338476ms
+2026-06-16T19:37:53.72789Z Debug: (ConversationLoad) conversationId=44df02c6-c40f-4f30-b5bc-220b8d731196 messageCount=97 cached=false total=201.007036ms
+2026-06-16T19:37:53.733209Z Info: Pre-initializing scroll position: id=44df02c6-c40f-4f30-b5bc-220b8d731196 -> 94:0
+2026-06-16T19:37:53.779518Z Debug: (HomebaseImageLoader) loadThumbnail: fileId=541aed19-20eb-b200-845b-d476a47effa9 key=chat_web0 measured=954x586 available=[320x196, 640x393, 1080x663] snapped=1080x663 lastMod=1781633733804
+2026-06-16T19:37:53.782063Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/541aed19-20eb-b200-845b-d476a47effa9/payload/chat_web0/thumb
+2026-06-16T19:37:53.885755Z Debug: (HomebaseImageLoader) loadThumbnail: fileId=87f3ec19-e036-c600-4f9f-65399513026c key=chat_web0 measured=954x806 available=[20x17, 320x271, 640x541, 1069x903] snapped=1069x903 lastMod=1781593044412
+2026-06-16T19:37:53.887965Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/87f3ec19-e036-c600-4f9f-65399513026c/payload/chat_web0/thumb
+2026-06-16T19:37:54.070356Z Info: (ConversationListUi) Restore detail pane completed for 44df02c6-c40f-4f30-b5bc-220b8d731196
+2026-06-16T19:37:54.252358Z Info: Scroll changed: id=44df02c6-c40f-4f30-b5bc-220b8d731196 -> anchor=81732330-ce0a-5293-cde1-5736a0754efd offset=797 (idx=90)
+2026-06-16T19:37:54.447848Z Debug: (MarkAsRead) enter convo=44df02c6-c40f-4f30-b5bc-220b8d731196 messages=6
+2026-06-16T19:37:54.449386Z Debug: (MarkAsRead) filter eligible=2 excluded=4 (excluded reasons: self-authored | already-read | deleted | pending-send)
+2026-06-16T19:37:54.450651Z Debug: (MarkAsRead) newReadTime(ms)=1781638560892 (viewedMax=1781638560892 convoLatest=1781638560892 viewed=5 receipt-eligible=2)
+2026-06-16T19:37:54.452743Z Debug: (MarkAsRead) OutboxSync.tryEnqueue(SendReadReceiptByFileIds): drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileIdsCount=2 sendNow=true
+2026-06-16T19:37:54.465833Z Debug: (MarkAsRead) OutboxSync.tryEnqueue(SendReadReceiptByFileIds): result=Enqueued drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:37:54.468274Z Debug: (MarkAsRead) enqueue receipt: result=Enqueued drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileIdsCount=2
+2026-06-16T19:37:54.469852Z Debug: (MarkAsRead) ConversationService.updateLocalLastReadTime: convo=44df02c6-c40f-4f30-b5bc-220b8d731196 currentMs=1781633734830 latestMs=1781638560892 newMs=1781638560892 advanceTo=1781638560892
+2026-06-16T19:37:54.473547Z Info: Popping Outbox
+2026-06-16T19:37:54.479204Z Info: Popping Outbox
+2026-06-16T19:37:54.480773Z Info: OutboxSync: sending uniqueId=c14393bd-18f1-43d2-b567-feec88ff47bb uploadType=SendReadReceiptByFileIds(7) driveId=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 attempt=1
+2026-06-16T19:37:54.480918Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:37:54.481444Z Info: No more items in outbox
+2026-06-16T19:37:54.481998Z Debug: (MarkAsRead) DriveOutboxUploader.sendReadReceiptByFileIds: outboxRow=c14393bd-18f1-43d2-b567-feec88ff47bb drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileIdsCount=2
+2026-06-16T19:37:54.486173Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/send-read-receipt-batch
+2026-06-16T19:37:54.534006Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:37:54.564524Z Debug: (MarkAsRead) DriveOutboxUploader.sendReadReceiptByFileIds: server accepted — outboxRow=c14393bd-18f1-43d2-b567-feec88ff47bb
+2026-06-16T19:37:54.56551Z Info: OutboxSync: completed uniqueId=c14393bd-18f1-43d2-b567-feec88ff47bb uploadType=SendReadReceiptByFileIds(7)
+2026-06-16T19:37:54.567644Z Info: Popping Outbox
+2026-06-16T19:37:54.568722Z Info: No more items in outbox
+2026-06-16T19:37:54.767026Z Info: (WSPush) WSPush: drainOnce drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 rows=1 wrote=1 took=2.735584ms (emitting BatchReceived)
+2026-06-16T19:37:54.768607Z Debug: ConversationStream: BatchReceived 1 files (conversations=0, messages=1, adminFiles=0)
+2026-06-16T19:37:54.769972Z Debug: ChatMessageStream: processIncrementalBatch 1 messages across 1 conversation(s)
+2026-06-16T19:37:54.770649Z Info: WSPush: killroy triggered recursive drain for drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:37:54.770832Z Debug: (UnreadDiag) batchDone convo=44df02c6-c40f-4f30-b5bc-220b8d731196 unreadCount=0 latestMessageMs=1781638560892 lastReadMs=1781638560892
+2026-06-16T19:37:54.772863Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:37:54.774837Z Info: (WSPush) WSPush: drainOnce drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 rows=1 wrote=1 took=2.549339ms (emitting BatchReceived)
+2026-06-16T19:37:54.776468Z Debug: ConversationStream: BatchReceived 1 files (conversations=0, messages=1, adminFiles=0)
+2026-06-16T19:37:54.776807Z Debug: ChatMessageStream: processIncrementalBatch 1 messages across 1 conversation(s)
+2026-06-16T19:37:54.778079Z Debug: (UnreadDiag) batchDone convo=44df02c6-c40f-4f30-b5bc-220b8d731196 unreadCount=0 latestMessageMs=1781638560892 lastReadMs=1781638560892
+2026-06-16T19:37:54.781299Z Info: No saved scroll position
+2026-06-16T19:37:54.790095Z Info: No saved scroll position
+2026-06-16T19:37:54.84689Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:37:55.484503Z Debug: (MarkAsRead) ConversationService.flushDirtyLastRead: flushing 1 dirty conversation(s)
+2026-06-16T19:37:55.484916Z Debug: (MarkAsRead) OptimisticWriter.stampConversationLastReadTime: enter convo=44df02c6-c40f-4f30-b5bc-220b8d731196 drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:37:55.488067Z Debug: ConversationStream: BatchReceived 1 files (conversations=1, messages=0, adminFiles=0)
+2026-06-16T19:37:55.488275Z Debug: ChatMessageStream: processIncrementalBatch 0 messages across 0 conversation(s)
+2026-06-16T19:37:55.488442Z Debug: (MarkAsRead) OptimisticWriter.stampConversationLastReadTime: optimistic local upsert ok fileId=863d5b19-a0c6-5800-8438-8803502f9054 encrypted=true → returning UpdateLocalAppdataContentOutboxRequest
+2026-06-16T19:37:55.488892Z Debug: (MarkAsRead) OutboxSync.tryEnqueue(UpdateLocalAppdataContent): drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileId=863d5b19-a0c6-5800-8438-8803502f9054 hasIv=true sendNow=true
+2026-06-16T19:37:55.489913Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:37:55.490114Z Debug: (MarkAsRead) OutboxSync.tryEnqueue(UpdateLocalAppdataContent): result=Enqueued drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileId=863d5b19-a0c6-5800-8438-8803502f9054
+2026-06-16T19:37:55.490977Z Info: Popping Outbox
+2026-06-16T19:37:55.491966Z Info: Popping Outbox
+2026-06-16T19:37:55.49222Z Info: OutboxSync: sending uniqueId=863d5b19-a0c6-5800-8438-8803502f9054 uploadType=UpdateLocalMetadataContent(5) driveId=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 attempt=1
+2026-06-16T19:37:55.492714Z Info: No more items in outbox
+2026-06-16T19:37:55.492834Z Debug: (MarkAsRead) DriveOutboxUploader.updateLocalMetadataContent: outboxRow=863d5b19-a0c6-5800-8438-8803502f9054 drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 fileId=863d5b19-a0c6-5800-8438-8803502f9054 hasIv=true
+2026-06-16T19:37:55.494069Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/863d5b19-a0c6-5800-8438-8803502f9054/header
+2026-06-16T19:37:55.540993Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:37:55.548597Z Info: (HttpIO) → PATCH frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/863d5b19-a0c6-5800-8438-8803502f9054/update-local-metadata-content
+2026-06-16T19:37:55.607079Z Debug: (MarkAsRead) DriveOutboxUploader.updateLocalMetadataContent: server accepted — outboxRow=863d5b19-a0c6-5800-8438-8803502f9054 fileId=863d5b19-a0c6-5800-8438-8803502f9054 versionTag=691aed19-70ea-e300-c3f8-bf09111db812
+2026-06-16T19:37:55.607864Z Info: OutboxSync: completed uniqueId=863d5b19-a0c6-5800-8438-8803502f9054 uploadType=UpdateLocalMetadataContent(5)
+2026-06-16T19:37:55.609175Z Info: Popping Outbox
+2026-06-16T19:37:55.610274Z Info: No more items in outbox
+2026-06-16T19:37:55.818191Z Info: (WSPush) WSPush: drainOnce drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 rows=1 wrote=1 took=5.694618ms (emitting BatchReceived)
+2026-06-16T19:37:55.821268Z Debug: ConversationStream: BatchReceived 1 files (conversations=1, messages=0, adminFiles=0)
+2026-06-16T19:37:55.822842Z Debug: ChatMessageStream: processIncrementalBatch 0 messages across 0 conversation(s)
+2026-06-16T19:37:55.830843Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:37:55.884059Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:37:58.039096Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:37:58.086822Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=0, allConnected=false
+2026-06-16T19:37:58.137466Z Info: (ShareShortcutPublisher) Published 8 share shortcuts
+2026-06-16T19:37:58.171582Z Info: (ExtendPermissionDialog) uiState observed: ShowDialog (vm=47573738)
+2026-06-16T19:37:58.171921Z Info: (ExtendPermissionDialog) rendering AlertDialog for Homebase - Chat
+2026-06-16T19:37:59.649663Z Info: (ExtendPermissionDialog) uiState observed: Dismissed (vm=47573738)
+2026-06-16T19:38:01.910467Z Debug: (LocationTrackUploader) Flush skipped: Location add-on not activated (drive not mounted)
+2026-06-16T19:38:01.913949Z Info: (MainActivity) Permission-extend deep link (status=null canceled=false)
+2026-06-16T19:38:01.916886Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.918075Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.918918Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.919653Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.920458Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.921069Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:38:01.921458Z Debug: (ExtendPermissionViewModel) Stale VM (token mismatch, domain=frodo.baggins.demo.rocks) — skipping permission check
+2026-06-16T19:38:01.922336Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:01.926807Z Debug: (ExtendPermissionViewModel) Stale VM (token mismatch, domain=frodo.baggins.demo.rocks) — skipping permission check
+2026-06-16T19:38:01.928962Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:01.931352Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:01.927856Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:01.962398Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:38:02.011778Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=47573738)
+2026-06-16T19:38:02.02266Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=0, allConnected=false
+2026-06-16T19:38:02.025807Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:02.02704Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/by-uid/00000000-0000-0000-0000-000000d71700/header
+2026-06-16T19:38:02.028949Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:38:02.02968Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:38:02.043694Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:02.046719Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:02.08054Z Info: (HttpIO) → PATCH frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/by-uid/00000000-0000-0000-0000-000000d71700
+2026-06-16T19:38:02.166295Z Info: (DriveRegistry) updateRegistry: wrote 4 drive(s): [Vault, Moments, Lists, Stickers]
+2026-06-16T19:38:02.172337Z Info: (DriveSync) mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) registered (driveSyncs.size=4 -> 5, freshLogin=false, isRunning=true)
+2026-06-16T19:38:02.180184Z Info: Synchronizing drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:02.178778Z Info: (DriveSync) syncState Completed -> Idle
+2026-06-16T19:38:02.187149Z Info: (DriveSync) syncState Idle -> Syncing
+2026-06-16T19:38:02.193996Z Debug: (StickerStream) loadAll: 0 saved sticker(s)
+2026-06-16T19:38:02.19883Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e/files/query-batch
+2026-06-16T19:38:02.276257Z Info: Received 0 records from QueryBatch() on Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:02.281046Z Debug: Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e synchronized with 0 records read.
+2026-06-16T19:38:02.282557Z Info: (DriveSync) syncState Syncing -> Completed
+2026-06-16T19:38:02.356975Z Info: (WSPush) WSPush: drainOnce drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 rows=1 wrote=1 took=4.714315ms (emitting BatchReceived)
+2026-06-16T19:38:02.359483Z Debug: ChatMessageStream: processIncrementalBatch 0 messages across 0 conversation(s)
+2026-06-16T19:38:02.358839Z Debug: ConversationStream: BatchReceived 1 files (conversations=0, messages=0, adminFiles=0)
+2026-06-16T19:38:02.364993Z Warn: (DriveSync) mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:38:02.366576Z Warn: (AuthLifecycle) AuthCC: mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) — already mounted, skipping WS-refresh trigger
+2026-06-16T19:38:02.677766Z Info: (WebSocket) WS[2] close()
+2026-06-16T19:38:02.678821Z Info: (WebSocket) WS[2] disconnected
+2026-06-16T19:38:02.678905Z Info: WebSocket connection ended
+2026-06-16T19:38:02.679507Z Info: (AuthLifecycle) AuthCC: connect() called (wsClient=null, extraDrives=null)
+2026-06-16T19:38:02.682937Z Warn: (AuthLifecycle) AuthCC: skipping drive 'Vault' (f47ac10b-58cc-4372-a567-0e02b2c3d479) — app token has no read grant; not mounting/subscribing it (avoids server WS close + REST 403)
+2026-06-16T19:38:02.683476Z Warn: (AuthLifecycle) AuthCC: skipping drive 'Stickers' (3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e) — app token has no read grant; not mounting/subscribing it (avoids server WS close + REST 403)
+2026-06-16T19:38:02.683964Z Info: (WebSocket) WS[3] ctor (drives=4)
+2026-06-16T19:38:02.685325Z Info: (AuthLifecycle) AuthCC: WS[3] created, start() invoked
+2026-06-16T19:38:02.685579Z Info: (WebSocket) WS[3] start() (jobActive=false)
+2026-06-16T19:38:02.685915Z Info: (WebSocket) WS[3] connection loop dispatched
+2026-06-16T19:38:02.687746Z Info: (WebSocket) WS[3] Connecting to WebSocket at wss://frodo.baggins.demo.rocks/api/v2/notify/ws-token
+2026-06-16T19:38:03.293631Z Info: (WebSocket) WS[3] negotiated Sec-WebSocket-Protocol=odin.notify.v1
+2026-06-16T19:38:03.299072Z Debug: Sent WebSocket command: establishConnectionRequest
+2026-06-16T19:38:03.540945Z Info: (WebSocket) WS[3] handshake successful
+2026-06-16T19:38:03.542753Z Info: (AuthLifecycle) AuthCC: onConnected fired for WS[3]
+2026-06-16T19:38:03.544842Z Info: (AuthLifecycle) AuthCC: SNAPSHOT[onConnected] authState=Authenticated isConnecting=true isConnected=true wsClient=WS[3] dsmRunning=true driveStatuses={9ff813af-f2d6-1e2f-9b9d-b189e72d1a11:Completed, 2612429d-1c3f-0372-82b8-d42fb2cc0499:Completed, a85f8562-6c74-4947-896b-619812cafccc:Completed, a44e7a26-51f4-4a26-ad12-5d7627b35d0e:Completed, 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e:Completed}
+2026-06-16T19:38:03.547121Z Info: (DriveSync) start() (isRunning before=true, driveSyncs.size=5, identity=frodo.baggins.demo.rocks)
+2026-06-16T19:38:03.547893Z Debug: Fetching connected and blocked connections in parallel...
+2026-06-16T19:38:03.550231Z Info: (DriveSync) ensureMandatoryMounted begin (2 drives, driveSyncs.size=5)
+2026-06-16T19:38:03.553856Z Warn: (DriveSync) mountDrive(9ff813af-f2d6-1e2f-9b9d-b189e72d1a11, Chat) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:38:03.555353Z Warn: (DriveSync) mountDrive(2612429d-1c3f-0372-82b8-d42fb2cc0499, Contacts) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:38:03.556099Z Info: (DriveSync) ensureMandatoryMounted done (driveSyncs.size=5)
+2026-06-16T19:38:03.556728Z Info: (DriveSync) start() done (isRunning=true, driveSyncs.size=5)
+2026-06-16T19:38:03.556565Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:03.557527Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/blocked
+2026-06-16T19:38:03.557654Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/connected
+2026-06-16T19:38:03.559003Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/circles/with-members
+2026-06-16T19:38:03.560753Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:03.562436Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:03.56717Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:03.568539Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:03.570063Z Info: Synchronizing drive 2612429d-1c3f-0372-82b8-d42fb2cc0499
+2026-06-16T19:38:03.57061Z Info: Synchronizing drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:03.57092Z Info: Synchronizing drive a85f8562-6c74-4947-896b-619812cafccc
+2026-06-16T19:38:03.571332Z Info: Synchronizing drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e
+2026-06-16T19:38:03.572275Z Info: Synchronizing drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:38:03.573892Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/2612429d-1c3f-0372-82b8-d42fb2cc0499/files/query-batch
+2026-06-16T19:38:03.574713Z Info: (DriveSync) syncState Completed -> Syncing
+2026-06-16T19:38:03.575518Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/a85f8562-6c74-4947-896b-619812cafccc/files/query-batch
+2026-06-16T19:38:03.575946Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e/files/query-batch
+2026-06-16T19:38:03.576131Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/a44e7a26-51f4-4a26-ad12-5d7627b35d0e/files/query-batch
+2026-06-16T19:38:03.578811Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/query-batch
+2026-06-16T19:38:03.695511Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:03.783665Z Warn: ConnectionService: getCirclesWithMembers failed
+id.homebase.api.client.ForbiddenException: Forbidden
+	at id.homebase.api.client.OdinApiProviderBase.throwForFailure(OdinApiProviderBase.kt:479)
+	at id.homebase.api.client.connections.ConnectionNetworkProvider.getCirclesWithMembers(ConnectionNetworkProvider.kt:121)
+	at id.homebase.api.client.connections.ConnectionNetworkProvider$getCirclesWithMembers$1.invokeSuspend(Unknown Source:15)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:829)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+2026-06-16T19:38:03.791098Z Info: Received 0 records from QueryBatch() on Drive a85f8562-6c74-4947-896b-619812cafccc
+2026-06-16T19:38:03.791382Z Info: Received 0 records from QueryBatch() on Drive 2612429d-1c3f-0372-82b8-d42fb2cc0499
+2026-06-16T19:38:03.790965Z Info: Received 0 records from QueryBatch() on Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:03.798014Z Debug: Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e synchronized with 0 records read.
+2026-06-16T19:38:03.798456Z Debug: Drive 2612429d-1c3f-0372-82b8-d42fb2cc0499 synchronized with 0 records read.
+2026-06-16T19:38:03.800949Z Debug: Drive a85f8562-6c74-4947-896b-619812cafccc synchronized with 0 records read.
+2026-06-16T19:38:03.818272Z Info: Received 0 records from QueryBatch() on Drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e
+2026-06-16T19:38:03.823776Z Debug: Drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e synchronized with 0 records read.
+2026-06-16T19:38:03.840346Z Debug: (ConnectionRequestService) refresh loaded incoming=0 outgoing=1 outgoingRecipients=[tt.jankins.demo.rocks]
+2026-06-16T19:38:03.859554Z Info: Received 4 records from QueryBatch() on Drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:38:03.860226Z Debug: DriveSync: batch contains 1 chat conversation(s): [44df02c6-c40f-4f30-b5bc-220b8d731196]
+2026-06-16T19:38:03.866454Z Info: DriveSync: batch upsert drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 rows=4 took=5.011492ms
+2026-06-16T19:38:03.867368Z Debug: (DriveSync) Progress drive=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 count=4
+2026-06-16T19:38:03.86925Z Debug: DriveSync: all DB writes complete for drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 (4 total records)
+2026-06-16T19:38:03.870446Z Debug: ConversationStream: Stopped(totalCount=4)
+2026-06-16T19:38:03.870848Z Info: (DriveSync) syncState Syncing -> Completed
+2026-06-16T19:38:03.871544Z Info: (UnreadDiag) Stopped recount-gate driveId=9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 totalCount=4 result=Completed hasDirtyUnread=false decision=RECOUNT
+2026-06-16T19:38:03.871713Z Debug: ChatMessageStream: Stopped(totalCount=4, result=Completed)
+2026-06-16T19:38:03.871801Z Debug: Drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 synchronized with 4 records read.
+2026-06-16T19:38:03.876148Z Info: (AuthLifecycle) AuthCC: onConnected post-sync done
+2026-06-16T19:38:03.876972Z Info: (AuthLifecycle) AuthCC: onConnected → clearCheckout() + setOnline(true) + send()
+2026-06-16T19:38:03.878281Z Info: OutboxSync: clearCheckout() ENTER — activeWorkers=0 (waiting for idle, timeout=10000ms)
+2026-06-16T19:38:03.87937Z Info: OutboxSync: clearCheckout() DONE — checked 0 row(s) back in (waited 1ms)
+2026-06-16T19:38:03.880908Z Info: Popping Outbox
+2026-06-16T19:38:03.881122Z Debug: Loaded connections 18 connected, 0 blocked
+2026-06-16T19:38:03.882582Z Info: No more items in outbox
+2026-06-16T19:38:03.907691Z Info: (ConvListPerf) loadBasicConversations end-to-end=34ms (query=29ms map=5ms) items=60
+2026-06-16T19:38:03.908604Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:03.912032Z Debug: (ConversationQueries) Fetched rows=60 in 3ms
+2026-06-16T19:38:03.940343Z Debug: (ConversationQueries) Completed mapping 60 rows in 32ms
+2026-06-16T19:38:03.941285Z Debug: Message (uid: e0109f7c-32ba-6f1b-944c-4de79b426ee3) with no version and not edited has null userDate. using authorSpecificDate. See file: https://frodo.baggins.demo.rocks/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/e0109f7c-32ba-6f1b-944c-4de79b426ee3
+2026-06-16T19:38:03.943466Z Info: (ConvListPerf) enrichWithLastMessages end-to-end=35ms (query=32ms map=3ms) messages=43/60
+2026-06-16T19:38:03.944311Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:03.946608Z Info: (ConvListPerf) enrichWithAdmins end-to-end=3ms hits=1/27
+2026-06-16T19:38:03.947551Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:03.999044Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:38:04.479847Z Info: (ConvListPerf) enrichAllConversationsWithUnreadCounts=30ms trigger=DriveSyncStopped mirrored=0 changedRows=0 totalRows=60
+2026-06-16T19:38:04.48368Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:04.538677Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:38:07.494234Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:38:07.517533Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:38:07.574701Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:38:08.323874Z Info: (ShareShortcutPublisher) Published 8 share shortcuts
+2026-06-16T19:38:08.399813Z Warn: (BackgroundRemover) Android: subject segmentation failed: Failed to run thin subject segmenter.
+2026-06-16T19:38:08.403243Z Debug: (StickerCreator) create: cutOutOffered=false cutOut=0B original=1325011B image/jpeg
+2026-06-16T19:38:08.436739Z Error: (CrashLogger) ========== UNCAUGHT EXCEPTION ==========
+2026-06-16T19:38:08.437337Z Error: (CrashLogger) Thread: pool-21-thread-2
+2026-06-16T19:38:08.437749Z Error: (CrashLogger) Exception: MediaPipeException
+2026-06-16T19:38:08.4381Z Error: (CrashLogger) Message: invalid argument: CalculatorGraph::Run() failed: 
+Calculator::Process() for node "mediapipe_tasks_vision_image_segmenter_imagesegmentergraph__mediapipe.tasks.TensorsToSegmentationCalculator" failed: Tensor should have 2, 3, or 4 dims, received: 0
+2026-06-16T19:38:08.438541Z Error: (CrashLogger) Stack trace:
+com.google.mediapipe.framework.MediaPipeException: invalid argument: CalculatorGraph::Run() failed: 
+Calculator::Process() for node "mediapipe_tasks_vision_image_segmenter_imagesegmentergraph__mediapipe.tasks.TensorsToSegmentationCalculator" failed: Tensor should have 2, 3, or 4 dims, received: 0
+	at com.google.mediapipe.framework.Graph.nativeWaitUntilGraphDone(Native Method)
+	at com.google.mediapipe.framework.Graph.k(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):20)
+	at m49.anf.close(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):19)
+	at m49.anj.close(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):3)
+	at com.google.android.gms.mlkit.segmentation.subject.SubjectSegmenter.e(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):5)
+	at m49.bhm.x(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):65)
+	at m49.as.onTransact(:com.google.android.gms.optional_mlkit_subject_segmentation@261934032@26.19.34 (100800-0):21)
+	at android.os.Binder.transact(Binder.java:1325)
+	at com.google.android.gms.internal.mlkit_vision_subject_segmentation.zza.zzc(com.google.android.gms:play-services-mlkit-subject-segmentation@@16.0.0-beta1:2)
+	at com.google.android.gms.internal.mlkit_vision_subject_segmentation.zzub.zzf(com.google.android.gms:play-services-mlkit-subject-segmentation@@16.0.0-beta1:2)
+	at com.google.mlkit.vision.segmentation.subject.internal.zzj.release(com.google.android.gms:play-services-mlkit-subject-segmentation@@16.0.0-beta1:1)
+	at com.google.mlkit.common.sdkinternal.ModelResource.zzb(com.google.mlkit:common@@18.10.0:3)
+	at com.google.mlkit.common.sdkinternal.zzl.run(Unknown Source:4)
+	at com.google.mlkit.common.sdkinternal.zzt.run(com.google.mlkit:common@@18.10.0:2)
+	at com.google.mlkit.common.sdkinternal.MlKitThreadPool.zze(com.google.mlkit:common@@18.10.0:4)
+	at com.google.mlkit.common.sdkinternal.MlKitThreadPool.zzc(com.google.mlkit:common@@18.10.0:1)
+	at com.google.mlkit.common.sdkinternal.zzi.run(Unknown Source:2)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1154)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:652)
+	at com.google.mlkit.common.sdkinternal.MlKitThreadPool.zzd(com.google.mlkit:common@@18.10.0:2)
+	at com.google.mlkit.common.sdkinternal.zzk.run(Unknown Source:2)
+	at java.lang.Thread.run(Thread.java:1563)
+
+2026-06-16T19:38:08.438858Z Error: (CrashLogger) ========================================
+2026-06-16T19:38:12.353195Z Info: (StartupLogger) ========== APP STARTUP ==========
+2026-06-16T19:38:12.373276Z Info: (StartupLogger) Version: 1.4.1505 (1505)
+2026-06-16T19:38:12.373731Z Info: (StartupLogger) Build date: 2026-06-16 21:32:04
+2026-06-16T19:38:12.374088Z Info: (StartupLogger) =================================
+2026-06-16T19:38:12.38787Z Info: (StartupLogger) checkpoint: notifications init done
+2026-06-16T19:38:12.400989Z Info: (YouAuthFlowManager) Session restored for frodo.baggins.demo.rocks
+2026-06-16T19:38:12.405522Z Info: (AuthLifecycle) AuthCC: collector started
+2026-06-16T19:38:12.406269Z Info: (AuthLifecycle) AuthCC: onAuthStateChanged(Authenticated)
+2026-06-16T19:38:12.407113Z Info: (AuthLifecycle) AuthCC: SNAPSHOT[onAuthStateChanged:Authenticated] authState=Authenticated isConnecting=true isConnected=false wsClient=null dsmRunning=false driveStatuses={}
+2026-06-16T19:38:12.40798Z Info: (DriveSync) ensureMandatoryMounted begin (2 drives, driveSyncs.size=0)
+2026-06-16T19:38:12.413199Z Info: (DriveSync) mountDrive(9ff813af-f2d6-1e2f-9b9d-b189e72d1a11, Chat) registered (driveSyncs.size=0 -> 1, freshLogin=false, isRunning=false)
+2026-06-16T19:38:12.414857Z Info: (DriveSync) mountDrive(2612429d-1c3f-0372-82b8-d42fb2cc0499, Contacts) registered (driveSyncs.size=1 -> 2, freshLogin=false, isRunning=false)
+2026-06-16T19:38:12.415957Z Info: (DriveSync) ensureMandatoryMounted done (driveSyncs.size=2)
+2026-06-16T19:38:12.416635Z Info: (StartupLogger) checkpoint: onCreate end
+2026-06-16T19:38:12.416743Z Info: (DriveRegistry) bootstrap() begin
+2026-06-16T19:38:12.434554Z Info: (DriveRegistry) bootstrap local-DB returned 4 drive(s)
+2026-06-16T19:38:12.435362Z Info: (DriveRegistry) bootstrap() end (local, 4 drive(s))
+2026-06-16T19:38:12.44423Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:12.468753Z Info: (StartupLogger) checkpoint: activity onCreate start
+2026-06-16T19:38:12.469857Z Info: (AuthLifecycle) AuthCC: promoteToForeground() — flipped to foreground; auth not yet resolved, deferred work will run on the next Authenticated
+2026-06-16T19:38:12.474801Z Info: (StartupLogger) checkpoint: setContent
+2026-06-16T19:38:12.502248Z Debug: (LocationTrackUploader) Flush skipped: Location add-on not activated (drive not mounted)
+2026-06-16T19:38:12.662833Z Info: (StartupLogger) checkpoint: App() first composition
+2026-06-16T19:38:12.671546Z Info: (StartupLogger) checkpoint: App() Koin injections done
+2026-06-16T19:38:12.7233Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:12.724605Z Info: (AuthLifecycle) AuthCC: readable drive grants resolved (count=27)
+2026-06-16T19:38:12.725378Z Warn: (AuthLifecycle) AuthCC: skipping drive 'Vault' (f47ac10b-58cc-4372-a567-0e02b2c3d479) — app token has no read grant; not mounting/subscribing it (avoids server WS close + REST 403)
+2026-06-16T19:38:12.727918Z Info: (DriveSync) mountDrive(a85f8562-6c74-4947-896b-619812cafccc, Moments) registered (driveSyncs.size=2 -> 3, freshLogin=false, isRunning=false)
+2026-06-16T19:38:12.729956Z Info: (DriveSync) mountDrive(a44e7a26-51f4-4a26-ad12-5d7627b35d0e, Lists) registered (driveSyncs.size=3 -> 4, freshLogin=false, isRunning=false)
+2026-06-16T19:38:12.731334Z Info: (DriveSync) mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) registered (driveSyncs.size=4 -> 5, freshLogin=false, isRunning=false)
+2026-06-16T19:38:12.73233Z Info: (AuthLifecycle) AuthCC: SNAPSHOT[drives mounted] authState=Authenticated isConnecting=true isConnected=false wsClient=null dsmRunning=false driveStatuses={9ff813af-f2d6-1e2f-9b9d-b189e72d1a11:Initialized, 2612429d-1c3f-0372-82b8-d42fb2cc0499:Initialized, a85f8562-6c74-4947-896b-619812cafccc:Initialized, a44e7a26-51f4-4a26-ad12-5d7627b35d0e:Initialized, 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e:Initialized}
+2026-06-16T19:38:12.733035Z Info: (AuthLifecycle) AuthCC: connect() called (wsClient=null, extraDrives=4)
+2026-06-16T19:38:12.733459Z Warn: (AuthLifecycle) AuthCC: skipping drive 'Vault' (f47ac10b-58cc-4372-a567-0e02b2c3d479) — app token has no read grant; not mounting/subscribing it (avoids server WS close + REST 403)
+2026-06-16T19:38:12.736222Z Info: (WebSocket) WS[1] ctor (drives=5)
+2026-06-16T19:38:12.739581Z Info: (AuthLifecycle) AuthCC: WS[1] created, start() invoked
+2026-06-16T19:38:12.740189Z Info: (WebSocket) WS[1] start() (jobActive=false)
+2026-06-16T19:38:12.741207Z Info: (WebSocket) WS[1] connection loop dispatched
+2026-06-16T19:38:12.742422Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/cdn/sitedata.json
+2026-06-16T19:38:12.74556Z Info: (WebSocket) WS[1] Connecting to WebSocket at wss://frodo.baggins.demo.rocks/api/v2/notify/ws-token
+2026-06-16T19:38:12.747308Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:12.919995Z Info: (AppLoadingViewModel) AuthState: Authenticated
+2026-06-16T19:38:13.059523Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:38:13.060673Z Debug: (ConnectionRequestService) hydrated cache incoming=0 outgoing=1
+2026-06-16T19:38:13.064106Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:13.120951Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:13.149443Z Info: (WebSocket) WS[1] negotiated Sec-WebSocket-Protocol=odin.notify.v1
+2026-06-16T19:38:13.154623Z Debug: Sent WebSocket command: establishConnectionRequest
+2026-06-16T19:38:13.173518Z Debug: (ConnectionRequestService) refresh loaded incoming=0 outgoing=1 outgoingRecipients=[tt.jankins.demo.rocks]
+2026-06-16T19:38:13.263871Z Info: (ConvListPerf) main list pipeline: launch body entered at 0ms from vmInit
+2026-06-16T19:38:13.265171Z Debug: ConversationStream: start() — loading full conversation list from DB
+2026-06-16T19:38:13.267257Z Info: (ConvListPerf) main list pipeline: reaching combine.collect setup at 3ms from vmInit
+2026-06-16T19:38:13.269119Z Info: (ConvListPerf) combineSource firstEmit=ownerSession(nonNull) at 5ms from vmInit
+2026-06-16T19:38:13.27289Z Debug: ConnectionService hydrated 18 cached rows
+2026-06-16T19:38:13.27284Z Info: (ConvListPerf) main list pipeline: combine first eval at 8ms from vmInit ownerSession=true credentials=true effectiveSession=true dataReady=false items=0
+2026-06-16T19:38:13.273831Z Debug: Fetching connected and blocked connections in parallel...
+2026-06-16T19:38:13.277743Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/blocked
+2026-06-16T19:38:13.277946Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/connected
+2026-06-16T19:38:13.278082Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/circles/with-members
+2026-06-16T19:38:13.308906Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:13.39466Z Info: (WebSocket) WS[1] handshake successful
+2026-06-16T19:38:13.395475Z Info: (AuthLifecycle) AuthCC: onConnected fired for WS[1]
+2026-06-16T19:38:13.396942Z Info: (AuthLifecycle) AuthCC: SNAPSHOT[onConnected] authState=Authenticated isConnecting=true isConnected=true wsClient=WS[1] dsmRunning=false driveStatuses={9ff813af-f2d6-1e2f-9b9d-b189e72d1a11:Initialized, 2612429d-1c3f-0372-82b8-d42fb2cc0499:Initialized, a85f8562-6c74-4947-896b-619812cafccc:Initialized, a44e7a26-51f4-4a26-ad12-5d7627b35d0e:Initialized, 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e:Initialized}
+2026-06-16T19:38:13.398619Z Info: (DriveSync) start() (isRunning before=false, driveSyncs.size=5, identity=frodo.baggins.demo.rocks)
+2026-06-16T19:38:13.400178Z Warn: (DatabaseManager) SlowDbRead queueWait=199.649us sql=6.355443ms mapper=124.215260ms sqlPreview=SELECT DISTINCT rowId, jsonHeader FROM driveMainIndex  WHERE fileState = 1 AND driveMainIndex.identityId = x'7b1be23b48b
+2026-06-16T19:38:13.40104Z Info: (DriveSync) ensureMandatoryMounted begin (2 drives, driveSyncs.size=5)
+2026-06-16T19:38:13.401634Z Warn: (DriveSync) mountDrive(9ff813af-f2d6-1e2f-9b9d-b189e72d1a11, Chat) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:38:13.402256Z Warn: (DriveSync) mountDrive(2612429d-1c3f-0372-82b8-d42fb2cc0499, Contacts) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:38:13.40297Z Info: (DriveSync) ensureMandatoryMounted done (driveSyncs.size=5)
+2026-06-16T19:38:13.403488Z Info: (DriveSync) start() done (isRunning=true, driveSyncs.size=5)
+2026-06-16T19:38:13.405238Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:13.408321Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:13.411014Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:13.412624Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:13.414948Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:13.417583Z Debug: Sent WebSocket command: processInbox
+2026-06-16T19:38:13.419656Z Info: Synchronizing drive 2612429d-1c3f-0372-82b8-d42fb2cc0499
+2026-06-16T19:38:13.419775Z Info: Synchronizing drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:38:13.420898Z Info: Synchronizing drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:13.430337Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/query-batch
+2026-06-16T19:38:13.432039Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e/files/query-batch
+2026-06-16T19:38:13.43315Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/2612429d-1c3f-0372-82b8-d42fb2cc0499/files/query-batch
+2026-06-16T19:38:13.439623Z Info: (DriveSync) syncState Idle -> Syncing
+2026-06-16T19:38:13.444935Z Info: Synchronizing drive a85f8562-6c74-4947-896b-619812cafccc
+2026-06-16T19:38:13.449049Z Info: Synchronizing drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e
+2026-06-16T19:38:13.452532Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/a85f8562-6c74-4947-896b-619812cafccc/files/query-batch
+2026-06-16T19:38:13.453953Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/a44e7a26-51f4-4a26-ad12-5d7627b35d0e/files/query-batch
+2026-06-16T19:38:13.442814Z Warn: ConnectionService: getCirclesWithMembers failed
+id.homebase.api.client.ForbiddenException: Forbidden
+	at id.homebase.api.client.OdinApiProviderBase.throwForFailure(OdinApiProviderBase.kt:479)
+	at id.homebase.api.client.connections.ConnectionNetworkProvider.getCirclesWithMembers(ConnectionNetworkProvider.kt:121)
+	at id.homebase.api.client.connections.ConnectionNetworkProvider$getCirclesWithMembers$1.invokeSuspend(Unknown Source:15)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:829)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+2026-06-16T19:38:13.47468Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/connections/requests
+2026-06-16T19:38:13.479381Z Info: (ConvListPerf) loadBasicConversations end-to-end=208ms (query=185ms map=23ms) items=60
+2026-06-16T19:38:13.488512Z Debug: (ConversationQueries) Fetched rows=60 in 8ms
+2026-06-16T19:38:13.52891Z Info: Received 0 records from QueryBatch() on Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e
+2026-06-16T19:38:13.535256Z Debug: Drive 3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e synchronized with 0 records read.
+2026-06-16T19:38:13.540528Z Info: Received 0 records from QueryBatch() on Drive 2612429d-1c3f-0372-82b8-d42fb2cc0499
+2026-06-16T19:38:13.541262Z Debug: Drive 2612429d-1c3f-0372-82b8-d42fb2cc0499 synchronized with 0 records read.
+2026-06-16T19:38:13.54298Z Info: Received 0 records from QueryBatch() on Drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e
+2026-06-16T19:38:13.543835Z Debug: Drive a44e7a26-51f4-4a26-ad12-5d7627b35d0e synchronized with 0 records read.
+2026-06-16T19:38:13.546384Z Info: Received 0 records from QueryBatch() on Drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11
+2026-06-16T19:38:13.548855Z Info: Received 0 records from QueryBatch() on Drive a85f8562-6c74-4947-896b-619812cafccc
+2026-06-16T19:38:13.549567Z Warn: (EventBus) EventBus.emit(Stopped) BUFFER FULL — suspending (subscribers=37)
+2026-06-16T19:38:13.552832Z Debug: Drive a85f8562-6c74-4947-896b-619812cafccc synchronized with 0 records read.
+2026-06-16T19:38:13.563574Z Debug: (ConnectionRequestService) refresh loaded incoming=0 outgoing=1 outgoingRecipients=[tt.jankins.demo.rocks]
+2026-06-16T19:38:13.589278Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/pub/image
+2026-06-16T19:38:13.634473Z Debug: (ConversationQueries) Completed mapping 60 rows in 154ms
+2026-06-16T19:38:13.63972Z Debug: Message (uid: e0109f7c-32ba-6f1b-944c-4de79b426ee3) with no version and not edited has null userDate. using authorSpecificDate. See file: https://frodo.baggins.demo.rocks/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/e0109f7c-32ba-6f1b-944c-4de79b426ee3
+2026-06-16T19:38:13.640735Z Debug: Loaded connections 18 connected, 0 blocked
+2026-06-16T19:38:13.644959Z Info: (ConvListPerf) enrichWithLastMessages end-to-end=165ms (query=156ms map=9ms) messages=43/60
+2026-06-16T19:38:13.651477Z Info: (ConvListPerf) enrichWithAdmins end-to-end=6ms hits=1/27
+2026-06-16T19:38:13.65666Z Debug: ConversationStream: unreadSync convo=470ba88a-2e41-4a84-97dd-11fe5dbe5936 0->1
+2026-06-16T19:38:13.657218Z Info: (ConvListPerf) enrichAllConversationsWithUnreadCounts=6ms trigger=ColdLoad mirrored=0 changedRows=1 totalRows=60
+2026-06-16T19:38:13.690078Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:13.695386Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=0, allConnected=false
+2026-06-16T19:38:13.702559Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=216816365)
+2026-06-16T19:38:13.703336Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=44006768)
+2026-06-16T19:38:13.729655Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:38:13.732608Z Info: (ConvListPerf) combineSource firstEmit=connectionStatus(known) at 468ms from vmInit
+2026-06-16T19:38:13.733315Z Debug: (ConversationEnricher) 1:1 convo=7e433397-c087-47f7-99a8-7a586cdeedd8 other=biggus.dickus.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=biggus.dickus.demo.rocks)
+2026-06-16T19:38:13.733689Z Debug: (ConversationEnricher) 1:1 convo=5643abc7-29e0-42ca-b52a-5a2079e172d6 other=gandalf.grey.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=gandalf.grey.demo.rocks)
+2026-06-16T19:38:13.734001Z Debug: (ConversationEnricher) 1:1 convo=0a4a9b4a-839b-3efa-06d6-31aafaaeb91d other=homebase.carlsen.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=homebase.carlsen.dev)
+2026-06-16T19:38:13.734414Z Debug: (ConversationEnricher) 1:1 convo=bfe81956-7f24-4ede-a8fa-aa22f785efcb other=ding.dong.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=ding.dong.demo.rocks)
+2026-06-16T19:38:13.734796Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:13.735167Z Debug: (ConversationEnricher) 1:1 convo=c4f060fd-83d4-4b68-8147-c45d6050d78f other=toddmitchell.me connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=toddmitchell.me)
+2026-06-16T19:38:13.735565Z Debug: (ConversationEnricher) 1:1 convo=d1e69fd6-adc8-46dd-a468-9ac509493ec0 other=bishwajeetparhi.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=bishwajeetparhi.dev)
+2026-06-16T19:38:13.735915Z Debug: (ConversationEnricher) 1:1 convo=470ba88a-2e41-4a84-97dd-11fe5dbe5936 other=michael.seifert.page connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=michael.seifert.page)
+2026-06-16T19:38:13.736428Z Debug: (ConversationEnricher) 1:1 convo=44df02c6-c40f-4f30-b5bc-220b8d731196 other=samwise.gamgee.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=samwise.gamgee.demo.rocks)
+2026-06-16T19:38:13.736993Z Debug: (ConversationEnricher) 1:1 convo=0a4a9b4a-839b-4efa-86d6-31aafaaeb91d other=homebase.carlsen.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=homebase.carlsen.dev)
+2026-06-16T19:38:13.737313Z Debug: (ConversationEnricher) 1:1 convo=2d287a25-a2c4-49f1-90cd-ad07bba90157 other=peter.parker.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=peter.parker.demo.rocks)
+2026-06-16T19:38:13.737974Z Debug: (ConversationEnricher) 1:1 convo=c5a7f49a-b4cd-4446-b059-ac0e16832c79 other=app.test.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=app.test.demo.rocks)
+2026-06-16T19:38:13.73831Z Debug: (ConversationEnricher) 1:1 convo=5d184fc0-3288-4881-8050-6b66ffb5e928 other=b.hobbit.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=b.hobbit.demo.rocks)
+2026-06-16T19:38:13.738875Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:38:13.742114Z Debug: (ConversationEnricher) 1:1 convo=7e433397-c087-47f7-99a8-7a586cdeedd8 other=biggus.dickus.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=biggus.dickus.demo.rocks)
+2026-06-16T19:38:13.742686Z Debug: (ConversationEnricher) 1:1 convo=5643abc7-29e0-42ca-b52a-5a2079e172d6 other=gandalf.grey.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=gandalf.grey.demo.rocks)
+2026-06-16T19:38:13.743274Z Debug: (ConversationEnricher) 1:1 convo=0a4a9b4a-839b-3efa-06d6-31aafaaeb91d other=homebase.carlsen.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=homebase.carlsen.dev)
+2026-06-16T19:38:13.743863Z Debug: (ConversationEnricher) 1:1 convo=bfe81956-7f24-4ede-a8fa-aa22f785efcb other=ding.dong.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=ding.dong.demo.rocks)
+2026-06-16T19:38:13.744563Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:13.745257Z Debug: (ConversationEnricher) 1:1 convo=c4f060fd-83d4-4b68-8147-c45d6050d78f other=toddmitchell.me connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=toddmitchell.me)
+2026-06-16T19:38:13.745854Z Debug: (ConversationEnricher) 1:1 convo=d1e69fd6-adc8-46dd-a468-9ac509493ec0 other=bishwajeetparhi.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=bishwajeetparhi.dev)
+2026-06-16T19:38:13.746425Z Debug: (ConversationEnricher) 1:1 convo=470ba88a-2e41-4a84-97dd-11fe5dbe5936 other=michael.seifert.page connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=michael.seifert.page)
+2026-06-16T19:38:13.747036Z Debug: (ConversationEnricher) 1:1 convo=44df02c6-c40f-4f30-b5bc-220b8d731196 other=samwise.gamgee.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=samwise.gamgee.demo.rocks)
+2026-06-16T19:38:13.747718Z Debug: (ConversationEnricher) 1:1 convo=0a4a9b4a-839b-4efa-86d6-31aafaaeb91d other=homebase.carlsen.dev connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=homebase.carlsen.dev)
+2026-06-16T19:38:13.748236Z Debug: (ConversationEnricher) 1:1 convo=2d287a25-a2c4-49f1-90cd-ad07bba90157 other=peter.parker.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=peter.parker.demo.rocks)
+2026-06-16T19:38:13.748929Z Debug: (ConversationEnricher) 1:1 convo=c5a7f49a-b4cd-4446-b059-ac0e16832c79 other=app.test.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=app.test.demo.rocks)
+2026-06-16T19:38:13.749426Z Debug: (ConversationEnricher) 1:1 convo=5d184fc0-3288-4881-8050-6b66ffb5e928 other=b.hobbit.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> Unknown(otherOdinId=b.hobbit.demo.rocks)
+2026-06-16T19:38:13.751234Z Debug: (ConversationEnricher) 1:1 convo=c30ab702-e044-4eb8-94ff-277757e5f5fe other=mr.t.demo.rocks connectionStatus=null inIncoming=false inOutgoing=false incomingSet=[] outgoingSet=[tt.jankins.demo.rocks] -> NotConnected(otherOdinId=mr.t.demo.rocks)
+2026-06-16T19:38:13.757881Z Debug: ConversationStream: Stopped(totalCount=0)
+2026-06-16T19:38:13.757936Z Warn: (EventBus) EventBus.emit(Stopped) unblocked after 207.453505ms (subscribers=37)
+2026-06-16T19:38:13.758027Z Info: (DriveSync) syncState Syncing -> Completed
+2026-06-16T19:38:13.75866Z Debug: ChatMessageStream: Stopped(totalCount=0, result=Completed)
+2026-06-16T19:38:13.758662Z Debug: Drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11 synchronized with 0 records read.
+2026-06-16T19:38:13.759001Z Warn: (EventBus) EventBus.emit(SyncAllStopped) BUFFER FULL — suspending (subscribers=37)
+2026-06-16T19:38:13.759936Z Info: (AuthLifecycle) AuthCC: onConnected post-sync done
+2026-06-16T19:38:13.760658Z Info: (AuthLifecycle) AuthCC: onConnected → clearCheckout() + setOnline(true) + send()
+2026-06-16T19:38:13.76108Z Info: OutboxSync: clearCheckout() ENTER — activeWorkers=0 (waiting for idle, timeout=10000ms)
+2026-06-16T19:38:13.761716Z Info: (ConvListPerf) combineSource firstEmit=contacts(nonEmpty) at 497ms from vmInit
+2026-06-16T19:38:13.762371Z Warn: (EventBus) EventBus.emit(SyncAllStopped) unblocked after 2.227971ms (subscribers=37)
+2026-06-16T19:38:13.762539Z Info: (ConvListPerf) combineSource firstEmit=conversations(dataReady) at 498ms from vmInit
+2026-06-16T19:38:13.763245Z Info: OutboxSync: clearCheckout() DONE — checked 0 row(s) back in (waited 2ms)
+2026-06-16T19:38:13.76388Z Info: (ConvoAudit) ═════ ensureNoteToSelfExists START  ═════
+2026-06-16T19:38:13.765437Z Info: Popping Outbox
+2026-06-16T19:38:13.766871Z Info: No more items in outbox
+2026-06-16T19:38:13.767768Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:38:13.839809Z Info: (HttpIO) → GET samwise.gamgee.demo.rocks/pub/image
+2026-06-16T19:38:13.89988Z Info: (HttpIO) → GET toddmitchell.me/pub/image
+2026-06-16T19:38:13.929239Z Info: (HttpIO) → GET michael.seifert.page/pub/image
+2026-06-16T19:38:13.950998Z Info: (HttpIO) → GET b.hobbit.demo.rocks/pub/image
+2026-06-16T19:38:13.969069Z Info: (HttpIO) → GET app.test.demo.rocks/pub/image
+2026-06-16T19:38:13.986919Z Info: (HttpIO) → GET bishwajeetparhi.dev/pub/image
+2026-06-16T19:38:14.097108Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:14.099784Z Info: (ConvoAudit) [ensureNoteToSelfExists] PRE existing=true state=Active
+2026-06-16T19:38:14.10013Z Info: (ConvoAudit) DIAGNOSIS: ensureNoteToSelfExists verdict=OK  no-op (already exists, state=Active)
+2026-06-16T19:38:14.100407Z Info: (ConvoAudit) ═════ ensureNoteToSelfExists END ═════
+2026-06-16T19:38:14.146611Z Info: (ConversationListViewModel) conversationStream emit: dataReady=true enrichedCount=60
+2026-06-16T19:38:14.169864Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/3d5ccb19-f0bc-3e00-97cb-bc200d4f2f23/payload/convo_img/thumb
+2026-06-16T19:38:15.681628Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/69c2c919-6019-f600-df61-5df5fb0c18bb/payload/convo_img/thumb
+2026-06-16T19:38:16.666198Z Debug: (MomentsFeedViewModel) uiState moments updated: count=0 mode=Timeline newest=null sender=self
+2026-06-16T19:38:16.740232Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=258252279)
+2026-06-16T19:38:16.839939Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:16.895234Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:17.04251Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/bc52e419-e051-6200-6389-3de0a7e5d21b/payload/convo_img/thumb
+2026-06-16T19:38:17.682742Z Info: (ShareShortcutPublisher) Published 8 share shortcuts
+2026-06-16T19:38:21.067598Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:38:21.302062Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:38:21.304305Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:38:24.555433Z Debug: (MomentsPostSenderService) postMomentAsync: enqueueing moment=b57def82-b983-4633-8e2e-b2fde3b51fe9 attachments=1 recipients=0 source=null
+2026-06-16T19:38:24.729116Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=258252279)
+2026-06-16T19:38:25.082341Z Debug: (ImageFormatDetector) Detected JPEG marker: EXIF
+2026-06-16T19:38:25.204796Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:38:25.258784Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:38:25.278586Z Debug: (MomentsPostSenderService) finalizeMomentSend: outbox enqueued moment=b57def82-b983-4633-8e2e-b2fde3b51fe9
+2026-06-16T19:38:25.279739Z Info: Popping Outbox
+2026-06-16T19:38:25.288721Z Info: Popping Outbox
+2026-06-16T19:38:25.290011Z Info: OutboxSync: sending uniqueId=b57def82-b983-4633-8e2e-b2fde3b51fe9 uploadType=UploadNewFile(1) driveId=a85f8562-6c74-4947-896b-619812cafccc attempt=1
+2026-06-16T19:38:25.293203Z Info: No more items in outbox
+2026-06-16T19:38:25.294726Z Debug: (MomentsPostSenderService) finalizeMomentSend: optimistic update complete moment=b57def82-b983-4633-8e2e-b2fde3b51fe9
+2026-06-16T19:38:25.295378Z Debug: (PayloadCacheSeeder) seed: driveId=a85f8562-6c74-4947-896b-619812cafccc fileId=21e0312f-ac4c-4ca1-b351-b406f509a434 payloads=[mmt_0000] thumbs=[mmt_0000:180x320, mmt_0000:360x640, mmt_0000:608x1080, mmt_0000:900x1600]
+2026-06-16T19:38:25.380966Z Debug: DriveOutboxUploader uploadNewFile: uniqueId=b57def82-b983-4633-8e2e-b2fde3b51fe9 fileType=7050 driveId=a85f8562-6c74-4947-896b-619812cafccc
+2026-06-16T19:38:25.38928Z Info: (DriveUploadProvider) drive upload url: [https://frodo.baggins.demo.rocks/api/v2/drives/a85f8562-6c74-4947-896b-619812cafccc/files]
+2026-06-16T19:38:25.390638Z Info: (HttpIO) → POST frodo.baggins.demo.rocks/api/v2/drives/a85f8562-6c74-4947-896b-619812cafccc/files
+2026-06-16T19:38:25.409224Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.413337Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 3.671026ms (subscribers=45)
+2026-06-16T19:38:25.414079Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.415677Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.095332ms (subscribers=45)
+2026-06-16T19:38:25.416433Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.417202Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 256.006us (subscribers=45)
+2026-06-16T19:38:25.417952Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.419574Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.127395ms (subscribers=45)
+2026-06-16T19:38:25.42022Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.421198Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 484.107us (subscribers=45)
+2026-06-16T19:38:25.421896Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.42324Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 875.692us (subscribers=45)
+2026-06-16T19:38:25.423893Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.425057Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 662.329us (subscribers=45)
+2026-06-16T19:38:25.425772Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.426962Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 750.717us (subscribers=45)
+2026-06-16T19:38:25.42759Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.428829Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 802.093us (subscribers=45)
+2026-06-16T19:38:25.429466Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.431026Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.057590ms (subscribers=45)
+2026-06-16T19:38:25.431833Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.433106Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 821.378us (subscribers=45)
+2026-06-16T19:38:25.433764Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.435233Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 948.232us (subscribers=45)
+2026-06-16T19:38:25.435925Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.437271Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 951.122us (subscribers=45)
+2026-06-16T19:38:25.437752Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.439625Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.331963ms (subscribers=45)
+2026-06-16T19:38:25.440082Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.441968Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.528431ms (subscribers=45)
+2026-06-16T19:38:25.44271Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.44415Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 921.635us (subscribers=45)
+2026-06-16T19:38:25.444822Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.446486Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.202563ms (subscribers=45)
+2026-06-16T19:38:25.447208Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.448586Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 948.349us (subscribers=45)
+2026-06-16T19:38:25.449069Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.450567Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.099579ms (subscribers=45)
+2026-06-16T19:38:25.451233Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.452761Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 905.863us (subscribers=45)
+2026-06-16T19:38:25.453356Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.454458Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 622.127us (subscribers=45)
+2026-06-16T19:38:25.455178Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.456671Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 954.241us (subscribers=45)
+2026-06-16T19:38:25.457696Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.458603Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 403.298us (subscribers=45)
+2026-06-16T19:38:25.459317Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.46077Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 945.386us (subscribers=45)
+2026-06-16T19:38:25.461449Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.462973Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 950.415us (subscribers=45)
+2026-06-16T19:38:25.463578Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.465038Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.028539ms (subscribers=45)
+2026-06-16T19:38:25.465704Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.467705Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.126977ms (subscribers=45)
+2026-06-16T19:38:25.468451Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.469599Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 591.303us (subscribers=45)
+2026-06-16T19:38:25.470019Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.471916Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.598206ms (subscribers=45)
+2026-06-16T19:38:25.472328Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.47347Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 779.924us (subscribers=45)
+2026-06-16T19:38:25.474189Z Warn: (EventBus) EventBus.emit(ItemProgress) BUFFER FULL — suspending (subscribers=45)
+2026-06-16T19:38:25.476114Z Warn: (EventBus) EventBus.emit(ItemProgress) unblocked after 1.423530ms (subscribers=45)
+2026-06-16T19:38:37.181139Z Debug: (DriveUploadProvider) Attempting to delete temp payload file /data/user/0/id.homebase.feed.debug/cache/enc6603595825736591977.encrypted
+2026-06-16T19:38:37.182293Z Debug: (DriveUploadProvider) Deleted temp payload file /data/user/0/id.homebase.feed.debug/cache/enc6603595825736591977.encrypted
+2026-06-16T19:38:37.18357Z Debug: DriveOutboxUploader uploadNewFile: success uniqueId=b57def82-b983-4633-8e2e-b2fde3b51fe9 fileId=131fed19-c012-2400-e9dd-f7f16b48dcd3 (no recipients)
+2026-06-16T19:38:37.217971Z Debug: DriveOutboxUploader rekeyCacheAfterCreate: moved cache entries uniqueId=b57def82-b983-4633-8e2e-b2fde3b51fe9 old=21e0312f-ac4c-4ca1-b351-b406f509a434 new=131fed19-c012-2400-e9dd-f7f16b48dcd3 receipts=1
+2026-06-16T19:38:37.224033Z Info: OutboxSync: completed uniqueId=b57def82-b983-4633-8e2e-b2fde3b51fe9 uploadType=UploadNewFile(1)
+2026-06-16T19:38:37.226646Z Info: Popping Outbox
+2026-06-16T19:38:37.227902Z Info: No more items in outbox
+2026-06-16T19:38:37.389137Z Info: (WSPush) WSPush: drainOnce drive=a85f8562-6c74-4947-896b-619812cafccc rows=1 wrote=1 took=4.188499ms (emitting BatchReceived)
+2026-06-16T19:39:20.940513Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=216816365)
+2026-06-16T19:39:20.941503Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=44006768)
+2026-06-16T19:39:23.224498Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:23.243572Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=185540061)
+2026-06-16T19:39:23.307593Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:23.332208Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=5, allConnected=false
+2026-06-16T19:39:23.400563Z Info: (ExtendPermissionDialog) uiState observed: ShowDialog (vm=185540061)
+2026-06-16T19:39:23.401227Z Info: (ExtendPermissionDialog) rendering AlertDialog for Homebase - Chat
+2026-06-16T19:39:23.42133Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=5, allConnected=false
+2026-06-16T19:39:25.191458Z Info: (ExtendPermissionDialog) uiState observed: Dismissed (vm=185540061)
+2026-06-16T19:39:27.158876Z Debug: (LocationTrackUploader) Flush skipped: Location add-on not activated (drive not mounted)
+2026-06-16T19:39:27.161837Z Info: (MainActivity) Permission-extend deep link (status=null canceled=false)
+2026-06-16T19:39:27.163242Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.163702Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.164084Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.164461Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.164854Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.16535Z Info: (ExtendPermissionViewModel) Permissions-extension return — rechecking
+2026-06-16T19:39:27.176542Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.181185Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.187783Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.190994Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.194111Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.198503Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.20561Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:27.209222Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:39:27.259995Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=185540061)
+2026-06-16T19:39:27.287911Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:27.293817Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:27.296194Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:39:27.307078Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=0, allConnected=false
+2026-06-16T19:39:27.315868Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:27.318959Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/drives/9ff813af-f2d6-1e2f-9b9d-b189e72d1a11/files/by-uid/00000000-0000-0000-0000-000000d71700/header
+2026-06-16T19:39:27.816895Z Info: (ExtendPermissionViewModel) Missing permissions detected: drives=1, permissions=0, allConnected=false
+2026-06-16T19:39:27.822639Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:27.888648Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:27.889982Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:39:27.930925Z Debug: (DriveRegistry) updateRegistry: no-op (list unchanged)
+2026-06-16T19:39:27.931743Z Warn: (DriveSync) mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) — already mounted, no-op (driveSyncs.size=5)
+2026-06-16T19:39:27.935938Z Warn: (AuthLifecycle) AuthCC: mountDrive(3b9c5f2e-7a41-4d6b-9e0c-8f1a2b3c4d5e, Stickers) — already mounted, skipping WS-refresh trigger
+2026-06-16T19:39:27.940022Z Debug: (StickerStream) loadAll: 0 saved sticker(s)
+2026-06-16T19:39:32.394179Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:32.398456Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/verify-token
+2026-06-16T19:39:32.445712Z Error: Error checking for updates: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+com.google.android.play.core.install.InstallException: -6: Install Error(-6): The download/install is not allowed, due to the current device state (e.g. low battery, low disk space, ...). (https://developer.android.com/reference/com/google/android/play/core/install/model/InstallErrorCode#ERROR_INSTALL_NOT_ALLOWED)
+	at com.google.android.play.core.appupdate.zzq.zzc(com.google.android.play:app-update@@2.1.0:3)
+	at com.google.android.play.core.appupdate.internal.zzg.zza(com.google.android.play:app-update@@2.1.0:6)
+	at com.google.android.play.core.appupdate.internal.zzb.onTransact(com.google.android.play:app-update@@2.1.0:3)
+	at android.os.Binder.execTransactInternal(Binder.java:1478)
+	at android.os.Binder.execTransact(Binder.java:1418)
+
+2026-06-16T19:39:32.456398Z Debug: (ExtendPermissionViewModel) All permissions are granted
+2026-06-16T19:39:32.4592Z Debug: (PendingUpgradeManager) onUpgradeCheckResult(status=NONE)
+2026-06-16T19:39:34.384165Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=216816365)
+2026-06-16T19:39:34.385184Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=44006768)
+2026-06-16T19:39:35.115478Z Info: (ExtendPermissionDialog) uiState observed: Idle (vm=258252279)
+2026-06-16T19:39:35.190009Z Info: (HttpIO) → GET frodo.baggins.demo.rocks/api/v2/auth/context
+2026-06-16T19:39:35.243292Z Debug: (ExtendPermissionViewModel) All permissions are granted

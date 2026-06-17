@@ -12,6 +12,7 @@ import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_remove_failed
@@ -153,6 +154,7 @@ internal class StickerHandler(
             previewThumbnail = stickerPayload?.previewThumbnail?.toEmbeddedThumb()
                 ?: message.previewThumbnail,
             requestedSize = ImageSize.THUMB_MEDIUM,
+            availableThumbSizes = thumbSizesFrom(stickerPayload?.thumbnails),
             lastModified = stickerPayload?.lastModified,
             isEncrypted = true,
             payloadContentType = stickerPayload?.contentType,

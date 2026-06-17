@@ -51,6 +51,7 @@ class ChatMessageSenderService(
     private val optimisticWriter: OptimisticWriter,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) : id.homebase.chat.services.convo.StatusMessageSender {
     companion object {
@@ -332,17 +333,7 @@ class ChatMessageSenderService(
             PayloadDescriptor(
                 key = payload.key,
                 contentType = payload.contentType.ifEmpty { null },
-                thumbnails = encryptedBundle.thumbnails
-                    .filter { it.key == payload.key }
-                    .map {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = null,
-                        )
-                    }
-                    .ifEmpty { null },
+                thumbnails = encryptedBundle.thumbnailDescriptorsFor(payload.key),
                 iv = payload.iv?.let { Base64.encode(it) },
                 descriptorContent = payload.descriptorContent,
                 previewThumbnail = payload.previewThumbnail?.let {
@@ -356,16 +347,22 @@ class ChatMessageSenderService(
             )
         }.ifEmpty { null }
         try {
-            val optimisticFileId = optimisticWriter.writeNewFile(
+            // Seed BEFORE the write: writeNewFile triggers the bubble's recompose →
+            // thumbnail read, so the cache must already be populated under the
+            // optimistic fileId or that read races the seed, misses, and 404s
+            // (non-retriable) → blur. Pre-mint the id so we can seed first.
+            val optimisticFileId = Uuid.random()
+            payloadCacheSeeder.seed(chatDrive, optimisticFileId, encryptedBundle)
+            optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = unecryptedMetadata,
                 originalRecipientCount = recipients.size,
                 fileSystemType = FileSystemType.Standard,
                 payloadDescriptors = payloadDescriptors,
+                fileId = optimisticFileId,
             )
             Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
-            seedPayloadCache(optimisticFileId, encryptedBundle)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "sendMessageInternal: optimistic write failed (non-fatal) message=$messageUniqueId" }
         }
@@ -386,45 +383,6 @@ class ChatMessageSenderService(
         }
 
         return SendMessageResult(uniqueId = messageUniqueId)
-    }
-
-    /**
-     * Seed the encrypted payload/thumbnail disk cache with the bytes that just
-     * went into the outbox, keyed under the optimistic fileId. The outbox temp
-     * files are deleted when a permanently-failed row is dropped, so this cache
-     * copy is what makes a failed message's media (and overflow text, which also
-     * rides as a payload) recoverable by [resendMessage]. Best-effort: the cache
-     * is LRU-bounded and a miss only degrades retry to [ResendOutcome.UnrecoverableMedia].
-     */
-    private suspend fun seedPayloadCache(fileId: Uuid, encryptedBundle: PayloadBundle) {
-        for (payload in encryptedBundle.payloads) {
-            try {
-                driveFileProvider.cachePayloadBytesEncrypted(
-                    driveId = chatDrive,
-                    fileId = fileId,
-                    key = payload.key,
-                    bytes = fileOperationsProvider.readFileBytes(payload.filePath),
-                    contentType = payload.contentType,
-                )
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: payload seed failed (non-fatal) key=${payload.key} fileId=$fileId" }
-            }
-        }
-        for (thumb in encryptedBundle.thumbnails) {
-            try {
-                driveFileProvider.cacheThumbBytesEncrypted(
-                    driveId = chatDrive,
-                    fileId = fileId,
-                    payloadKey = thumb.key,
-                    width = thumb.pixelWidth,
-                    height = thumb.pixelHeight,
-                    bytes = thumb.thumbnailBytes,
-                    contentType = thumb.contentType,
-                )
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: thumb seed failed (non-fatal) key=${thumb.key} ${thumb.pixelWidth}x${thumb.pixelHeight} fileId=$fileId" }
-            }
-        }
     }
 
     suspend fun updateMessage(
@@ -599,7 +557,7 @@ class ChatMessageSenderService(
      * 1. **Server absent** — the original create never landed: re-enqueue an
      *    [UploadFileRequest], reusing the file's original [KeyHeader] so the
      *    recovered pre-encrypted payloads (seeded into the payload cache at
-     *    send time by [seedPayloadCache]) stay decryptable. If any media
+     *    send time by [PayloadCacheSeeder]) stay decryptable. If any media
      *    payload's bytes are gone (cache evicted), refuses with
      *    [ResendOutcome.UnrecoverableMedia] rather than silently sending a
      *    text-only message.

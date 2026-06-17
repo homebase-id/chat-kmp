@@ -21,6 +21,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.PayloadBundle
+import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -56,6 +58,7 @@ class StickerService(
     private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
@@ -172,6 +175,9 @@ class StickerService(
                 PayloadDescriptor(
                     key = p.key,
                     contentType = p.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the tray tile requests a native size
+                    // (availableThumbSizes) and hits the seed below during upload.
+                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(p.key),
                     iv = p.iv?.let { Base64.encode(it) },
                     descriptorContent = p.descriptorContent,
                     previewThumbnail = p.previewThumbnail?.let {
@@ -201,7 +207,13 @@ class StickerService(
             // [OptimisticWriter] (and re-emitted by DriveSync); the in-memory optimistic
             // row keys on uniqueId, so [StickerStream.upsertSticker] swaps in the
             // server-confirmed SavedSticker (correct fileId) when it lands.
+            // Pre-mint the optimistic fileId so the tray tile, the seeded cache, and
+            // rekeyCacheAfterCreate all key on the same id — and so we can seed BEFORE
+            // the write (which triggers the tray render → thumbnail read): otherwise
+            // that read races the seed, misses, and 404s (non-retriable) → blur.
+            val optimisticFileId = Uuid.random()
             try {
+                payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
                 optimisticWriter.writeNewFile(
                     driveId = driveId,
                     keyHeader = keyHeader,
@@ -209,6 +221,7 @@ class StickerService(
                     originalRecipientCount = 0,
                     fileSystemType = FileSystemType.Standard,
                     payloadDescriptors = payloadDescriptors,
+                    fileId = optimisticFileId,
                 )
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for sticker $uniqueId" }
@@ -216,9 +229,9 @@ class StickerService(
 
             stickerStream.insertOptimistic(
                 SavedSticker(
-                    // Placeholder fileId for the pending row; the confirmed row (with the
-                    // real fileId) replaces it via the stream's uniqueId-keyed upsert.
-                    fileId = uniqueId,
+                    // Pending-row fileId; the confirmed row (with the server fileId)
+                    // replaces it via the stream's uniqueId-keyed upsert.
+                    fileId = optimisticFileId,
                     uniqueId = uniqueId,
                     driveId = driveId,
                     payloadKey = key,
