@@ -66,8 +66,9 @@ import org.koin.compose.koinInject
  * multiple-choice: independent toggle). Closed polls are read-only with the
  * viewer's own picks shown as trailing checks.
  *
- * Tap-to-detail (Task 6) is scaffolded: the footer button sets [showDetail] =
- * true; the actual [PollDetailDialog] call is a placeholder comment below.
+ * Tap-to-detail opens [PollDetailDialog] (full-screen read-only roster). The
+ * footer button sets [showDetail] = true to host the dialog inline, mirroring
+ * how [id.homebase.chat.event.EventBubble] self-hosts [id.homebase.chat.event.EventDetailDialog].
  *
  * Mirror of [id.homebase.chat.groodle.GroodleBubble] — colors, toggle logic, and
  * bubble structure are intentionally parallel.
@@ -81,7 +82,7 @@ fun PollBubble(
     conversationId: Uuid? = null,
     ownReactions: ImmutableList<String> = persistentListOf(),
     reactionSummary: ReactionSummary? = null,
-    @Suppress("UNUSED_PARAMETER") organizer: OdinId? = null,
+    organizer: OdinId? = null,
     onLongClick: (() -> Unit)? = null,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -116,7 +117,6 @@ fun PollBubble(
     val actionService: ChatMessageActionService = koinInject()
     val scope = rememberCoroutineScope()
 
-    // Task 6: if (showDetail) PollDetailDialog(...)
     var showDetail by remember(messageId) { mutableStateOf(false) }
 
     val baseModifier = modifier
@@ -239,15 +239,15 @@ fun PollBubble(
         }
     }
 
-    // Task 6: if (showDetail) PollDetailDialog(
-    //     descriptor = descriptor,
-    //     messageId = messageId!!,
-    //     conversationId = conversationId!!,
-    //     ownReactions = ownReactions,
-    //     reactionSummary = reactionSummary,
-    //     organizer = organizer,
-    //     onDismiss = { showDetail = false },
-    // )
+    if (showDetail && messageId != null && conversationId != null) {
+        PollDetailDialog(
+            descriptor = descriptor,
+            messageId = messageId,
+            conversationId = conversationId,
+            organizer = organizer,
+            onDismiss = { showDetail = false },
+        )
+    }
 }
 
 @Composable

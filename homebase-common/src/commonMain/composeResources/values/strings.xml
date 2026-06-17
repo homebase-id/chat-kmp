@@ -871,6 +871,12 @@
     <string name="chat_poll_vote_count">%1$d votes</string>
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
 
+    <!-- Poll detail dialog -->
+    <string name="chat_poll_details_title">Poll details</string>
+    <string name="chat_poll_question_section">Question</string>
+    <string name="chat_poll_you">You</string>
+    <string name="chat_poll_end">End poll</string>
+
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
