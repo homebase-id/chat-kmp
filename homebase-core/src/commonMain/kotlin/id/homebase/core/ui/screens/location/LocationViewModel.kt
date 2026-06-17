@@ -57,7 +57,8 @@ class LocationViewModel(
             trackingAvailable = tracker.isAvailable,
             trackingEnabled = locationPreferences.trackingEnabled.value,
             activated = isActivated.value,
-            showMapTiles = locationPreferences.showMapTiles.value,
+            iconVisible = locationPreferences.iconVisible.value,
+            mapProvider = locationPreferences.mapProvider.value,
         )
     )
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
@@ -122,8 +123,13 @@ class LocationViewModel(
             }
         }
         viewModelScope.launch {
-            locationPreferences.showMapTiles.collect { show ->
-                _uiState.update { it.copy(showMapTiles = show) }
+            locationPreferences.mapProvider.collect { provider ->
+                _uiState.update { it.copy(mapProvider = provider) }
+            }
+        }
+        viewModelScope.launch {
+            locationPreferences.iconVisible.collect { visible ->
+                _uiState.update { it.copy(iconVisible = visible) }
             }
         }
         viewModelScope.launch {
@@ -188,6 +194,14 @@ class LocationViewModel(
                 }
             }
 
+            is LocationUiAction.SetIconVisible -> {
+                viewModelScope.launch { locationPreferences.setIconVisible(action.visible) }
+            }
+
+            is LocationUiAction.SetMapProvider -> {
+                viewModelScope.launch { locationPreferences.setMapProvider(action.provider) }
+            }
+
             // Permission requests are dispatched at the screen level (the
             // PermissionsManager is composition-scoped); the VM only receives
             // status updates via updatePermissionStatus.
@@ -202,16 +216,38 @@ class LocationViewModel(
         viewModelScope.launch { locationPreferences.setDisclosureAccepted(true) }
     }
 
+    // One-shot: armed by the screen right before it fires a permission request,
+    // consumed when that request resolves to GRANTED. Gating on this flag (rather
+    // than "granted && !trackingEnabled") keeps a passive launch-time recheck —
+    // which also flips granted false→true — from re-enabling tracking the user
+    // deliberately turned off while keeping the permission.
+    private var pendingTrackingAutoEnable = false
+
+    fun armTrackingAutoEnableOnGrant() {
+        pendingTrackingAutoEnable = true
+    }
+
     fun updateWhileInUseStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
             it.copy(whileInUseGranted = granted, whileInUsePermanentlyDenied = permanentlyDenied)
         }
+        maybeAutoEnableTracking(granted)
     }
 
     fun updateAlwaysStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
             it.copy(alwaysGranted = granted, alwaysPermanentlyDenied = permanentlyDenied)
         }
+        maybeAutoEnableTracking(granted)
+    }
+
+    /** Flip tracking on the first time an explicitly-requested grant lands. */
+    private fun maybeAutoEnableTracking(granted: Boolean) {
+        if (!granted || !pendingTrackingAutoEnable) return
+        val state = _uiState.value
+        if (!state.trackingAvailable || state.trackingEnabled) return
+        pendingTrackingAutoEnable = false
+        viewModelScope.launch { trackingCoordinator.setTrackingEnabled(true) }
     }
 
     /** Called on screen entry / resume to refresh DB-backed status numbers. */

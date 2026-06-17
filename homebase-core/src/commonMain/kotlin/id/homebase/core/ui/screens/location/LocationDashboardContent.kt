@@ -36,6 +36,7 @@ import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.location_dashboard_empty_today
+import id.homebase.resources.location_dashboard_history_section
 import id.homebase.resources.location_dashboard_perm_banner
 import id.homebase.resources.location_device_no_fix
 import id.homebase.resources.location_device_this_device
@@ -99,7 +100,11 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Map preview (today, all devices) → History ──
+        // ── Location History (map preview, today, all devices) → History ──
+        Text(
+            text = stringResource(MR.string.location_dashboard_history_section),
+            style = MaterialTheme.typography.titleMedium,
+        )
         Card(
             modifier = Modifier
                 .fillMaxWidth()

@@ -24,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -46,12 +45,10 @@ import id.homebase.resources.cancel
 import id.homebase.resources.location_history_devices
 import id.homebase.resources.location_history_distance
 import id.homebase.resources.location_history_empty
-import id.homebase.resources.location_history_map_disclosure
 import id.homebase.resources.location_history_next_day
 import id.homebase.resources.location_history_pick_date
 import id.homebase.resources.location_history_points
 import id.homebase.resources.location_history_previous_day
-import id.homebase.resources.location_history_show_map
 import id.homebase.resources.location_history_span
 import id.homebase.resources.location_history_title
 import id.homebase.resources.menu_back
@@ -189,31 +186,6 @@ fun LocationHistoryScreen(
                 }
             }
 
-            // ── Basemap opt-in ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(MR.string.location_history_show_map),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Switch(
-                    checked = uiState.showMapTiles,
-                    onCheckedChange = {
-                        viewModel.onAction(LocationHistoryUiAction.SetShowMapTiles(it))
-                    },
-                )
-            }
-            Text(
-                text = stringResource(MR.string.location_history_map_disclosure),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            )
         }
     }
 

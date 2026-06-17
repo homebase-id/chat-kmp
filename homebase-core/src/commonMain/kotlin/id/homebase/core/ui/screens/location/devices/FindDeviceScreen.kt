@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.location.devices
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -33,9 +36,10 @@ import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.location_device_unnamed
+import id.homebase.resources.location_find_battery
 import id.homebase.resources.location_find_freshness
 import id.homebase.resources.location_find_last_seen
-import id.homebase.resources.location_find_no_data_today
+import id.homebase.resources.location_find_no_location
 import id.homebase.resources.location_find_refresh
 import id.homebase.resources.location_find_title
 import id.homebase.resources.menu_back
@@ -120,37 +124,61 @@ fun FindDeviceScreen(
             ) {
                 val lastFix = uiState.device?.lastFix
                 if (lastFix != null) {
-                    Text(
-                        text = stringResource(
-                            MR.string.location_find_last_seen,
-                            formatTimestamp(Instant.fromEpochMilliseconds(lastFix.t)),
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    val trace = uiState.deviceTrace
-                    when {
-                        uiState.isLoading && trace == null ->
-                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-
-                        trace == null ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(
+                                MR.string.location_find_last_seen,
+                                formatTimestamp(Instant.fromEpochMilliseconds(lastFix.t)),
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        lastFix.bat?.let { battery ->
                             Text(
-                                text = stringResource(MR.string.location_find_no_data_today),
-                                style = MaterialTheme.typography.bodyLarge,
+                                text = stringResource(MR.string.location_find_battery, "$battery%"),
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.align(Alignment.Center).padding(24.dp),
                             )
+                        }
+                    }
+                }
+                // Card clips and insets the map so it doesn't run into the
+                // last-seen header above or the freshness note below.
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        val trace = uiState.deviceTrace
+                        when {
+                            uiState.isLoading && trace == null ->
+                                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
 
-                        else ->
-                            LocationTraceCanvas(
-                                traces = listOf(trace),
-                                showMapTiles = uiState.showMapTiles,
-                                fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                                traceColors = dashboardTraceColors(),
-                                highlightLast = true,
-                            )
+                            trace == null ->
+                                Text(
+                                    text = stringResource(MR.string.location_find_no_location),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                                )
+
+                            else ->
+                                LocationTraceCanvas(
+                                    traces = listOf(trace),
+                                    showMapTiles = uiState.showMapTiles,
+                                    fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                                    traceColors = dashboardTraceColors(),
+                                    highlightLast = true,
+                                )
+                        }
                     }
                 }
                 Text(

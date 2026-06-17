@@ -26,11 +26,12 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
     private val _trackingEnabled = MutableStateFlow(readBoolean(TRACKING_ENABLED_KEY, default = false))
     val trackingEnabled: StateFlow<Boolean> = _trackingEnabled.asStateFlow()
 
-    // History basemap opt-in. Default OFF: the trace renders fully offline;
-    // turning this on fetches OpenStreetMap tiles, revealing the viewed area
-    // to the tile server (disclosed next to the toggle).
-    private val _showMapTiles = MutableStateFlow(readBoolean(SHOW_MAP_TILES_KEY, default = false))
-    val showMapTiles: StateFlow<Boolean> = _showMapTiles.asStateFlow()
+    // Basemap selection. Default OpenStreetMap: traces render over OSM tiles,
+    // revealing the viewed area to the tile server (disclosed next to the
+    // selector). None keeps the fully-offline Canvas trace. Persisted by enum
+    // name so future entries (Google/Apple) can't corrupt a stored choice.
+    private val _mapProvider = MutableStateFlow(readMapProvider())
+    val mapProvider: StateFlow<LocationMapProvider> = _mapProvider.asStateFlow()
 
     // Google Play "prominent disclosure" consent: the user accepted the
     // location-collection dialog. Gates the first permission request and the
@@ -50,10 +51,10 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         _trackingEnabled.value = value
     }
 
-    suspend fun setShowMapTiles(value: Boolean) {
-        if (_showMapTiles.value == value) return
-        keyValue.upsertValue(SHOW_MAP_TILES_KEY, encode(value))
-        _showMapTiles.value = value
+    suspend fun setMapProvider(value: LocationMapProvider) {
+        if (_mapProvider.value == value) return
+        keyValue.upsertValue(MAP_PROVIDER_KEY, value.name.encodeToByteArray())
+        _mapProvider.value = value
     }
 
     suspend fun setDisclosureAccepted(value: Boolean) {
@@ -70,7 +71,7 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
     fun reset() {
         _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = false)
         _trackingEnabled.value = readBoolean(TRACKING_ENABLED_KEY, default = false)
-        _showMapTiles.value = readBoolean(SHOW_MAP_TILES_KEY, default = false)
+        _mapProvider.value = readMapProvider()
         _disclosureAccepted.value = readBoolean(DISCLOSURE_ACCEPTED_KEY, default = false)
     }
 
@@ -84,6 +85,14 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
     }
 
+    private fun readMapProvider(): LocationMapProvider {
+        val bytes: ByteArray = runCatching {
+            keyValue.selectByKeyBootstrapSync(MAP_PROVIDER_KEY) { _, data -> data }
+        }.getOrNull() ?: return LocationMapProvider.DEFAULT
+        return if (bytes.isEmpty()) LocationMapProvider.DEFAULT
+        else LocationMapProvider.fromName(bytes.decodeToString())
+    }
+
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
@@ -92,7 +101,9 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         // activation now derives from the drive.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0302")
         val TRACKING_ENABLED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
-        val SHOW_MAP_TILES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0304")
+        // 0a0304 (former SHOW_MAP_TILES_KEY, a boolean) is retired — the map
+        // choice is now an enum under 0a0306 (default OpenStreetMap). No migration.
         val DISCLOSURE_ACCEPTED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0305")
+        val MAP_PROVIDER_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0306")
     }
 }

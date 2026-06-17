@@ -15,5 +15,4 @@ sealed interface LocationHistoryUiAction {
     data class SelectDay(val dayStartMs: Long) : LocationHistoryUiAction
     data object PreviousDay : LocationHistoryUiAction
     data object NextDay : LocationHistoryUiAction
-    data class SetShowMapTiles(val show: Boolean) : LocationHistoryUiAction
 }
