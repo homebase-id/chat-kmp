@@ -31,6 +31,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -440,7 +441,7 @@ class ChatMessageSenderService(
                     uniqueId = messageId,
                     groupId = msg.conversationId,
                     fileType = ChatProtocol.MessageFileType,
-                    dataType = 0,
+                    dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                     userDate = msg.userDate.toEpochMilliseconds(),
                     content = createBuilt.headerContent,
                     previewThumbnail = msg.previewThumbnail
@@ -496,7 +497,7 @@ class ChatMessageSenderService(
                 uniqueId = messageId,
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
-                dataType = 0,
+                dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                 userDate = msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail
