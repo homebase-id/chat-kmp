@@ -851,13 +851,11 @@
 
     <!-- Poll composer -->
     <string name="chat_poll_share">Poll</string>
-    <string name="chat_poll_composer_title">New poll</string>
-    <string name="chat_poll_question_label">Question</string>
     <string name="chat_poll_question_hint">Ask a question</string>
-    <string name="chat_poll_options_label">Options</string>
     <string name="chat_poll_option_hint">Option %1$d</string>
     <string name="chat_poll_add_option">Add option</string>
     <string name="chat_poll_remove_option">Remove option</string>
+    <string name="chat_poll_reorder_option">Reorder option</string>
     <string name="chat_poll_allow_multiple">Allow multiple votes</string>
 
     <!-- Poll bubble -->

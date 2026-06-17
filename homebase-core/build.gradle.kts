@@ -100,6 +100,11 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
+            // Drag-to-reorder list (Calvin-LL/Reorderable) — declared here as well as
+            // in homebase-chat (its actual home) for the SAME Desktop transitive-strip
+            // reason documented for the markdown renderer below; the Poll composer's
+            // ReorderableColumn would otherwise NoClassDefFoundError on Desktop.
+            implementation(libs.reorderable)
             // mikepenz markdown renderer — declared here, not only in homebase-chat
             // (its actual home), for the SAME reason richeditor is duplicated above:
             // desktopApp consumes homebase-chat via a repackaged per-platform JAR

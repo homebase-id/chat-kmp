@@ -25,10 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayCircle
@@ -462,7 +462,7 @@ fun AttachmentOptions(
             item {
                 AttachmentOption(
                     modifier = Modifier.testTag("attachment_poll"),
-                    icon = Icons.Default.HowToVote,
+                    icon = Icons.Default.BarChart,
                     label = stringResource(MR.string.chat_poll_share),
                     onClick = onPollClick,
                 )

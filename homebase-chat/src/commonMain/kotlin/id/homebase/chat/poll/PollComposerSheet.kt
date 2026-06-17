@@ -2,34 +2,40 @@ package id.homebase.chat.poll
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,9 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.composer.ComposerEditableField
+import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -48,23 +54,27 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_poll_add_option
 import id.homebase.resources.chat_poll_allow_multiple
-import id.homebase.resources.chat_poll_composer_title
 import id.homebase.resources.chat_poll_option_hint
-import id.homebase.resources.chat_poll_options_label
 import id.homebase.resources.chat_poll_question_hint
-import id.homebase.resources.chat_poll_question_label
 import id.homebase.resources.chat_poll_remove_option
+import id.homebase.resources.chat_poll_reorder_option
 import id.homebase.resources.chat_poll_share
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import sh.calvin.reorderable.ReorderableColumn
 
 /**
- * Fullscreen composer for a Poll message. Mirrors the DiceRollComposerSheet
- * shape: Dialog → Scaffold → form → primary action. State is local — the
- * composer is short-lived (open → fill → send/dismiss).
+ * Bottom-sheet composer for a Poll message, modeled on the same Material 3
+ * quick-create language as `event/EventComposerSheet` and
+ * `groodle/GroodleComposerSheet`: a borderless title, then flat icon-led rows.
+ * Options are a drag-to-reorder list (Calvin-LL/Reorderable).
+ *
+ * Presentation only — [PollDescriptor], the wire format and the send path are
+ * unchanged. State is local `remember` (the composer is short-lived:
+ * open → fill → send/dismiss).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,22 +83,28 @@ fun PollComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    Dialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        sheetState = sheetState,
     ) {
         PollComposerContent(
             conversationId = conversationId,
+            sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
         )
     }
 }
 
+/** One editable poll option. [id] is a stable local key for reorder/list rendering. */
+private data class OptionDraft(val id: Long, val text: String)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
 private fun PollComposerContent(
     conversationId: Uuid,
+    sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
@@ -97,15 +113,23 @@ private fun PollComposerContent(
     val brand = HomebaseTheme.extendedColors.bubbleSentSurface
 
     var question by remember { mutableStateOf("") }
-    val options = remember { mutableStateListOf("", "") }
+    val options = remember { mutableStateListOf(OptionDraft(0, ""), OptionDraft(1, "")) }
+    var nextId by remember { mutableStateOf(2L) }
     var allowMultiple by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
 
     val isValid by remember {
         derivedStateOf {
             question.isNotBlank() &&
-                options.count { it.isNotBlank() } >= PollDescriptor.MIN_OPTIONS &&
+                options.count { it.text.isNotBlank() } >= PollDescriptor.MIN_OPTIONS &&
                 !sending
+        }
+    }
+
+    val dismiss: () -> Unit = {
+        scope.launch {
+            sheetState.hide()
+            onDismiss()
         }
     }
 
@@ -115,7 +139,7 @@ private fun PollComposerContent(
             scope.launch {
                 val descriptor = PollDescriptor(
                     question = question.trim().truncateToCodePoints(PollDescriptor.MAX_QUESTION_CP),
-                    options = options.map { it.trim() }.filter { it.isNotBlank() }
+                    options = options.map { it.text.trim() }.filter { it.isNotBlank() }
                         .map { it.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP) },
                     allowMultiple = allowMultiple,
                 )
@@ -127,116 +151,151 @@ private fun PollComposerContent(
                         previousMessageUniqueId = null,
                     )
                 }
+                sheetState.hide()
                 onSent()
             }
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.chat_poll_composer_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(MR.string.cancel),
-                        )
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = doSend,
-                        enabled = isValid,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = brand,
-                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                        ),
-                        modifier = Modifier.padding(end = 8.dp),
-                    ) {
-                        Text(stringResource(MR.string.chat_poll_share))
-                    }
-                },
-            )
-        },
-        modifier = Modifier.fillMaxSize(),
-    ) { padding ->
+    Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+        // Top bar: close (start) · Send (end).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 16.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = dismiss) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.cancel),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = doSend,
+                enabled = isValid,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = brand,
+                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                ),
+            ) {
+                Text(stringResource(MR.string.chat_poll_share))
+            }
+        }
+
         Column(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                // imePadding INSIDE the scroll pads the content (not the viewport) so
+                // the focused field scrolls above the keyboard. The ModalBottomSheet
+                // already lifts for the IME, so shrinking the viewport here would
+                // double-count and collapse the sheet on Android. Matches
+                // EventComposerSheet / GroodleComposerSheet.
                 .imePadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 20.dp),
         ) {
-            // Question field
-            Text(
-                text = stringResource(MR.string.chat_poll_question_label),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
+            // Question — borderless headline with a brand-blue underline indicator.
+            ComposerTitleField(
                 value = question,
                 onValueChange = { question = it.truncateToCodePoints(PollDescriptor.MAX_QUESTION_CP) },
-                placeholder = { Text(stringResource(MR.string.chat_poll_question_hint)) },
+                placeholder = stringResource(MR.string.chat_poll_question_hint),
+                brand = brand,
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Options — a flush-left, drag-to-reorder list aligned with the question
+            // headline (no leading icon gutter; each row carries its own drag handle).
+            // Below MIN_OPTIONS the list is locked at its two seed rows, so the remove
+            // control only appears once a third option exists.
+            val canRemove = options.size > PollDescriptor.MIN_OPTIONS
+            ReorderableColumn(
+                list = options,
+                onSettle = { from, to -> options.add(to, options.removeAt(from)) },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = false,
-                minLines = 2,
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // Options section
-            Text(
-                text = stringResource(MR.string.chat_poll_options_label),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            options.forEachIndexed { index, option ->
-                // Build hint outside the composable to satisfy Konsist string-literal rule.
-                val optionHint = stringResource(MR.string.chat_poll_option_hint, index + 1)
-                val removeLabel = stringResource(MR.string.chat_poll_remove_option)
-                OutlinedTextField(
-                    value = option,
-                    onValueChange = { options[index] = it.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP) },
-                    placeholder = { Text(optionHint) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    trailingIcon = if (options.size > PollDescriptor.MIN_OPTIONS) {
-                        {
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) { index, item, _ ->
+                key(item.id) {
+                    ReorderableItem {
+                        // Build the per-row strings outside the field/icon to satisfy
+                        // the Konsist no-literal-Text rule.
+                        val optionHint = stringResource(MR.string.chat_poll_option_hint, index + 1)
+                        val removeLabel = stringResource(MR.string.chat_poll_remove_option)
+                        val reorderLabel = stringResource(MR.string.chat_poll_reorder_option)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ComposerEditableField(
+                                value = item.text,
+                                onValueChange = { new ->
+                                    val i = options.indexOfFirst { it.id == item.id }
+                                    if (i >= 0) {
+                                        options[i] = options[i].copy(
+                                            text = new.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP),
+                                        )
+                                    }
+                                },
+                                placeholder = optionHint,
+                                singleLine = true,
+                                cursorColor = brand,
+                            )
+                            if (canRemove) {
+                                // Default IconButton sizing keeps the 48dp touch target.
+                                IconButton(onClick = { options.removeAll { it.id == item.id } }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = removeLabel,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            // Drag handle — draggableHandle() comes from the
+                            // ReorderableItem scope; the onClick is a no-op.
                             IconButton(
-                                onClick = { options.removeAt(index) },
-                                modifier = Modifier.size(24.dp),
+                                onClick = {},
+                                modifier = Modifier.draggableHandle(),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = removeLabel,
-                                    modifier = Modifier.size(18.dp),
+                                    imageVector = Icons.Rounded.DragHandle,
+                                    contentDescription = reorderLabel,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
-                    } else null,
-                )
+                    }
+                }
             }
 
-            // Add option button
+            // Plain-text action; the negative offset cancels the button's content
+            // padding so its + icon left-aligns with the option text above it.
             TextButton(
-                onClick = { options.add("") },
+                onClick = {
+                    if (options.size < PollDescriptor.MAX_OPTIONS) {
+                        options.add(OptionDraft(nextId, ""))
+                        nextId += 1
+                    }
+                },
                 enabled = options.size < PollDescriptor.MAX_OPTIONS,
+                modifier = Modifier.offset(x = (-12).dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(stringResource(MR.string.chat_poll_add_option))
             }
 
-            // Allow multiple votes toggle
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Allow multiple answers — flush-left label + trailing switch.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -247,13 +306,10 @@ private fun PollComposerContent(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                Switch(
-                    checked = allowMultiple,
-                    onCheckedChange = { allowMultiple = it },
-                )
+                Switch(checked = allowMultiple, onCheckedChange = { allowMultiple = it })
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
