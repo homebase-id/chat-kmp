@@ -1,6 +1,7 @@
 package id.homebase.chat.event
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,11 +12,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
@@ -27,10 +30,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -50,18 +56,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import id.homebase.api.client.location.LocationPreviewProvider
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.composer.ComposerEditableField
 import id.homebase.chat.composer.ComposerRow
 import id.homebase.chat.composer.ComposerTitleField
+import id.homebase.chat.conversationlist.materializeForUpload
 import id.homebase.chat.location.LocationResult
 import id.homebase.chat.location.rememberCurrentLocationLauncher
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.AttachmentInput
+import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.close
@@ -72,8 +87,15 @@ import id.homebase.resources.chat_event_location_hint
 import id.homebase.resources.chat_event_meeting_url_hint
 import id.homebase.resources.chat_event_remove_end_time
 import id.homebase.resources.chat_event_send
+import id.homebase.resources.chat_event_add_photo
+import id.homebase.resources.chat_event_cover_photo
+import id.homebase.resources.chat_event_remove_photo
 import id.homebase.resources.chat_event_title_hint
 import id.homebase.resources.chat_event_use_current_location
+import id.homebase.resources.vault_image_choose_gallery
+import id.homebase.resources.vault_image_take_photo
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
@@ -132,6 +154,25 @@ private fun EventComposerContent(
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
     val brand = HomebaseTheme.extendedColors.bubbleSentSurface
+
+    val fileOperationsProvider: FileOperationsProvider = koinInject()
+    // Optional cover photo. Resolved to an AttachmentInput at pick time (the iOS
+    // gallery security scope dies before send — materialize copies into the
+    // sandbox now), so send just builds the bundle. Null = no photo.
+    var coverInput by remember { mutableStateOf<AttachmentInput?>(null) }
+    var showPhotoMenu by remember { mutableStateOf(false) }
+    val coverGalleryPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        if (file != null) scope.launch {
+            coverInput = file.materializeForUpload(fileOperationsProvider)
+                .toImageAttachmentInput(fileOperationsProvider)
+        }
+    }
+    val coverCameraLauncher = rememberCameraManager { file ->
+        if (file != null) scope.launch {
+            coverInput = file.materializeForUpload(fileOperationsProvider)
+                .toImageAttachmentInput(fileOperationsProvider)
+        }
+    }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -222,12 +263,20 @@ private fun EventComposerContent(
                     lon = locationLon,
                     meetingUrl = meetingUrl.takeIf { it.isNotBlank() },
                 )
+                val bundle = coverInput?.let { input ->
+                    MessageAttachmentBuilder.buildSingle(
+                        attachment = input,
+                        fileOperationsProvider = fileOperationsProvider,
+                        payloadKey = ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB + "0",
+                    )
+                }
                 runCatching {
                     sender.sendNewTypedMessage(
                         messageUniqueId = Uuid.random(),
                         conversationId = conversationId,
                         content = MessageContent.Event(descriptor),
                         previousMessageUniqueId = null,
+                        payloadBundle = bundle,
                     )
                 }
                 sheetState.hide()
@@ -276,6 +325,67 @@ private fun EventComposerContent(
                 .imePadding()
                 .padding(horizontal = 20.dp),
         ) {
+            // Optional cover photo — picked from gallery/camera, attached as a
+            // chat_web0 image payload and rendered above the event card. Empty
+            // state shows an "Add photo" button; filled state shows a rounded
+            // preview with a remove button.
+            val cover = coverInput
+            if (cover != null) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    AsyncImage(
+                        model = cover.filePath,
+                        contentDescription = stringResource(MR.string.chat_event_cover_photo),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                    IconButton(
+                        onClick = { coverInput = null },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(MR.string.chat_event_remove_photo),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            } else {
+                Box(modifier = Modifier.padding(top = 8.dp)) {
+                    OutlinedButton(onClick = { showPhotoMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(MR.string.chat_event_add_photo))
+                    }
+                    DropdownMenu(
+                        expanded = showPhotoMenu,
+                        onDismissRequest = { showPhotoMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.vault_image_choose_gallery)) },
+                            onClick = {
+                                showPhotoMenu = false
+                                coverGalleryPicker.launch()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(MR.string.vault_image_take_photo)) },
+                            onClick = {
+                                showPhotoMenu = false
+                                coverCameraLauncher.launch()
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
             // Title — borderless headline with a brand-blue underline indicator.
             ComposerTitleField(
                 value = title,

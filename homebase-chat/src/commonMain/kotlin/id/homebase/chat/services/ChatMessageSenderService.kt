@@ -183,6 +183,11 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         content: id.homebase.chat.services.content.MessageContent,
         previousMessageUniqueId: Uuid?,
+        // Optional media payload riding alongside the header descriptor — e.g. an
+        // Event's cover photo. The descriptor still renders header-only (no scroll
+        // fetch); the payload loads progressively like any chat image. Defaults to
+        // null so existing typed-kind callers are unchanged.
+        payloadBundle: PayloadBundle? = null,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -192,7 +197,7 @@ class ChatMessageSenderService(
         // the title never leaves the sender). See MessageContent.kt.
         notificationText = content.notificationLabel,
         previousMessageUniqueId = previousMessageUniqueId,
-        payloadBundle = null,
+        payloadBundle = payloadBundle,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
     )
 

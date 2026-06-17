@@ -35,8 +35,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
+import id.homebase.chat.widget.MediaItem
+import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
@@ -89,6 +95,13 @@ fun EventBubble(
     onLongClick: (() -> Unit)? = null,
     contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    // Optional cover photo. Rendered rounded at the top of the card and also in
+    // the detail dialog. Tapping it opens the event detail (same as tapping the
+    // card) — NOT the full-screen media viewer. All null when there's no cover.
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     if (descriptor == null) {
         UnparseableEventBubble(modifier = modifier, contentColor = contentColor, containerColor = containerColor)
@@ -116,7 +129,7 @@ fun EventBubble(
     }
 
     val isPast = phase is LiveStatus.Past
-    val baseModifier = modifier
+    val containerModifier = modifier
         .widthIn(min = 240.dp, max = 320.dp)
         .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
@@ -132,10 +145,30 @@ fun EventBubble(
                 )
             } else it
         }
-        .padding(12.dp)
     val effectiveContent = if (isPast) contentColor.copy(alpha = 0.55f) else contentColor
 
-    Row(modifier = baseModifier, verticalAlignment = Alignment.Top) {
+    Column(modifier = containerModifier) {
+        if (coverPayload != null && coverFileId != null && coverKeyHeader != null) {
+            // Cover photo above the event details. Tapping it opens the event
+            // detail (same as the card) — not the full-screen media viewer. The
+            // container's outer clip rounds its top corners.
+            MediaItem(
+                payload = coverPayload,
+                fileId = coverFileId,
+                driveId = chatTargetDrive.alias,
+                previewThumbnail = coverPreviewThumbnail,
+                keyHeader = coverKeyHeader,
+                imageSize = ImageSize.THUMB_MEDIUM,
+                preserveAspectRatio = true,
+                shape = RoundedCornerShape(0.dp),
+                onClick = { if (canOpenDetail) showDetail = true },
+                onLongPress = onLongClick?.let { lc -> { _ -> lc() } },
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
         EventDateChip(local = startLocal, contentColor = effectiveContent)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -180,6 +213,7 @@ fun EventBubble(
                 IconRow(icon = Icons.Default.Videocam, text = url, contentColor = effectiveContent)
             }
         }
+        }
     }
 
     if (showDetail && messageId != null && conversationId != null) {
@@ -191,6 +225,10 @@ fun EventBubble(
             counts = remember(reactionSummary) { EventRsvp.counts(reactionSummary) },
             onDismiss = { showDetail = false },
             organizer = organizer,
+            coverPayload = coverPayload,
+            coverFileId = coverFileId,
+            coverKeyHeader = coverKeyHeader,
+            coverPreviewThumbnail = coverPreviewThumbnail,
         )
     }
 }
