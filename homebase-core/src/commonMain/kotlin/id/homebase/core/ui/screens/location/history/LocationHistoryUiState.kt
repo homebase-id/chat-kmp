@@ -7,6 +7,8 @@ data class LocationHistoryUiState(
     val stats: DayStats? = null,
     val isLoading: Boolean = true,
     val showMapTiles: Boolean = false,
+    /** Time-warped playback model + dwell stops for the shown day; null while empty/loading. */
+    val playback: DayPlayback? = null,
 ) {
     val isEmpty: Boolean get() = !isLoading && traces.isEmpty()
 }
