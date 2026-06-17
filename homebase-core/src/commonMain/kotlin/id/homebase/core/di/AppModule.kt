@@ -42,6 +42,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.PayloadCacheSeeder
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
@@ -460,6 +461,9 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
+    // Shared optimistic-send cache seeder — used by Chat, Moments, Vault, Stickers
+    // so a just-sent image shows its sharp thumbnail through "finalizing".
+    singleOf(::PayloadCacheSeeder)
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)

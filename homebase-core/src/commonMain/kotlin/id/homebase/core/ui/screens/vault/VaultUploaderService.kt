@@ -25,6 +25,8 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
@@ -53,6 +55,7 @@ class VaultUploaderService(
     private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val vaultService: VaultService,
 ) {
@@ -132,6 +135,9 @@ class VaultUploaderService(
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the grid tile can request a native
+                    // size (availableThumbSizes) and hit the seed below during upload.
+                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(payload.key),
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = payload.previewThumbnail?.let {
@@ -156,6 +162,12 @@ class VaultUploaderService(
             val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
+                    // Seed BEFORE the write: writeNewFile triggers the grid recompose
+                    // → thumbnail read, so the cache must already be populated under the
+                    // optimistic fileId or that read races the seed, misses, and 404s
+                    // (non-retriable) → blur. Pre-mint the id so we can seed first.
+                    val optimisticFileId = Uuid.random()
+                    payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
                     optimisticWriter.writeNewFile(
                         driveId = driveId,
                         keyHeader = keyHeader,
@@ -163,6 +175,7 @@ class VaultUploaderService(
                         originalRecipientCount = 0,
                         fileSystemType = FileSystemType.Standard,
                         payloadDescriptors = payloadDescriptors,
+                        fileId = optimisticFileId,
                     )
                     Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
                 } catch (e: Exception) {

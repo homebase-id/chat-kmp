@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
@@ -146,6 +147,7 @@ fun VaultEntry.imageDataFor(
         payloadKey = descriptor.key,
         previewThumbnail = previewThumbnail,
         requestedSize = requestedSize,
+        availableThumbSizes = thumbSizesFrom(descriptor.thumbnails),
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
         lastModified = descriptor.lastModified,

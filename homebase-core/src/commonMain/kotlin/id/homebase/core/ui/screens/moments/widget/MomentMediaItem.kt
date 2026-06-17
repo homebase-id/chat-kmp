@@ -59,6 +59,7 @@ import id.homebase.chat.widget.LocationPreviewCard
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
@@ -257,6 +258,7 @@ fun MomentMediaItem(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
+                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
                             isEncrypted = true,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
@@ -317,6 +319,7 @@ fun MomentMediaItem(
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
+                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                         lastModified = payload.lastModified,
                         isEncrypted = true,
                         keyHeader = perPayloadKeyHeader,

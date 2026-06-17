@@ -34,6 +34,8 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.chat.services.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -62,6 +64,7 @@ class MomentsPostSenderService(
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
@@ -194,8 +197,9 @@ class MomentsPostSenderService(
             _pendingLocalPreviews.update { it.put(momentUniqueId, previewModel) }
         }
 
+        val optimisticFileId: Uuid
         try {
-            optimisticWriter.writeNewFile(
+            optimisticFileId = optimisticWriter.writeNewFile(
                 driveId = drive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = placeholderMetadata,
@@ -221,6 +225,7 @@ class MomentsPostSenderService(
         scope.launch {
             finalizeMomentSend(
                 momentUniqueId = momentUniqueId,
+                optimisticFileId = optimisticFileId,
                 attachments = attachments,
                 description = description,
                 recipients = recipients,
@@ -246,6 +251,7 @@ class MomentsPostSenderService(
      */
     private suspend fun finalizeMomentSend(
         momentUniqueId: Uuid,
+        optimisticFileId: Uuid,
         attachments: List<AttachmentInput>,
         description: String,
         recipients: List<OdinId>,
@@ -400,6 +406,9 @@ class MomentsPostSenderService(
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
+                    // Native thumbnail sizes so the tile can request a native size
+                    // (availableThumbSizes) and hit the seed below during sending.
+                    thumbnails = encrypted.thumbnailDescriptorsFor(payload.key),
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = previewThumb,
@@ -407,6 +416,12 @@ class MomentsPostSenderService(
             }.ifEmpty { null }
 
             try {
+                // Seed BEFORE the writeUpdate: writeUpdate installs the descriptors
+                // and triggers the feed recompose → thumbnail read, so the cache must
+                // already be fully populated under the optimistic fileId or that read
+                // races ahead of the seed, misses, and 404s (non-retriable) → blur.
+                // rekeyCacheAfterCreate later moves these entries to the server fileId.
+                payloadCacheSeeder.seed(drive, optimisticFileId, encrypted)
                 optimisticWriter.writeUpdate(
                     driveId = drive,
                     keyHeader = keyHeader,

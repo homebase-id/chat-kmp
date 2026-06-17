@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsAlbumZoom
 import coil3.compose.AsyncImage
@@ -222,6 +223,7 @@ private fun AlbumMomentCell(
                         previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
                             ?: moment.previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
+                        availableThumbSizes = thumbSizesFrom(firstImagePayload.thumbnails),
                         isEncrypted = true,
                         keyHeader = id.homebase.api.client.KeyHeader(
                             iv = payloadIv,
