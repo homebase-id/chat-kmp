@@ -154,6 +154,7 @@ class ContactDetailViewModel(
     fun onAction(action: ContactDetailAction) {
         when (action) {
             ContactDetailAction.MessageClicked -> handleMessage()
+            ContactDetailAction.SyncClicked -> handleSync()
             ContactDetailAction.EditClicked -> _uiState.update { it.copy(editOpen = true) }
             ContactDetailAction.CloseEdit -> _uiState.update { it.copy(editOpen = false) }
             is ContactDetailAction.SaveContact -> handleSave(action)
@@ -189,6 +190,17 @@ class ContactDetailViewModel(
             }
             _events.tryEmit(ContactDetailEvent.OpenConversation(id))
         }
+    }
+
+    /**
+     * Best-effort server-side enrichment from the identity's public profile. The endpoint is
+     * fire-and-forget (202 Accepted) and the enriched contact lands later via drive sync, so we
+     * just acknowledge the request — there's no success/failure to report back synchronously.
+     */
+    private fun handleSync() {
+        val domain = odinId ?: return
+        _events.tryEmit(ContactDetailEvent.SyncStarted)
+        viewModelScope.launch { contactBookService.syncFromIdentity(domain) }
     }
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {

@@ -60,6 +60,7 @@ import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
+import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
@@ -108,6 +109,7 @@ fun ContactDetailScreen(
     val msgBlocked = stringResource(MR.string.contactbook_action_blocked)
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
+    val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -126,6 +128,7 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
+                ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
             }
         }
     }
@@ -256,6 +259,7 @@ fun ContactDetailScreen(
             editing = uiState.entry,
             onSave = { draft, photo -> viewModel.onAction(ContactDetailAction.SaveContact(draft, photo)) },
             onDismiss = { viewModel.onAction(ContactDetailAction.CloseEdit) },
+            odinIdLocked = uiState.isConnected,
         )
     }
 
