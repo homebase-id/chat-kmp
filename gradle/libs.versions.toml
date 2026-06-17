@@ -56,6 +56,10 @@ richeditorCompose = "1.0.0-rc14"
 # is the newest release whose bytecode carries no removed-field reference (verified
 # via javap), and 0.39.x release notes confirm the 0.39–0.40 line targets CMP 1.10.
 markdownRenderer = "0.40.2"
+# Drag-to-reorder for Compose Multiplatform (Calvin-LL/Reorderable). 3.1.0 is the
+# latest release and publishes for android/jvm/iosArm64/iosSimulatorArm64/iosX64/
+# wasmJs/js. Used by the Poll composer's option list (ReorderableColumn).
+reorderable = "3.1.0"
 sqldelight = "2.3.2"
 sqlcipher = "4.13.0"
 kotlinx-coroutines = "1.10.2"
@@ -161,6 +165,7 @@ markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", v
 markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 markdown-renderer-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "markdownRenderer" }
 jetbrains-markdown = { module = "org.jetbrains:markdown", version = "0.7.3" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }

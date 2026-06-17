@@ -1,8 +1,7 @@
 package id.homebase.chat.groodle
 
 import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.decodeReactionCode
 
 /**
  * Groodle votes are stored as ordinary chat reactions on the poll message,
@@ -54,11 +53,10 @@ object GroodleVote {
 
     /**
      * Extracts the emoji/code string from a single `ownReactions` entry. The stored
-     * shape is JSON-encoded [ReactionContent] (`{"emoji":"_1Y"}`).
+     * shape is JSON-encoded ReactionContent (`{"emoji":"_1Y"}`). Delegates to the
+     * shared [decodeReactionCode].
      */
-    fun codeOf(rawReaction: String): String? = runCatching {
-        OdinSystemSerializer.deserialize<ReactionContent>(rawReaction).emoji
-    }.getOrNull()
+    fun codeOf(rawReaction: String): String? = decodeReactionCode(rawReaction)
 
     /**
      * The current user's vote per slot, decoded from their own reactions. Last

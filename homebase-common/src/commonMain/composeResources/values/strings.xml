@@ -849,6 +849,35 @@
     <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
     <string name="chat_groodle_send">Send Groodle</string>
 
+    <!-- Poll composer -->
+    <string name="chat_poll_share">Poll</string>
+    <string name="chat_poll_question_hint">Ask a question</string>
+    <string name="chat_poll_option_hint">Option %1$d</string>
+    <string name="chat_poll_add_option">Add option</string>
+    <string name="chat_poll_remove_option">Remove option</string>
+    <string name="chat_poll_reorder_option">Reorder option</string>
+    <string name="chat_poll_allow_multiple">Allow multiple votes</string>
+
+    <!-- Poll bubble -->
+    <string name="chat_poll_subtitle_single">Poll · Select one</string>
+    <string name="chat_poll_subtitle_multiple">Poll · Select one or more</string>
+    <string name="chat_poll_subtitle_closed">Poll · Final results</string>
+    <string name="chat_poll_no_votes">No votes</string>
+    <string name="chat_poll_view_votes">View votes</string>
+    <string name="chat_poll_view_results">View results</string>
+    <string name="chat_poll_one_vote">1 vote</string>
+    <string name="chat_poll_vote_count">%1$d votes</string>
+    <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
+
+    <!-- Poll detail dialog -->
+    <string name="chat_poll_details_title">Poll details</string>
+    <string name="chat_poll_question_section">Question</string>
+    <string name="chat_poll_you">You</string>
+    <string name="chat_poll_end">End poll</string>
+    <string name="chat_poll_end_failed">Couldn't end the poll. Please try again.</string>
+    <string name="chat_poll_ended_self">You ended the poll: "%1$s"</string>
+    <string name="chat_poll_ended_other">%1$s ended the poll: "%2$s"</string>
+
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
 
