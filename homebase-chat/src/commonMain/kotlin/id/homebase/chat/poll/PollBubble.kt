@@ -144,27 +144,18 @@ fun PollBubble(
     val viewResultsText = stringResource(MR.string.chat_poll_view_results)
 
     Column(modifier = baseModifier) {
-        // Question title
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.HowToVote,
-                contentDescription = null,
-                tint = contentColor.copy(alpha = 0.85f),
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = descriptor.question,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = contentColor,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // Question — large headline, no leading icon.
+        Text(
+            text = descriptor.question,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = contentColor,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(4.dp))
 
         // Subtitle — pre-built string variable, not an inline interpolation literal.
         Text(
