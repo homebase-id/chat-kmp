@@ -40,6 +40,9 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
+import id.homebase.chat.widget.MediaItem
+import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
@@ -92,11 +95,9 @@ fun EventBubble(
     onLongClick: (() -> Unit)? = null,
     contentColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    // Cover-photo support. When a cover is present the caller renders the image
-    // above this card and passes a top-flat [cardShape] so the two read as one
-    // bubble; the cover descriptor is forwarded to the detail dialog so it shows
-    // there too. All null/default when there's no cover.
-    cardShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
+    // Optional cover photo. Rendered rounded at the top of the card and also in
+    // the detail dialog. Tapping it opens the event detail (same as tapping the
+    // card) — NOT the full-screen media viewer. All null when there's no cover.
     coverPayload: PayloadDescriptor? = null,
     coverFileId: Uuid? = null,
     coverKeyHeader: KeyHeader? = null,
@@ -128,9 +129,9 @@ fun EventBubble(
     }
 
     val isPast = phase is LiveStatus.Past
-    val baseModifier = modifier
+    val containerModifier = modifier
         .widthIn(min = 240.dp, max = 320.dp)
-        .clip(cardShape)
+        .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
         .let {
             // combinedClickable (not clickable) so the parent message bubble's
@@ -144,10 +145,30 @@ fun EventBubble(
                 )
             } else it
         }
-        .padding(12.dp)
     val effectiveContent = if (isPast) contentColor.copy(alpha = 0.55f) else contentColor
 
-    Row(modifier = baseModifier, verticalAlignment = Alignment.Top) {
+    Column(modifier = containerModifier) {
+        if (coverPayload != null && coverFileId != null && coverKeyHeader != null) {
+            // Cover photo above the event details. Tapping it opens the event
+            // detail (same as the card) — not the full-screen media viewer. The
+            // container's outer clip rounds its top corners.
+            MediaItem(
+                payload = coverPayload,
+                fileId = coverFileId,
+                driveId = chatTargetDrive.alias,
+                previewThumbnail = coverPreviewThumbnail,
+                keyHeader = coverKeyHeader,
+                imageSize = ImageSize.THUMB_MEDIUM,
+                preserveAspectRatio = true,
+                shape = RoundedCornerShape(0.dp),
+                onClick = { if (canOpenDetail) showDetail = true },
+                onLongPress = onLongClick?.let { lc -> { _ -> lc() } },
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
         EventDateChip(local = startLocal, contentColor = effectiveContent)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -191,6 +212,7 @@ fun EventBubble(
                 Spacer(Modifier.height(4.dp))
                 IconRow(icon = Icons.Default.Videocam, text = url, contentColor = effectiveContent)
             }
+        }
         }
     }
 

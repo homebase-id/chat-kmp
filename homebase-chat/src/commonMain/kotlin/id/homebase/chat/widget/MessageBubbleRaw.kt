@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -147,70 +146,26 @@ fun MessageBubbleRaw(
     when (val content = message.messageContent) {
         is MessageContent.Event -> {
             // Optional cover photo rides as a chat_web* image payload on the event
-            // message. When present, render it (top-rounded) directly above the
-            // event card and flatten the card's top corners so they read as one
-            // bubble — exactly like a normal image+caption message.
+            // message. EventBubble renders it rounded above the card (tapping it
+            // opens the event detail, not the media viewer) and in the detail too.
             val coverPayload = message.payloads?.firstOrNull {
                 it.contentType?.startsWith("image/") == true &&
                     it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
             }
-            if (coverPayload != null) {
-                // Clip the whole image+card column to the bubble shape. MediaMessage's
-                // single-image path paints a surfaceContainerHigh background BEFORE its
-                // internal clip, so that fill has sharp corners; the normal media path
-                // hides it under a clipping Surface. Here the outer clip is what actually
-                // rounds the cover's top corners.
-                Column(
-                    modifier = modifier
-                        .widthIn(min = 240.dp, max = 320.dp)
-                        .clip(RoundedCornerShape(16.dp)),
-                ) {
-                    MediaMessage(
-                        payloads = persistentListOf(coverPayload),
-                        fileId = message.fileId,
-                        decryptedFiles = decryptedFiles,
-                        keyHeader = message.keyHeader,
-                        driveId = chatTargetDrive.alias,
-                        previewThumbnail = message.previewThumbnail,
-                        onMediaClick = onMediaClick,
-                        onMediaLongPress = { _, _ -> onLongClick() },
-                        onRequestDecryptedFile = onRequestDecryptedFile,
-                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        messageId = message.id,
-                        downloadingFiles = downloadingFiles,
-                        uploadStatus = uploadStatus,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    EventBubble(
-                        descriptor = content.descriptor,
-                        modifier = Modifier.fillMaxWidth(),
-                        cardShape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                        coverPayload = coverPayload,
-                        coverFileId = message.fileId,
-                        coverKeyHeader = message.keyHeader,
-                        coverPreviewThumbnail = message.previewThumbnail,
-                        messageId = message.id,
-                        conversationId = message.conversationId,
-                        ownReactions = message.ownReactions,
-                        reactionSummary = message.reactionPreview,
-                        organizer = message.originalAuthor,
-                        onLongClick = onLongClick,
-                    )
-                }
-            } else {
-                EventBubble(
-                    descriptor = content.descriptor,
-                    modifier = modifier,
-                    messageId = message.id,
-                    conversationId = message.conversationId,
-                    ownReactions = message.ownReactions,
-                    reactionSummary = message.reactionPreview,
-                    organizer = message.originalAuthor,
-                    onLongClick = onLongClick,
-                )
-            }
+            EventBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
+                coverPayload = coverPayload,
+                coverFileId = message.fileId,
+                coverKeyHeader = message.keyHeader,
+                coverPreviewThumbnail = message.previewThumbnail,
+            )
             return
         }
         is MessageContent.DiceRoll -> {
