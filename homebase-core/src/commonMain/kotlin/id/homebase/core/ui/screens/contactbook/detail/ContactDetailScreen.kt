@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,6 +59,9 @@ import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.contactbook_action_blocked
+import id.homebase.resources.contactbook_action_disconnected
+import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_detail_block
 import id.homebase.resources.contactbook_detail_block_message
@@ -74,6 +79,8 @@ import id.homebase.resources.contactbook_detail_message
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
 import id.homebase.resources.contactbook_error_connection_forbidden
+import id.homebase.resources.contactbook_error_delete
+import id.homebase.resources.contactbook_error_delete_forbidden
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
@@ -95,7 +102,12 @@ fun ContactDetailScreen(
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
+    val errDelete = stringResource(MR.string.contactbook_error_delete)
+    val errDeleteForbidden = stringResource(MR.string.contactbook_error_delete_forbidden)
     val errConnectionForbidden = stringResource(MR.string.contactbook_error_connection_forbidden)
+    val msgBlocked = stringResource(MR.string.contactbook_action_blocked)
+    val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
+    val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -105,9 +117,15 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Back -> onBack()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
+                ContactDetailEvent.DeleteError -> snackbarHostState.showSnackbar(errDelete)
+                ContactDetailEvent.DeleteForbidden ->
+                    snackbarHostState.showSnackbar(errDeleteForbidden)
                 ContactDetailEvent.ConnectionForbidden ->
                     snackbarHostState.showSnackbar(errConnectionForbidden)
                 ContactDetailEvent.PhotoError -> snackbarHostState.showSnackbar(errPhoto)
+                ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
+                ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
+                ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
             }
         }
     }
@@ -211,6 +229,25 @@ fun ContactDetailScreen(
                 snackbarHostState = snackbarHostState,
                 onDismiss = { viewModel.onAction(ContactDetailAction.CloseMedia) },
             )
+
+            if (uiState.actionInProgress) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                        .pointerInput(Unit) {
+                            // Swallow taps so the action can't be re-triggered while it runs.
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent().changes.forEach { it.consume() }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
         }
     }
 

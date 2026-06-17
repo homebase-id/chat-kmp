@@ -1,5 +1,6 @@
 package id.homebase.api.client.connections
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
@@ -24,6 +25,10 @@ class ConnectionNetworkProvider(
 
     suspend fun disconnect(odinId: OdinId) {
         postOdinId("/connections/disconnect", odinId)
+    }
+
+    private companion object {
+        const val TAG = "ConnectionNetworkProvider"
     }
 
     suspend fun confirmConnection(odinId: OdinId) {
@@ -151,26 +156,56 @@ class ConnectionNetworkProvider(
     }
 
     private suspend fun postOdinId(endpoint: String, odinId: OdinId) {
+        Logger.i(tag = TAG) { "POST $endpoint odinId=$odinId" }
         post(endpoint, OdinIdRequest(odinId))
     }
 
-    private suspend fun post(endpoint: String, body: Any) {
-        val creds = requireCreds()
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(body),
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
+    /**
+     * Serialize [body] with its concrete (reified) type, then POST. Serializing through a
+     * `body: Any` parameter erases the type and makes kotlinx.serialization look for an
+     * `Any` serializer (which doesn't exist) — so the reified type must be captured here.
+     */
+    private suspend inline fun <reified T> post(endpoint: String, body: T) {
+        postJson(endpoint, OdinSystemSerializer.serialize(body))
     }
 
-    private suspend inline fun <reified T> postAndDeserialize(
+    /** Shared transport + logging. Takes an already-serialized [jsonBody]. */
+    private suspend fun postJson(endpoint: String, jsonBody: String) {
+        val creds = requireCreds()
+        val url = apiUrl(creds.domain, endpoint)
+
+        val response = try {
+            encryptedPostJson(
+                url = url,
+                token = creds.accessToken,
+                jsonBody = jsonBody,
+                secret = creds.secret
+            )
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "POST $endpoint threw before a response (${e::class.simpleName})" }
+            throw e
+        }
+
+        Logger.i(tag = TAG) {
+            "POST $endpoint -> status=${response.status} body=${response.body.take(500)}"
+        }
+
+        try {
+            throwForFailure(response)
+        } catch (e: Exception) {
+            Logger.w(e, TAG) {
+                "POST $endpoint FAILED status=${response.status} (${e::class.simpleName})"
+            }
+            throw e
+        }
+    }
+
+    private suspend inline fun <reified Req, reified Res> postAndDeserialize(
         endpoint: String,
-        body: Any
-    ): T {
+        body: Req
+    ): Res {
         val creds = requireCreds()
 
         val response = encryptedPostJson(

@@ -52,11 +52,17 @@ class ContactBookService(
         null
     }
 
-    /** Soft-delete. Returns true on success (or already-gone), false on error. */
+    /**
+     * Soft-delete. Returns true on success (or already-gone), false on a generic/transient
+     * error. Rethrows [ForbiddenException] (403) so callers can explain the missing-permission
+     * cause distinctly — mirrors [save].
+     */
     suspend fun delete(uniqueId: Uuid): Boolean = try {
         contactsProvider.deleteContact(uniqueId)
         true
     } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        throw e
+    } catch (e: ForbiddenException) {
         throw e
     } catch (e: Exception) {
         Logger.w(e, TAG) { "deleteContact failed for $uniqueId" }

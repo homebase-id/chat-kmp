@@ -214,10 +214,18 @@ class ContactDetailViewModel(
 
     private fun handleUnblock() {
         val domain = odinId ?: return
+        _uiState.update { it.copy(actionInProgress = true) }
         viewModelScope.launch {
-            runCatching { connectionNetworkProvider.unblock(OdinId(domain)) }
-                .onSuccess { connectionService.refresh() }
-                .onFailure { emitConnectionError(it) }
+            try {
+                runCatching { connectionNetworkProvider.unblock(OdinId(domain)) }
+                    .onSuccess {
+                        connectionService.refresh()
+                        _events.tryEmit(ContactDetailEvent.Unblocked)
+                    }
+                    .onFailure { emitConnectionError(it) }
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
+            }
         }
     }
 
@@ -237,32 +245,54 @@ class ContactDetailViewModel(
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
-        _uiState.update { it.copy(confirm = null) }
+        _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
-            when (confirm) {
-                ContactDetailConfirm.DELETE -> {
-                    if (entry != null) {
+            try {
+                when (confirm) {
+                    ContactDetailConfirm.DELETE -> {
+                        if (entry == null) {
+                            _events.tryEmit(ContactDetailEvent.Back)
+                            return@launch
+                        }
                         contactBookStream.removeOptimistic(entry.uniqueId)
-                        if (!contactBookService.delete(entry.uniqueId)) {
-                            _events.tryEmit(ContactDetailEvent.Error)
+                        val event = try {
+                            if (contactBookService.delete(entry.uniqueId)) {
+                                ContactDetailEvent.Back
+                            } else {
+                                // Generic/transient failure — restore the contact and stay put.
+                                contactBookStream.insertOrUpdateOptimistic(entry)
+                                ContactDetailEvent.DeleteError
+                            }
+                        } catch (e: ForbiddenException) {
+                            // 403 — app lacks manage-contacts permission. Restore and explain.
+                            contactBookStream.insertOrUpdateOptimistic(entry)
+                            ContactDetailEvent.DeleteForbidden
+                        }
+                        _events.tryEmit(event)
+                    }
+                    ContactDetailConfirm.BLOCK -> {
+                        if (domain != null) {
+                            runCatching { connectionNetworkProvider.block(OdinId(domain)) }
+                                .onSuccess {
+                                    connectionService.refresh()
+                                    _events.tryEmit(ContactDetailEvent.Blocked)
+                                }
+                                .onFailure { emitConnectionError(it) }
                         }
                     }
-                    _events.tryEmit(ContactDetailEvent.Back)
-                }
-                ContactDetailConfirm.BLOCK -> {
-                    if (domain != null) {
-                        runCatching { connectionNetworkProvider.block(OdinId(domain)) }
-                            .onSuccess { connectionService.refresh() }
-                            .onFailure { emitConnectionError(it) }
+                    ContactDetailConfirm.DISCONNECT -> {
+                        if (domain != null) {
+                            runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
+                                .onSuccess {
+                                    connectionService.refresh()
+                                    _events.tryEmit(ContactDetailEvent.Disconnected)
+                                }
+                                .onFailure { emitConnectionError(it) }
+                        }
                     }
                 }
-                ContactDetailConfirm.DISCONNECT -> {
-                    if (domain != null) {
-                        runCatching { connectionNetworkProvider.disconnect(OdinId(domain)) }
-                            .onSuccess { connectionService.refresh() }
-                            .onFailure { emitConnectionError(it) }
-                    }
-                }
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
             }
         }
     }
