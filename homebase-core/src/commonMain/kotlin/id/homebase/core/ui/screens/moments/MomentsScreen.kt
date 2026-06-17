@@ -793,6 +793,15 @@ private fun MomentCommentsSheetHost(
             key = "moment-comments-sheet-$momentId",
         ) { parametersOf(momentId, null) }
         val uiState by detailVm.uiState.collectAsStateWithLifecycle()
+        // Deleting the moment from the sheet's description menu does an
+        // optimistic local remove, so the feed card vanishes on its own. There's
+        // no nav target to pop here (unlike the reels view), so just close the
+        // sheet so it doesn't linger over the now-deleted moment.
+        LaunchedEffect(detailVm) {
+            detailVm.events.collect { event ->
+                if (event is MomentDetailUiEvent.MomentDeleted) onDismiss()
+            }
+        }
         MomentCommentsSheet(
             uiState = uiState,
             onAction = detailVm::onAction,
