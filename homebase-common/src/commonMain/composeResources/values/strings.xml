@@ -849,6 +849,17 @@
     <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
     <string name="chat_groodle_send">Send Groodle</string>
 
+    <!-- Poll composer -->
+    <string name="chat_poll_share">Poll</string>
+    <string name="chat_poll_composer_title">New poll</string>
+    <string name="chat_poll_question_label">Question</string>
+    <string name="chat_poll_question_hint">Ask a question</string>
+    <string name="chat_poll_options_label">Options</string>
+    <string name="chat_poll_option_hint">Option %1$d</string>
+    <string name="chat_poll_add_option">Add option</string>
+    <string name="chat_poll_remove_option">Remove option</string>
+    <string name="chat_poll_allow_multiple">Allow multiple votes</string>
+
     <!-- Poll bubble -->
     <string name="chat_poll_subtitle_single">Poll · Select one</string>
     <string name="chat_poll_subtitle_multiple">Poll · Select one or more</string>
