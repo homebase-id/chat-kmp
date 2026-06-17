@@ -162,19 +162,22 @@ class VaultUploaderService(
             val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
-                    val optimisticFileId = optimisticWriter.writeNewFile(
+                    // Seed BEFORE the write: writeNewFile triggers the grid recompose
+                    // → thumbnail read, so the cache must already be populated under the
+                    // optimistic fileId or that read races the seed, misses, and 404s
+                    // (non-retriable) → blur. Pre-mint the id so we can seed first.
+                    val optimisticFileId = Uuid.random()
+                    payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
+                    optimisticWriter.writeNewFile(
                         driveId = driveId,
                         keyHeader = keyHeader,
                         unecryptedMetadata = unencryptedMetadata,
                         originalRecipientCount = 0,
                         fileSystemType = FileSystemType.Standard,
                         payloadDescriptors = payloadDescriptors,
+                        fileId = optimisticFileId,
                     )
                     Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
-                    // Seed the encrypted thumb/payload bytes under the optimistic
-                    // fileId so the grid tile shows its sharp thumbnail through the
-                    // upload window instead of the blurry embedded preview.
-                    payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
                 } catch (e: Exception) {
                     Logger.e(e, TAG) { "Optimistic write failed (non-fatal): $entryName" }
                 }

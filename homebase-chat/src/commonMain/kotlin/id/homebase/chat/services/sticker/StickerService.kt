@@ -207,22 +207,22 @@ class StickerService(
             // [OptimisticWriter] (and re-emitted by DriveSync); the in-memory optimistic
             // row keys on uniqueId, so [StickerStream.upsertSticker] swaps in the
             // server-confirmed SavedSticker (correct fileId) when it lands.
-            // Default to uniqueId so the tray still renders if the optimistic write
-            // throws; on success use the real optimistic fileId so the tray tile, the
-            // seeded cache below, and rekeyCacheAfterCreate all key on the same id.
-            var optimisticFileId = uniqueId
+            // Pre-mint the optimistic fileId so the tray tile, the seeded cache, and
+            // rekeyCacheAfterCreate all key on the same id — and so we can seed BEFORE
+            // the write (which triggers the tray render → thumbnail read): otherwise
+            // that read races the seed, misses, and 404s (non-retriable) → blur.
+            val optimisticFileId = Uuid.random()
             try {
-                optimisticFileId = optimisticWriter.writeNewFile(
+                payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
+                optimisticWriter.writeNewFile(
                     driveId = driveId,
                     keyHeader = keyHeader,
                     unecryptedMetadata = unencryptedMetadata,
                     originalRecipientCount = 0,
                     fileSystemType = FileSystemType.Standard,
                     payloadDescriptors = payloadDescriptors,
+                    fileId = optimisticFileId,
                 )
-                // Seed the encrypted thumb/payload bytes under the optimistic fileId so
-                // the tray tile shows its sharp thumbnail through the upload window.
-                payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for sticker $uniqueId" }
             }

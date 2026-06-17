@@ -347,16 +347,22 @@ class ChatMessageSenderService(
             )
         }.ifEmpty { null }
         try {
-            val optimisticFileId = optimisticWriter.writeNewFile(
+            // Seed BEFORE the write: writeNewFile triggers the bubble's recompose →
+            // thumbnail read, so the cache must already be populated under the
+            // optimistic fileId or that read races the seed, misses, and 404s
+            // (non-retriable) → blur. Pre-mint the id so we can seed first.
+            val optimisticFileId = Uuid.random()
+            payloadCacheSeeder.seed(chatDrive, optimisticFileId, encryptedBundle)
+            optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = unecryptedMetadata,
                 originalRecipientCount = recipients.size,
                 fileSystemType = FileSystemType.Standard,
                 payloadDescriptors = payloadDescriptors,
+                fileId = optimisticFileId,
             )
             Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
-            payloadCacheSeeder.seed(chatDrive, optimisticFileId, encryptedBundle)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "sendMessageInternal: optimistic write failed (non-fatal) message=$messageUniqueId" }
         }

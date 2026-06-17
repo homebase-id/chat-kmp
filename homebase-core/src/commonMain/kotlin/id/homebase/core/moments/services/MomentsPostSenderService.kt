@@ -416,6 +416,12 @@ class MomentsPostSenderService(
             }.ifEmpty { null }
 
             try {
+                // Seed BEFORE the writeUpdate: writeUpdate installs the descriptors
+                // and triggers the feed recompose → thumbnail read, so the cache must
+                // already be fully populated under the optimistic fileId or that read
+                // races ahead of the seed, misses, and 404s (non-retriable) → blur.
+                // rekeyCacheAfterCreate later moves these entries to the server fileId.
+                payloadCacheSeeder.seed(drive, optimisticFileId, encrypted)
                 optimisticWriter.writeUpdate(
                     driveId = drive,
                     keyHeader = keyHeader,
@@ -423,11 +429,6 @@ class MomentsPostSenderService(
                     payloadDescriptors = payloadDescriptors,
                 )
                 Logger.d(tag = TAG) { "finalizeMomentSend: optimistic update complete moment=$momentUniqueId" }
-                // Seed the encrypted thumb/payload bytes under the optimistic fileId
-                // so the just-promoted tile shows its sharp thumbnail through the
-                // upload window instead of the blurry embedded preview. rekeyCache
-                // AfterCreate later moves these to the server fileId.
-                payloadCacheSeeder.seed(drive, optimisticFileId, encrypted)
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) {
                     "finalizeMomentSend: optimistic update failed (non-fatal) moment=$momentUniqueId"
