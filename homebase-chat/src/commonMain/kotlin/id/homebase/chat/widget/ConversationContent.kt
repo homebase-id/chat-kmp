@@ -120,6 +120,7 @@ import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.groodle.GroodleComposerSheet
+import id.homebase.chat.poll.PollComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.location.LocationResult
@@ -246,6 +247,7 @@ fun ConversationContent(
     var showEventComposer by remember { mutableStateOf(false) }
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
+    var showPollComposer by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -1634,6 +1636,9 @@ fun ConversationContent(
                     }, onDicesClick = {
                         showAttachmentSheet = false
                         showDiceRollComposer = true
+                    }, onPollClick = {
+                        showAttachmentSheet = false
+                        showPollComposer = true
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
@@ -1653,6 +1658,14 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showGroodleComposer = false },
             onSent = { showGroodleComposer = false },
+        )
+    }
+
+    if (showPollComposer) {
+        PollComposerSheet(
+            conversationId = conversation.conversation.id,
+            onDismiss = { showPollComposer = false },
+            onSent = { showPollComposer = false },
         )
     }
 

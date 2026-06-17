@@ -16,6 +16,12 @@ class StatusMessageData(
     /** Set on [StatusMessage.GroupHealLocalCleanup] (local-only). Records which
      *  broken local files the receive-side heal handler hard-deleted. */
     val groupHealCleanup: GroupHealCleanupInfo? = null,
+
+    /** Set on [StatusMessage.PollEnded]. The poll question shown in the system line. */
+    val pollQuestion: String? = null,
+
+    /** Set on [StatusMessage.PollEnded]. References the originating poll message. */
+    val pollMessageId: Uuid? = null,
 )
 
 @Serializable

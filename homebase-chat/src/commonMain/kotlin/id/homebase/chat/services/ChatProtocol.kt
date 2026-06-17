@@ -25,8 +25,8 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. Polls and doodles will follow
-     * the same shape — pick the next free integer when adding one.
+     * off `appData.dataType` to choose a renderer. Poll is 214; pick the next free
+     * integer when adding one.
      */
     const val ChatEventMessageDataType = 210
 
@@ -59,6 +59,14 @@ object ChatProtocol {
      * [id.homebase.chat.groodle.GroodleDescriptor].
      */
     const val ChatGroodleMessageDataType = 213
+
+    /**
+     * Poll message kind — question + options; votes are chat reactions encoded by
+     * [id.homebase.chat.poll.PollVote] (e.g. `_p0`). The full descriptor lives in
+     * `appData.content` — no payloads, no fetch on scroll. See
+     * [id.homebase.chat.poll.PollDescriptor] and ADDING_TYPED_MESSAGE_KIND.md.
+     */
+    const val ChatPollMessageDataType = 214
 
     const val MessageFileType = 7878
 

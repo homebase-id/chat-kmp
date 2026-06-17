@@ -44,6 +44,8 @@ import id.homebase.resources.system_group_heal_local_cleanup_both
 import id.homebase.resources.system_group_heal_local_cleanup_main
 import id.homebase.resources.system_group_heal_requested
 import id.homebase.resources.system_group_heal_requested_you
+import id.homebase.resources.chat_poll_ended_other
+import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
@@ -515,6 +517,12 @@ internal suspend fun renderStatusMessage(
                 // string so we don't render an empty line.
                 else -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_both)
             }
+        }
+
+        StatusMessage.PollEnded -> {
+            val q = status.pollQuestion ?: ""
+            if (authorIsYou) TranslationUtil.getString(MR.string.chat_poll_ended_self, q)
+            else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
         }
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Event
@@ -72,6 +73,7 @@ import id.homebase.resources.chat_message_attachment_gallery
 import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_groodle_share
+import id.homebase.resources.chat_poll_share
 import id.homebase.resources.chat_location_share
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
@@ -395,6 +397,7 @@ fun AttachmentOptions(
     onEventClick: () -> Unit,
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
+    onPollClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -454,6 +457,14 @@ fun AttachmentOptions(
                     icon = Icons.Default.Casino,
                     label = stringResource(MR.string.chat_dice_share),
                     onClick = onDicesClick,
+                )
+            }
+            item {
+                AttachmentOption(
+                    modifier = Modifier.testTag("attachment_poll"),
+                    icon = Icons.Default.BarChart,
+                    label = stringResource(MR.string.chat_poll_share),
+                    onClick = onPollClick,
                 )
             }
         }

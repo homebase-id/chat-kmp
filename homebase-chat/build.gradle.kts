@@ -76,6 +76,11 @@ kotlin {
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network)
             implementation(libs.richeditor.compose)
+            // Drag-to-reorder list (Calvin-LL/Reorderable) — the Poll composer's
+            // option rows. Also declared in homebase-core for the Desktop
+            // distributable's repackaged platform JAR (see the markdown note below
+            // for the same transitive-strip reason).
+            implementation(libs.reorderable)
             // mikepenz read-only markdown renderer (m3 styling + in-markdown
             // images via the existing Coil3 loader). m3/coil3 ship commonMain +
             // android/jvm/ios/wasmJs, so no per-target block is needed.
