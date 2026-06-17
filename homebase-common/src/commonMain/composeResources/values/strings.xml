@@ -1322,9 +1322,9 @@
     <string name="contactbook_detail_more">More</string>
     <string name="contactbook_detail_less">Less</string>
     <string name="contactbook_detail_block_title">Block this contact?</string>
-    <string name="contactbook_detail_block_message">They won't be able to reach you. You can unblock them later.</string>
+    <string name="contactbook_detail_block_message">They won't be able to reach you, and they won't be notified. You can unblock them later to restore the connection.</string>
     <string name="contactbook_detail_disconnect_title">Disconnect?</string>
-    <string name="contactbook_detail_disconnect_message">This removes your connection. You can reconnect later.</string>
+    <string name="contactbook_detail_disconnect_message">This permanently removes your connection and the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
     <string name="contactbook_detail_delete_title">Delete contact?</string>
     <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
 
@@ -1364,9 +1364,15 @@
 
     <string name="contactbook_error_save">Couldn't save the contact.</string>
     <string name="contactbook_error_forbidden">Couldn't save — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="contactbook_error_connection_forbidden">Couldn't update this connection — this app doesn't have permission to manage your connections. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_delete">Couldn't delete the contact.</string>
+    <string name="contactbook_error_delete_forbidden">Couldn't delete — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_import">Couldn't import contacts.</string>
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
+
+    <string name="contactbook_action_blocked">Contact blocked.</string>
+    <string name="contactbook_action_unblocked">Contact unblocked.</string>
+    <string name="contactbook_action_disconnected">Disconnected.</string>
 
 </resources>

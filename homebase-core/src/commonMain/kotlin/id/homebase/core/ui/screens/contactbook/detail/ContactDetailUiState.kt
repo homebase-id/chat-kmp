@@ -31,6 +31,8 @@ data class ContactDetailUiState(
     val fullScreenMedia: SharedMediaItem? = null,
     val editOpen: Boolean = false,
     val confirm: ContactDetailConfirm? = null,
+    /** A management action (delete/block/disconnect/unblock) is running — show a blocking spinner. */
+    val actionInProgress: Boolean = false,
 ) {
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
@@ -63,5 +65,15 @@ sealed interface ContactDetailEvent {
     data object Error : ContactDetailEvent
     /** 403 — app lacks manage-contacts permission. */
     data object Forbidden : ContactDetailEvent
+    /** Generic/transient failure while deleting the contact. */
+    data object DeleteError : ContactDetailEvent
+    /** 403 on delete — app lacks manage-contacts permission. */
+    data object DeleteForbidden : ContactDetailEvent
+    /** 403 on block/unblock/disconnect — app lacks manage-connections permission. */
+    data object ConnectionForbidden : ContactDetailEvent
     data object PhotoError : ContactDetailEvent
+    /** Success confirmations for connection actions. */
+    data object Blocked : ContactDetailEvent
+    data object Unblocked : ContactDetailEvent
+    data object Disconnected : ContactDetailEvent
 }
