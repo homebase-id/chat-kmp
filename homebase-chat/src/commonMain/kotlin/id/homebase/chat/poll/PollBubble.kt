@@ -235,6 +235,7 @@ fun PollBubble(
             descriptor = descriptor,
             messageId = messageId,
             conversationId = conversationId,
+            ownReactions = ownReactions,
             organizer = organizer,
             onDismiss = { showDetail = false },
         )
@@ -394,11 +395,11 @@ private suspend fun applyPollVote(
         actionService.toggleReaction(conversationId, messageId, newCode)
         return
     }
-    // Single-choice: clear any currently-voted option (other than the tapped one)
-    // before toggling the tapped one.
-    val previousIndex = own.firstOrNull { it != optionIndex }
-    if (previousIndex != null) {
-        actionService.toggleReaction(conversationId, messageId, PollVote.codeFor(previousIndex))
+    // Single-choice: clear EVERY other currently-voted option before toggling the
+    // tapped one. Iterating (not firstOrNull) defends against a stale `own` set that
+    // somehow holds more than one prior vote, which would otherwise leave a ghost.
+    own.filter { it != optionIndex }.forEach { prev ->
+        actionService.toggleReaction(conversationId, messageId, PollVote.codeFor(prev))
     }
     // Toggle the tapped option (sets it if not voted, clears it if already voted).
     actionService.toggleReaction(conversationId, messageId, newCode)

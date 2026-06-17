@@ -1,8 +1,7 @@
 package id.homebase.chat.poll
 
 import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.decodeReactionCode
 
 /**
  * Encodes/decodes poll votes as chat reaction codes. A vote for option index
@@ -50,20 +49,11 @@ object PollVote {
         val out = IntArray(optionCount)
         if (summary != null) {
             for ((_, entry) in summary.reactions) {
-                val code = codeOf(entry.reactionContent) ?: continue
+                val code = decodeReactionCode(entry.reactionContent) ?: continue
                 val opt = optionOf(code) ?: continue
                 if (opt in 0 until optionCount) out[opt] += entry.count
             }
         }
         return out
     }
-
-    /**
-     * Extracts the emoji/code string from a single reaction entry's
-     * `reactionContent`. The stored shape is JSON-encoded [ReactionContent]
-     * (`{"emoji":"_p0"}`). Copied verbatim from GroodleVote.codeOf.
-     */
-    private fun codeOf(reactionContent: String): String? = runCatching {
-        OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
-    }.getOrNull()
 }

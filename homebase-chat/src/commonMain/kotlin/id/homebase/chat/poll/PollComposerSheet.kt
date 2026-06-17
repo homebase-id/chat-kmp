@@ -141,22 +141,29 @@ private fun PollComposerContent(
         if (isValid) {
             sending = true
             scope.launch {
-                val descriptor = PollDescriptor(
-                    question = question.trim().truncateToCodePoints(PollDescriptor.MAX_QUESTION_CP),
-                    options = options.map { it.text.trim() }.filter { it.isNotBlank() }
-                        .map { it.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP) },
-                    allowMultiple = allowMultiple,
-                )
-                runCatching {
-                    sender.sendNewTypedMessage(
-                        messageUniqueId = Uuid.random(),
-                        conversationId = conversationId,
-                        content = MessageContent.Poll(descriptor),
-                        previousMessageUniqueId = null,
+                // finally resets `sending` even if this coroutine is cancelled
+                // mid-send (e.g. back-gesture), so the Send button never sticks
+                // disabled for the rest of the sheet's life.
+                try {
+                    val descriptor = PollDescriptor(
+                        question = question.trim().truncateToCodePoints(PollDescriptor.MAX_QUESTION_CP),
+                        options = options.map { it.text.trim() }.filter { it.isNotBlank() }
+                            .map { it.truncateToCodePoints(PollDescriptor.MAX_OPTION_CP) },
+                        allowMultiple = allowMultiple,
                     )
+                    runCatching {
+                        sender.sendNewTypedMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = conversationId,
+                            content = MessageContent.Poll(descriptor),
+                            previousMessageUniqueId = null,
+                        )
+                    }
+                    sheetState.hide()
+                    onSent()
+                } finally {
+                    sending = false
                 }
-                sheetState.hide()
-                onSent()
             }
         }
     }

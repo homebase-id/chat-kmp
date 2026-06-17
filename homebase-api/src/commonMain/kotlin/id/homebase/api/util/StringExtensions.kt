@@ -84,6 +84,21 @@ fun String.truncateToCodePoints(maxVisibleCharacters: Int): String {
 }
 
 /**
+ * Counts Unicode code points (not UTF-16 chars), so a surrogate pair (emoji or
+ * other non-BMP character) counts as one. Mirrors [truncateToCodePoints]'s walk —
+ * use it for length-budget checks on user text instead of `.length`.
+ */
+fun String.codePointCount(): Int {
+    var count = 0
+    var charIndex = 0
+    while (charIndex < length) {
+        charIndex += if (charIndex + 1 < length && this[charIndex].isHighSurrogate() && this[charIndex + 1].isLowSurrogate()) 2 else 1
+        count += 1
+    }
+    return count
+}
+
+/**
  * Cleans a domain string. Also built to handle a full string like a pasted URL, removing invalid
  * characters, and enforcing domain rules. Supports Unicode characters for IDNs (to be
  * Punycode-converted later) and handles common user input typos. It's intended to be called with

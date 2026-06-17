@@ -27,9 +27,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +49,8 @@ import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.contact.ContactService
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
@@ -86,6 +90,9 @@ fun PollDetailDialog(
     conversationId: Uuid,
     organizer: OdinId?,
     onDismiss: () -> Unit,
+    // The viewer's own votes — keys the roster re-fetch so tallies refresh when the
+    // viewer votes while the dialog is open (mirrors EventDetailDialog).
+    ownReactions: ImmutableList<String> = persistentListOf(),
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -96,6 +103,7 @@ fun PollDetailDialog(
             messageId = messageId,
             conversationId = conversationId,
             organizer = organizer,
+            ownReactions = ownReactions,
             onDismiss = onDismiss,
         )
     }
@@ -108,6 +116,7 @@ private fun PollDetailContent(
     messageId: Uuid,
     conversationId: Uuid,
     organizer: OdinId?,
+    ownReactions: ImmutableList<String>,
     onDismiss: () -> Unit,
 ) {
     val actionService: ChatMessageActionService = koinInject()
@@ -117,13 +126,19 @@ private fun PollDetailContent(
     val messageStream: ChatMessageStream = koinInject()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    // Guards the End-poll button against a double-tap firing two updateMessage +
+    // two status-line sends before onDismiss closes the dialog.
+    var isEnding by remember { mutableStateOf(false) }
 
     val selfOdinId = ownerSession.user.value?.odinId
 
-    // Roster fetch — fires once per messageId. null = loading, empty = no reactions yet.
+    // Roster fetch — re-fires when messageId OR the viewer's own votes change, so a
+    // vote cast while the dialog is open refreshes the roster/tally (matching
+    // EventDetailDialog). null = loading, empty = no reactions yet.
     val rosterReactions: List<EmojiReaction>? by produceState<List<EmojiReaction>?>(
         initialValue = null,
         key1 = messageId,
+        key2 = ownReactions,
     ) {
         value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
     }
@@ -205,7 +220,10 @@ private fun PollDetailContent(
             if (showEndButton) {
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = {
+                    enabled = !isEnding,
+                    onClick = onEndClick@{
+                        if (isEnding) return@onEndClick
+                        isEnding = true
                         scope.launch {
                             runCatching {
                                 val live = messageStream.getMessage(messageId)
@@ -234,6 +252,8 @@ private fun PollDetailContent(
                             }.onSuccess {
                                 onDismiss()
                             }.onFailure { t ->
+                                // Re-enable so the organizer can retry.
+                                isEnding = false
                                 Logger.w(tag = "PollDetailDialog", throwable = t) {
                                     "End poll failed for messageId=$messageId"
                                 }

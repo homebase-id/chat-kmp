@@ -291,4 +291,93 @@ class ChatMessageSenderServiceUpdateMessageTest {
             assertEquals(descriptor.options, reparsed.options)
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Pending-create (coalesce) path
+    // -----------------------------------------------------------------------
+
+    /**
+     * The other `updateMessage` branch: when the original create is still queued in
+     * the outbox, the edit coalesces into that create. This path has the same
+     * raw-vs-envelope content choice as the normal path, so it must ALSO write the
+     * raw descriptor (not the envelope) for a typed kind. Sends a Poll without
+     * draining so the create stays pending, then ends it and asserts the
+     * optimistically-written header content re-parses to a closed Poll.
+     */
+    @Test
+    fun `updateMessage coalesces a closed Poll into a pending create as raw header content`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+
+            val descriptor = PollDescriptor(
+                question = "Best day?",
+                options = listOf("Monday", "Tuesday"),
+            )
+
+            // 1. Send the poll as a new typed message but DON'T drain — the create
+            //    stays pending in the outbox, so updateMessage takes the coalesce path.
+            service.sendNewTypedMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                content = MessageContent.Poll(descriptor),
+                previousMessageUniqueId = null,
+            )
+
+            // 2. Seed the lookup so updateMessage finds the message (versionTag match +
+            //    messageContent = Poll for dataType derivation).
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = descriptor.summaryLine(),
+                    userDate = Instant.fromEpochMilliseconds(1_000L),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(1_000L),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = true,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = MessageContent.Poll(descriptor),
+                )
+            )
+
+            // 3. End the poll → coalesce into the pending create.
+            service.updateMessage(
+                messageId = messageId,
+                versionTag = versionTag,
+                content = OdinSystemSerializer.serialize(descriptor.copy(closed = true)),
+            )
+
+            // 4. The coalesced create's optimistically-written header content must be
+            //    the raw closed descriptor, not the MessageAppData envelope.
+            val storedContent = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+                ?.fileMetadata?.appData?.content
+            assertNotNull(storedContent, "coalesced create must have header content")
+
+            val reparsed = OdinSystemSerializer.deserialize<PollDescriptor>(storedContent)
+            assertTrue(reparsed.isValid(), "re-parsed Poll descriptor must be valid")
+            assertTrue(reparsed.closed, "coalesced descriptor must be closed")
+            assertEquals(descriptor.options, reparsed.options)
+        }
+    }
 }
