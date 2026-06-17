@@ -197,7 +197,19 @@ fun MessageBubbleRaw(
             )
             return
         }
-        is MessageContent.Poll -> Unit // bubble not yet implemented — fall through to text + media rendering
+        is MessageContent.Poll -> {
+            id.homebase.chat.poll.PollBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
+            )
+            return
+        }
         null -> Unit // fall through to text + media rendering
     }
 
