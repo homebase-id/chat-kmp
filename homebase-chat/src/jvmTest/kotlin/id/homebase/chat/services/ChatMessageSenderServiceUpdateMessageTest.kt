@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -191,6 +192,103 @@ class ChatMessageSenderServiceUpdateMessageTest {
                 updateRow.metadata.appData.dataType,
                 "updateMessage must preserve the Poll's dataType (214) — not hardcode 0",
             )
+        }
+    }
+
+    /**
+     * Regression for the "Unable to display this poll" bug: a typed (raw-header)
+     * kind stores its descriptor JSON VERBATIM in appData.content. updateMessage
+     * must write it straight through — routing it through the MessageAppData
+     * envelope builder strips the descriptor's required fields, so the next read
+     * threw MissingFieldException(question, options) and rendered the
+     * unsupported-format chip.
+     *
+     * Asserts the optimistically-written (UNencrypted) header content re-parses to
+     * a valid, now-closed [PollDescriptor].
+     */
+    @Test
+    fun `updateMessage on a Poll writes the raw descriptor so it re-parses to a closed Poll`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+
+            val descriptor = PollDescriptor(
+                question = "Best day?",
+                options = listOf("Monday", "Tuesday"),
+            )
+
+            fixture.optimisticWriter.writeNewFile(
+                driveId = fixture.chatDriveId,
+                keyHeader = keyHeader,
+                unecryptedMetadata = UploadFileMetadata(
+                    allowDistribution = true,
+                    isEncrypted = true,
+                    appData = UploadAppFileMetaData(
+                        uniqueId = messageId,
+                        groupId = conversationId,
+                        fileType = ChatProtocol.MessageFileType,
+                        dataType = ChatProtocol.ChatPollMessageDataType,
+                        userDate = 1_000L,
+                        content = OdinSystemSerializer.serialize(descriptor),
+                    ),
+                ),
+                originalRecipientCount = 1,
+                fileSystemType = FileSystemType.Standard,
+            )
+
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = descriptor.summaryLine(),
+                    userDate = Instant.fromEpochMilliseconds(1_000L),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(1_000L),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = false,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = MessageContent.Poll(descriptor),
+                )
+            )
+
+            service.updateMessage(
+                messageId = messageId,
+                versionTag = versionTag,
+                content = OdinSystemSerializer.serialize(descriptor.copy(closed = true)),
+            )
+
+            // The optimistic write stores the UNencrypted header content. For a typed
+            // kind that must be the raw descriptor (not the MessageAppData envelope),
+            // so it re-parses to a valid, now-closed Poll.
+            val storedContent = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+                ?.fileMetadata?.appData?.content
+            assertNotNull(storedContent, "updated Poll must have header content")
+
+            val reparsed = OdinSystemSerializer.deserialize<PollDescriptor>(storedContent)
+            assertTrue(reparsed.isValid(), "re-parsed Poll descriptor must be valid")
+            assertTrue(reparsed.closed, "updated descriptor must be closed")
+            assertEquals(descriptor.question, reparsed.question)
+            assertEquals(descriptor.options, reparsed.options)
         }
     }
 }

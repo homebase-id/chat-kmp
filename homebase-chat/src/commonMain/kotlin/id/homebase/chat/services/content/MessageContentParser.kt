@@ -155,4 +155,23 @@ object MessageContentParser {
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
     }
+
+    /**
+     * True for kinds whose descriptor is stored VERBATIM in `appData.content`
+     * (Event/DiceRoll/Groodle/Poll — the kinds [parse] decodes straight from the
+     * header), as opposed to the `MessageAppData` envelope used by plain text /
+     * media / Location (the dataTypes [parse] returns null for).
+     *
+     * Editing such a message must write the descriptor JSON directly to the header.
+     * Routing it through the envelope builder strips the descriptor's required
+     * fields, so the next read fails to parse and renders the unsupported-format
+     * chip. Used by [ChatMessageSenderService.updateMessage].
+     */
+    fun usesRawHeaderContent(content: MessageContent?): Boolean = when (content) {
+        is MessageContent.Event,
+        is MessageContent.DiceRoll,
+        is MessageContent.Groodle,
+        is MessageContent.Poll -> true
+        is MessageContent.Unknown, null -> false
+    }
 }

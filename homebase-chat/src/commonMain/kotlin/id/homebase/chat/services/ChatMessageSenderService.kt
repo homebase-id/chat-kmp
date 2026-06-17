@@ -428,7 +428,11 @@ class ChatMessageSenderService(
                 message = JsonPrimitive(content),
                 isEdited = false
             )
-            val createBuilt = buildMessageContentAndBundle(
+            // Typed kinds (Event/DiceRoll/Groodle/Poll) keep their raw descriptor as
+            // the header content; only plain text/media use the envelope builder (see
+            // the normal update path below for the full rationale).
+            val isRawHeaderContent = MessageContentParser.usesRawHeaderContent(msg.messageContent)
+            val createBuilt = if (isRawHeaderContent) null else buildMessageContentAndBundle(
                 preVersionedMessageData = createMessageData,
                 payloadBundle = null,
                 fileOperationsProvider = fileOperationsProvider
@@ -443,14 +447,15 @@ class ChatMessageSenderService(
                     fileType = ChatProtocol.MessageFileType,
                     dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                     userDate = msg.userDate.toEpochMilliseconds(),
-                    content = createBuilt.headerContent,
+                    content = createBuilt?.headerContent ?: content,
                     previewThumbnail = msg.previewThumbnail
                 )
             )
             // Re-encrypt the (possibly new) text-overflow payload with the same
             // aesKey the create's media payloads already use, so everything in
-            // the amended request stays decryptable with one keyHeader.
-            val encryptedOverflow = createBuilt.payloadBundle?.let {
+            // the amended request stays decryptable with one keyHeader. Typed kinds
+            // have no overflow payload (descriptor is header-only).
+            val encryptedOverflow = createBuilt?.payloadBundle?.let {
                 payloadBundleEncryptionService.encryptBundle(messageId, it, createKey.aesKey, scope)
             }?.payloads ?: emptyList()
             val amended = amendPendingCreate(
@@ -469,22 +474,31 @@ class ChatMessageSenderService(
             return UpdateMessageResult(uniqueId = messageId)
         }
 
+        // Typed kinds (Event/DiceRoll/Groodle/Poll) store the raw descriptor JSON
+        // verbatim in appData.content; only plain text / media use the MessageAppData
+        // envelope that buildMessageContentAndBundle produces. Wrapping a descriptor
+        // in the envelope strips its required fields and makes it unparseable on the
+        // next read, so for typed kinds write `content` straight through and leave the
+        // message's existing payloads (e.g. an Event cover photo) untouched.
+        val isRawHeaderContent = MessageContentParser.usesRawHeaderContent(msg.messageContent)
+
         val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
             message = JsonPrimitive(content),
             isEdited = true
         )
 
-        val built = buildMessageContentAndBundle(
+        val built = if (isRawHeaderContent) null else buildMessageContentAndBundle(
             preVersionedMessageData = messageData,
             payloadBundle = null,
             fileOperationsProvider = fileOperationsProvider
         )
 
-        val payloads = built.payloadBundle?.payloads ?: emptyList()
+        val headerContent = built?.headerContent ?: content
+        val payloads = built?.payloadBundle?.payloads ?: emptyList()
 
         val toDeletePayloads =
-            if (payloads.isEmpty())
+            if (!isRawHeaderContent && payloads.isEmpty())
                 listOf(PayloadDeleteKey(ChatProtocol.DefaultPayloadKey))
             else
                 emptyList()
@@ -499,7 +513,7 @@ class ChatMessageSenderService(
                 fileType = ChatProtocol.MessageFileType,
                 dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                 userDate = msg.userDate.toEpochMilliseconds(),
-                content = built.headerContent,
+                content = headerContent,
                 previewThumbnail = msg.previewThumbnail
             )
         )
