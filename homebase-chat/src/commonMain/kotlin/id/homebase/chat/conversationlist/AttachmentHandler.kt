@@ -254,7 +254,18 @@ internal class AttachmentHandler(
                     if (pending is AttachmentPendingFile.FileVideo) {
                         // Cheap playable handle (blob: URL on web, real path on native); see
                         // handleAttachPlatformFile. Send-time materialization is separate.
-                        extractThumbnailAsync(pending.attachmentId, gallery.file.toPlayableUrl())
+                        val rawPath = gallery.file.toPlayableUrl()
+                        // iOS quick-switch hands a bare PHAsset localIdentifier (ph://… / …/L0/…)
+                        // that AVPlayer (the editor preview) and the thumbnail/duration probe can't
+                        // open — materialize it to a real temp file first. Other platforms
+                        // (Android content://, desktop real path) are already playable; pass through.
+                        // The send path resolves file (the identifier) on its own, so it's untouched.
+                        val playable = if (rawPath.startsWith("ph://") || rawPath.contains("/L0/")) {
+                            fileOperationsProvider.resolveToFilePath(rawPath)
+                        } else {
+                            rawPath
+                        }
+                        extractThumbnailAsync(pending.attachmentId, playable)
                     }
                 }
             } catch (e: Exception) {
