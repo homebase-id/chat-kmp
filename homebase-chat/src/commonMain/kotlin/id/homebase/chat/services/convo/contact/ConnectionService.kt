@@ -11,6 +11,7 @@ import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +19,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
+
+/** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
+ *  enough that the contact-detail / circles UI updates promptly after an external change. */
+private const val REFRESH_DEBOUNCE_MS = 300L
 
 data class ConnectionState(
     val isLoaded: Boolean,
@@ -78,9 +83,23 @@ class ConnectionService(
     // actions, CircleNetworkEvents) bypass this guard so they always re-fetch.
     private var refreshJob: Job? = null
 
+    // Trailing-debounce for push-driven invalidation (ConnectionChanged / CircleDefinitionChanged).
+    // Each event reschedules, so a burst (bulk circle edit, or the echo of our own mutation plus the
+    // real change) collapses into a single refresh once the events go quiet.
+    private var debouncedRefreshJob: Job? = null
+
     private fun launchRefresh() {
         if (refreshJob?.isActive == true) return
         refreshJob = scope.launch { refresh() }
+    }
+
+    /** Coalesces a burst of push events into one refresh [REFRESH_DEBOUNCE_MS] after the last one. */
+    private fun scheduleRefresh() {
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = scope.launch {
+            delay(REFRESH_DEBOUNCE_MS)
+            refresh()
+        }
     }
 
     init {
@@ -109,6 +128,19 @@ class ConnectionService(
                     // When the websocket comes back after an offline window, reconcile
                     // against the server — covers the airplane-mode-off case.
                     is BackendEvent.ConnectionOnline -> launchRefresh()
+                    // Connection/circle state changed somewhere (another device, owner-console,
+                    // server-side). These fan out to every session and echo our own mutations, so
+                    // a single connection edit or a bulk circle change can arrive as a burst —
+                    // collapse them into one re-fetch. refresh() already reloads connections AND
+                    // circles, so both event kinds are covered by the same scheduled refresh.
+                    is BackendEvent.CircleNetworkEvent.ConnectionChanged -> {
+                        Logger.d { "ConnectionChanged: ${event.identity} ${event.change} ${event.circleId ?: ""}" }
+                        scheduleRefresh()
+                    }
+                    is BackendEvent.CircleNetworkEvent.CircleDefinitionChanged -> {
+                        Logger.d { "CircleDefinitionChanged: ${event.circleId} ${event.change}" }
+                        scheduleRefresh()
+                    }
                     // Logout: drop the previous identity's connection map.
                     is BackendEvent.SessionEnded -> reset()
                     else -> {}
@@ -135,6 +167,8 @@ class ConnectionService(
     fun reset() {
         refreshJob?.cancel()
         refreshJob = null
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = null
         started = false
         _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
         _circles.value = CircleMembershipState()

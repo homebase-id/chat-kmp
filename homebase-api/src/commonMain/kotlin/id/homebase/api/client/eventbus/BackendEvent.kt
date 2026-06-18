@@ -1,6 +1,8 @@
 package id.homebase.api.client.eventbus
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.websockets.CircleDefinitionChangeType
+import id.homebase.api.client.websockets.ConnectionChangeType
 import id.homebase.api.client.websockets.Introduction
 import id.homebase.api.common.OdinId
 import id.homebase.api.video.VideoProcessingPhase
@@ -51,6 +53,24 @@ sealed interface BackendEvent {
         data class IntroductionsReceived(
             val introducerOdinId: OdinId,
             val introduction: Introduction
+        ) : CircleNetworkEvent
+
+        /**
+         * An existing connection's state changed elsewhere (disconnect/block/unblock) or a circle
+         * was granted/revoked to it. Pushed to all the owner's sessions for any origin — including
+         * an echo of this device's own mutation, so consumers must be idempotent. [circleId] is
+         * non-null only for [ConnectionChangeType.CircleGranted] / [ConnectionChangeType.CircleRevoked].
+         */
+        data class ConnectionChanged(
+            val identity: String,
+            val change: ConnectionChangeType,
+            val circleId: String?,
+        ) : CircleNetworkEvent
+
+        /** A circle definition itself changed elsewhere (not its membership). Echoes like above. */
+        data class CircleDefinitionChanged(
+            val circleId: String,
+            val change: CircleDefinitionChangeType,
         ) : CircleNetworkEvent
 
     }
