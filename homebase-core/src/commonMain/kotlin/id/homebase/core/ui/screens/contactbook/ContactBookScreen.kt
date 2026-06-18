@@ -1,17 +1,23 @@
 package id.homebase.core.ui.screens.contactbook
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PersonAddAlt1
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -32,13 +38,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.auth.initials
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
@@ -48,7 +60,6 @@ import id.homebase.core.ui.screens.contactbook.deviceimport.ContactImportSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_action_import
-import id.homebase.resources.contactbook_action_settings
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_import
@@ -68,7 +79,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ContactBookScreen(
     viewModel: ContactBookViewModel,
-    onNavigateToSettings: () -> Unit,
+    onProfileClick: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -175,7 +186,40 @@ fun ContactBookScreen(
                 )
             } else {
                 TopAppBar(
-                    title = { Text(stringResource(MR.string.contactbook_label)) },
+                    // Owner avatar on the left links to settings — mirrors the Moments header.
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            AnimatedVisibility(
+                                visible = uiState.ownerSession != null,
+                                enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                                exit = fadeOut(animationSpec = tween(150)),
+                            ) {
+                                uiState.ownerSession?.let { session ->
+                                    OwnerAvatar(
+                                        odinId = session.odinId,
+                                        profileImageData = null,
+                                        initials = session.initials(),
+                                        connectionStatus = uiState.connectionStatus,
+                                        driveIsSyncing = uiState.driveIsSyncing,
+                                        hasDriveError = uiState.hasDriveError,
+                                        options = AvatarOptions(
+                                            size = 32.dp,
+                                            fontSize = 12.sp,
+                                            onClick = onProfileClick,
+                                        ),
+                                        animatedVisibilityScope = this@AnimatedVisibility,
+                                        sharedTransitionScope = null,
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(stringResource(MR.string.contactbook_label))
+                        }
+                    },
                     actions = {
                         IconButton(onClick = { searchActive = true }) {
                             Icon(
@@ -190,12 +234,6 @@ fun ContactBookScreen(
                                     contentDescription = stringResource(MR.string.contactbook_action_import),
                                 )
                             }
-                        }
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(
-                                Icons.Outlined.Settings,
-                                contentDescription = stringResource(MR.string.contactbook_action_settings),
-                            )
                         }
                     },
                 )

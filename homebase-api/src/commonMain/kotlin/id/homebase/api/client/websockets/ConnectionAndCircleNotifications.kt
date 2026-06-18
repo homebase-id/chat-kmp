@@ -6,32 +6,16 @@ import kotlinx.serialization.Serializable
  * Server push notifications for connection & circle state changes, delivered to all of the
  * owner's sessions whenever connection/circle state changes from any device.
  *
- * Transport: these ride inside the [ClientNotificationType.appNotificationAdded] websocket
- * notification. That notification's `data` is the app-notification envelope below, whose int
- * [AppNotificationEnvelope.notificationType] selects the concrete payload and whose `data` is a
- * second, double-encoded JSON string carrying it (parsed again). The wire is camelCase (the
- * server's CamelCase policy), so the Kotlin camelCase field names match via
- * [id.homebase.api.serialization.OdinSystemSerializer]'s naming strategy; enum names are decoded
- * case-insensitively, and unknown values coerce to [ConnectionChangeType.Unknown] /
- * [CircleDefinitionChangeType.Unknown] so a newer server kind never throws here.
+ * Transport (confirmed on the wire): each arrives as its own top-level
+ * [ClientNotificationType] — `connectionChanged` / `circleDefinitionChanged` — exactly like
+ * `connectionRequestReceived` et al. The notification's `data` is a (double-encoded) JSON string
+ * carrying the payload directly; deserialize it into the types below. Field names are camelCase;
+ * enum names decode case-insensitively (server sends e.g. `"CircleGranted"`), and unknown values
+ * coerce to [ConnectionChangeType.Unknown] / [CircleDefinitionChangeType.Unknown] so a newer
+ * server kind never throws here.
  */
 
-/** App-notification envelope: int type id + a double-encoded payload string. */
-@Serializable
-data class AppNotificationEnvelope(
-    val notificationType: Int = 0,
-    val data: String = "",
-)
-
-object AppNotificationType {
-    /** [ConnectionChangedNotification] */
-    const val CONNECTION_CHANGED: Int = 5002
-
-    /** [CircleDefinitionChangedNotification] */
-    const val CIRCLE_DEFINITION_CHANGED: Int = 5003
-}
-
-/** What happened to an existing connection (5002). */
+/** What happened to an existing connection. */
 @Serializable
 enum class ConnectionChangeType {
     Disconnected,
@@ -44,7 +28,7 @@ enum class ConnectionChangeType {
     Unknown,
 }
 
-/** What happened to a circle definition itself — not its membership (5003). */
+/** What happened to a circle definition itself — not its membership. */
 @Serializable
 enum class CircleDefinitionChangeType {
     Created,
@@ -58,8 +42,9 @@ enum class CircleDefinitionChangeType {
 }
 
 /**
- * 5002 — an existing connection's state changed, or a circle was granted/revoked to it.
- * [circleId] is only present for [ConnectionChangeType.CircleGranted] / [ConnectionChangeType.CircleRevoked].
+ * `connectionChanged` — an existing connection's state changed, or a circle was granted/revoked
+ * to it. [circleId] is only present for [ConnectionChangeType.CircleGranted] /
+ * [ConnectionChangeType.CircleRevoked].
  */
 @Serializable
 data class ConnectionChangedNotification(
@@ -68,7 +53,7 @@ data class ConnectionChangedNotification(
     val circleId: String? = null,
 )
 
-/** 5003 — a circle definition was created/renamed/re-permissioned/deleted/enabled/disabled. */
+/** `circleDefinitionChanged` — a circle definition was created/renamed/re-permissioned/deleted/enabled/disabled. */
 @Serializable
 data class CircleDefinitionChangedNotification(
     val circleId: String = "",
