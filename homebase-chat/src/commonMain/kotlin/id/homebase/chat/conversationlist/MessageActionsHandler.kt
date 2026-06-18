@@ -650,10 +650,10 @@ internal class MessageActionsHandler(
                             AttachmentInput(
                                 filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
-                                    fileName = attachment.file.name,
+                                    fileName = attachment.sourceFileName ?: attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
-                                displayName = attachment.file.name,
+                                displayName = attachment.sourceFileName ?: attachment.file.name,
                                 trimStartMs = attachment.trimStartMs,
                                 trimEndMs = attachment.trimEndMs,
                                 // Web: the blob: URL becomes the ffmpeg compress INPUT (read in JS,
