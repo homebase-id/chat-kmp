@@ -123,8 +123,12 @@ class DeveloperMenuViewModel(
                 Logger.i(tag = TEMPORAL_TAG) { "Temporal read test → peer=$TEST_PEER drive=$driveId" }
 
                 val access = temporalDriveReadProvider.verifyTemporalAccess(peer, driveId)
+                // newestFileModified is the "is data still flowing?" signal — 0 (ZeroTime) means
+                // no files / no access, so only meaningful when hasAccess is true.
+                val newestMs = access.newestFileModified.milliseconds
                 Logger.i(tag = TEMPORAL_TAG) {
-                    "verify → hasAccess=${access.hasAccess} windowSeconds=${access.windowSeconds}"
+                    "verify → hasAccess=${access.hasAccess} windowSeconds=${access.windowSeconds} " +
+                        "newestFileModified=${if (access.hasAccess && newestMs > 0) newestMs.toString() else "none"}"
                 }
 
                 val request = QueryBatchRequest(

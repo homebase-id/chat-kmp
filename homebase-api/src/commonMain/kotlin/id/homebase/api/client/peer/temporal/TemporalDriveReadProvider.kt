@@ -73,7 +73,7 @@ class TemporalDriveReadProvider(
         }
         val body: TemporalAccessStatus = deserialize(response.body)
         Logger.i(tag = TAG) {
-            "verifyTemporalAccess: OK peer=${peer.domainName} drive=$driveId → hasAccess=${body.hasAccess} windowSeconds=${body.windowSeconds}"
+            "verifyTemporalAccess: OK peer=${peer.domainName} drive=$driveId → hasAccess=${body.hasAccess} windowSeconds=${body.windowSeconds} newestFileModified=${body.newestFileModified.milliseconds}"
         }
         return body
     }

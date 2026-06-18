@@ -1,6 +1,7 @@
 package id.homebase.api.client.peer.temporal
 
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 
 /**
@@ -13,10 +14,17 @@ import kotlinx.serialization.Serializable
  * @property targetDrive the drive that was checked.
  * @property windowSeconds the effective lookback window (seconds) the caller is clamped to, or null
  *   when the caller has unconstrained read access (no time clamp). Only meaningful when [hasAccess].
+ * @property newestFileModified the `modified` timestamp of the newest active file on the drive — a
+ *   "is data still flowing?" signal (e.g. has tracking been turned off?). It is **not** clamped to
+ *   [windowSeconds]: if data stopped longer ago than the window you still get the real last-update
+ *   time, not zero. [UnixTimeUtc.ZeroTime] (0 ms) means the drive has no files OR the caller has no
+ *   access — so only treat it as a real timestamp when [hasAccess] is true; otherwise render it as
+ *   "no data / unknown".
  */
 @Serializable
 data class TemporalAccessStatus(
     val hasAccess: Boolean = false,
     val targetDrive: TargetDrive? = null,
     val windowSeconds: Long? = null,
+    val newestFileModified: UnixTimeUtc = UnixTimeUtc.ZeroTime,
 )
