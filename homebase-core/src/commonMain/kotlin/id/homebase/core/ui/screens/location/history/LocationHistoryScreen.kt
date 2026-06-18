@@ -41,6 +41,7 @@ import id.homebase.resources.location_history_next_day
 import id.homebase.resources.location_history_pick_date
 import id.homebase.resources.location_history_previous_day
 import id.homebase.resources.location_history_title
+import id.homebase.resources.location_history_you
 import id.homebase.resources.menu_back
 import id.homebase.resources.ok
 import kotlinx.datetime.LocalDate
@@ -117,11 +118,14 @@ fun LocationHistoryScreen(
             }
 
             // The map, dwell dots, stats and 24h scrubber are the reusable player.
+            // "(you)" makes it clear this is your own data — the same header the
+            // emergency feature uses for a relative's name.
             DayPlaybackMap(
                 traces = uiState.traces,
                 dayStartMs = uiState.dayStartMs,
                 showMapTiles = uiState.showMapTiles,
                 isLoading = uiState.isLoading,
+                subjectName = stringResource(MR.string.location_history_you),
                 modifier = Modifier.weight(1f),
             )
         }

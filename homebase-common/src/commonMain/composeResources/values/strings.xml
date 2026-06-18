@@ -1290,6 +1290,7 @@
     <string name="location_consent_agree">Agree</string>
     <string name="location_consent_decline">No thanks</string>
     <string name="location_history_title">History</string>
+    <string name="location_history_you">(you)</string>
     <string name="location_history_empty">No locations recorded on this day</string>
     <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
     <string name="location_history_previous_day">Previous day</string>
