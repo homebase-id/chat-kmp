@@ -6,8 +6,9 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.Gif
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -23,6 +24,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
+import id.homebase.resources.chat_message_gif
 import id.homebase.resources.chat_message_image
 import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_location
@@ -49,11 +51,11 @@ data class ContentLabel(val text: String, val icon: ImageVector?)
  * When you add a new typed message kind, add its branch here so it gets a preview icon.
  */
 fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = when (messageContent) {
-    is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.HowToVote)
+    is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.BarChart)
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
-    is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Filled.HelpOutline)
+    is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
 
@@ -97,6 +99,17 @@ fun messageContentLabel(
 
     if (firstPayload != null) {
         return when {
+            // Specific payload keys first: a Location carries a map *image* and a Link
+            // carries a preview *image*, so they'd otherwise match the generic image/
+            // branch below and mis-label as "Image". The key identifies the kind exactly.
+            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
+                text = stringResource(MR.string.chat_message_link),
+                icon = Icons.Default.Description
+            )
+            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
+                text = stringResource(MR.string.chat_message_location),
+                icon = Icons.Default.LocationOn
+            )
             // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
             // hasMultiplePayloads is already false here, so this is the single-payload case the
             // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
@@ -106,6 +119,10 @@ fun messageContentLabel(
                     text = stringResource(MR.string.chat_preview_sticker),
                     icon = Icons.AutoMirrored.Filled.StickyNote2
                 )
+            firstPayload.contentType == "image/gif" -> ContentLabel(
+                text = stringResource(MR.string.chat_message_gif),
+                icon = Icons.Default.Gif
+            )
             firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image
@@ -118,14 +135,6 @@ fun messageContentLabel(
             firstPayload.contentType?.startsWith("audio/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_audio),
                 icon = Icons.Default.PlayArrow
-            )
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
-                text = stringResource(MR.string.chat_message_link),
-                icon = Icons.Default.Description
-            )
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
-                text = stringResource(MR.string.chat_message_location),
-                icon = Icons.Default.LocationOn
             )
             else -> ContentLabel(
                 text = stringResource(MR.string.chat_message_file),

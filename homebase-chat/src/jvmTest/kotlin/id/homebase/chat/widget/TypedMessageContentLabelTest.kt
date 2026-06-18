@@ -1,11 +1,11 @@
 package id.homebase.chat.widget
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.content.MessageContent
 import kotlin.test.Test
@@ -26,7 +26,7 @@ class TypedMessageContentLabelTest {
         )
         val label = typedMessageContentLabel(poll)
         assertEquals("Pizza or sushi?", label?.text)
-        assertEquals(Icons.Default.HowToVote, label?.icon)
+        assertEquals(Icons.Default.BarChart, label?.icon)
     }
 
     @Test
@@ -40,14 +40,14 @@ class TypedMessageContentLabelTest {
     fun unparseable_fallsBackToKindLabel_keepingIcon() {
         val label = typedMessageContentLabel(MessageContent.Poll(null))
         assertEquals(MessageContent.UNPARSEABLE_POLL_LABEL, label?.text)
-        assertEquals(Icons.Default.HowToVote, label?.icon)
+        assertEquals(Icons.Default.BarChart, label?.icon)
     }
 
     @Test
     fun unknownKind_showsHelpIcon() {
         val label = typedMessageContentLabel(MessageContent.Unknown(dataType = 999))
         assertEquals(MessageContent.UNKNOWN_LABEL, label?.text)
-        assertEquals(Icons.AutoMirrored.Filled.HelpOutline, label?.icon)
+        assertEquals(Icons.AutoMirrored.Outlined.HelpOutline, label?.icon)
     }
 
     @Test
