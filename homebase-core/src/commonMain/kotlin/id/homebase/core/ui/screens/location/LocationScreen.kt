@@ -33,6 +33,7 @@ import id.homebase.resources.location_consent_decline
 import id.homebase.resources.location_consent_text
 import id.homebase.resources.location_consent_title
 import id.homebase.api.client.location.LocationPreviewProvider
+import id.homebase.core.util.getUriHandler
 import id.homebase.resources.location_history_title
 import id.homebase.resources.location_label
 import id.homebase.resources.location_menu_dashboard
@@ -164,6 +165,7 @@ fun LocationScreen(
     )
     val showDashboard = dashboardEligible && !setupOverride
     val previewProvider = koinInject<LocationPreviewProvider>()
+    val uriHandler = getUriHandler()
 
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -224,6 +226,9 @@ fun LocationScreen(
                 onOpenHistory = onNavigateToHistory,
                 onOpenDevice = { onNavigateToFindDevice(it) },
                 onOpenSetup = { setupOverride = true },
+                onManageEmergencyAccess = {
+                    uiState.emergencyManageUrl?.let { uriHandler.openUrl(it) }
+                },
             )
         } else {
             LocationContent(

@@ -698,6 +698,9 @@ val appModule = module {
             pointStore = get(),
             uploaderService = get(),
             deviceDirectory = get(),
+            connectionNetworkProvider = get(),
+            contactService = get(),
+            credentialsManager = get(),
             tracker = get(),
         )
     }

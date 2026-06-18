@@ -1274,6 +1274,11 @@
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
+    <string name="location_emergency_access_section">Emergency Location Access:</string>
+    <string name="location_emergency_access_manage">Add emergency contacts</string>
+    <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
+    <string name="location_emergency_access_none">No one has emergency access yet. Tap + to add people.</string>
+    <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_device_this_device">This device</string>
     <string name="location_device_no_fix">No recent location</string>
     <string name="location_device_unnamed">Device %1$s</string>
@@ -1290,6 +1295,7 @@
     <string name="location_consent_agree">Agree</string>
     <string name="location_consent_decline">No thanks</string>
     <string name="location_history_title">History</string>
+    <string name="location_history_you">(you)</string>
     <string name="location_history_empty">No locations recorded on this day</string>
     <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
     <string name="location_history_previous_day">Previous day</string>
