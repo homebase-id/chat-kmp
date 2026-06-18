@@ -73,6 +73,8 @@ sealed interface ContactDetailEvent {
     /** 403 on block/unblock/disconnect — app lacks manage-connections permission. */
     data object ConnectionForbidden : ContactDetailEvent
     data object PhotoError : ContactDetailEvent
+    /** Edit blanked a previously-set field, which the server merge can't express — field kept. */
+    data object ClearUnsupported : ContactDetailEvent
     /** Success confirmations for connection actions. */
     data object Blocked : ContactDetailEvent
     data object Unblocked : ContactDetailEvent

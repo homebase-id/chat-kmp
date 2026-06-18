@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
@@ -223,6 +224,10 @@ fun ContactFieldsSection(
     )
 
     val fields = buildList {
+        // The Homebase ID is a contact detail too — without it an identity-only contact
+        // (synced from a connection, no phone/email) reads as "None" here even though it
+        // clearly has data.
+        entry.odinId?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.AlternateEmail to it) }
         entry.phone?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.Call to it) }
         entry.email?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.Email to it) }
         entry.location?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.LocationOn to it) }

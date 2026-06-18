@@ -49,8 +49,11 @@ merely wasteful.
    merges per-leaf with `Coalesce(incoming, existing)` and treats absent/empty as "leave
    alone" — so **a field can never be blanked via UPDATE/sync**. The Contact Book edit
    form already writes through V2, so clearing a phone/email/etc and saving silently
-   keeps the old value. This is independent of the migration but should be tracked/fixed
-   (needs a server-supported clear, e.g. an explicit sentinel or a dedicated clear op).
+   keeps the old value. **Client mitigation shipped** (`ContactSaveHelper`): the optimistic
+   entry now coalesces (keeps the old value for a blanked field, matching the server, so it
+   no longer flashes empty then reappears), and the edit surfaces a snackbar
+   ("Clearing a contact field isn't supported yet…") in both the list and detail screens.
+   The real fix still needs server-supported clear (sentinel or dedicated clear op).
 
 ### Phase 1 timing — RESOLVED by backend answers
 
@@ -124,10 +127,19 @@ queryable — name falls back to the domain in the UI. This de-risks Phase 1 sub
     chat write path only**; the eventual unified parser should tolerate it for
     pre-Phase-1 contacts, but nothing new produces it (defect #3).
 
-### Phase 3 — Unify the read service
-- One shared contact read service/stream (in `homebase-api`, consumed by both chat and
-  core). Retire `DriveContactService.mapToContact`; chat pickers consume the shared
-  stream and derive `ContactUiModel`. The Contact Book derives `ContactBookEntry`.
+### Phase 3 — Unify the read service  *(DEFERRED — low value / high risk after Phases 1–2)*
+- Remaining duplication is only that `DriveContactService` and `ContactBookStream` each
+  run their own drive `QueryBatch` + EventBus observer + `StateFlow` (the model and parse
+  are already shared after Phase 2). Merging the two stateful services would touch ~10
+  chat people-picker consumers and must preserve divergent semantics (optimistic
+  insert/remove + resurrection guard vs the `odinId` index + paged fetch) — high runtime
+  risk, modest reward, and it fixes no user-facing bug. Left as optional later cleanup that
+  warrants on-device validation. The user-facing defects (§7, #6) were prioritized instead.
+
+### Defects fixed (independent of the phased migration)
+- **§7 "Contact details: None"** — the detail screen's fields section now includes the
+  Homebase ID, so an identity-only contact no longer reads "None".
+- **#6 no-clear merge** — client mitigation shipped (see defect #6 above).
 
 ### Phase 4 — Cleanup
 - Remove duplicated image/thumbnail/AES logic; single image read/write via

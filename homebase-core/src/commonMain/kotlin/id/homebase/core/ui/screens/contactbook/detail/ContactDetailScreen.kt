@@ -83,6 +83,7 @@ import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_delete_forbidden
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
@@ -110,6 +111,7 @@ fun ContactDetailScreen(
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -125,6 +127,8 @@ fun ContactDetailScreen(
                 ContactDetailEvent.ConnectionForbidden ->
                     snackbarHostState.showSnackbar(errConnectionForbidden)
                 ContactDetailEvent.PhotoError -> snackbarHostState.showSnackbar(errPhoto)
+                ContactDetailEvent.ClearUnsupported ->
+                    snackbarHostState.showSnackbar(errClearUnsupported)
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)

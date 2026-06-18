@@ -217,6 +217,9 @@ class ContactDetailViewModel(
                 is ContactSaveResult.Success -> {
                     contactBookStream.insertOrUpdateOptimistic(result.entry)
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
+                    if (result.clearedFieldsIgnored) {
+                        _events.tryEmit(ContactDetailEvent.ClearUnsupported)
+                    }
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)

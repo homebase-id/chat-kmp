@@ -164,4 +164,5 @@ enum class ContactBookError {
     PhotoFailed,
     MessageFailed,
     PermissionDenied,
+    ClearUnsupported,
 }

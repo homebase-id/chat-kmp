@@ -21,8 +21,17 @@ import kotlin.uuid.Uuid
 
 /** Outcome of [saveContactDraft]. */
 sealed interface ContactSaveResult {
-    /** Saved; push [entry] into the stream. [photoFailed] = contact saved but avatar upload failed. */
-    data class Success(val entry: ContactBookEntry, val photoFailed: Boolean) : ContactSaveResult
+    /**
+     * Saved; push [entry] into the stream. [photoFailed] = contact saved but avatar upload failed.
+     * [clearedFieldsIgnored] = the edit blanked a previously-set field, which the V2 server merge
+     * cannot express (empty = "leave existing alone") — those fields were kept, so the UI should
+     * tell the user clearing isn't supported yet.
+     */
+    data class Success(
+        val entry: ContactBookEntry,
+        val photoFailed: Boolean,
+        val clearedFieldsIgnored: Boolean = false,
+    ) : ContactSaveResult
 
     /** Server rejected the write with 403 — the app token lacks the manage-contacts permission. */
     data object Forbidden : ContactSaveResult
@@ -82,27 +91,54 @@ suspend fun saveContactDraft(
     val photoFailed = photo != null &&
         !uploadContactPhoto(service, response.uniqueId, response.versionTag, photo, contactDriveId)
 
-    val display = draft.displayName.ifBlank { normalizedPhone ?: draft.email }.ifBlank { "?" }
+    // The server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave
+    // alone", never cleared. Mirror that in the optimistic entry (keep the old value when the edit
+    // blanked a previously-set field) so the UI matches what the drive will sync back — otherwise a
+    // "cleared" field would flash empty and then reappear. `cleared` also drives the user warning.
+    fun coalesce(new: String?, old: String?): String? = new?.ifBlank { null } ?: old?.ifBlank { null }
+    fun didClear(new: String?, old: String?): Boolean =
+        !old.isNullOrBlank() && new.isNullOrBlank()
+
+    val mergedGiven = coalesce(draft.givenName, editing?.givenName)
+    val mergedSurname = coalesce(draft.surname, editing?.surname)
+    val mergedPhone = coalesce(normalizedPhone, editing?.phone)
+    val mergedEmail = coalesce(draft.email, editing?.email)
+    val mergedCity = coalesce(draft.city, editing?.city)
+    val mergedCountry = coalesce(draft.country, editing?.country)
+    val mergedBirthday = coalesce(draft.birthday, editing?.birthday)
+    val mergedDisplay = coalesce(draft.displayName, editing?.displayName)
+        ?: mergedPhone ?: mergedEmail ?: odinId ?: "?"
+
+    val clearedFieldsIgnored = editing != null && (
+        didClear(draft.givenName, editing.givenName) ||
+            didClear(draft.surname, editing.surname) ||
+            didClear(normalizedPhone, editing.phone) ||
+            didClear(draft.email, editing.email) ||
+            didClear(draft.city, editing.city) ||
+            didClear(draft.country, editing.country) ||
+            didClear(draft.birthday, editing.birthday)
+        )
+
     val entry = (editing ?: ContactBookEntry(
         uniqueId = response.uniqueId,
         fileId = response.uniqueId,
         versionTag = response.versionTag,
-        displayName = display,
+        displayName = mergedDisplay,
     )).copy(
         uniqueId = response.uniqueId,
         versionTag = response.versionTag,
         odinId = odinId,
-        displayName = display,
-        givenName = draft.givenName.ifBlank { null },
-        surname = draft.surname.ifBlank { null },
-        phone = normalizedPhone,
-        email = draft.email.ifBlank { null },
-        city = draft.city.ifBlank { null },
-        country = draft.country.ifBlank { null },
-        birthday = draft.birthday.ifBlank { null },
+        displayName = mergedDisplay,
+        givenName = mergedGiven,
+        surname = mergedSurname,
+        phone = mergedPhone,
+        email = mergedEmail,
+        city = mergedCity,
+        country = mergedCountry,
+        birthday = mergedBirthday,
         source = content.source,
     )
-    return ContactSaveResult.Success(entry, photoFailed)
+    return ContactSaveResult.Success(entry, photoFailed, clearedFieldsIgnored)
 }
 
 private suspend fun uploadContactPhoto(

@@ -60,6 +60,7 @@ import id.homebase.core.ui.screens.contactbook.deviceimport.ContactImportSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_action_import
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_import
@@ -99,6 +100,7 @@ fun ContactBookScreen(
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -114,6 +116,7 @@ fun ContactBookScreen(
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
+                        ContactBookError.ClearUnsupported -> errClearUnsupported
                         ContactBookError.ImportFailed,
                         ContactBookError.PermissionDenied -> errImport
                     }
