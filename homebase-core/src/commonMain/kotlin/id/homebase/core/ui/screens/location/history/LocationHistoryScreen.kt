@@ -33,6 +33,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,10 @@ import kotlin.math.roundToInt
 import kotlin.time.Clock
 import kotlin.time.Instant
 
+// Releasing the scrubber within this fraction of the left edge counts as a
+// "rewind to start" and replays the animated sweep.
+private const val REWIND_REPLAY_FRACTION = 0.02f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationHistoryScreen(
@@ -89,9 +94,12 @@ fun LocationHistoryScreen(
     var clockMs by remember(uiState.dayStartMs) { mutableLongStateOf(uiState.dayStartMs) }
     var isScrubbing by remember(uiState.dayStartMs) { mutableStateOf(false) }
     var autoPlayed by remember(uiState.dayStartMs) { mutableStateOf(false) }
+    // Bumped to replay the sweep (rewind-to-start gesture); part of the effect key.
+    var replayToken by remember(uiState.dayStartMs) { mutableIntStateOf(0) }
 
-    // Auto-play once per day: a warped sweep (slow through movement, fast through idle).
-    LaunchedEffect(uiState.dayStartMs, playback) {
+    // Auto-play once per day (and again on each replay): a warped sweep (slow
+    // through movement, fast through idle).
+    LaunchedEffect(uiState.dayStartMs, playback, replayToken) {
         if (playback == null || autoPlayed || isScrubbing) return@LaunchedEffect
         autoPlayed = true
         clockMs = playback.firstFixMs
@@ -243,7 +251,15 @@ fun LocationHistoryScreen(
                         isScrubbing = true
                         clockMs = uiState.dayStartMs + (v * dayMs).toLong()
                     },
-                    onValueChangeFinished = { isScrubbing = false },
+                    onValueChangeFinished = {
+                        isScrubbing = false
+                        // Released at the far left → rewind and replay the sweep.
+                        val frac = (clockMs - uiState.dayStartMs).toFloat() / dayMs
+                        if (frac <= REWIND_REPLAY_FRACTION) {
+                            autoPlayed = false
+                            replayToken++
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
