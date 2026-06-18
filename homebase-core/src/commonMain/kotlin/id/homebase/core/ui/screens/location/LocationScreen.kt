@@ -161,6 +161,9 @@ fun LocationScreen(
         activated = uiState.activated,
         trackingEnabled = uiState.trackingEnabled,
         trackerAvailable = uiState.trackingAvailable,
+        // Both location grants required before leaving Setup — "while using the app"
+        // alone keeps the user here to also grant always/background.
+        permissionsComplete = uiState.whileInUseGranted && uiState.alwaysGranted,
         setupOverride = false,
     )
     val showDashboard = dashboardEligible && !setupOverride

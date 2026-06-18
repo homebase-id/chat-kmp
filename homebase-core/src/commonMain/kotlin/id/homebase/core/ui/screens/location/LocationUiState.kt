@@ -42,17 +42,26 @@ data class LocationUiState(
 }
 
 /**
- * Main-screen body switch: dashboard once the add-on runs, setup otherwise.
- * Viewer devices (desktop/web, trackerAvailable = false) never have
- * trackingEnabled — once activated they are pure viewers and always get the
- * dashboard; requiring the switch would strand them on Setup forever.
+ * Main-screen body switch: dashboard once the add-on is fully set up, setup otherwise.
+ *
+ * A tracker device only reaches the dashboard once it is [activated], tracking is on,
+ * AND its location permissions are complete ([permissionsComplete] = while-in-use AND
+ * always/background both granted). This keeps a user who just allowed "while using the
+ * app" on Setup to finish the background grant, rather than jumping to the dashboard
+ * the moment the first permission lands (and auto-enables tracking).
+ *
+ * Viewer devices (desktop/web, trackerAvailable = false) never track or request
+ * permissions — once activated they are pure viewers and always get the dashboard;
+ * requiring the switch or permissions would strand them on Setup forever.
  */
 fun isDashboard(
     activated: Boolean,
     trackingEnabled: Boolean,
     trackerAvailable: Boolean,
+    permissionsComplete: Boolean,
     setupOverride: Boolean,
-): Boolean = !setupOverride && activated && (trackingEnabled || !trackerAvailable)
+): Boolean = !setupOverride && activated &&
+    (!trackerAvailable || (trackingEnabled && permissionsComplete))
 
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
