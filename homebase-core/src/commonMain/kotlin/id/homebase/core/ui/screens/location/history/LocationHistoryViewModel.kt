@@ -54,16 +54,10 @@ class LocationHistoryViewModel(
             val traces = runCatching { deviceDirectory.loadDayTraces(dayStartMs, dayEndMs) }
                 .onFailure { logger.e(it) { "loadDayTraces failed for $dayStartMs" } }
                 .getOrDefault(emptyList())
-            val playback = DayPlayback.build(traces)
             _uiState.update {
                 // Drop stale results if the user already moved to another day.
                 if (it.dayStartMs != dayStartMs) it
-                else it.copy(
-                    traces = traces,
-                    stats = LocationHistoryAssembler.stats(traces),
-                    playback = playback,
-                    isLoading = false,
-                )
+                else it.copy(traces = traces, isLoading = false)
             }
         }
     }
