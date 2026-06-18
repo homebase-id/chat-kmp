@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.location
 
+import id.homebase.api.common.OdinId
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.DeviceTrace
@@ -28,6 +29,8 @@ data class LocationUiState(
     // Dashboard state
     val devices: List<LocationDeviceInfo> = emptyList(),
     val todayTraces: List<DeviceTrace> = emptyList(),
+    /** Members of the "Emergency Location Access" circle (their profile pics show on the dashboard). */
+    val emergencyContacts: List<OdinId> = emptyList(),
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */

@@ -698,6 +698,7 @@ val appModule = module {
             pointStore = get(),
             uploaderService = get(),
             deviceDirectory = get(),
+            connectionNetworkProvider = get(),
             tracker = get(),
         )
     }

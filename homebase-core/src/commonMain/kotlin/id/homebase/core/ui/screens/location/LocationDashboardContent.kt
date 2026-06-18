@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +33,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.util.formatTimestamp
@@ -42,6 +46,7 @@ import id.homebase.resources.location_device_no_fix
 import id.homebase.resources.location_device_this_device
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_devices_section
+import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import kotlin.time.Instant
@@ -53,6 +58,7 @@ import org.jetbrains.compose.resources.stringResource
  * the device list (= the Find-device picker), and a compact status footer.
  * Future cards (Sentinel, live sharing) slot in below the device list.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LocationDashboardContent(
     uiState: LocationUiState,
@@ -141,6 +147,31 @@ fun LocationDashboardContent(
                 uiState.devices.forEachIndexed { index, device ->
                     if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     DeviceRow(device = device, onClick = { onOpenDevice(device.deviceId) })
+                }
+            }
+        }
+
+        // ── Emergency Location Access (members of that circle) ──
+        if (uiState.emergencyContacts.isNotEmpty()) {
+            Text(
+                text = stringResource(MR.string.location_emergency_access_section),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    uiState.emergencyContacts.forEach { odinId ->
+                        PublicAvatar(
+                            odinId = odinId,
+                            initials = odinId.domainName.take(1).uppercase(),
+                            options = AvatarOptions(size = 44.dp),
+                        )
+                    }
                 }
             }
         }

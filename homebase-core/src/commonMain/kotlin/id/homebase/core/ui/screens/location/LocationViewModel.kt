@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.location
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.locationLabeledDrive
@@ -26,6 +27,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
+/** Display name of the circle whose members may see this identity's location in an emergency. */
+private const val EMERGENCY_CIRCLE_NAME = "Emergency Location Access"
+
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
     private val locationPermissionViewModel: ExtendPermissionViewModel,
@@ -34,6 +38,7 @@ class LocationViewModel(
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
     private val deviceDirectory: LocationDeviceDirectory,
+    private val connectionNetworkProvider: ConnectionNetworkProvider,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -259,7 +264,8 @@ class LocationViewModel(
         loadDashboard()
     }
 
-    /** Dashboard data: today's traces (map preview) + the device list. */
+    /** Dashboard data: today's traces (map preview), the device list, and the
+     *  members granted emergency location access. */
     fun loadDashboard() {
         viewModelScope.launch {
             val dayStart = localDayStart(Clock.System.now().toEpochMilliseconds())
@@ -267,7 +273,21 @@ class LocationViewModel(
                 .getOrDefault(emptyList())
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
-            _uiState.update { it.copy(todayTraces = traces, devices = devices) }
+            // Members of the "Emergency Location Access" circle. Matched by name
+            // for now — swap to the circle GUID once it's provisioned.
+            val emergencyContacts = runCatching {
+                connectionNetworkProvider.getCirclesWithMembers()
+                    .firstOrNull { it.circle.name.equals(EMERGENCY_CIRCLE_NAME, ignoreCase = true) }
+                    ?.members
+                    .orEmpty()
+            }.getOrDefault(emptyList())
+            _uiState.update {
+                it.copy(
+                    todayTraces = traces,
+                    devices = devices,
+                    emergencyContacts = emergencyContacts,
+                )
+            }
         }
     }
 
