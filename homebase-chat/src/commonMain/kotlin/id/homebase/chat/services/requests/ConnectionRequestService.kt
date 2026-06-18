@@ -7,6 +7,7 @@ import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
+import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -15,7 +16,6 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
-import id.homebase.chat.services.convo.contact.DriveContactService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +28,7 @@ import kotlin.time.Clock
 
 class ConnectionRequestService(
     private val connectionRequestProvider: ConnectionRequestProvider,
-    private val driveContactService: DriveContactService,
+    private val contactsProvider: ContactsProvider,
     private val connectionService: ConnectionService,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
@@ -225,18 +225,18 @@ class ConnectionRequestService(
                 removeFromOutgoing(header.recipient)
                 refresh()
                 connectionService.refresh()
-                driveContactService.saveContactForOdinId(header.recipient)
+                syncContactBestEffort(header.recipient)
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
-                driveContactService.saveContactForOdinId(header.recipient)
+                syncContactBestEffort(header.recipient)
             }
             AutoConnectOutcome.PendingManualApproval -> {
                 markOutgoingOptimistically(header.recipient)
                 refresh()
                 // Save contact so they appear in the contact list immediately — matches
                 // the legacy sendConnectionRequest flow, which saved on HTTP-200.
-                driveContactService.saveContactForOdinId(header.recipient)
+                syncContactBestEffort(header.recipient)
             }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
             AutoConnectOutcome.DuplicateIntroductoryRequest -> {
@@ -264,10 +264,30 @@ class ConnectionRequestService(
      */
     suspend fun acceptIncomingRequest(senderId: OdinId) {
         connectionRequestProvider.acceptIncomingRequest(senderId)
-        driveContactService.saveContactForOdinId(senderId)
+        syncContactBestEffort(senderId)
         removeFromIncoming(senderId)
         refresh()
         connectionService.refresh()
+    }
+
+    /**
+     * Ensures a contact exists for [odinId] and enriches it from that identity's profile via the
+     * V2 contacts controller (server-side). Best-effort: a contact-save failure must never break
+     * the connection flow, so non-cancellation errors are swallowed and logged — mirrors the old
+     * `DriveContactService.saveContactForOdinId` contract. The endpoint returns 202 but completes
+     * synchronously server-side (write + WS push done before it returns), so the contact is already
+     * queryable when this returns.
+     */
+    private suspend fun syncContactBestEffort(odinId: OdinId) {
+        try {
+            contactsProvider.syncContact(odinId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(throwable = e, tag = "ConnectionRequestService") {
+                "syncContact failed for $odinId"
+            }
+        }
     }
 
     private suspend fun markIncomingOptimistically(sender: OdinId) {
