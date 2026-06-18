@@ -45,17 +45,22 @@ merely wasteful.
 5. **Name redundancy (schema-level).** `ContactName` stores both `displayName` and
    `givenName`/`additionalName`/`surname`; the two can disagree and are handled
    inconsistently across read/edit/write.
+6. **No-clear merge semantics (pre-existing, contact-book write).** The V2 controller
+   merges per-leaf with `Coalesce(incoming, existing)` and treats absent/empty as "leave
+   alone" — so **a field can never be blanked via UPDATE/sync**. The Contact Book edit
+   form already writes through V2, so clearing a phone/email/etc and saving silently
+   keeps the old value. This is independent of the migration but should be tracked/fixed
+   (needs a server-supported clear, e.g. an explicit sentinel or a dedicated clear op).
 
-### Timing nuance that constrains Phase 1
+### Phase 1 timing — RESOLVED by backend answers
 
-- `DriveContactService.saveContactForOdinId(odinId)`: resolves the peer's public
-  profile **client-side** (`publicIdentityRepository.resolve` → `sitedata.json`) and
-  writes the contact **immediately**.
-- `ContactsProvider.syncContact(odinId)`: the V2 equivalent, but enrichment happens
-  **server-side, best-effort, 202 Accepted** — the contact lands later via drive sync.
-
-So the V2 path is the right target, but a straight swap changes connection-accept from
-"contact exists immediately" to "contact appears shortly after." See Phase 1 risk.
+Earlier concern: `syncContact` looked async (202) vs the old immediate client write.
+**Backend confirms the 202 is fully synchronous server-side** — `EnsureExistsAsync` +
+`EnrichAsync` are awaited before the 202 returns, the write uses `raiseEvent: true`, so
+the contact file is **already written and queryable and the WS push already raised** by
+the time the client gets the 202. So there is effectively no immediate-vs-async gap.
+Worst case (peer offline / no profile) leaves a **stub** contact (`odinId` only), still
+queryable — name falls back to the domain in the UI. This de-risks Phase 1 substantially.
 
 ## 2. Target architecture
 
@@ -78,20 +83,25 @@ So the V2 path is the right target, but a straight swap changes connection-accep
   - `homebase-chat` → `ContactModelParityTest` pins that `ContactContent` (api) and
     `ContactServerFile` (chat) are wire-compatible both directions, so any future model
     drift fails a test instead of leaking to production.
-- ⏳ **Still open (needs runtime/backend, can't unit-test):** verify `syncContact`
-  populates `displayName` + `givenName`/`surname` + image equivalently to the old
-  client-side `saveContactForOdinId`, and confirm the V2 controller's body-spill
-  behavior. Track these as the Phase 1 / Phase 2 open questions below.
+- ✅ **Answered by backend** (see §6) — `syncContact` enrichment, timing, image,
+  source, keying, merge/spill semantics all confirmed from server code. No blockers
+  remain for Phase 1.
 
 ### Phase 1 — Converge writes onto V2  *(highest value, smallest blast radius, independently shippable)*
 - Replace the four `driveContactService.saveContactForOdinId(...)` calls in
   `ConnectionRequestService` with `contactsProvider.syncContact(...)`.
-- **Risk:** the immediate-vs-async timing change. Mitigations:
-  - The chat read path already falls back to `domainName` when no contact exists
-    (`ConversationEnricher`), so a brief gap is cosmetic, not broken.
-  - If the gap is unacceptable, have `ContactService`/`ConnectionService` optimistically
-    cache the display name from the already-loaded connection registration until the
-    synced contact lands.
+- **Timing risk: resolved** — the 202 is synchronous server-side (see §1.5). No gap.
+- **Behavior deltas to expect (all acceptable, mostly upgrades):**
+  - These calls fire on connection accept/finalize, i.e. when the peer **is connected**,
+    so the server takes the *peer-profile* path → the new contact gets the **full**
+    `ContactName` + location/phone/email/birthday, vs the old path's public-profile
+    `displayName`+`givenName`+`surname` only. Strictly more data.
+  - **`source` is no longer set** by sync (old path set `source="public"`). Audit any
+    client logic keyed on `source` (`ContactBookSource.CONNECTION = "public"`). Likely
+    cosmetic — the Introduced/Confirmed pills use connection state, not `source` — but
+    confirm before deleting the old path.
+  - Neither path sets the avatar at accept time (image is a separate endpoint), so no
+    regression there.
 - Once no callers remain, delete `DriveContactService.saveContact` /
   `saveContactForOdinId` and any now-unused image-write/`ContactSizer` code there.
 - **Outcome:** single writer, single merge semantics. Defect #1 gone.
@@ -99,8 +109,13 @@ So the V2 path is the right target, but a straight swap changes connection-accep
 ### Phase 2 — Unify the model
 - Move/keep one `ContactName` in `homebase-api`; delete `chat.ContactName`.
 - Introduce one canonical parsed model + a single parser over `HomebaseFile` that
-  merges the logic of `toContactBookEntry()` and `DriveContactService.mapToContact`,
-  and **handles the spilled `"dflt_key"` payload** (fixes defect #3).
+  merges the logic of `toContactBookEntry()` and `DriveContactService.mapToContact`.
+  - Note (per backend §2): the **V2 controller never spills** — contact JSON is always
+    in the header (max 10,240 bytes ciphertext; over-budget fails, no payload fallback).
+    Its only payloads are `prfl_pic` (image) and `merge_log` (history). So the spilled
+    `"dflt_key"` body is a **legacy artifact of the old chat write path only**. The
+    unified parser should still tolerate it for contacts written before Phase 1, but
+    nothing new will produce it. (fixes defect #3)
 - Normalize name handling **in one place**: on read, derive first/last from
   `displayName` when parts are blank; on write, keep `displayName` and parts consistent
   (fixes defect #2 / #5).
@@ -119,9 +134,11 @@ So the V2 path is the right target, but a straight swap changes connection-accep
 
 | Risk | Phase | Mitigation |
 |---|---|---|
-| Connection-accept contact now async (202) instead of immediate | 1 | domainName fallback already exists; optional optimistic name cache |
-| `syncContact` doesn't enrich the same fields/image as the client path | 0/1 | verify in Phase 0 before swapping |
-| Spilled-payload contacts unreadable by unified reader | 2 | explicitly handle `"dflt_key"` in the new parser |
+| ~~Connection-accept contact now async~~ | 1 | **Resolved** — 202 is synchronous + raises WS push (§1.5) |
+| ~~`syncContact` enrichment parity~~ | 1 | **Resolved** — connected path writes full name+fields; ≥ old path (§1.1) |
+| `source="public"` no longer set on connection contacts | 1 | audit client uses of `source`; cosmetic if none |
+| Legacy `"dflt_key"`-spilled contacts (old write path) unreadable | 2 | tolerate the spilled payload in the new parser; V2 never produces it |
+| No-clear merge: clearing a field in edit doesn't persist | (pre-existing) | needs server clear support; track separately |
 | Module boundaries (model in api, consumers in chat + core) | 2/3 | canonical model + `ContactName` live in `homebase-api` (both depend on it) |
 | Konsist/`ArchitectureTest` regressions | all | run `homebase-common:jvmTest` each phase |
 
@@ -131,11 +148,39 @@ So the V2 path is the right target, but a straight swap changes connection-accep
 - On-device smoke: accept a connection → contact appears with name + avatar; Contact
   Book create/edit/import; contact image set/clear; people-picker name resolution.
 
-## 6. Open questions (answer before/within the phase noted)
-- **(Phase 0/1)** Field + image + timing parity of `syncContact` vs `saveContactForOdinId`.
-- **(Phase 0/2)** Does the V2 controller ever spill the body to a payload, and under what size?
-- **(Phase 1)** Any non-chat callers of the `DriveContactService` write path? (Current
-  grep: only `ConnectionRequestService`.)
+## 6. Backend answers (authoritative, from server code)
+
+`POST /api/v2/contacts/sync/{odinId}` → `V2ContactsController.Sync` →
+`ContactService.EnsureExistsAsync` + `ContactEnrichmentService.EnrichAsync` →
+`ContactService.MergeAsync`.
+
+1. **Enrichment fields — depends on live connection status:**
+   - **Connected** (peer-queries their ProfileDrive): full `ContactName`
+     (displayName/givenName/additionalName/surname) **plus** location/phone/email/birthday.
+   - **Not connected / 403** (anonymous `GET /pub/profile`): **only `name.displayName`**.
+2. **Image:** sync never sets it — text only. Avatar is only ever set via
+   `PUT /{uniqueId}/image`. (Old client path also didn't set an image on accept → parity.)
+3. **`source`:** sync never sets it. A contact first created by sync has no `source`;
+   pre-existing `source` is preserved by the merge.
+4. **Timing:** 202 Accepted, but **fully synchronous** server-side — contact is written
+   and the WS push raised before the 202 returns. Best-effort: peer offline → stub
+   (`odinId` only), still queryable.
+5. **Existing contact:** merges, never overwrites (overwritten values appended to a
+   `merge_log` payload).
+6. **Storage:** contact JSON **always in the header**, never spilled to a payload. Max
+   `Content` = 10,240 bytes (base64 ciphertext); over-budget **fails** (no spill). Only
+   payloads ever present: `prfl_pic`, `merge_log`.
+7. **Keying:** `uniqueId = md5(odinId)` on CREATE (random GUID if no odinId); UPDATE never
+   re-keys; sync uses the same `md5(odinId)` → introduced/pending/connected all resolve to
+   one file.
+8. **Merge:** per-leaf `Coalesce(incoming, existing)` — non-empty incoming wins, else keep
+   existing. Absent/empty never clears. Applied per sub-field (can set `name.surname`
+   without disturbing `name.givenName`). **Consequence: a field cannot be blanked via
+   UPDATE/sync** (defect #6).
+
+Remaining (non-blocking): confirm there are no non-chat callers of the
+`DriveContactService` write path before deleting it (current grep: only
+`ConnectionRequestService`).
 
 ## 7. Not part of this migration
 - The contact-detail "shows None" UX bug can and should be fixed independently and
