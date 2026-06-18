@@ -56,6 +56,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
+import id.homebase.resources.chat_preview_you_prefix
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
@@ -168,9 +169,21 @@ fun ConversationItem(
                     }
                 } else null
 
-                val previewText = pendingSubtitle
+                val rawPreview = pendingSubtitle
                     ?: contentLabel?.text
                     ?: enrichedData.conversation.lastMessage
+                // "You: " prefix on the active user's own last message (1:1 and group);
+                // others stay normal. Skip the connection-status subtitle and the
+                // empty/no-messages fallback so we never render a bare "You: ".
+                val previewText = if (
+                    pendingSubtitle == null &&
+                    enrichedData.conversation.lastMessageIsFromActiveUser &&
+                    rawPreview.isNotBlank()
+                ) {
+                    stringResource(MR.string.chat_preview_you_prefix, rawPreview)
+                } else {
+                    rawPreview
+                }
                 val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
                 ConversationMessagePreview(
