@@ -6,7 +6,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Gif
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Image
@@ -119,9 +118,11 @@ fun messageContentLabel(
                     text = stringResource(MR.string.chat_preview_sticker),
                     icon = Icons.AutoMirrored.Filled.StickyNote2
                 )
+            // GIF indicator is the 👾 emoji baked into the string (like the deleted-message
+            // 🚫), so no Material icon — keeps the playful marker without an extra glyph.
             firstPayload.contentType == "image/gif" -> ContentLabel(
                 text = stringResource(MR.string.chat_message_gif),
-                icon = Icons.Default.Gif
+                icon = null
             )
             firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),

@@ -678,10 +678,10 @@
     <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
-    <string name="chat_message_deleted">🚫 This message was deleted</string>
+    <string name="chat_message_deleted">This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
-    <string name="chat_message_gif">GIF</string>
+    <string name="chat_message_gif">👾 GIF</string>
     <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
