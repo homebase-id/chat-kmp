@@ -154,4 +154,36 @@ class LocationHistoryAssemblerTest {
         assertTrue(traces.isEmpty())
         assertEquals(0, LocationHistoryAssembler.stats(traces).pointCount)
     }
+
+    // ── singleDeviceTraces (reusable playback entry point) ──
+
+    @Test
+    fun singleDeviceTraces_sorts_segments_and_preserves_steps_and_battery() {
+        val min = 60_000L
+        val withSensors = BufferedLocationPoint(
+            t = dayStart + 40 * min, lat = 52.0, lon = 13.0, acc = 10.0,
+            src = "gps", fg = true, steps = 123, bat = 77,
+        )
+        // Out of order, with a >15 min gap between the 2nd and 3rd points.
+        val points = listOf(
+            point(dayStart + 16 * min),
+            withSensors,
+            point(dayStart + 1 * min),
+        )
+        val traces = LocationHistoryAssembler.singleDeviceTraces(points, deviceA)
+        assertEquals(1, traces.size)
+        val trace = traces.single()
+        assertEquals(deviceA, trace.deviceId)
+        // Sorted: 1m, 16m | 40m  → gap (24 min > 15 min) splits after the 16m point.
+        assertEquals(2, trace.segments.size)
+        assertEquals(listOf(dayStart + 1 * min, dayStart + 16 * min), trace.segments[0].map { it.t })
+        val last = trace.segments[1].single()
+        assertEquals(123, last.steps)
+        assertEquals(77, last.bat)
+    }
+
+    @Test
+    fun singleDeviceTraces_empty_is_empty() {
+        assertTrue(LocationHistoryAssembler.singleDeviceTraces(emptyList(), deviceA).isEmpty())
+    }
 }

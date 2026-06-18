@@ -67,6 +67,18 @@ object LocationHistoryAssembler {
             }
     }
 
+    /**
+     * Build a single subject's day from a flat, unsorted point list — e.g. a
+     * family member's day pulled for the emergency feature. Points keep their
+     * `steps`/`bat` through unchanged. Returns one gap-segmented [DeviceTrace]
+     * (or empty when there are no points). For multi-device data, group by
+     * device and call per group.
+     */
+    fun singleDeviceTraces(points: List<BufferedLocationPoint>, deviceId: Uuid): List<DeviceTrace> {
+        if (points.isEmpty()) return emptyList()
+        return listOf(DeviceTrace(deviceId, segment(points.sortedBy { it.t })))
+    }
+
     fun stats(traces: List<DeviceTrace>): DayStats {
         var distance = 0.0
         var first: Long? = null
