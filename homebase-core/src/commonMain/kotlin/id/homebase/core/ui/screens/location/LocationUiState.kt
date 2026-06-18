@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.location
 
-import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.DeviceTrace
@@ -29,8 +29,12 @@ data class LocationUiState(
     // Dashboard state
     val devices: List<LocationDeviceInfo> = emptyList(),
     val todayTraces: List<DeviceTrace> = emptyList(),
-    /** Members of the "Emergency Location Access" circle (their profile pics show on the dashboard). */
-    val emergencyContacts: List<OdinId> = emptyList(),
+    /** Resolved members of the "Emergency Location Access" circle (avatars on the dashboard). */
+    val emergencyContacts: List<ContactUiModel> = emptyList(),
+    /** null = still loading / couldn't load; true = circle present; false = circle doesn't exist. */
+    val emergencyCircleFound: Boolean? = null,
+    /** Owner-console deep link to manage the circle's members; null until the identity is known. */
+    val emergencyManageUrl: String? = null,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */
