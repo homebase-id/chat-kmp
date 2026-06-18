@@ -211,6 +211,9 @@ internal class AttachmentHandler(
                         AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),
                             it.file,
+                            // The gallery PlatformFile path is a bare PHAsset localIdentifier on iOS
+                            // (no extension), so carry the real filename for content-type resolution.
+                            sourceFileName = it.fileName,
                             thumbnailBytes = null,
                         )
                     } else {
