@@ -9,6 +9,7 @@ import android.os.Process
 import co.touchlab.kermit.Logger
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
+import id.homebase.api.client.isMlKitTeardownFailure
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.crash.CrashMetadata
 import id.homebase.core.crash.CrashReporting
@@ -49,6 +50,18 @@ object GlobalCrashHandler {
                     runCatching { Firebase.crashlytics.recordException(throwable) }
                     Logger.w(tag = TAG) {
                         "Transient network failure on '${thread.name}'; not crashing: ${throwable.message}"
+                    }
+                    return@setDefaultUncaughtExceptionHandler
+                }
+
+                // Same class as the network case: ML Kit / MediaPipe background-removal runs on
+                // native threads we don't own, so a teardown/callback failure can leak here that
+                // no local try/catch could reach. Background removal is best-effort — degrade to
+                // "no cutout", record a non-fatal, and keep the app alive.
+                if (throwable.isMlKitTeardownFailure()) {
+                    runCatching { Firebase.crashlytics.recordException(throwable) }
+                    Logger.w(tag = TAG) {
+                        "ML Kit/MediaPipe failure on '${thread.name}'; not crashing (background removal degrades to no cutout): ${throwable.message}"
                     }
                     return@setDefaultUncaughtExceptionHandler
                 }
