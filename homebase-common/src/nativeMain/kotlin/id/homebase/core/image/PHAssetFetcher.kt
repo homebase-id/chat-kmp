@@ -4,9 +4,11 @@ import coil3.ImageLoader
 import coil3.Uri
 import coil3.asImage
 import coil3.decode.DataSource
+import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
+import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -15,6 +17,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okio.Buffer
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.impl.use
@@ -132,6 +135,25 @@ class PHAssetFetcher(
             header.usePinned { pinned ->
                 memcpy(pinned.addressOf(0), nsData.bytes, header.size.toULong())
             }
+        }
+
+        // Animated containers (GIF / animated WebP): hand the raw bytes to the Coil
+        // decoder chain as a SourceFetchResult so AnimatedSkiaDecoder can animate
+        // multi-frame images. Decoding to a single Bitmap here (the static path below)
+        // freezes a GIF on its first frame — the bug for quick-switch gallery previews.
+        // Single-frame GIF/WebP fall through to the default static Skia decoder inside
+        // the chain, so non-animated images are unaffected.
+        val format = ImageFormatDetector.detectFormat(header)
+        if (format == "image/gif" || format == "image/webp") {
+            val bytes = ByteArray(nsData.length.toInt())
+            bytes.usePinned { pinned ->
+                memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
+            }
+            return SourceFetchResult(
+                source = ImageSource(Buffer().apply { write(bytes) }, options.fileSystem),
+                mimeType = format,
+                dataSource = DataSource.DISK,
+            )
         }
 
         val skiaImage = if (ImageFormatDetector.isHeic(header)) {

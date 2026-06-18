@@ -147,6 +147,7 @@ fun ConversationItem(
                     isDeleted = enrichedData.conversation.lastMessageIsDeleted,
                     firstPayload = enrichedData.conversation.lastMessageFirstPayload,
                     hasMultiplePayloads = enrichedData.conversation.lastMessageHasMultiplePayloads,
+                    messageContent = enrichedData.conversation.lastMessageContent,
                 )
 
                 // When there's no history for a 1:1 conversation with a pending connection
