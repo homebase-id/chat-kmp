@@ -5,11 +5,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
+import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
+import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
+import id.homebase.core.ui.screens.location.model.LocationTrackCodec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +32,17 @@ class DeveloperMenuViewModel(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
+    private val temporalDriveReadProvider: TemporalDriveReadProvider,
 ) : ViewModel() {
+
+    companion object {
+        private const val TEMPORAL_TAG = "TemporalRead"
+
+        // Temporary hardcoded test target — the peer whose location drive we read. For a non-empty
+        // result this identity must grant our logged-in identity ConditionalTemporalRead on the
+        // location drive (via an emergency circle); `verify` works regardless.
+        private const val TEST_PEER = "frodo.baggins.demo.rocks"
+    }
 
     private val _uiState = MutableStateFlow(
         DeveloperMenuUiState(allowTenBitVideo = userPreferences.allowTenBitVideo)
@@ -37,6 +57,10 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.TestRichNotification -> {
                 testRichNotification()
+            }
+
+            is DeveloperMenuUiAction.TestTemporalLocationRead -> {
+                testTemporalLocationRead()
             }
 
             is DeveloperMenuUiAction.ForceSyncAll -> {
@@ -83,6 +107,71 @@ class DeveloperMenuViewModel(
         )
 
         RichNotificationDisplayer().show(richData)
+    }
+
+    /**
+     * Temporary dev probe for the new temporal (time-boxed / emergency) read API against
+     * [TEST_PEER]'s location drive. Exercises verify → query-batch → header → payload, logging each
+     * step under tag [TEMPORAL_TAG] and surfacing a snackbar. Safe to run without a grant: `verify`
+     * reports `hasAccess=false` and the data calls return 404/403 (logged, not fatal).
+     */
+    private fun testTemporalLocationRead() {
+        viewModelScope.launch {
+            try {
+                val peer = OdinId(TEST_PEER)
+                val driveId = locationLabeledDrive.drive.alias
+                Logger.i(tag = TEMPORAL_TAG) { "Temporal read test → peer=$TEST_PEER drive=$driveId" }
+
+                val access = temporalDriveReadProvider.verifyTemporalAccess(peer, driveId)
+                Logger.i(tag = TEMPORAL_TAG) {
+                    "verify → hasAccess=${access.hasAccess} windowSeconds=${access.windowSeconds}"
+                }
+
+                val request = QueryBatchRequest(
+                    queryParams = FileQueryParams(fileType = listOf(LOCATION_TRACK_FILE_TYPE)),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(
+                        maxRecords = 50,
+                        includeMetadataHeader = true,
+                        ordering = QueryBatchSortOrder.NewestFirst,
+                    ),
+                )
+                val batch = temporalDriveReadProvider.temporalQueryBatch(peer, driveId, request)
+                Logger.i(tag = TEMPORAL_TAG) { "query-batch → ${batch.searchResults.size} hour files" }
+                for (file in batch.searchResults.take(5)) {
+                    Logger.i(tag = TEMPORAL_TAG) { "  file=${file.fileId} created=${file.fileMetadata.created}" }
+                }
+
+                val newest = batch.searchResults.firstOrNull()
+                if (newest != null) {
+                    val header = temporalDriveReadProvider.temporalGetFileHeader(peer, driveId, newest.fileId)
+                    val content = header?.fileMetadata?.appData?.content
+                    val hour = content?.let { LocationTrackCodec.decodeHeader(it) }
+                    Logger.i(tag = TEMPORAL_TAG) {
+                        "header → file=${newest.fileId} points=${hour?.points?.size} full=${hour?.fullCount}"
+                    }
+
+                    val hasOverflow = header?.fileMetadata?.payloads
+                        ?.any { it.keyEquals(LOCATION_POINTS_PAYLOAD_KEY) } == true
+                    if (hasOverflow) {
+                        val payload = temporalDriveReadProvider.temporalGetPayload(
+                            peer, driveId, newest.fileId, LOCATION_POINTS_PAYLOAD_KEY,
+                        )
+                        Logger.i(tag = TEMPORAL_TAG) { "payload($LOCATION_POINTS_PAYLOAD_KEY) → ${payload?.bytes?.size} bytes" }
+                    } else {
+                        Logger.i(tag = TEMPORAL_TAG) { "payload → newest hour file has no '$LOCATION_POINTS_PAYLOAD_KEY' overflow" }
+                    }
+                }
+
+                sendEvent(
+                    DeveloperMenuUiEvent.Success(
+                        "Temporal read OK — access=${access.hasAccess}, ${batch.searchResults.size} files (see log tag $TEMPORAL_TAG)"
+                    )
+                )
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TEMPORAL_TAG) { "Temporal read test failed" }
+                sendEvent(DeveloperMenuUiEvent.Error("Temporal read failed: ${e.message}"))
+            }
+        }
     }
 
     private fun forceSyncAll() {
@@ -158,6 +247,7 @@ sealed interface DeveloperMenuUiEvent {
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
+    data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
     data object TriggerTestCrash : DeveloperMenuUiAction
