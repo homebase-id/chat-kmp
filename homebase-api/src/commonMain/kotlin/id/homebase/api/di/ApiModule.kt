@@ -27,6 +27,7 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -93,6 +94,7 @@ val apiModule = module {
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
+    factoryOf(::TemporalDriveReadProvider)
     factoryOf(::PeerDriveUploadProvider)
     factoryOf(::PeerNotificationProvider)
     // Single: one set of peer (owner-hosted) websocket connections per app session; reset on logout
