@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -57,6 +59,10 @@ class ContactBookStream(
     // before the server-confirmed delete syncs down.
     private val deletedIds = mutableSetOf<Uuid>()
 
+    // Serializes loadAll so concurrent ensureLoaded() callers (the screen) don't run
+    // overlapping queries, and so ensureLoaded's check-then-load is atomic.
+    private val loadMutex = Mutex()
+
     init {
         scope.launch { observeEvents() }
     }
@@ -64,6 +70,21 @@ class ContactBookStream(
     /** Load from the local DB. Called from onPostAuthenticated, never from init. */
     fun start() {
         scope.launch { loadAll() }
+    }
+
+    /**
+     * Guarantees the contact list has been loaded for the current session, on demand.
+     * The screen calls this on entry so it never depends on the post-auth bootstrap
+     * (onPostAuthenticated -> start()) having actually run: that chain can be skipped by
+     * the headless/foreground promotion race, leaving [isLoaded] stuck false and the list
+     * spinning forever. Idempotent and cheap once loaded.
+     */
+    suspend fun ensureLoaded() {
+        if (_isLoaded.value) return
+        loadMutex.withLock {
+            if (_isLoaded.value) return
+            loadAll()
+        }
     }
 
     /** Clear all in-memory state for a clean login as a different identity. */
