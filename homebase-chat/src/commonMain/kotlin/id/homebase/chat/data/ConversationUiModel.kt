@@ -44,6 +44,7 @@ data class ConversationUiModel(
      */
     val lastMessageContent: MessageContent? = null,
     val lastMessageIsFromActiveUser: Boolean = false,
+    val lastMessageSender: OdinId? = null,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
@@ -178,7 +179,8 @@ data class ConversationUiModel(
                     lastMessageFirstPayload = msg.payloads?.firstOrNull(),
                     lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
                     lastMessageContent = msg.messageContent,
-                    lastMessageIsFromActiveUser = msg.isAuthoredBy(activeUserDomain),
+                    lastMessageIsFromActiveUser = msg.isFromActiveUser(activeUserDomain),
+                    lastMessageSender = msg.originalAuthor,
                 )
             }
             return this

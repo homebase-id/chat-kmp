@@ -90,6 +90,10 @@ data class MessageUiModel(
 ) {
     fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
 
+    // null author == self (the server doesn't stamp originalAuthor on own messages).
+    fun isFromActiveUser(activeDomain: OdinId?): Boolean =
+        originalAuthor == null || originalAuthor == activeDomain
+
     /**
      * True when this message lives in a 1:1 conversation between [self] and
      * [sender] — i.e. `XorId(self, sender) == conversationId`.

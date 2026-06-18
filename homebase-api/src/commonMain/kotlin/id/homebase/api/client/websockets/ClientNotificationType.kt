@@ -18,6 +18,8 @@ enum class ClientNotificationType {
     deviceDisconnected,
     inboxItemReceived,
     newFollower,
+    connectionChanged,
+    circleDefinitionChanged,
     statisticsChanged,
     reactionContentAdded,
     reactionContentDeleted,
