@@ -2,8 +2,11 @@ package id.homebase.core.ui.screens.location
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
@@ -26,6 +29,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
+/**
+ * Well-known GUID (N-format) of the circle whose members may see this identity's location
+ * in an emergency. Matching by id rather than name survives a rename; the owner-console
+ * "manage" deep link uses the same id.
+ */
+private const val EMERGENCY_CIRCLE_ID = "8b5383a5927246f8a666f4f3fcb7392b"
+
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
     private val locationPermissionViewModel: ExtendPermissionViewModel,
@@ -34,6 +44,9 @@ class LocationViewModel(
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
     private val deviceDirectory: LocationDeviceDirectory,
+    private val connectionNetworkProvider: ConnectionNetworkProvider,
+    private val contactService: ContactService,
+    private val credentialsManager: CredentialsManager,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -259,7 +272,8 @@ class LocationViewModel(
         loadDashboard()
     }
 
-    /** Dashboard data: today's traces (map preview) + the device list. */
+    /** Dashboard data: today's traces (map preview), the device list, and the
+     *  members granted emergency location access. */
     fun loadDashboard() {
         viewModelScope.launch {
             val dayStart = localDayStart(Clock.System.now().toEpochMilliseconds())
@@ -267,7 +281,33 @@ class LocationViewModel(
                 .getOrDefault(emptyList())
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
-            _uiState.update { it.copy(todayTraces = traces, devices = devices) }
+
+            // Members of the "Emergency Location Access" circle, resolved to contact
+            // models (the contact service owns avatar URLs + initials fallbacks).
+            val circlesResult = runCatching { connectionNetworkProvider.getCirclesWithMembers() }
+            val circle = circlesResult.getOrNull()
+                ?.firstOrNull { it.circle.id.equals(EMERGENCY_CIRCLE_ID, ignoreCase = true) }
+            val circleFound: Boolean? = when {
+                circlesResult.isFailure -> null   // couldn't load — stay neutral, don't claim "missing"
+                circle != null -> true
+                else -> false                     // loaded, but no such circle
+            }
+            val members = circle?.members.orEmpty()
+                .mapNotNull { contactService.resolveByOdinId(it) }
+
+            val domain = runCatching { credentialsManager.getActiveCredentials()?.domain?.domainName }
+                .getOrNull()
+            val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_CIRCLE_ID" }
+
+            _uiState.update {
+                it.copy(
+                    todayTraces = traces,
+                    devices = devices,
+                    emergencyContacts = members,
+                    emergencyCircleFound = circleFound,
+                    emergencyManageUrl = manageUrl,
+                )
+            }
         }
     }
 
