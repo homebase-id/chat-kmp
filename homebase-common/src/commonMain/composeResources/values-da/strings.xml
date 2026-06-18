@@ -465,7 +465,7 @@
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
-    <string name="chat_preview_you_prefix">Dig: %1$s</string>
+    <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
 
     <!-- Stickers (gemte klistermærker) -->
     <string name="chat_sticker_share">Klistermærker</string>

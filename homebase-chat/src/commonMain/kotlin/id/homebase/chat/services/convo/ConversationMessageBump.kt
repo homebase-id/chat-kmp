@@ -86,7 +86,8 @@ internal fun applyIncomingMessageBump(
             lastMessageFirstPayload = m.payloads?.firstOrNull(),
             lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
             lastMessageContent = m.messageContent,
-            lastMessageIsFromActiveUser = m.isAuthoredBy(activeDomain),
+            lastMessageIsFromActiveUser = m.isFromActiveUser(activeDomain),
+            lastMessageSender = m.originalAuthor,
         )
         // Diagnostic for the asymmetric-badge investigation (plan
         // snazzy-frolicking-crown). Fires only when the strict-> check
