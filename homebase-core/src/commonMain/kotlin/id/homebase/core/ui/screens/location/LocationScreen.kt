@@ -153,20 +153,21 @@ fun LocationScreen(
             (action as? LocationUiAction.SetTrackingEnabled)?.enabled == true
     }
 
-    // Body switcher: dashboard once running, setup otherwise; the three-dot
-    // menu's "Location setup" forces the setup body (override clears when the
-    // screen leaves the back stack, or via the menu's "Dashboard" item).
-    var setupOverride by remember { mutableStateOf(false) }
-    val dashboardEligible = isDashboard(
+    // Body switcher. The default is permission-gated: Setup until the add-on is
+    // fully set up (activated + tracking + both location grants), Dashboard after.
+    // The three-dot menu lets the user override either way (null = follow default);
+    // the override resets when the screen leaves the back stack.
+    var dashboardOverride by remember { mutableStateOf<Boolean?>(null) }
+    val defaultsToDashboard = isDashboard(
         activated = uiState.activated,
         trackingEnabled = uiState.trackingEnabled,
         trackerAvailable = uiState.trackingAvailable,
-        // Both location grants required before leaving Setup — "while using the app"
-        // alone keeps the user here to also grant always/background.
+        // Both location grants required before defaulting to the dashboard — "while
+        // using the app" alone keeps Setup as the default to finish the always grant.
         permissionsComplete = uiState.whileInUseGranted && uiState.alwaysGranted,
         setupOverride = false,
     )
-    val showDashboard = dashboardEligible && !setupOverride
+    val showDashboard = dashboardOverride ?: defaultsToDashboard
     val previewProvider = koinInject<LocationPreviewProvider>()
     val uriHandler = getUriHandler()
 
@@ -200,19 +201,22 @@ fun LocationScreen(
                                 onNavigateToHistory()
                             },
                         )
-                        if (dashboardEligible) {
+                        // Dashboard is viewable once the drive is mounted — even
+                        // before tracking permissions are complete — so always offer
+                        // the toggle post-activation.
+                        if (uiState.activated) {
                             DropdownMenuItem(
                                 text = {
                                     Text(
                                         stringResource(
-                                            if (setupOverride) MR.string.location_menu_dashboard
-                                            else MR.string.location_menu_setup
+                                            if (showDashboard) MR.string.location_menu_setup
+                                            else MR.string.location_menu_dashboard
                                         )
                                     )
                                 },
                                 onClick = {
                                     menuOpen = false
-                                    setupOverride = !setupOverride
+                                    dashboardOverride = !showDashboard
                                 },
                             )
                         }
@@ -228,7 +232,7 @@ fun LocationScreen(
                 fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
                 onOpenHistory = onNavigateToHistory,
                 onOpenDevice = { onNavigateToFindDevice(it) },
-                onOpenSetup = { setupOverride = true },
+                onOpenSetup = { dashboardOverride = false },
                 onManageEmergencyAccess = {
                     uiState.emergencyManageUrl?.let { uriHandler.openUrl(it) }
                 },
