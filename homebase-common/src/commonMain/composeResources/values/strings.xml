@@ -1274,6 +1274,11 @@
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
+    <string name="location_emergency_access_section">Emergency Location Access:</string>
+    <string name="location_emergency_access_manage">Add emergency contacts</string>
+    <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
+    <string name="location_emergency_access_none">No one has emergency access yet. Tap + to add people.</string>
+    <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_device_this_device">This device</string>
     <string name="location_device_no_fix">No recent location</string>
     <string name="location_device_unnamed">Device %1$s</string>
