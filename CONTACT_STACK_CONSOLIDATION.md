@@ -106,19 +106,23 @@ queryable — name falls back to the domain in the UI. This de-risks Phase 1 sub
   `saveContactForOdinId` and any now-unused image-write/`ContactSizer` code there.
 - **Outcome:** single writer, single merge semantics. Defect #1 gone.
 
-### Phase 2 — Unify the model
-- Move/keep one `ContactName` in `homebase-api`; delete `chat.ContactName`.
-- Introduce one canonical parsed model + a single parser over `HomebaseFile` that
-  merges the logic of `toContactBookEntry()` and `DriveContactService.mapToContact`.
-  - Note (per backend §2): the **V2 controller never spills** — contact JSON is always
-    in the header (max 10,240 bytes ciphertext; over-budget fails, no payload fallback).
-    Its only payloads are `prfl_pic` (image) and `merge_log` (history). So the spilled
-    `"dflt_key"` body is a **legacy artifact of the old chat write path only**. The
-    unified parser should still tolerate it for contacts written before Phase 1, but
-    nothing new will produce it. (fixes defect #3)
-- Normalize name handling **in one place**: on read, derive first/last from
-  `displayName` when parts are blank; on write, keep `displayName` and parts consistent
-  (fixes defect #2 / #5).
+### Phase 2 — Unify the model  *(DONE)*
+- ✅ Deleted the entire chat duplicate family — `ContactServerFile`, `chat.ContactName`,
+  and `chat.{ContactPhone,ContactEmail,ContactLocation,ContactBirthday,ContactImage}`.
+  Both read paths now parse the `homebase-api` `ContactContent` family. One model
+  (defect #2's type-level duplication gone).
+- ✅ One name resolution: `ContactName.resolveDisplayName(odinId, phone, email)` +
+  `ContactName.initials()` in `homebase-api`, used by **both** `toContactBookEntry()`
+  (contact book) and `DriveContactService.mapToContact()` (chat) — they can no longer
+  drift (defect #2/#5 root cause). New `ContactNameExtensionsTest` pins them; obsolete
+  `ContactModelParityTest` removed.
+- ⏭️ **Deferred to Phase 3:** the single canonical *parsed record* + single parser
+  (one function feeding both `ContactUiModel` and `ContactBookEntry`). With the model and
+  name resolution now shared, this folds naturally into the read-service unification.
+  - Spill note (per backend §2): the **V2 controller never spills** — contact JSON is
+    always in the header. The `"dflt_key"` spilled body is a **legacy artifact of the old
+    chat write path only**; the eventual unified parser should tolerate it for
+    pre-Phase-1 contacts, but nothing new produces it (defect #3).
 
 ### Phase 3 — Unify the read service
 - One shared contact read service/stream (in `homebase-api`, consumed by both chat and

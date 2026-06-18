@@ -11,6 +11,7 @@ import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -153,13 +154,13 @@ fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
     }
 
     val name = content.name
-    val display = name?.displayName?.takeIf { it.isNotBlank() }
-        ?: listOfNotNull(name?.givenName, name?.surname)
-            .joinToString(" ").trim().ifBlank { null }
-        ?: content.odinId?.takeIf { it.isNotBlank() }
-        ?: content.phone?.number?.takeIf { it.isNotBlank() }
-        ?: content.email?.email?.takeIf { it.isNotBlank() }
-        ?: return null  // nothing renderable — skip
+    // Shared with the chat read path (DriveContactService) via the single resolver so the two
+    // can't drift. Null → nothing renderable, skip.
+    val display = name.resolveDisplayName(
+        odinId = content.odinId,
+        phone = content.phone?.number,
+        email = content.email?.email,
+    ) ?: return null
 
     val imagePayload = fileMetadata.payloads
         ?.firstOrNull { it.key == ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY }

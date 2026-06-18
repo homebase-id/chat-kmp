@@ -2,6 +2,9 @@ package id.homebase.chat.services.convo.contact
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.contacts.ContactContent
+import id.homebase.api.client.contacts.initials
+import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -162,21 +165,31 @@ class DriveContactService(
         }
 
         val content = appData.content ?: ""
-        val parsedContact = try {
-            OdinSystemSerializer.deserialize<ContactServerFile>(content)
+        val parsed = try {
+            OdinSystemSerializer.deserialize<ContactContent>(content)
         } catch (e: Exception) {
             Logger.e(e) { "Failed to deserialize contact content for uid=$uid: ${content.take(200)}" }
             return null
         }
 
+        // ContactUiModel is identity-keyed; a contact with no odinId (e.g. a manual phone-only
+        // entry) can't be one — skip rather than crash.
+        val odinIdStr = parsed.odinId?.takeIf { it.isNotBlank() } ?: run {
+            Logger.w(tag = TAG) { "Contact uid=$uid has no odinId; skipping for chat list" }
+            return null
+        }
+        val odinId = OdinId(odinIdStr)
+
         return ContactUiModel(
             id = uid,
-            odinId = parsedContact.odinId
-                ?: throw IllegalStateException("why is the odin id missing?"),
-            name = parsedContact.name.displayName?.takeIf { it.isNotBlank() }
-                ?: parsedContact.odinId.domainName,
-            avatarInitials = parsedContact.name.initials(),
-            avatarUrl = "https://${parsedContact.odinId}/pub/image"
+            odinId = odinId,
+            name = parsed.name.resolveDisplayName(
+                odinId = odinIdStr,
+                phone = parsed.phone?.number,
+                email = parsed.email?.email,
+            ) ?: odinId.domainName,
+            avatarInitials = parsed.name.initials(),
+            avatarUrl = "https://$odinIdStr/pub/image",
         )
     }
 }
