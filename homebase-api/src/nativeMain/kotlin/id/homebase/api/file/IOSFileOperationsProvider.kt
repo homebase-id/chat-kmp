@@ -213,11 +213,21 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return path
     }
 
-    /** The [PHAsset] for a `ph://` path iff it is a video, else null (images/`/L0/` paths). */
+    /**
+     * The [PHAsset] for a Photos-library video path iff it is a video, else null (images, or a
+     * non-library path). Accepts BOTH a `ph://<id>` URI and the raw PHAsset localIdentifier
+     * (`<uuid>/L0/nnn`): the gallery picker hands the send path the raw localIdentifier — never a
+     * `ph://` URI — so gating on `ph://` alone left gallery video picks falling through to the
+     * image-only `requestImageDataForAsset` path, which returns a few-KB poster frame for `.mp4`
+     * (the "mp4 sends as a tiny file" bug). Mirrors the `ph:// || /L0/` guard used above.
+     */
     @OptIn(ExperimentalForeignApi::class)
     private fun phVideoAssetOrNull(path: String): PHAsset? {
-        if (!path.startsWith("ph://")) return null
-        val assetId = path.removePrefix("ph://")
+        val assetId = when {
+            path.startsWith("ph://") -> path.removePrefix("ph://")
+            path.contains("/L0/") -> path
+            else -> return null
+        }
         val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
         if (fetchResult.count.toInt() == 0) return null
         val asset = fetchResult.objectAtIndex(0u) as PHAsset
