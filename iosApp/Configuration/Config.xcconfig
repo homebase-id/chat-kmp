@@ -7,6 +7,9 @@ CURRENT_PROJECT_VERSION=804
 MARKETING_VERSION=1.2.0
 
 APP_GROUP_IDENTIFIER = group.id.homebase.feed
+// Variant-specific share URL scheme (see Dev.xcconfig). Prod keeps the original
+// `homebase-share`; the dev build overrides this to `homebase-share-dev`.
+SHARE_URL_SCHEME = homebase-share
 
 OTHER_LDFLAGS = $(inherited) -lsqlite3 -lz -lbz2 -liconv
 

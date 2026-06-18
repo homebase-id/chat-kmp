@@ -13,7 +13,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>homebase-share</string>
+				<string>$(SHARE_URL_SCHEME)</string>
 				<string>homebase-fchat</string>
 			</array>
 		</dict>
