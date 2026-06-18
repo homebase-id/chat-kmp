@@ -572,6 +572,22 @@ fun ConversationContent(
             )
         }
     }
+
+    // iOS: present the camera/recorder only AFTER the attachment dropdown menu has dismissed.
+    // The camera button is a DropdownMenu item; launching synchronously from its onClick
+    // presents the picker while the menu is still tearing down, and iOS dismisses the picker
+    // instantly along with the menu — the "camera opens then closes" bug (chat only; Vault and
+    // Moments don't launch from a dropdown, and the video path already async-defers). Deferring
+    // the launch via this effect lets the menu finish dismissing first — mirrors VaultScreen's
+    // deferred picker launch.
+    var pendingPickerLaunch by remember { mutableStateOf<(() -> Unit)?>(null) }
+    LaunchedEffect(pendingPickerLaunch) {
+        pendingPickerLaunch?.let { launchPicker ->
+            launchPicker()
+            pendingPickerLaunch = null
+        }
+    }
+
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
@@ -1543,8 +1559,8 @@ fun ConversationContent(
                                     showAttachmentSheet = false
                                 },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { cameraLauncher.launch() },
-                                onVideoRecordClick = { videoRecorderLauncher.launch() },
+                                onCameraClick = { pendingPickerLaunch = { cameraLauncher.launch() } },
+                                onVideoRecordClick = { pendingPickerLaunch = { videoRecorderLauncher.launch() } },
                                 onRecordingStarted = {
                                     onUiAction(
                                         ConversationListUiAction.StartRecording(
