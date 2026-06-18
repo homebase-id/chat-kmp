@@ -26,6 +26,12 @@ import platform.Foundation.seekToEndOfFile
 import platform.Foundation.writeData
 import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
+import platform.Photos.PHAssetMediaTypeVideo
+import platform.Photos.PHAssetResource
+import platform.Photos.PHAssetResourceManager
+import platform.Photos.PHAssetResourceRequestOptions
+import platform.Photos.PHAssetResourceTypeFullSizeVideo
+import platform.Photos.PHAssetResourceTypeVideo
 import platform.Photos.PHImageRequestOptions
 import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.posix.memcpy
@@ -184,6 +190,17 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun resolveToFilePath(path: String): String {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
+            // A video PHAsset must be read via PHAssetResourceManager: requestImageDataForAsset
+            // (used by readPhotoLibraryAsset) is image-only and returns a tiny poster frame for
+            // videos — that's the "video sends as a few-KB file" bug. Stream the original movie
+            // resource straight to the temp file (also avoids holding the whole video in memory).
+            val videoAsset = phVideoAssetOrNull(path)
+            if (videoAsset != null) {
+                val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
+                writeVideoAssetToFile(videoAsset, tmpPath)
+                return tmpPath
+            }
+
             val bytes = readPhotoLibraryAsset(path)
             val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
             val data = bytes.usePinned { pinned ->
@@ -195,6 +212,59 @@ class IOSFileOperationsProvider : FileOperationsProvider {
 
         return path
     }
+
+    /**
+     * The [PHAsset] for a Photos-library video path iff it is a video, else null (images, or a
+     * non-library path). Accepts BOTH a `ph://<id>` URI and the raw PHAsset localIdentifier
+     * (`<uuid>/L0/nnn`): the gallery picker hands the send path the raw localIdentifier — never a
+     * `ph://` URI — so gating on `ph://` alone left gallery video picks falling through to the
+     * image-only `requestImageDataForAsset` path, which returns a few-KB poster frame for `.mp4`
+     * (the "mp4 sends as a tiny file" bug). Mirrors the `ph:// || /L0/` guard used above.
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun phVideoAssetOrNull(path: String): PHAsset? {
+        val assetId = when {
+            path.startsWith("ph://") -> path.removePrefix("ph://")
+            path.contains("/L0/") -> path
+            else -> return null
+        }
+        val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
+        if (fetchResult.count.toInt() == 0) return null
+        val asset = fetchResult.objectAtIndex(0u) as PHAsset
+        return if (asset.mediaType == PHAssetMediaTypeVideo) asset else null
+    }
+
+    /** Streams a video PHAsset's original movie resource to [destPath] via PHAssetResourceManager. */
+    @OptIn(ExperimentalForeignApi::class)
+    private suspend fun writeVideoAssetToFile(asset: PHAsset, destPath: String): Unit =
+        suspendCancellableCoroutine { continuation ->
+            val videoResource = PHAssetResource.assetResourcesForAsset(asset)
+                .filterIsInstance<PHAssetResource>()
+                .firstOrNull { it.type == PHAssetResourceTypeVideo || it.type == PHAssetResourceTypeFullSizeVideo }
+            if (videoResource == null) {
+                continuation.resumeWithException(
+                    IllegalStateException("No video resource for asset ${asset.localIdentifier}")
+                )
+                return@suspendCancellableCoroutine
+            }
+
+            val options = PHAssetResourceRequestOptions().apply { setNetworkAccessAllowed(true) }
+            val destUrl = NSURL.fileURLWithPath(destPath)
+            PHAssetResourceManager.defaultManager().writeDataForAssetResource(
+                videoResource,
+                toFile = destUrl,
+                options = options,
+                completionHandler = { error ->
+                    if (error != null) {
+                        continuation.resumeWithException(
+                            IllegalStateException("Failed to export video resource: ${error.localizedDescription}")
+                        )
+                    } else {
+                        continuation.resume(Unit)
+                    }
+                },
+            )
+        }
 
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
