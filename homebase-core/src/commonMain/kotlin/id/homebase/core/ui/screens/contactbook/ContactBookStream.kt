@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -102,7 +103,21 @@ class ContactBookStream(
     }
 
     private suspend fun observeEvents() {
-        eventBus.events.collect { event ->
+        // The EventBus replays its last event (replay=1) to every new subscriber.
+        // This stream is a lazily-constructed singleton whose collector subscribes
+        // the first time it is resolved — which is inside onPostAuthenticated() at
+        // login. If a SessionEnded is sitting in the replay buffer from the
+        // pre-login Unauthenticated state (cold start lands on the login screen,
+        // which emits SessionEnded), it would be redelivered here and call reset()
+        // (_isLoaded=false), racing start()'s loadAll() (_isLoaded=true). When that
+        // replayed reset() lands AFTER loadAll(), the contact list spins forever
+        // until the next logout/login. A replayed event is stale by construction
+        // here, so skip whatever is already buffered and act on live events only.
+        val replayed = eventBus.events.replayCache.size
+        if (replayed > 0) {
+            Logger.d(tag = TAG) { "observeEvents: skipping $replayed replayed event(s) at startup" }
+        }
+        eventBus.events.drop(replayed).collect { event ->
             when (event) {
                 is BackendEvent.SessionEnded -> reset()
 
