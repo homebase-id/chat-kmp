@@ -31,7 +31,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
@@ -62,6 +61,8 @@ import id.homebase.resources.location_emergency_access_missing
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
+import id.homebase.resources.location_locatable_coming_soon
+import id.homebase.resources.location_locatable_section
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import kotlin.time.Instant
@@ -166,12 +167,26 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Emergency Location Access (members of that circle) ──
-        EmergencyAccessSection(
-            circleFound = uiState.emergencyCircleFound,
-            members = uiState.emergencyContacts,
+        // ── Who you can locate (placeholder — reciprocal list, not built yet) ──
+        DashboardSection(title = stringResource(MR.string.location_locatable_section)) {
+            Text(
+                text = stringResource(MR.string.location_locatable_coming_soon),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+        }
+
+        // ── Who can locate you (members of the Emergency Location Access circle) ──
+        DashboardSection(
+            title = stringResource(MR.string.location_emergency_access_section),
             onManage = onManageEmergencyAccess,
-        )
+        ) {
+            EmergencyAccessBody(
+                circleFound = uiState.emergencyCircleFound,
+                members = uiState.emergencyContacts,
+            )
+        }
 
         // ── Footer ──
         Row(
@@ -238,57 +253,82 @@ fun DeviceRow(device: LocationDeviceInfo, onClick: () -> Unit) {
 }
 
 /**
- * Who can see this identity's location in an emergency: the members of the
- * "Emergency Location Access" circle. Always shown (with a manage "+" that opens
- * the owner console); collapses to an avatar stack that expands to a named list.
+ * A titled dashboard section: a tight title row (with an optional compact manage
+ * "+" affordance) hugging its content [Card]. Used for the two emergency lists so
+ * their layout matches.
  */
 @Composable
-private fun EmergencyAccessSection(
+private fun DashboardSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    onManage: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (onManage != null) {
+                // Compact tappable "+" (not a 48dp IconButton, which would balloon
+                // the title row and push the card away).
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(MR.string.location_emergency_access_manage),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(onClick = onManage)
+                        .padding(4.dp)
+                        .size(22.dp),
+                )
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) { content() }
+    }
+}
+
+/**
+ * Body of the "Who can locate you" section: the members of the "Emergency Location
+ * Access" circle. Collapses to an avatar stack that expands to a named list.
+ */
+@Composable
+private fun EmergencyAccessBody(
     circleFound: Boolean?,
     members: List<ContactUiModel>,
-    onManage: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(MR.string.location_emergency_access_section),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onManage) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = stringResource(MR.string.location_emergency_access_manage),
-            )
+    when {
+        circleFound == null -> Box(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         }
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        when {
-            circleFound == null -> Box(
-                modifier = Modifier.fillMaxWidth().padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            }
 
-            !circleFound -> Text(
-                text = stringResource(MR.string.location_emergency_access_missing),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
+        !circleFound -> Text(
+            text = stringResource(MR.string.location_emergency_access_missing),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        )
 
-            members.isEmpty() -> Text(
-                text = stringResource(MR.string.location_emergency_access_none),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
+        members.isEmpty() -> Text(
+            text = stringResource(MR.string.location_emergency_access_none),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        )
 
-            else -> Column {
+        else -> Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -331,7 +371,6 @@ private fun EmergencyAccessSection(
             }
         }
     }
-}
 
 /** Overlapping avatar stack with a "+N" overflow chip. */
 @Composable
