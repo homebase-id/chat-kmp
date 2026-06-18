@@ -87,7 +87,7 @@ queryable — name falls back to the domain in the UI. This de-risks Phase 1 sub
   source, keying, merge/spill semantics all confirmed from server code. No blockers
   remain for Phase 1.
 
-### Phase 1 — Converge writes onto V2  *(highest value, smallest blast radius, independently shippable)*
+### Phase 1 — Converge writes onto V2  *(DONE — commit 73a9b695)*
 - Replace the four `driveContactService.saveContactForOdinId(...)` calls in
   `ConnectionRequestService` with `contactsProvider.syncContact(...)`.
 - **Timing risk: resolved** — the 202 is synchronous server-side (see §1.5). No gap.
