@@ -141,10 +141,13 @@ queryable — name falls back to the domain in the UI. This de-risks Phase 1 sub
   Homebase ID, so an identity-only contact no longer reads "None".
 - **#6 no-clear merge** — client mitigation shipped (see defect #6 above).
 
-### Phase 4 — Cleanup
-- Remove duplicated image/thumbnail/AES logic; single image read/write via
-  `ContactsProvider` (fixes defect #4).
-- Remove `ContactServerFile` if fully replaced.
+### Phase 4 — Cleanup  *(DONE — mostly as side effects of Phases 1–2)*
+- ✅ Duplicated image/thumbnail/AES write logic gone (defect #4): the only contact image
+  writer is now `ContactsProvider.setContactImage` (V2). The chat-side write path that
+  duplicated it was deleted in Phase 1.
+- ✅ `ContactServerFile` removed (Phase 2).
+- ✅ Removed the now-dead chat `ContactProtocol` (its `ProfileImageKey = "prfl_pic"` is
+  superseded by `ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY`).
 
 ## 4. Risks
 
