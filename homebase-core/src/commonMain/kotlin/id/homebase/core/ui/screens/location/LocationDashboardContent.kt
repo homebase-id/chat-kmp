@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,26 +16,39 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.location_dashboard_empty_today
 import id.homebase.resources.location_dashboard_history_section
@@ -42,6 +57,11 @@ import id.homebase.resources.location_device_no_fix
 import id.homebase.resources.location_device_this_device
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_devices_section
+import id.homebase.resources.location_emergency_access_manage
+import id.homebase.resources.location_emergency_access_missing
+import id.homebase.resources.location_emergency_access_more
+import id.homebase.resources.location_emergency_access_none
+import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import kotlin.time.Instant
@@ -61,6 +81,7 @@ fun LocationDashboardContent(
     onOpenHistory: () -> Unit,
     onOpenDevice: (Uuid) -> Unit,
     onOpenSetup: () -> Unit,
+    onManageEmergencyAccess: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -145,6 +166,13 @@ fun LocationDashboardContent(
             }
         }
 
+        // ── Emergency Location Access (members of that circle) ──
+        EmergencyAccessSection(
+            circleFound = uiState.emergencyCircleFound,
+            members = uiState.emergencyContacts,
+            onManage = onManageEmergencyAccess,
+        )
+
         // ── Footer ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -205,6 +233,151 @@ fun DeviceRow(device: LocationDeviceInfo, onClick: () -> Unit) {
                 onClick = onClick,
                 label = { Text(stringResource(MR.string.location_device_this_device)) },
             )
+        }
+    }
+}
+
+/**
+ * Who can see this identity's location in an emergency: the members of the
+ * "Emergency Location Access" circle. Always shown (with a manage "+" that opens
+ * the owner console); collapses to an avatar stack that expands to a named list.
+ */
+@Composable
+private fun EmergencyAccessSection(
+    circleFound: Boolean?,
+    members: List<ContactUiModel>,
+    onManage: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(MR.string.location_emergency_access_section),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onManage) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(MR.string.location_emergency_access_manage),
+            )
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        when {
+            circleFound == null -> Box(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+
+            !circleFound -> Text(
+                text = stringResource(MR.string.location_emergency_access_missing),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+
+            members.isEmpty() -> Text(
+                text = stringResource(MR.string.location_emergency_access_none),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+
+            else -> Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    EmergencyAvatarStack(members = members, modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                AnimatedVisibility(visible = expanded) {
+                    Column {
+                        members.forEach { member ->
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                AvatarImage(
+                                    avatarUrl = member.avatarUrl,
+                                    avatarInitials = member.avatarInitials,
+                                    size = 40.dp,
+                                )
+                                Text(
+                                    text = member.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Overlapping avatar stack with a "+N" overflow chip. */
+@Composable
+private fun EmergencyAvatarStack(
+    members: List<ContactUiModel>,
+    modifier: Modifier = Modifier,
+    maxVisible: Int = 6,
+) {
+    val visible = members.take(maxVisible)
+    val overflow = members.size - visible.size
+    val avatarSize = 36.dp
+    val ringSize = avatarSize + 4.dp
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(-(avatarSize / 3)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        visible.forEach { member ->
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                AvatarImage(
+                    avatarUrl = member.avatarUrl,
+                    avatarInitials = member.avatarInitials,
+                    size = avatarSize,
+                )
+            }
+        }
+        if (overflow > 0) {
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(MR.string.location_emergency_access_more, overflow),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
