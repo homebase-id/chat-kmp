@@ -786,8 +786,8 @@ fun AppNavHost(
                                 } else {
                                     ContactBookScreen(
                                         viewModel = contactBookViewModel,
-                                        onNavigateToSettings = {
-                                            navController.navigate(Route.ContactBookSettings)
+                                        onProfileClick = {
+                                            navController.navigate(Route.Settings)
                                         },
                                     )
                                 }

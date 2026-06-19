@@ -48,7 +48,7 @@ LEFT JOIN DriveMainIndex AS m
     WHERE m2.identityId = d.identityId
       AND m2.groupId = d.uniqueId
       AND m2.fileType = 7878
-      AND m2.dataType = 0
+      AND m2.dataType != 202
     ORDER BY m2.userDate DESC
     LIMIT 1
   )
