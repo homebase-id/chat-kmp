@@ -11,6 +11,7 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -27,6 +28,7 @@ import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -57,8 +60,7 @@ import kotlin.uuid.ExperimentalUuidApi
  * See also [id.homebase.core.contactbook.ContactBookPreferences] (no `activated` flag).
  */
 class ContactBookViewModel(
-    private val stream: ContactBookStream,
-    private val service: ContactBookService,
+    private val repo: ContactRepository,
     private val preferences: ContactBookPreferences,
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
@@ -91,7 +93,7 @@ class ContactBookViewModel(
         // relying on the post-auth bootstrap (onPostAuthenticated -> start()), which can be
         // skipped by the headless/foreground promotion race and leave the list spinning.
         // Idempotent once loaded.
-        viewModelScope.launch { stream.ensureLoaded() }
+        viewModelScope.launch { repo.ensureLoaded() }
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _header.update { it.copy(ownerSession = session) }
@@ -142,10 +144,15 @@ class ContactBookViewModel(
         val members: CircleMembersUi?,
     )
 
+    /** Server-shaped repository contacts projected into the flat UI model. */
+    private val entries: StateFlow<List<ContactBookEntry>> = repo.contacts
+        .map { list -> list.mapNotNull { it.toContactBookEntry() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val uiState: StateFlow<ContactBookUiState> = combine(
         combine(
-            stream.contacts,
-            stream.isLoaded,
+            entries,
+            repo.isLoaded,
             connectionService.connections,
             connectionService.circles,
         ) { c, l, conn, circ ->
@@ -280,7 +287,7 @@ class ContactBookViewModel(
             is ContactBookUiAction.MessageClicked -> handleMessage(action.entry)
             is ContactBookUiAction.SyncClicked -> {
                 val odinId = action.entry.odinId ?: return
-                viewModelScope.launch { service.syncFromIdentity(odinId) }
+                viewModelScope.launch { repo.sync(OdinId(odinId)) }
             }
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
 
@@ -297,9 +304,9 @@ class ContactBookViewModel(
         if (!draft.isSavable) return
         _overlay.value = null
         viewModelScope.launch {
-            when (val result = saveContactDraft(service, draft, editing, photo, contactTargetDrive.alias)) {
+            when (val result = saveContactDraft(repo, draft, editing, photo)) {
                 is ContactSaveResult.Success -> {
-                    stream.insertOrUpdateOptimistic(result.entry)
+                    // repo.save already applied the optimistic update.
                     if (result.photoFailed) {
                         _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.PhotoFailed))
                     }
@@ -334,7 +341,7 @@ class ContactBookViewModel(
         // Members are bundled with the circle list — resolve them to contact entries
         // synchronously, no second network call.
         val domains = circle.members.map { it.domainName }.toSet()
-        val members = entriesForDomains(domains, stream.contacts.value).sortedBy { it.sortKey }
+        val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
         _circleMembers.value = CircleMembersUi(
             circleName = circle.circle.name,
             members = members,
@@ -372,11 +379,10 @@ class ContactBookViewModel(
 
     private fun handleDelete(entry: ContactBookEntry) {
         _overlay.value = null
-        stream.removeOptimistic(entry.uniqueId)
         viewModelScope.launch {
-            if (!service.delete(entry.uniqueId)) {
+            // repo.delete does the optimistic remove and restores on a generic failure.
+            if (!repo.delete(entry.uniqueId)) {
                 _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.DeleteFailed))
-                stream.loadAll() // re-sync truth after a failed delete
             }
         }
     }

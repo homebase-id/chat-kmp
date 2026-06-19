@@ -17,17 +17,17 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.ui.screens.contactbook.ContactBookService
-import id.homebase.core.ui.screens.contactbook.ContactBookStream
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -46,8 +46,7 @@ private const val OVERVIEW_MESSAGE_CAP = 1000
 
 class ContactDetailViewModel(
     savedStateHandle: SavedStateHandle,
-    private val contactBookStream: ContactBookStream,
-    private val contactBookService: ContactBookService,
+    private val contactRepository: ContactRepository,
     private val conversationService: ConversationService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
@@ -69,10 +68,12 @@ class ContactDetailViewModel(
         get() = route.odinId?.ifBlank { null } ?: _uiState.value.entry?.odinId?.ifBlank { null }
 
     init {
+        // Self-sufficient on deep-link: ensure the repo has loaded even if the list wasn't opened.
+        viewModelScope.launch { contactRepository.ensureLoaded() }
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
             combine(
-                contactBookStream.contacts,
+                contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
                 connectionService.connections,
                 connectionService.circles,
             ) { contacts, conn, circ ->
@@ -200,7 +201,7 @@ class ContactDetailViewModel(
     private fun handleSync() {
         val domain = odinId ?: return
         _events.tryEmit(ContactDetailEvent.SyncStarted)
-        viewModelScope.launch { contactBookService.syncFromIdentity(domain) }
+        viewModelScope.launch { contactRepository.sync(OdinId(domain)) }
     }
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {
@@ -208,14 +209,13 @@ class ContactDetailViewModel(
         _uiState.update { it.copy(editOpen = false) }
         viewModelScope.launch {
             when (val result = saveContactDraft(
-                service = contactBookService,
+                repo = contactRepository,
                 draft = action.draft,
                 editing = editing,
                 photo = action.photo,
-                contactDriveId = contactTargetDrive.alias,
             )) {
                 is ContactSaveResult.Success -> {
-                    contactBookStream.insertOrUpdateOptimistic(result.entry)
+                    // repo.save already applied the optimistic update.
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
@@ -266,18 +266,11 @@ class ContactDetailViewModel(
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
                         }
-                        contactBookStream.removeOptimistic(entry.uniqueId)
+                        // repo.delete does the optimistic remove and restores on failure.
                         val event = try {
-                            if (contactBookService.delete(entry.uniqueId)) {
-                                ContactDetailEvent.Back
-                            } else {
-                                // Generic/transient failure — restore the contact and stay put.
-                                contactBookStream.insertOrUpdateOptimistic(entry)
-                                ContactDetailEvent.DeleteError
-                            }
+                            if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.Back
+                            else ContactDetailEvent.DeleteError
                         } catch (e: ForbiddenException) {
-                            // 403 — app lacks manage-contacts permission. Restore and explain.
-                            contactBookStream.insertOrUpdateOptimistic(entry)
                             ContactDetailEvent.DeleteForbidden
                         }
                         _events.tryEmit(event)

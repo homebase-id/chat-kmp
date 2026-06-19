@@ -2,13 +2,14 @@
 
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactBirthday
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactLocation
-import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.util.resolveContentType
@@ -21,8 +22,9 @@ import kotlin.uuid.Uuid
 
 /** Outcome of [saveContactDraft]. */
 sealed interface ContactSaveResult {
-    /** Saved; push [entry] into the stream. [photoFailed] = contact saved but avatar upload failed. */
-    data class Success(val entry: ContactBookEntry, val photoFailed: Boolean) : ContactSaveResult
+    /** Saved. [photoFailed] = contact saved but avatar upload failed. The repository has already
+     *  applied the optimistic update to its `contacts` flow, so callers don't push anything. */
+    data class Success(val photoFailed: Boolean) : ContactSaveResult
 
     /** Server rejected the write with 403 — the app token lacks the manage-contacts permission. */
     data object Forbidden : ContactSaveResult
@@ -32,18 +34,16 @@ sealed interface ContactSaveResult {
 }
 
 /**
- * Builds [ContactContent] from a [draft], saves it via [service], uploads the [photo]
- * (if any) after the contact exists, and returns the optimistic [ContactBookEntry] for
- * the caller to push into its stream. Shared by the contact-list and contact-detail
- * ViewModels so edit behaves identically in both. Distinguishes a 403 (Forbidden) so the
- * UI can explain the missing-permission cause rather than a generic failure.
+ * Builds [ContactContent] from a [draft] and saves it through [repo] (which owns the optimistic
+ * update), then uploads the [photo] if any. Shared by the contact-list and contact-detail
+ * ViewModels so edit behaves identically in both. Distinguishes a 403 (Forbidden) so the UI can
+ * explain the missing-permission cause rather than a generic failure.
  */
 suspend fun saveContactDraft(
-    service: ContactBookService,
+    repo: ContactRepository,
     draft: ContactDraft,
     editing: ContactBookEntry?,
     photo: PlatformFile?,
-    contactDriveId: Uuid,
 ): ContactSaveResult {
     if (!draft.isSavable) return ContactSaveResult.Failed
 
@@ -70,7 +70,7 @@ suspend fun saveContactDraft(
     )
 
     val response = try {
-        service.save(
+        repo.save(
             content = content,
             knownUniqueId = editing?.uniqueId,
             knownVersionTag = editing?.versionTag,
@@ -80,37 +80,16 @@ suspend fun saveContactDraft(
     } ?: return ContactSaveResult.Failed
 
     val photoFailed = photo != null &&
-        !uploadContactPhoto(service, response.uniqueId, response.versionTag, photo, contactDriveId)
+        !uploadContactPhoto(repo, response.uniqueId, response.versionTag, photo)
 
-    val display = draft.displayName.ifBlank { normalizedPhone ?: draft.email }.ifBlank { "?" }
-    val entry = (editing ?: ContactBookEntry(
-        uniqueId = response.uniqueId,
-        fileId = response.uniqueId,
-        versionTag = response.versionTag,
-        displayName = display,
-    )).copy(
-        uniqueId = response.uniqueId,
-        versionTag = response.versionTag,
-        odinId = odinId,
-        displayName = display,
-        givenName = draft.givenName.ifBlank { null },
-        surname = draft.surname.ifBlank { null },
-        phone = normalizedPhone,
-        email = draft.email.ifBlank { null },
-        city = draft.city.ifBlank { null },
-        country = draft.country.ifBlank { null },
-        birthday = draft.birthday.ifBlank { null },
-        source = content.source,
-    )
-    return ContactSaveResult.Success(entry, photoFailed)
+    return ContactSaveResult.Success(photoFailed)
 }
 
 private suspend fun uploadContactPhoto(
-    service: ContactBookService,
+    repo: ContactRepository,
     uniqueId: Uuid,
     versionTag: Uuid,
     photo: PlatformFile,
-    contactDriveId: Uuid,
 ): Boolean {
     val bytes = try {
         photo.readBytes()
@@ -121,9 +100,8 @@ private suspend fun uploadContactPhoto(
     }
     if (bytes.isEmpty()) return false
     val contentType = resolveContentType(photo.name, photo.mimeType()?.toString())
-    return service.setPhoto(
+    return repo.setImage(
         uniqueId = uniqueId,
-        contactDriveId = contactDriveId,
         bytes = bytes,
         contentType = contentType,
         versionTag = versionTag,

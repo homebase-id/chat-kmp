@@ -68,8 +68,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
-import id.homebase.core.ui.screens.contactbook.ContactBookService
-import id.homebase.core.ui.screens.contactbook.ContactBookStream
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -210,8 +209,8 @@ val appModule = module {
     // drive; writes through the api-layer ContactsProvider. No optional-drive
     // activation — the drive is always mounted.
     single { ContactBookPreferences(get()) }
-    singleOf(::ContactBookStream)
-    single { ContactBookService(get()) }
+    // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
+    // book consumes it directly. No core-side stream/service wrapper.
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -431,7 +430,7 @@ val appModule = module {
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
-                get<ContactBookStream>().apply { reset(); start() }
+                get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
 
