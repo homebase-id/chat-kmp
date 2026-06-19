@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
@@ -100,6 +102,14 @@ data class ContactBookUiState(
     val overlay: ContactBookOverlay? = null,
     val importState: ImportUiState? = null,
     val importSupported: Boolean = false,
+    /** Logged-in owner, for the header avatar that links to settings. Null until loaded. */
+    val ownerSession: OwnerSession? = null,
+    /** Connection state surfaced as the avatar's status dot. */
+    val connectionStatus: AppConnectionStatus = AppConnectionStatus.Disconnected,
+    /** A sync pass is in flight — the avatar shows a spinner instead of the dot. */
+    val driveIsSyncing: Boolean = false,
+    /** The last sync pass failed — the avatar dot turns amber. */
+    val hasDriveError: Boolean = false,
 )
 
 sealed interface ContactBookUiAction {

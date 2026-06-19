@@ -3,4 +3,7 @@
 PRODUCT_NAME=Homebase Dev
 PRODUCT_BUNDLE_IDENTIFIER=id.homebase.feed.dev
 APP_GROUP_IDENTIFIER = group.id.homebase.feed.dev
+// Variant-specific so a dev + prod build installed side by side don't both register the
+// same share URL scheme (which let the share extension's openURL hand off to the wrong app).
+SHARE_URL_SCHEME = homebase-share-dev
 KOTLIN_FRAMEWORK_BUILD_TYPE=release

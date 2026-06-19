@@ -341,6 +341,13 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileVideo(
         val id: Uuid,
         val file: PlatformFile,
+        // Real source filename (with extension) for when [file]'s own name is uninformative — e.g.
+        // an iOS quick-switch gallery pick whose PlatformFile path is a bare PHAsset localIdentifier
+        // ("<uuid>/L0/001", no extension). Used at send time to resolve the video content-type and
+        // display name; null falls back to file.name. Without it the content-type resolves to
+        // application/octet-stream and the video is uploaded as a generic file instead of routing
+        // through the video pipeline (the "quick-switch video sends as a file" bug).
+        val sourceFileName: String? = null,
         val thumbnailBytes: ByteArray? = null,
         val durationMs: Long? = null,
         val trimStartMs: Long? = null,

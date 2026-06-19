@@ -532,8 +532,10 @@ class ConversationStream(
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
+                        lastMessageContent = m.messageContent,
                         lastMessageIsFromActiveUser =
-                            m.isAuthoredBy(credentialsManager.getActiveDomain()),
+                            m.isFromActiveUser(credentialsManager.getActiveDomain()),
+                        lastMessageSender = m.originalAuthor,
                         isGroup = !isOneToOne
                     )
 

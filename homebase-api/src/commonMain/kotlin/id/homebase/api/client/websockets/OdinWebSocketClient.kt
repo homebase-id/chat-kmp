@@ -542,8 +542,32 @@ class OdinWebSocketClient(
             }
 
 
+            ClientNotificationType.connectionChanged -> {
+                val d = OdinSystemSerializer.deserialize<ConnectionChangedNotification>(
+                    notification.data
+                )
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.ConnectionChanged(
+                        identity = d.identity,
+                        change = d.change,
+                        circleId = d.circleId,
+                    )
+                )
+            }
+
+            ClientNotificationType.circleDefinitionChanged -> {
+                val d = OdinSystemSerializer.deserialize<CircleDefinitionChangedNotification>(
+                    notification.data
+                )
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.CircleDefinitionChanged(
+                        circleId = d.circleId,
+                        change = d.change,
+                    )
+                )
+            }
+
             ClientNotificationType.appNotificationAdded -> {
-                handleAppNotification(notification)
             }
 
 
@@ -560,62 +584,6 @@ class OdinWebSocketClient(
             }
 
             else -> {
-            }
-        }
-    }
-
-    /**
-     * App-notification fan-out. We only act on the connection/circle state-change kinds (5002/5003);
-     * every other app-notification id is intentionally ignored here. The payload is double-encoded:
-     * parse the envelope, then parse its inner `data` string into the concrete notification. Parse
-     * failures are swallowed (logged) so one malformed/unknown payload can't kill the dispatch loop.
-     *
-     * These fire for any origin of the change — including an echo of this device's own mutation — so
-     * the downstream consumer ([id.homebase.chat.services.convo.contact.ConnectionService]) debounces
-     * and re-fetches idempotently rather than trusting the event to be unique.
-     */
-    private suspend fun handleAppNotification(notification: ClientNotificationPayload) {
-        val envelope = runCatching {
-            OdinSystemSerializer.deserialize<AppNotificationEnvelope>(notification.data)
-        }.getOrElse {
-            Logger.w(it) { "appNotification: envelope parse failed, data=${notification.data.take(200)}" }
-            return
-        }
-
-        when (envelope.notificationType) {
-            AppNotificationType.CONNECTION_CHANGED -> {
-                val d = runCatching {
-                    OdinSystemSerializer.deserialize<ConnectionChangedNotification>(envelope.data)
-                }.getOrElse {
-                    Logger.w(it) { "appNotification 5002 parse failed" }
-                    return
-                }
-                eventBus.emit(
-                    BackendEvent.CircleNetworkEvent.ConnectionChanged(
-                        identity = d.identity,
-                        change = d.change,
-                        circleId = d.circleId,
-                    )
-                )
-            }
-
-            AppNotificationType.CIRCLE_DEFINITION_CHANGED -> {
-                val d = runCatching {
-                    OdinSystemSerializer.deserialize<CircleDefinitionChangedNotification>(envelope.data)
-                }.getOrElse {
-                    Logger.w(it) { "appNotification 5003 parse failed" }
-                    return
-                }
-                eventBus.emit(
-                    BackendEvent.CircleNetworkEvent.CircleDefinitionChanged(
-                        circleId = d.circleId,
-                        change = d.change,
-                    )
-                )
-            }
-
-            else -> {
-                // Other app-notification kinds are not handled by this client.
             }
         }
     }

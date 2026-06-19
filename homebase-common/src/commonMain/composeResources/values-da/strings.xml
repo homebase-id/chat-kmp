@@ -455,15 +455,17 @@
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
     <string name="chat_message_edited">Redigeret</string>
-    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
+    <string name="chat_message_deleted">Denne besked blev slettet</string>
 
     <string name="chat_message_image">Billede</string>
+    <string name="chat_message_gif">👾 GIF</string>
     <string name="chat_preview_sticker">Klistermærke</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
+    <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
 
     <!-- Stickers (gemte klistermærker) -->
     <string name="chat_sticker_share">Klistermærker</string>

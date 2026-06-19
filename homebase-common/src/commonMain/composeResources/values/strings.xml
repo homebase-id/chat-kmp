@@ -678,9 +678,10 @@
     <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
-    <string name="chat_message_deleted">🚫 This message was deleted</string>
+    <string name="chat_message_deleted">This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
+    <string name="chat_message_gif">👾 GIF</string>
     <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
@@ -688,6 +689,7 @@
     <string name="chat_message_file">File</string>
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
+    <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
 
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
@@ -1172,6 +1174,7 @@
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
+    <string name="dev_menu_test_temporal_read">Test temporal location read (Frodo)</string>
     <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
@@ -1274,10 +1277,12 @@
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
-    <string name="location_emergency_access_section">Emergency Location Access:</string>
+    <string name="location_locatable_section">Who you can locate</string>
+    <string name="location_locatable_coming_soon">Coming soon…</string>
+    <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
-    <string name="location_emergency_access_none">No one has emergency access yet. Tap + to add people.</string>
+    <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
     <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_device_this_device">This device</string>
     <string name="location_device_no_fix">No recent location</string>

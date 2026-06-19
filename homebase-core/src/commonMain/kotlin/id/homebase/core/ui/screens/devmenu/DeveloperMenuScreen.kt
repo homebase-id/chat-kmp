@@ -54,6 +54,7 @@ import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
 import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
+import id.homebase.resources.dev_menu_test_temporal_read
 import id.homebase.resources.dev_menu_title
 import id.homebase.resources.dev_menu_trigger_test_crash
 import id.homebase.resources.dev_menu_trigger_test_crash_description
@@ -204,6 +205,11 @@ fun DeveloperMenuUi(
                         label = stringResource(MR.string.dev_menu_test_notification),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.TestRichNotification) }
+                    )
+                    HelpClickableRow(
+                        label = stringResource(MR.string.dev_menu_test_temporal_read),
+                        showChevron = false,
+                        onClick = { onAction(DeveloperMenuUiAction.TestTemporalLocationRead) }
                     )
                 }
             }
