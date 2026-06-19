@@ -9,6 +9,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.contacts.ContactHeaderReader
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
@@ -119,6 +120,7 @@ val apiModule = module {
         }
     }
     singleOf(::ContactsProvider)
+    singleOf(::ContactRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)
