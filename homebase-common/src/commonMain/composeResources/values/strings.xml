@@ -1356,6 +1356,7 @@
     <string name="contactbook_detail_recent_media">Recent media</string>
     <string name="contactbook_detail_no_recent_media">No recent media yet</string>
     <string name="contactbook_detail_contact_details">Contact details</string>
+    <string name="contactbook_detail_location">Location</string>
     <string name="contactbook_detail_circles">Circles</string>
     <string name="contactbook_detail_circles_empty">Not in any of your circles yet.</string>
     <string name="contactbook_detail_circles_connect">Connect with this person to add them to your circles.</string>
