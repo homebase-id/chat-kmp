@@ -219,7 +219,9 @@ struct iOSApp: App {
 
     private func handleIncomingURL(_ url: URL) {
         switch url.scheme {
-        case "homebase-share":
+        // Accept both the prod scheme and the dev build's variant (see SHARE_URL_SCHEME /
+        // ShareViewController.shareUrlScheme) — the app only ever receives its own.
+        case "homebase-share", "homebase-share-dev":
             if url.host == "moment" {
                 ShareHandlerBridge.shared.handleIncomingMomentShare()
             } else {

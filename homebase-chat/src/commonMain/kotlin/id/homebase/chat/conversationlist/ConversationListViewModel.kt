@@ -253,11 +253,20 @@ class ConversationListViewModel(
     private val stickerHandler = StickerHandler(
         scope = viewModelScope,
         messagesUiState = _messagesUiState,
-        stickerService = stickerService,
-        stickerStream = stickerStream,
-        chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
+        resolveStickerForSend = stickerService::resolveForSend,
+        saveStickerBytes = { bytes, contentType, sourceFileId ->
+            stickerService.saveSticker(
+                bytes = bytes,
+                contentType = contentType,
+                scope = viewModelScope,
+                sourceFileId = sourceFileId,
+            )
+        },
+        deleteSticker = stickerService::deleteSticker,
+        getPayloadBytes = chatMessageActionService::getPayloadBytes,
+        savedStickers = { stickerStream.stickers.value },
         awaitDriveGranted = ::ensureStickerDriveReady,
     )
 
