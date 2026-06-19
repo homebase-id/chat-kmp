@@ -56,6 +56,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
+import id.homebase.resources.chat_preview_sender_prefix
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
@@ -168,9 +169,31 @@ fun ConversationItem(
                     }
                 } else null
 
-                val previewText = pendingSubtitle
+                val rawPreview = pendingSubtitle
                     ?: contentLabel?.text
                     ?: enrichedData.conversation.lastMessage
+                val groupSenderName: String? = remember(
+                    enrichedData.conversation.isGroupConversation,
+                    enrichedData.conversation.lastMessageSender,
+                    enrichedData.participants,
+                ) {
+                    if (!enrichedData.conversation.isGroupConversation) null
+                    else enrichedData.participants
+                        .firstOrNull { it.odinId == enrichedData.conversation.lastMessageSender }
+                        ?.name?.takeIf { it.isNotBlank() }
+                        ?.substringBefore(' ')
+                }
+                val senderLabel: String? = when {
+                    pendingSubtitle != null -> null
+                    enrichedData.conversation.isWithSelf -> null
+                    enrichedData.conversation.lastMessageIsFromActiveUser -> stringResource(MR.string.you)
+                    else -> groupSenderName
+                }
+                val previewText = if (senderLabel != null && rawPreview.isNotBlank()) {
+                    stringResource(MR.string.chat_preview_sender_prefix, senderLabel, rawPreview)
+                } else {
+                    rawPreview
+                }
                 val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
                 ConversationMessagePreview(

@@ -74,6 +74,40 @@ class VaultViewModel(
         _syncingState,
         _checkingPermissions,
     ) { (sections, entriesBySection, isLoaded), overlay, syncing, checkingPermissions ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, syncing, checkingPermissions)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        // Seed the initial value from VaultStream's CURRENT cached snapshot. VaultStream is a
+        // singleton that keeps its loaded sections across screen re-entry, but a freshly created
+        // VaultViewModel's stateIn would otherwise emit the empty + loading default VaultUiState()
+        // (isLoading = true, no sections) for the frame before the combine's first emission —
+        // flashing the full-screen spinner (VaultContent shows it on
+        // `(isLoading || isSyncing) && sections.isEmpty()`) on every Vault entry even though the
+        // data is already cached. Seeding from cache renders the cached sections immediately and
+        // spins only on a genuine cold load (stream not loaded yet → isLoaded = false, empty).
+        buildUiState(
+            sections = vaultStream.sections.value,
+            entriesBySection = vaultStream.entriesBySection.value,
+            isLoaded = vaultStream.isLoaded.value,
+            overlay = _overlayState.value,
+            syncing = _syncingState.value,
+            checkingPermissions = _checkingPermissions.value,
+        ),
+    )
+
+    /**
+     * Builds the [VaultUiState] from the stream + overlay inputs. Shared by the [uiState] combine
+     * and the cache-seeded `stateIn` initial value above so the two can never drift.
+     */
+    private fun buildUiState(
+        sections: List<VaultSection>,
+        entriesBySection: Map<Uuid, List<VaultEntry>>,
+        isLoaded: Boolean,
+        overlay: VaultOverlay?,
+        syncing: Boolean,
+        checkingPermissions: Boolean,
+    ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
                 entries = entriesBySection[section.sectionId] ?: emptyList(),
@@ -85,14 +119,14 @@ class VaultViewModel(
             val freshFile = sectionModels.flatMap { it.entries }.find { it.uniqueId == gallery.file.uniqueId }
             if (freshFile != null) gallery.copy(file = freshFile) else gallery
         }
-        VaultUiState(
+        return VaultUiState(
             sections = sectionModels,
             isLoading = !isLoaded,
             isSyncing = syncing,
             isCheckingPermissions = checkingPermissions,
             fullScreenOverlay = refreshedOverlay ?: overlay,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VaultUiState())
+    }
 
     private val _events = MutableSharedFlow<VaultUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<VaultUiEvent> = _events.asSharedFlow()

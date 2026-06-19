@@ -5,17 +5,24 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactContent
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
+import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactName
@@ -34,7 +41,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -62,6 +71,9 @@ class ContactBookViewModel(
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
+    ownerSessionRepository: OwnerSessionRepository,
+    authConnectionCoordinator: AuthConnectionCoordinator,
+    eventBus: EventBus,
 ) : ViewModel() {
 
     private val _selectedTab = MutableStateFlow(ContactTab.CONTACTS)
@@ -72,6 +84,52 @@ class ContactBookViewModel(
     private val _circles = MutableStateFlow<List<CircleWithMembers>>(emptyList())
     private val _circlesLoading = MutableStateFlow(false)
     private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
+
+    /** Owner avatar + connection/sync status for the header (mirrors the Moments header). */
+    private data class HeaderBundle(
+        val ownerSession: OwnerSession? = null,
+        val connectionStatus: AppConnectionStatus = AppConnectionStatus.Disconnected,
+        val driveIsSyncing: Boolean = false,
+        val hasDriveError: Boolean = false,
+    )
+
+    private val _header = MutableStateFlow(HeaderBundle())
+
+    init {
+        // Make the screen self-sufficient: load the contact list on entry rather than
+        // relying on the post-auth bootstrap (onPostAuthenticated -> start()), which can be
+        // skipped by the headless/foreground promotion race and leave the list spinning.
+        // Idempotent once loaded.
+        viewModelScope.launch { stream.ensureLoaded() }
+        viewModelScope.launch {
+            ownerSessionRepository.user.collect { session ->
+                _header.update { it.copy(ownerSession = session) }
+            }
+        }
+        viewModelScope.launch {
+            authConnectionCoordinator.connectionState.collectLatest { state ->
+                _header.update { it.copy(connectionStatus = state.toConnectionStatus()) }
+            }
+        }
+        viewModelScope.launch {
+            eventBus.events
+                .filter { it is BackendEvent.SyncAllStarted || it is BackendEvent.SyncAllStopped }
+                .collectLatest { event ->
+                    when (event) {
+                        is BackendEvent.SyncAllStarted -> _header.update {
+                            it.copy(driveIsSyncing = true, hasDriveError = false)
+                        }
+                        is BackendEvent.SyncAllStopped -> _header.update {
+                            it.copy(
+                                driveIsSyncing = false,
+                                hasDriveError = event.result is BackendEvent.SyncAllResult.Failure,
+                            )
+                        }
+                        else -> Unit
+                    }
+                }
+        }
+    }
 
     private data class ContactsBundle(
         val contacts: List<ContactBookEntry>,
@@ -107,7 +165,8 @@ class ContactBookViewModel(
             UiBits(q, f, tab, o, i)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
-    ) { contactsData, ui, circlesData ->
+        _header,
+    ) { contactsData, ui, circlesData, header ->
         val connectedRegs = contactsData.connections.map
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
@@ -172,6 +231,10 @@ class ContactBookViewModel(
             overlay = ui.overlay,
             importState = ui.importState,
             importSupported = isDeviceContactsSupported(),
+            ownerSession = header.ownerSession,
+            connectionStatus = header.connectionStatus,
+            driveIsSyncing = header.driveIsSyncing,
+            hasDriveError = header.hasDriveError,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactBookUiState())
 
