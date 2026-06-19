@@ -180,7 +180,10 @@ actual fun getUriHandler(): FileSystemHandler {
                             throw Exception("Failed to copy file to $destPath: $msg")
                         }
                     }
-                    onSuccess("Documents")
+                    // "Files" (not "Documents") — the saved file shows up in the
+                    // Files app under On My iPhone > Homebase, which is where this
+                    // points the user. Requires the Info.plist file-sharing keys.
+                    onSuccess("Files")
                 } catch (e: Exception) {
                     onError(e)
                 } finally {
