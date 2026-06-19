@@ -18,14 +18,6 @@ enum class PermissionType {
     LOCATION_ALWAYS,
 
     /**
-     * Read access to the device address book. Android: `READ_CONTACTS` runtime
-     * permission; iOS: `CNContactStore` contacts authorization. Used by the
-     * contact-book import flow (mobile only) — desktop/web have no address book
-     * and their permission stubs always report granted.
-     */
-    CONTACTS,
-
-    /**
      * Physical-activity / motion access for the pedometer: Android
      * `ACTIVITY_RECOGNITION` (runtime permission API 29+; auto-granted below),
      * iOS Core Motion. Best-effort — denial just omits step counts.

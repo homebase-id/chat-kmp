@@ -352,7 +352,7 @@ fun AppNavHost(
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
-                else -> { /* RequestContactsPermission + Error handled by ContactBookScreen */ }
+                else -> { /* Error handled by ContactBookScreen */ }
             }
         }
     }

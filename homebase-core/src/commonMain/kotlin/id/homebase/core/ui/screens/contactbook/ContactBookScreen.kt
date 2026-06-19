@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -51,18 +50,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
-import id.homebase.core.permissions.PermissionStatus
-import id.homebase.core.permissions.PermissionType
-import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
-import id.homebase.core.ui.screens.contactbook.deviceimport.ContactImportSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
-import id.homebase.resources.contactbook_action_import
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
-import id.homebase.resources.contactbook_error_import
 import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
@@ -84,18 +77,9 @@ fun ContactBookScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val permissionManager = createPermissionsManager { type, status, _ ->
-        if (type == PermissionType.CONTACTS) {
-            viewModel.onAction(
-                ContactBookUiAction.ImportPermissionResult(status == PermissionStatus.GRANTED)
-            )
-        }
-    }
-
     // Pre-resolve error strings (cannot call stringResource inside collect).
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errDelete = stringResource(MR.string.contactbook_error_delete)
-    val errImport = stringResource(MR.string.contactbook_error_import)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
@@ -103,8 +87,6 @@ fun ContactBookScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                ContactBookUiEvent.RequestContactsPermission ->
-                    permissionManager.askPermission(PermissionType.CONTACTS)
                 is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
@@ -114,8 +96,6 @@ fun ContactBookScreen(
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
-                        ContactBookError.ImportFailed,
-                        ContactBookError.PermissionDenied -> errImport
                     }
                     snackbarHostState.showSnackbar(msg)
                 }
@@ -227,14 +207,6 @@ fun ContactBookScreen(
                                 contentDescription = stringResource(MR.string.search),
                             )
                         }
-                        if (onContacts && uiState.importSupported) {
-                            IconButton(onClick = { viewModel.onAction(ContactBookUiAction.ImportClicked) }) {
-                                Icon(
-                                    Icons.Outlined.PersonAddAlt1,
-                                    contentDescription = stringResource(MR.string.contactbook_action_import),
-                                )
-                            }
-                        }
                     },
                 )
             }
@@ -294,10 +266,6 @@ fun ContactBookScreen(
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
         null -> {}
-    }
-
-    uiState.importState?.let { importState ->
-        ContactImportSheet(state = importState, onAction = viewModel::onAction)
     }
 
     uiState.circleMembers?.let { members ->
