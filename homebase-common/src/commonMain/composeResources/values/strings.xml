@@ -1336,13 +1336,11 @@
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
-    <string name="contactbook_action_import">Import contacts</string>
     <string name="contactbook_action_settings">Contact settings</string>
 
     <string name="contactbook_empty_title">No contacts yet</string>
-    <string name="contactbook_empty_body">Add a contact by hand, or import them from your phone.</string>
+    <string name="contactbook_empty_body">Add a contact by hand.</string>
     <string name="contactbook_empty_new">Add a contact</string>
-    <string name="contactbook_empty_import">Import from phone</string>
 
     <string name="contactbook_detail_message">Message</string>
     <string name="contactbook_detail_sync">Sync</string>
@@ -1393,18 +1391,6 @@
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
     <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
 
-    <string name="contactbook_import_title">Import contacts</string>
-    <string name="contactbook_import_requesting">Requesting access to your contacts…</string>
-    <string name="contactbook_import_reading">Reading your contacts…</string>
-    <string name="contactbook_import_select_all">Select all</string>
-    <string name="contactbook_import_confirm">Import %1$d</string>
-    <string name="contactbook_import_saving">Saving %1$d of %2$d…</string>
-    <string name="contactbook_import_result">Imported %1$d contacts, skipped %2$d.</string>
-    <string name="contactbook_import_empty">No contacts with a phone number or email were found on this device.</string>
-    <string name="contactbook_import_failed_permission">Contacts permission is needed to import. You can enable it in Settings.</string>
-    <string name="contactbook_import_failed_read">Couldn't read your contacts. Please try again.</string>
-    <string name="contactbook_import_done">Done</string>
-
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
     <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
@@ -1414,7 +1400,6 @@
     <string name="contactbook_error_connection_forbidden">Couldn't update this connection — this app doesn't have permission to manage your connections. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_delete">Couldn't delete the contact.</string>
     <string name="contactbook_error_delete_forbidden">Couldn't delete — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
-    <string name="contactbook_error_import">Couldn't import contacts.</string>
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
 

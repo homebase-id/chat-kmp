@@ -4,7 +4,6 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.core.avatars.AppConnectionStatus
-import id.homebase.core.contactbook.DeviceContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
@@ -65,19 +64,6 @@ fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
     birthday = birthday.orEmpty(),
 )
 
-/** Progressive state of the device-import flow (mobile only). */
-sealed interface ImportUiState {
-    data object RequestingPermission : ImportUiState
-    data object Reading : ImportUiState
-    data class Review(
-        val contacts: List<DeviceContact>,
-        val selected: Set<Int>,
-    ) : ImportUiState
-    data class Saving(val done: Int, val total: Int) : ImportUiState
-    data class Complete(val imported: Int, val skipped: Int) : ImportUiState
-    data class Failed(val reason: ContactBookError) : ImportUiState
-}
-
 @Immutable
 data class ContactBookUiState(
     val selectedTab: ContactTab = ContactTab.CONTACTS,
@@ -100,8 +86,6 @@ data class ContactBookUiState(
     val searchQuery: String = "",
     val filter: ContactFilter = ContactFilter.ALL,
     val overlay: ContactBookOverlay? = null,
-    val importState: ImportUiState? = null,
-    val importSupported: Boolean = false,
     /** Logged-in owner, for the header avatar that links to settings. Null until loaded. */
     val ownerSession: OwnerSession? = null,
     /** Connection state surfaced as the avatar's status dot. */
@@ -131,22 +115,12 @@ sealed interface ContactBookUiAction {
     data class SyncClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data object CloseOverlay : ContactBookUiAction
 
-    // Import flow
-    data object ImportClicked : ContactBookUiAction
-    data class ImportPermissionResult(val granted: Boolean) : ContactBookUiAction
-    data class ImportToggle(val index: Int) : ContactBookUiAction
-    data class ImportSelectAll(val selected: Boolean) : ContactBookUiAction
-    data object ImportConfirm : ContactBookUiAction
-    data object ImportDismiss : ContactBookUiAction
-
     // Onboarding (first run)
     data object OnboardingGetStarted : ContactBookUiAction
     data object OnboardingSkip : ContactBookUiAction
 }
 
 sealed interface ContactBookUiEvent {
-    /** Ask the screen (which owns the PermissionsManager) to prompt for CONTACTS. */
-    data object RequestContactsPermission : ContactBookUiEvent
     /** Open (creating if needed) the 1:1 conversation with a contact, by id. */
     data class OpenConversation(val conversationId: Uuid) : ContactBookUiEvent
     /** Open the full-screen detail for a contact. */
@@ -160,8 +134,6 @@ enum class ContactBookError {
     SaveFailed,
     SaveForbidden,
     DeleteFailed,
-    ImportFailed,
     PhotoFailed,
     MessageFailed,
-    PermissionDenied,
 }

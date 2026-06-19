@@ -12,7 +12,6 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,16 +20,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_empty_body
-import id.homebase.resources.contactbook_empty_import
 import id.homebase.resources.contactbook_empty_new
 import id.homebase.resources.contactbook_empty_title
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ContactBookEmptyState(
-    showImport: Boolean,
     onAddClick: () -> Unit,
-    onImportClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -59,12 +55,6 @@ fun ContactBookEmptyState(
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onAddClick) {
             Text(stringResource(MR.string.contactbook_empty_new))
-        }
-        if (showImport) {
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = onImportClick) {
-                Text(stringResource(MR.string.contactbook_empty_import))
-            }
         }
     }
 }

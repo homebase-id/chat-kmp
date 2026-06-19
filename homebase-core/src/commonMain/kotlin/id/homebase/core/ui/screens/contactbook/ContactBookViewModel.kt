@@ -11,7 +11,6 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
-import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -24,14 +23,8 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.api.client.contacts.ContactEmail
-import id.homebase.api.client.contacts.ContactName
-import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
-import id.homebase.core.contactbook.DeviceContact
-import id.homebase.core.contactbook.isDeviceContactsSupported
-import id.homebase.core.contactbook.readDeviceContacts
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import io.github.vinceglb.filekit.PlatformFile
@@ -48,7 +41,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
  * Unlike the optional add-ons (Vault, Moments, Location, Stickers), the Contact Book has
@@ -80,7 +72,6 @@ class ContactBookViewModel(
     private val _searchQuery = MutableStateFlow("")
     private val _filter = MutableStateFlow(ContactFilter.ALL)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
-    private val _importState = MutableStateFlow<ImportUiState?>(null)
     private val _circles = MutableStateFlow<List<CircleWithMembers>>(emptyList())
     private val _circlesLoading = MutableStateFlow(false)
     private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
@@ -143,7 +134,6 @@ class ContactBookViewModel(
         val filter: ContactFilter,
         val tab: ContactTab,
         val overlay: ContactBookOverlay?,
-        val importState: ImportUiState?,
     )
 
     private data class CirclesBundle(
@@ -161,8 +151,8 @@ class ContactBookViewModel(
         ) { c, l, conn, circ ->
             ContactsBundle(c, l, conn, circ)
         },
-        combine(_searchQuery, _filter, _selectedTab, _overlay, _importState) { q, f, tab, o, i ->
-            UiBits(q, f, tab, o, i)
+        combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
+            UiBits(q, f, tab, o)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
         _header,
@@ -229,8 +219,6 @@ class ContactBookViewModel(
             searchQuery = ui.query,
             filter = ui.filter,
             overlay = ui.overlay,
-            importState = ui.importState,
-            importSupported = isDeviceContactsSupported(),
             ownerSession = header.ownerSession,
             connectionStatus = header.connectionStatus,
             driveIsSyncing = header.driveIsSyncing,
@@ -295,16 +283,6 @@ class ContactBookViewModel(
                 viewModelScope.launch { service.syncFromIdentity(odinId) }
             }
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
-
-            ContactBookUiAction.ImportClicked -> {
-                _importState.value = ImportUiState.RequestingPermission
-                _events.tryEmit(ContactBookUiEvent.RequestContactsPermission)
-            }
-            is ContactBookUiAction.ImportPermissionResult -> handlePermissionResult(action.granted)
-            is ContactBookUiAction.ImportToggle -> toggleImport(action.index)
-            is ContactBookUiAction.ImportSelectAll -> selectAllImport(action.selected)
-            ContactBookUiAction.ImportConfirm -> handleImportConfirm()
-            ContactBookUiAction.ImportDismiss -> _importState.value = null
 
             ContactBookUiAction.OnboardingGetStarted ->
                 viewModelScope.launch { preferences.setOnboardingComplete(true) }
@@ -403,70 +381,6 @@ class ContactBookViewModel(
         }
     }
 
-    // region Import
-
-    private fun handlePermissionResult(granted: Boolean) {
-        if (!granted) {
-            _importState.value = ImportUiState.Failed(ContactBookError.PermissionDenied)
-            return
-        }
-        _importState.value = ImportUiState.Reading
-        viewModelScope.launch {
-            val devices = try {
-                readDeviceContacts().filter { it.hasContactPoint }
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _importState.value = ImportUiState.Failed(ContactBookError.ImportFailed)
-                return@launch
-            }
-            _importState.value = ImportUiState.Review(
-                contacts = devices,
-                selected = devices.indices.toSet(),
-            )
-        }
-    }
-
-    private fun toggleImport(index: Int) {
-        _importState.update { state ->
-            if (state !is ImportUiState.Review) return@update state
-            val selected = if (index in state.selected) state.selected - index else state.selected + index
-            state.copy(selected = selected)
-        }
-    }
-
-    private fun selectAllImport(select: Boolean) {
-        _importState.update { state ->
-            if (state !is ImportUiState.Review) return@update state
-            state.copy(selected = if (select) state.contacts.indices.toSet() else emptySet())
-        }
-    }
-
-    private fun handleImportConfirm() {
-        val review = _importState.value as? ImportUiState.Review ?: return
-        val chosen = review.selected.sorted().mapNotNull { review.contacts.getOrNull(it) }
-        if (chosen.isEmpty()) {
-            _importState.value = null
-            return
-        }
-        viewModelScope.launch {
-            var imported = 0
-            var skipped = 0
-            chosen.forEachIndexed { index, device ->
-                _importState.value = ImportUiState.Saving(done = index, total = chosen.size)
-                val response = service.save(device.toContactContent())
-                if (response != null) {
-                    imported++
-                    stream.insertOrUpdateOptimistic(device.toEntry(response.uniqueId, response.versionTag))
-                } else {
-                    skipped++
-                }
-            }
-            _importState.value = ImportUiState.Complete(imported = imported, skipped = skipped)
-        }
-    }
-
-    // endregion
 }
 
 /** Name/description match for the search box, which now spans both tabs. */
@@ -476,28 +390,3 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
     return circle.name.lowercase().contains(q) ||
         circle.description?.lowercase()?.contains(q) == true
 }
-
-private fun DeviceContact.toContactContent(): ContactContent = ContactContent(
-    name = ContactName(
-        displayName = displayName.ifBlank { null },
-        givenName = givenName?.ifBlank { null },
-        surname = surname?.ifBlank { null },
-    ),
-    source = ContactBookSource.IMPORTED,
-    phone = phone?.ifBlank { null }?.let { ContactPhone(it) },
-    email = email?.ifBlank { null }?.let { ContactEmail(it) },
-)
-
-@OptIn(ExperimentalUuidApi::class)
-private fun DeviceContact.toEntry(uniqueId: Uuid, versionTag: Uuid): ContactBookEntry =
-    ContactBookEntry(
-        uniqueId = uniqueId,
-        fileId = uniqueId,
-        versionTag = versionTag,
-        displayName = displayName.ifBlank { phone ?: email ?: "?" },
-        givenName = givenName,
-        surname = surname,
-        phone = phone,
-        email = email,
-        source = ContactBookSource.IMPORTED,
-    )

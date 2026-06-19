@@ -20,8 +20,6 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Homebase uses Face ID to protect your vault</string>
-	<key>NSContactsUsageDescription</key>
-	<string>Homebase can import your contacts so you can reach them from chat</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

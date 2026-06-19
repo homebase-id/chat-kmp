@@ -62,9 +62,7 @@ fun ContactBookContent(
                     CenterText(stringResource(MR.string.contactbook_confirmed_empty))
 
                 ContactFilter.ALL -> ContactBookEmptyState(
-                    showImport = uiState.importSupported,
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
-                    onImportClick = { onAction(ContactBookUiAction.ImportClicked) },
                 )
             }
 
