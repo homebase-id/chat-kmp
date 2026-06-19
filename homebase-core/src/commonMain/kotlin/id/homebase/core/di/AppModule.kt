@@ -60,7 +60,6 @@ import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
@@ -469,7 +468,6 @@ val appModule = module {
 
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
-    singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
