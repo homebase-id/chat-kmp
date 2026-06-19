@@ -11,12 +11,9 @@ import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
-import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.contacts.resolveDisplayName
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.initials
 import kotlin.io.encoding.Base64
@@ -32,10 +29,10 @@ object ContactBookSource {
 }
 
 /**
- * A contact in the contact-manager UI. Built from one file on the (mandatory)
- * Contacts drive by deserializing its header [ContactContent]. The drive is the
- * read source; writes go through the api-layer ContactsProvider (see
- * [id.homebase.core.ui.screens.contactbook.ContactBookService]).
+ * A contact in the contact-manager UI — the flat projection of the api
+ * [id.homebase.api.client.contacts.Contact] domain model produced by
+ * [id.homebase.api.client.contacts.ContactRepository] (see [Contact.toContactBookEntry]). Both
+ * reads and writes flow through that repository.
  */
 @Immutable
 data class ContactBookEntry(
@@ -137,55 +134,6 @@ data class ContactBookEntry(
         phone = phone?.ifBlank { null }?.let { ContactPhone(number = it) },
         email = email?.ifBlank { null }?.let { ContactEmail(email = it) },
         birthday = birthday?.ifBlank { null }?.let { ContactBirthday(date = it) },
-    )
-}
-
-/**
- * Maps a Contacts-drive [HomebaseFile] to a [ContactBookEntry], or null if the
- * header content is absent (e.g. a large contact spilled into a payload — rare;
- * imported/manual contacts always embed) or cannot be parsed.
- */
-fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
-    val uniqueId = fileMetadata.appData.uniqueId ?: return null
-    val contentJson = fileMetadata.appData.content ?: return null
-    val content = try {
-        OdinSystemSerializer.deserialize<ContactContent>(contentJson)
-    } catch (_: Exception) {
-        return null
-    }
-
-    val name = content.name
-    val display = name?.displayName?.takeIf { it.isNotBlank() }
-        ?: listOfNotNull(name?.givenName, name?.surname)
-            .joinToString(" ").trim().ifBlank { null }
-        ?: content.odinId?.takeIf { it.isNotBlank() }
-        ?: content.phone?.number?.takeIf { it.isNotBlank() }
-        ?: content.email?.email?.takeIf { it.isNotBlank() }
-        ?: return null  // nothing renderable — skip
-
-    val imagePayload = fileMetadata.payloads
-        ?.firstOrNull { it.key == ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY }
-
-    return ContactBookEntry(
-        uniqueId = uniqueId,
-        fileId = fileId,
-        versionTag = fileMetadata.versionTag,
-        odinId = content.odinId,
-        displayName = display,
-        givenName = name?.givenName,
-        additionalName = name?.additionalName,
-        surname = name?.surname,
-        phone = content.phone?.number,
-        email = content.email?.email,
-        city = content.location?.city,
-        country = content.location?.country,
-        birthday = content.birthday?.date,
-        source = content.source,
-        driveId = driveId,
-        keyHeader = keyHeader,
-        isEncrypted = fileMetadata.isEncrypted,
-        previewThumbnail = fileMetadata.appData.previewThumbnail,
-        imagePayload = imagePayload,
     )
 }
 

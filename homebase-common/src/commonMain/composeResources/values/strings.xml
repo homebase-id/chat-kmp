@@ -1402,6 +1402,7 @@
     <string name="contactbook_error_delete_forbidden">Couldn't delete — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
+    <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>

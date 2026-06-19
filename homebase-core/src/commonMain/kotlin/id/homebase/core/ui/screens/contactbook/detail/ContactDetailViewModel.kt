@@ -217,6 +217,9 @@ class ContactDetailViewModel(
                 is ContactSaveResult.Success -> {
                     // repo.save already applied the optimistic update.
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
+                    if (result.clearedFieldsIgnored) {
+                        _events.tryEmit(ContactDetailEvent.ClearUnsupported)
+                    }
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)

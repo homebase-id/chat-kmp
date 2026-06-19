@@ -83,6 +83,7 @@ import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_delete_forbidden
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
@@ -102,6 +103,7 @@ fun ContactDetailScreen(
 
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errDeleteForbidden = stringResource(MR.string.contactbook_error_delete_forbidden)
@@ -125,6 +127,8 @@ fun ContactDetailScreen(
                 ContactDetailEvent.ConnectionForbidden ->
                     snackbarHostState.showSnackbar(errConnectionForbidden)
                 ContactDetailEvent.PhotoError -> snackbarHostState.showSnackbar(errPhoto)
+                ContactDetailEvent.ClearUnsupported ->
+                    snackbarHostState.showSnackbar(errClearUnsupported)
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)

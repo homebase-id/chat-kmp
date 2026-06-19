@@ -22,9 +22,16 @@ import kotlin.uuid.Uuid
 
 /** Outcome of [saveContactDraft]. */
 sealed interface ContactSaveResult {
-    /** Saved. [photoFailed] = contact saved but avatar upload failed. The repository has already
-     *  applied the optimistic update to its `contacts` flow, so callers don't push anything. */
-    data class Success(val photoFailed: Boolean) : ContactSaveResult
+    /**
+     * Saved. [photoFailed] = contact saved but avatar upload failed. [clearedFieldsIgnored] = the
+     * edit blanked a previously-set field, which the V2 server merge can't express (empty = "leave
+     * existing alone"), so that field was kept — the UI should tell the user clearing isn't
+     * supported yet. The repository already applied the optimistic update, so callers push nothing.
+     */
+    data class Success(
+        val photoFailed: Boolean,
+        val clearedFieldsIgnored: Boolean = false,
+    ) : ContactSaveResult
 
     /** Server rejected the write with 403 — the app token lacks the manage-contacts permission. */
     data object Forbidden : ContactSaveResult
@@ -51,22 +58,47 @@ suspend fun saveContactDraft(
         ?.let { ContactFieldValidation.normalizePhone(it) }
     // An odinId may be set on a new contact, or kept from the edited one.
     val odinId = draft.odinId.trim().ifBlank { null } ?: editing?.odinId?.ifBlank { null }
-    val hasLocation = draft.city.isNotBlank() || draft.country.isNotBlank()
+
+    // The V2 server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave
+    // alone", never cleared. Mirror that here — keep the old value when an edit blanked a
+    // previously-set field — so the saved/optimistic content matches what the drive will sync back
+    // (no "cleared" field flashing empty then reappearing). `didClear` drives the user warning.
+    fun coalesce(new: String?, old: String?): String? = new?.ifBlank { null } ?: old?.ifBlank { null }
+    fun didClear(new: String?, old: String?): Boolean = !old.isNullOrBlank() && new.isNullOrBlank()
+
+    val mergedDisplay = coalesce(draft.displayName, editing?.displayName)
+    val mergedGiven = coalesce(draft.givenName, editing?.givenName)
+    val mergedSurname = coalesce(draft.surname, editing?.surname)
+    val mergedPhone = coalesce(normalizedPhone, editing?.phone)
+    val mergedEmail = coalesce(draft.email, editing?.email)
+    val mergedCity = coalesce(draft.city, editing?.city)
+    val mergedCountry = coalesce(draft.country, editing?.country)
+    val mergedBirthday = coalesce(draft.birthday, editing?.birthday)
+
+    val clearedFieldsIgnored = editing != null && (
+        didClear(draft.givenName, editing.givenName) ||
+            didClear(draft.surname, editing.surname) ||
+            didClear(normalizedPhone, editing.phone) ||
+            didClear(draft.email, editing.email) ||
+            didClear(draft.city, editing.city) ||
+            didClear(draft.country, editing.country) ||
+            didClear(draft.birthday, editing.birthday)
+        )
 
     val content = ContactContent(
         odinId = odinId,
         name = ContactName(
-            displayName = draft.displayName.ifBlank { null },
-            givenName = draft.givenName.ifBlank { null },
-            surname = draft.surname.ifBlank { null },
+            displayName = mergedDisplay,
+            givenName = mergedGiven,
+            surname = mergedSurname,
         ),
         source = editing?.source ?: ContactBookSource.MANUAL,
-        location = if (hasLocation) {
-            ContactLocation(city = draft.city.ifBlank { null }, country = draft.country.ifBlank { null })
+        location = if (mergedCity != null || mergedCountry != null) {
+            ContactLocation(city = mergedCity, country = mergedCountry)
         } else null,
-        phone = normalizedPhone?.let { ContactPhone(it) },
-        email = draft.email.ifBlank { null }?.let { ContactEmail(it) },
-        birthday = draft.birthday.ifBlank { null }?.let { ContactBirthday(it) },
+        phone = mergedPhone?.let { ContactPhone(it) },
+        email = mergedEmail?.let { ContactEmail(it) },
+        birthday = mergedBirthday?.let { ContactBirthday(it) },
     )
 
     val response = try {
@@ -82,7 +114,7 @@ suspend fun saveContactDraft(
     val photoFailed = photo != null &&
         !uploadContactPhoto(repo, response.uniqueId, response.versionTag, photo)
 
-    return ContactSaveResult.Success(photoFailed)
+    return ContactSaveResult.Success(photoFailed, clearedFieldsIgnored)
 }
 
 private suspend fun uploadContactPhoto(

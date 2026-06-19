@@ -310,6 +310,9 @@ class ContactBookViewModel(
                     if (result.photoFailed) {
                         _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.PhotoFailed))
                     }
+                    if (result.clearedFieldsIgnored) {
+                        _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.ClearUnsupported))
+                    }
                 }
                 ContactSaveResult.Forbidden ->
                     _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveForbidden))
