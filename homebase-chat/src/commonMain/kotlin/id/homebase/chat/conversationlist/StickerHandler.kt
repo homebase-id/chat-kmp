@@ -29,8 +29,8 @@ private const val TAG = "StickerHandler"
 
 /**
  * Handles the sticker-library action arms (send a saved sticker, save a received
- * sticker, remove a sticker), extracted from `ConversationListViewModel.onAction` in the
- * same handler-class style as [AttachmentHandler] / [MediaDownloadHandler].
+ * sticker, remove a sticker), extracted from `ConversationListViewModel.onAction` as a
+ * sibling handler class to [AttachmentHandler] / [MediaDownloadHandler].
  *
  * Collaborators are injected as functions (mirroring [StickerCreator]) so the handler is
  * unit-testable without standing up [id.homebase.chat.services.sticker.StickerService] and
