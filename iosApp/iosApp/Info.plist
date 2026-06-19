@@ -48,5 +48,13 @@
 		<string>location</string>
 		<string>remote-notification</string>
 	</array>
+	<!-- Expose the app's Documents directory in the Files app ("On My iPhone > Homebase")
+	     so files saved via FileSystemHandler.saveFile (the "Saved to Documents" path in
+	     FileUtilities.native.kt) are actually visible to the user. The DB lives at
+	     ~/databases (excluded from backup), not here, so nothing sensitive is exposed. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>
