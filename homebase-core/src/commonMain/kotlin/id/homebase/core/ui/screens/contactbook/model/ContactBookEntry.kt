@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.contactbook.model
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactBirthday
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactEmail
@@ -11,6 +12,7 @@ import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -184,5 +186,42 @@ fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
         isEncrypted = fileMetadata.isEncrypted,
         previewThumbnail = fileMetadata.appData.previewThumbnail,
         imagePayload = imagePayload,
+    )
+}
+
+/**
+ * Projects the server-shaped [Contact] domain model (from `ContactRepository`) into the flat
+ * contact-manager UI model. The display name is resolved via the shared
+ * [id.homebase.api.client.contacts.resolveDisplayName] so it can't drift from other consumers;
+ * null when nothing is renderable. Image-display fields come from [Contact.image].
+ */
+fun Contact.toContactBookEntry(): ContactBookEntry? {
+    val name = content.name
+    val display = name.resolveDisplayName(
+        odinId = content.odinId,
+        phone = content.phone?.number,
+        email = content.email?.email,
+    ) ?: return null
+
+    return ContactBookEntry(
+        uniqueId = uniqueId,
+        fileId = image?.fileId ?: uniqueId,
+        versionTag = versionTag,
+        odinId = content.odinId,
+        displayName = display,
+        givenName = name?.givenName,
+        additionalName = name?.additionalName,
+        surname = name?.surname,
+        phone = content.phone?.number,
+        email = content.email?.email,
+        city = content.location?.city,
+        country = content.location?.country,
+        birthday = content.birthday?.date,
+        source = content.source,
+        driveId = image?.driveId,
+        keyHeader = image?.keyHeader,
+        isEncrypted = image?.isEncrypted ?: false,
+        previewThumbnail = image?.previewThumbnail,
+        imagePayload = image?.payload,
     )
 }
