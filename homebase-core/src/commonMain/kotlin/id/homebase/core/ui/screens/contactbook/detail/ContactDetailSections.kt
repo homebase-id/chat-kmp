@@ -80,7 +80,12 @@ import id.homebase.resources.conversation_media_see_all
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.ExperimentalUuidApi
 
-/** Recent-media strip + "See all". The header is always shown; an empty state replaces the strip. */
+/**
+ * Shared-content overview for the 1:1 conversation: a recent-media strip plus a "See all" that
+ * reaches the full shared-content screen (media, files, audio, dice rolls, locations). "See all"
+ * shows whenever there's *any* shared content — not just media — so non-media items are reachable
+ * even when there's nothing to strip. The empty state shows only when there's truly nothing.
+ */
 @Composable
 fun RecentMediaSection(
     overview: ConversationOverview?,
@@ -88,6 +93,11 @@ fun RecentMediaSection(
     onSeeAll: () -> Unit,
 ) {
     val media = overview?.media.orEmpty()
+    val hasAnything = overview != null && (
+        overview.media.isNotEmpty() || overview.files.isNotEmpty() ||
+            overview.audio.isNotEmpty() || overview.diceRolls.isNotEmpty() ||
+            overview.locations.isNotEmpty()
+        )
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp),
@@ -98,21 +108,14 @@ fun RecentMediaSection(
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
-        if (media.isNotEmpty()) {
+        if (hasAnything) {
             TextButton(onClick = onSeeAll) {
                 Text(stringResource(MR.string.conversation_media_see_all))
             }
         }
     }
-    if (media.isEmpty()) {
-        Text(
-            text = stringResource(MR.string.contactbook_detail_no_recent_media),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-    } else {
-        LazyRow(
+    when {
+        media.isNotEmpty() -> LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -121,6 +124,14 @@ fun RecentMediaSection(
                 SharedMediaThumb(item, size = 84.dp) { onMediaClick(item) }
             }
         }
+        // Has non-media shared content but no media to strip: "See all" above leads to it.
+        hasAnything -> Unit
+        else -> Text(
+            text = stringResource(MR.string.contactbook_detail_no_recent_media),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
