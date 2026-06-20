@@ -3,22 +3,22 @@ package id.homebase.api.client.liverelay
 import kotlinx.serialization.Serializable
 
 /**
- * One recipient of a live share plus the absolute UTC time (ms) at which sharing to them should
- * stop. Modelling the roster as {identity, end-time} pairs (rather than a flat on/off list) makes
- * the multi-share case correct:
+ * One **share entry**: a recipient plus the absolute UTC time (ms) at which that particular share
+ * should stop. The roster is a flat list of these — one entry per share action, **duplicates
+ * allowed**: the same recipient can appear more than once with different end-times (e.g. two
+ * "share for 15 min" actions to the same friend from two conversations). Keeping the entries
+ * distinct is deliberate, so a UX can store an entry's end-time on its chat bubble and later remove
+ * exactly that entry without disturbing the other share to the same person.
  *
- *  - **Same recipient in two requests** → one entry, keeping the LATEST end-time (longest window wins).
- *  - **Overlapping shares** → the union of recipients, each with its own expiry.
- *  - **No manual stop needed** → a recipient simply drops off the roster once their end-time passes.
- *
- * End-times are purely sender-side bookkeeping — they are NOT sent over the wire. The relay stays
- * ephemeral/last-value-wins; the sender just decides who to fan out to, and for how long.
+ * Deduplication to unique identities happens **only at send time** ([liveRecipientIds]) — we never
+ * send the same coordinate to the same identity twice. End-times are purely sender-side bookkeeping;
+ * they are NOT sent over the wire. The relay stays ephemeral/last-value-wins.
  */
 @Serializable
 data class TimedRecipient(
     /** Recipient identity as its domain string (OdinId.domainName). */
     val odinId: String,
-    /** Absolute UTC epoch-ms after which this recipient is dropped from the live share. */
+    /** Absolute UTC epoch-ms after which THIS share entry is dropped. */
     val endTimeMs: Long,
 )
 
@@ -26,23 +26,26 @@ data class TimedRecipient(
 object LiveShareRoster {
 
     /**
-     * Merge [add] (each sharing until [endTimeMs]) into [current], at wall-clock [nowMs]:
-     *  - already-expired entries in [current] are dropped,
-     *  - a recipient present more than once collapses to a single entry with the **max** end-time.
+     * Append [add] (each a new share entry ending at [endTimeMs]) to [current], dropping entries
+     * already expired at [nowMs]. **Does not collapse duplicates** — a recipient added again gets a
+     * second entry, so each share remains individually removable.
      */
-    fun merge(
+    fun add(
         current: List<TimedRecipient>,
         add: List<String>,
         endTimeMs: Long,
         nowMs: Long,
-    ): List<TimedRecipient> {
-        val byId = LinkedHashMap<String, Long>()
-        for (r in current) if (r.endTimeMs > nowMs) byId[r.odinId] = r.endTimeMs
-        for (id in add) byId[id] = maxOf(byId[id] ?: Long.MIN_VALUE, endTimeMs)
-        return byId.map { (id, end) -> TimedRecipient(id, end) }
-    }
+    ): List<TimedRecipient> =
+        current.filter { it.endTimeMs > nowMs } + add.map { TimedRecipient(it, endTimeMs) }
 
-    /** The still-live recipients at [nowMs] (end-time strictly in the future). */
+    /** The still-live entries at [nowMs] (end-time strictly in the future). May contain duplicates. */
     fun live(roster: List<TimedRecipient>, nowMs: Long): List<TimedRecipient> =
         roster.filter { it.endTimeMs > nowMs }
+
+    /**
+     * The **unique** recipient identities to actually fan out to at [nowMs] — one entry per identity
+     * even if several share entries name them. This is the list to pass to the relay.
+     */
+    fun liveRecipientIds(roster: List<TimedRecipient>, nowMs: Long): List<String> =
+        live(roster, nowMs).map { it.odinId }.distinct()
 }

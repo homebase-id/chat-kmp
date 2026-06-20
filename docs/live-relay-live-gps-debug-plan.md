@@ -50,20 +50,25 @@ integer), matched by camelCase name like every other type.
 ## Recipient roster — `{identity, end-time}` pairs (the key design point)
 
 A naïve "active + one recipient list" model is wrong as soon as a user has **two** live shares at
-once: starting the second overwrites the first, dropping its recipients. Modelling the roster as
-`{identity, end-time-utc-ms}` pairs fixes every case and needs **no wire change** (end-times are
-sender-side bookkeeping; the relay stays ephemeral/last-value-wins):
+once: starting the second overwrites the first, dropping its recipients. The roster is instead a flat
+list of **`{identity, end-time-utc-ms}` share entries** — one entry per share action, **duplicates
+kept**. This needs **no wire change** (end-times are sender-side bookkeeping; the relay stays
+ephemeral/last-value-wins):
 
-- **Same recipient in two requests** → one entry, keeping the **latest** end-time (longest window wins).
-- **Overlapping shares** → the **union** of recipients, each with its own expiry.
-- **No manual stop required** → a recipient simply drops off once their end-time passes; on each GPS
-  tick the sender prunes expired entries and fans out only to the still-live set (so a recipient in
-  two shares is sent to **once**, not twice).
+- **Same recipient in two requests** → **two distinct entries** with their own end-times. They are
+  kept separate on purpose so a UX can store an entry's end-time on its chat bubble (e.g. "share for
+  15 min") and later remove **exactly that entry** without touching the other share to the same person.
+- **Dedup at send time only** → on each GPS tick the sender prunes expired entries and fans out to
+  the **unique** live identities (`liveRecipientIds`), so the same coordinate is never sent to the
+  same identity twice — even when several entries name them.
+- **Auto-expiry** → an entry drops off once its end-time passes; the tracker we started is stopped
+  once the roster fully empties.
 
-Implemented as a pure, unit-tested helper — `LiveShareRoster.merge(current, add, endTimeMs, nowMs)`
-and `LiveShareRoster.live(roster, nowMs)` over `TimedRecipient(odinId, endTimeMs)` in
-`homebase-api/.../client/liverelay/LiveShareRoster.kt`. The debug toggle uses a default 1-hour
-window; a real duration picker is a UX-plan concern.
+Implemented as a pure, unit-tested helper — `LiveShareRoster.add(current, add, endTimeMs, nowMs)`,
+`.live(roster, nowMs)`, and `.liveRecipientIds(roster, nowMs)` over `TimedRecipient(odinId,
+endTimeMs)` in `homebase-api/.../client/liverelay/LiveShareRoster.kt`. The debug toggle uses a
+default 1-hour window; a real duration picker (and per-entry removal tied to a bubble) is a UX-plan
+concern.
 
 ---
 

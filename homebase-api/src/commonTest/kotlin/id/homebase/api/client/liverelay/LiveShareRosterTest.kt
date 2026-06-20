@@ -7,42 +7,50 @@ import kotlin.test.assertTrue
 class LiveShareRosterTest {
 
     @Test
-    fun merge_addsNewRecipientsWithEndTime() {
-        val out = LiveShareRoster.merge(current = emptyList(), add = listOf("a", "b"), endTimeMs = 100, nowMs = 0)
+    fun add_appendsNewEntries() {
+        val out = LiveShareRoster.add(current = emptyList(), add = listOf("a", "b"), endTimeMs = 100, nowMs = 0)
         assertEquals(listOf(TimedRecipient("a", 100), TimedRecipient("b", 100)), out)
     }
 
     @Test
-    fun merge_sameRecipientInTwoRequests_keepsLatestEndTime() {
-        // "a" already shared until t=100; a second request shares until t=300 -> keep 300.
-        val current = listOf(TimedRecipient("a", 100))
-        val out = LiveShareRoster.merge(current = current, add = listOf("a"), endTimeMs = 300, nowMs = 50)
-        assertEquals(listOf(TimedRecipient("a", 300)), out)
+    fun add_sameRecipientTwice_keepsBothEntriesWithDistinctEndTimes() {
+        // "a" shared until t=100; a second share to "a" until t=300 -> TWO entries (individually
+        // removable), not collapsed.
+        val first = LiveShareRoster.add(emptyList(), listOf("a"), endTimeMs = 100, nowMs = 0)
+        val out = LiveShareRoster.add(first, listOf("a"), endTimeMs = 300, nowMs = 50)
+        assertEquals(listOf(TimedRecipient("a", 100), TimedRecipient("a", 300)), out)
     }
 
     @Test
-    fun merge_doesNotShortenAnExistingLongerWindow() {
-        // Existing window (t=500) is longer than the new request (t=200) -> the longer one wins.
-        val current = listOf(TimedRecipient("a", 500))
-        val out = LiveShareRoster.merge(current = current, add = listOf("a"), endTimeMs = 200, nowMs = 0)
-        assertEquals(listOf(TimedRecipient("a", 500)), out)
+    fun liveRecipientIds_dedupsToUniqueIdentities() {
+        // The same identity appears in three live entries -> sent to exactly once.
+        val roster = listOf(
+            TimedRecipient("a", 100),
+            TimedRecipient("a", 300),
+            TimedRecipient("b", 200),
+        )
+        assertEquals(listOf("a", "b"), LiveShareRoster.liveRecipientIds(roster, nowMs = 50))
     }
 
     @Test
-    fun merge_overlappingShares_unionsRecipients() {
-        // Share 1: {a,b} until 100. Share 2: {b,c} until 100 -> union {a,b,c}, b not duplicated.
-        val share1 = LiveShareRoster.merge(emptyList(), listOf("a", "b"), endTimeMs = 100, nowMs = 0)
-        val share2 = LiveShareRoster.merge(share1, listOf("b", "c"), endTimeMs = 100, nowMs = 0)
-        assertEquals(setOf("a", "b", "c"), share2.map { it.odinId }.toSet())
-        assertEquals(3, share2.size)
+    fun add_overlappingShares_keepEntries_butSendUnions() {
+        // Share 1: {a,b} until 100. Share 2: {b,c} until 100.
+        val share1 = LiveShareRoster.add(emptyList(), listOf("a", "b"), endTimeMs = 100, nowMs = 0)
+        val share2 = LiveShareRoster.add(share1, listOf("b", "c"), endTimeMs = 100, nowMs = 0)
+        // "b" appears twice in the roster (one entry per share)...
+        assertEquals(4, share2.size)
+        assertEquals(2, share2.count { it.odinId == "b" })
+        // ...but is fanned out to once.
+        assertEquals(setOf("a", "b", "c"), LiveShareRoster.liveRecipientIds(share2, nowMs = 0).toSet())
+        assertEquals(3, LiveShareRoster.liveRecipientIds(share2, nowMs = 0).size)
     }
 
     @Test
-    fun merge_dropsAlreadyExpiredCurrentEntries() {
+    fun add_dropsAlreadyExpiredEntries() {
         val current = listOf(TimedRecipient("old", 50), TimedRecipient("keep", 500))
         // now=100 -> "old" expired and is dropped; adding "new" until 600.
-        val out = LiveShareRoster.merge(current = current, add = listOf("new"), endTimeMs = 600, nowMs = 100)
-        assertEquals(setOf("keep", "new"), out.map { it.odinId }.toSet())
+        val out = LiveShareRoster.add(current = current, add = listOf("new"), endTimeMs = 600, nowMs = 100)
+        assertEquals(listOf(TimedRecipient("keep", 500), TimedRecipient("new", 600)), out)
     }
 
     @Test

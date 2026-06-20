@@ -74,7 +74,7 @@ class LiveLocationShareService(
      */
     suspend fun start(recipients: List<OdinId>, durationMs: Long = DEFAULT_DURATION_MS) {
         val now = nowMs()
-        val merged = LiveShareRoster.merge(
+        val roster = LiveShareRoster.add(
             current = state.value.recipients,
             add = recipients.map { it.domainName },
             endTimeMs = now + durationMs,
@@ -83,9 +83,13 @@ class LiveLocationShareService(
         // Ensure GPS is actually flowing. If the user's tracking master switch is off, the coordinator
         // never started the tracker — start it ourselves and remember to stop it when sharing ends.
         val startedByUs = state.value.startedTrackerByUs || ensureTrackerStarted()
-        val next = LiveShareState(recipients = merged, startedTrackerByUs = startedByUs)
+        val next = LiveShareState(recipients = roster, startedTrackerByUs = startedByUs)
         update(next)
-        logger.i { "START +${recipients.size} live=${merged.size} until=${now + durationMs} startedTracker=$startedByUs" }
+        logger.i {
+            "START +${recipients.size} entries=${roster.size} " +
+                "uniqueLive=${LiveShareRoster.liveRecipientIds(roster, now).size} " +
+                "until=${now + durationMs} startedTracker=$startedByUs"
+        }
     }
 
     /** Stop ALL live sharing now (manual stop). Per-conversation stop is a UX-plan concern. */
@@ -118,6 +122,10 @@ class LiveLocationShareService(
         try {
             val t = nowMs()
             if (t - lastSentMs < MIN_INTERVAL_MS) return
+            // Send to UNIQUE identities — never the same coordinate to the same identity twice, even
+            // if several share entries name them.
+            val recipientIds = LiveShareRoster.liveRecipientIds(state.value.recipients, t)
+            if (recipientIds.isEmpty()) return
             // Read the just-set latest point synchronously (valid in background — submit() sets
             // _lastPoint.value on the line before it calls onPointsBuffered; we read .value, we do
             // NOT collect the Flow).
@@ -125,7 +133,7 @@ class LiveLocationShareService(
             val blob = LiveLocationCodec.encode(
                 LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, live.map { it.odinId }, blob) }
+            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
                 .onFailure { logger.w(it) { "relay failed" } }
             lastSentMs = t
         } finally {
