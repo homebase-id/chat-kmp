@@ -8,11 +8,30 @@ identities. The motivating use case is live GPS among friends. The server treats
 (`blob`) as opaque, stores nothing durably (last-value-wins, TTL ~5 min), enforces app-isolation,
 and auto-flushes each sender's last point on (re)connect.
 
-**Goal of THIS build (intentionally minimal):** prove the data path end-to-end with logging only.
-Tapping the existing in-conversation **"share location"** action streams live GPS to the
-conversation's participants over the relay; the receiving side logs every inbound packet. No new UX,
-no map — just confirm in the logs (tag `LiveRelay`) that data flows both ways. A follow-up plan will
-design the real UX (map, per-sender last-value, freshness, duration picker, explicit start/stop).
+**Goal of THIS build (intentionally minimal):** prove the data path end-to-end with logging only,
+then land the plumbing so the real UX can be built on top. The send/receive pipeline (provider,
+roster, GPS-sink hook, coordinator ownership, in-memory receive store) is the deliverable; it was
+validated by temporarily wiring it to the in-conversation "share location" action and reading the
+logs (tag `LiveRelay`) — **that temporary trigger has since been removed** (see "How to activate live
+sharing" below). A follow-up plan builds the real UX (map, per-sender last-value, freshness, duration
+picker, explicit start/stop) on this plumbing.
+
+### How to activate live sharing (no UI wires it yet)
+
+The plumbing is fully functional but **nothing in the app currently calls it** — the temporary chat
+trigger was removed before merge so the half-built feature can't be reached by users. To start/stop a
+live share from code (e.g. the upcoming UX), resolve `LiveLocationShareService` from Koin and call:
+
+- `suspend fun start(recipients: List<OdinId>, durationMs: Long = 1h)` — begin (or extend) sharing
+  live location to `recipients` for `durationMs`. Appends to the persisted roster; arms GPS via the
+  coordinator. Safe to call repeatedly (each call is a distinct share entry).
+- `suspend fun stop()` — stop **all** live sharing now.
+- `fun isActive(): Boolean` / `fun hasLiveShare(): Boolean` — whether any share window is live.
+
+Everything downstream is already wired and runs whenever a share is active: the GPS-sink relay
+(`onGpsBuffered`, registered on `LocationPointStore.onPointsBuffered` in `AppModule`), the
+coordinator GPS hold, and the in-memory receive store + websocket dispatch. So the UX layer only
+needs a picker/duration and these three calls.
 
 Decisions locked with the user:
 - **Cadence:** relay whenever a GPS update arrives, throttled to **≥ 3 s** (last-value-wins).
@@ -176,10 +195,10 @@ All code added or changed is in `commonMain`/`commonTest` — no platform source
 - `services/livelocation/LiveLocationShareService.kt` — the sender: roster append/expiry, fired from
   the GPS sink, ≥3 s throttle, persisted roster that survives app open/kill until expiry. Owns no
   tracker — declares its GPS need to the coordinator via `hasLiveShare()` / `onLiveShareChanged()`.
-- `widget/ConversationContent.kt` — `onLocationClick` keeps the existing one-shot static-location
-  preview (`currentLocationLauncher.launch()`) **and** additionally **toggles** the live share
-  (`isActive()` → `start`/`stop`) to the conversation's participants. The toggle is persistent, not
-  screen-scoped — it keeps streaming while backgrounded.
+- `widget/ConversationContent.kt` — **unchanged in the merged build.** It was temporarily wired
+  (`onLocationClick` toggling `start`/`stop`) only to validate the pipeline on real devices; that
+  trigger was reverted before merge (see "How to activate live sharing"). The static-location preview
+  it already had is untouched.
 
 **homebase-common**
 - `core/location/tracking/LocationTrackingCoordinator.kt` — now the single owner of the GPS tracker
@@ -201,20 +220,40 @@ All code added or changed is in `commonMain`/`commonTest` — no platform source
 
 ## Verification
 
-1. **CI (this PR)** compiles **all targets**: JVM + Android unit tests, wasmJs tests, Android
-   `assembleDebug`, Desktop `createDistributable`, **iOS `linkDebugFrameworkIosArm64`** + sim tests.
-   Verified locally: JVM + Android + wasmJs compile, `homebase-api:jvmTest` green.
-2. **Manual two-identity flow (the real goal — read the logs):** identities **A** and **B**,
-   connected, both on chat. A taps **share location** in a conversation with B. A's
-   `homebase.log | grep LiveRelay` shows `SEND ch=7a1e9c40… -> 204` every ~3 s; B's shows `RECV …`
-   and `RECV-DECODED … lat/lon`. Confirm the wire `notificationType` is `liveRelay` (absence of
-   `RECV` ⇒ wrong wire value).
-3. **Background send (the key test):** A taps share, then backgrounds / force-quits. Move so the OS
-   emits points → A's log still shows `SEND` (sparser), proving the relay fires from
-   `onPointsBuffered` and survives cold-wake via the persisted roster.
-4. **Flush-on-connect:** while A shares, force-quit + reopen B → B logs A's last point immediately on
-   connect, then resumes live.
-5. **Negative:** share to a non-connected identity → no delivery, no client error.
+- **CI (this PR)** compiles **all targets**: JVM + Android unit tests, wasmJs tests, Android
+  `assembleDebug`, Desktop `createDistributable`, **iOS `linkDebugFrameworkIosArm64`** + sim tests.
+  All green; `LiveRelayContractTest` + `LiveShareRosterTest` pass.
+
+### Real-device end-to-end result (2026-06-20) — both halves confirmed
+
+Validated with the (now-removed) temporary chat trigger, frodo (Android, real device) → sam
+(Desktop App), already connected. Logs are filtered on tag `LiveRelay`.
+
+- **Send (frodo, Android):**
+  - `START +1 entries=1 uniqueLive=1 until=…` then `SEND ch=7a1e9c40… n=1 bytes=172 -> 204` on each
+    captured GPS point — every buffered fix produced a `204`, zero `relay failed`.
+  - **Background cadence is OS-throttled, as designed:** sends tracked GPS deliveries 1:1, with
+    multi-minute gaps when the backgrounded/stationary device emitted no points (not a throttle
+    artefact — the ≥3 s gate was never the limiter).
+  - **Auto-expiry proven:** a GPS point buffered *after* the share's `until` produced **no** `SEND` —
+    the expired roster entry was pruned and the relay correctly stopped.
+- **Receive (sam, Desktop):**
+  - `RECV from=frodo… ch=7a1e9c40… bytes=172 receivedAt=…` →
+    `RECV-DECODED from=frodo… lat=55.84… lon=12.57… ageMs=401 tracked=1`.
+  - **Wire serialization confirmed live** — the `liveRelay` case fired, so the server really sends the
+    camelCase name `"liveRelay"` and our enum member matched.
+  - **Blob decodes cleanly** across the Android→Desktop boundary (no `RECV-DECODE-FAIL`); the position
+    landed in `LiveLocationReceiveStore` (`tracked=1`).
+  - **End-to-end latency ~400 ms** (`ageMs=401`) across all three relay hops — genuinely live.
+
+### Re-running later (the chat trigger is gone)
+
+To re-verify after merge, drive `LiveLocationShareService.start(recipients)` from code (see "How to
+activate live sharing") or the upcoming UX, then watch each side's `homebase.log | grep LiveRelay`.
+Still-untested paths worth covering in the UX build: **share with the location-tracking switch OFF**
+(exercises the coordinator's `liveShareActive` GPS re-arm, incl. the iOS-relaunch path) and
+**flush-on-connect** (relay while the watcher is offline, then connect → server flushes the last
+point).
 
 ## Out of scope (this build)
 
