@@ -25,8 +25,10 @@ import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +56,13 @@ import id.homebase.resources.contactbook_detail_circles
 import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
+import id.homebase.resources.contactbook_detail_location
+import id.homebase.resources.contactbook_edit_birthday
+import id.homebase.resources.contactbook_edit_email
+import id.homebase.resources.contactbook_edit_given_name
+import id.homebase.resources.contactbook_edit_odinid
+import id.homebase.resources.contactbook_edit_phone
+import id.homebase.resources.contactbook_edit_surname
 import id.homebase.resources.contactbook_detail_danger_zone
 import id.homebase.resources.contactbook_detail_groups_connect
 import id.homebase.resources.contactbook_detail_groups_empty
@@ -71,7 +80,12 @@ import id.homebase.resources.conversation_media_see_all
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.ExperimentalUuidApi
 
-/** Recent-media strip + "See all". The header is always shown; an empty state replaces the strip. */
+/**
+ * Shared-content overview for the 1:1 conversation: a recent-media strip plus a "See all" that
+ * reaches the full shared-content screen (media, files, audio, dice rolls, locations). "See all"
+ * shows whenever there's *any* shared content — not just media — so non-media items are reachable
+ * even when there's nothing to strip. The empty state shows only when there's truly nothing.
+ */
 @Composable
 fun RecentMediaSection(
     overview: ConversationOverview?,
@@ -79,6 +93,11 @@ fun RecentMediaSection(
     onSeeAll: () -> Unit,
 ) {
     val media = overview?.media.orEmpty()
+    val hasAnything = overview != null && (
+        overview.media.isNotEmpty() || overview.files.isNotEmpty() ||
+            overview.audio.isNotEmpty() || overview.diceRolls.isNotEmpty() ||
+            overview.locations.isNotEmpty()
+        )
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp),
@@ -89,21 +108,14 @@ fun RecentMediaSection(
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
-        if (media.isNotEmpty()) {
+        if (hasAnything) {
             TextButton(onClick = onSeeAll) {
                 Text(stringResource(MR.string.conversation_media_see_all))
             }
         }
     }
-    if (media.isEmpty()) {
-        Text(
-            text = stringResource(MR.string.contactbook_detail_no_recent_media),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-    } else {
-        LazyRow(
+    when {
+        media.isNotEmpty() -> LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -112,6 +124,14 @@ fun RecentMediaSection(
                 SharedMediaThumb(item, size = 84.dp) { onMediaClick(item) }
             }
         }
+        // Has non-media shared content but no media to strip: "See all" above leads to it.
+        hasAnything -> Unit
+        else -> Text(
+            text = stringResource(MR.string.contactbook_detail_no_recent_media),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -223,14 +243,25 @@ fun ContactFieldsSection(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     )
 
+    // Labels resolved here (stringResource can't be called inside the buildList builder).
+    val lblFirst = stringResource(MR.string.contactbook_edit_given_name)
+    val lblLast = stringResource(MR.string.contactbook_edit_surname)
+    val lblId = stringResource(MR.string.contactbook_edit_odinid)
+    val lblPhone = stringResource(MR.string.contactbook_edit_phone)
+    val lblEmail = stringResource(MR.string.contactbook_edit_email)
+    val lblLocation = stringResource(MR.string.contactbook_detail_location)
+    val lblBirthday = stringResource(MR.string.contactbook_edit_birthday)
+
+    // Each field is (icon, label, value). Name parts come first so an identity contact shows its
+    // real details, not just the Homebase ID; the rest tuck behind "More".
     val fields = buildList {
-        // The Homebase ID is a contact detail too — without it an identity-only contact
-        // (synced from a connection, no phone/email) reads as "None" here despite having data.
-        entry.odinId?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.AlternateEmail to it) }
-        entry.phone?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.Call to it) }
-        entry.email?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.Email to it) }
-        entry.location?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.LocationOn to it) }
-        entry.birthday?.takeIf { it.isNotBlank() }?.let { add(Icons.Outlined.Cake to it) }
+        entry.givenName?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Person, lblFirst, it)) }
+        entry.surname?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Person, lblLast, it)) }
+        entry.odinId?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.AlternateEmail, lblId, it)) }
+        entry.phone?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Call, lblPhone, it)) }
+        entry.email?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Email, lblEmail, it)) }
+        entry.location?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.LocationOn, lblLocation, it)) }
+        entry.birthday?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Cake, lblBirthday, it)) }
     }
     if (fields.isEmpty()) {
         Text(
@@ -243,7 +274,7 @@ fun ContactFieldsSection(
     }
 
     val visible = if (expanded) fields else fields.take(2)
-    visible.forEach { (icon, value) -> DetailField(icon, value) }
+    visible.forEach { (icon, label, value) -> DetailField(icon, label, value) }
 
     if (fields.size > 2) {
         TextButton(
@@ -274,8 +305,10 @@ fun ManagementSection(
         ) { onAction(ContactDetailAction.SyncClicked) }
     }
 
-    // Danger zone — disconnect / block / delete.
-    Spacer(modifier = Modifier.height(8.dp))
+    // Danger zone — set apart with a divider so it's clearly separated from the rest.
+    Spacer(modifier = Modifier.height(16.dp))
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+    Spacer(modifier = Modifier.height(12.dp))
     Text(
         text = stringResource(MR.string.contactbook_detail_danger_zone),
         style = MaterialTheme.typography.titleSmall,
@@ -329,10 +362,11 @@ private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, onClick: () -> Uni
 }
 
 @Composable
-private fun DetailField(icon: ImageVector, value: String?) {
+private fun DetailField(icon: ImageVector, label: String, value: String?) {
     if (value.isNullOrBlank()) return
     ListItem(
         leadingContent = { Icon(icon, contentDescription = null) },
+        overlineContent = { Text(label) },
         headlineContent = { Text(value) },
     )
 }

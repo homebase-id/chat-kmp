@@ -161,7 +161,12 @@ internal class ConversationLifecycleHandler(
 
     /* Conversation options */
     fun handleShowConversationSettings(action: ConversationListUiAction.ShowConversationSettings) {
-        if (action.conversation.isGroupConversation) {
+        val conversation = action.conversation
+        // A 1:1 conversation's "info" is the contact — open the full contact-detail screen
+        // (keyed by the peer's odinId) instead of a separate conversation-overview screen.
+        // Groups go to group settings; note-to-self has no contact, so it keeps the settings screen.
+        val peerOdinId = conversation.participants.firstOrNull()?.domainName
+        if (conversation.isGroupConversation) {
             uiState.update {
                 it.copy(
                     uiEvent = NavigateToGroupSettings(
@@ -169,6 +174,8 @@ internal class ConversationLifecycleHandler(
                     )
                 )
             }
+        } else if (!conversation.isWithSelf && peerOdinId != null) {
+            uiState.update { it.copy(uiEvent = NavigateToContactInfo(peerOdinId)) }
         } else {
             uiState.update {
                 it.copy(

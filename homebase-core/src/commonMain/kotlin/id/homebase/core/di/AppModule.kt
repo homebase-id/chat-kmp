@@ -18,7 +18,6 @@ import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
-import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
@@ -659,7 +658,6 @@ val appModule = module {
     viewModelOf(::CreateConversationGroupViewModel)
     viewModelOf(::SelectMembersViewModel)
     viewModelOf(::MessageInfoViewModel)
-    viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
     viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
