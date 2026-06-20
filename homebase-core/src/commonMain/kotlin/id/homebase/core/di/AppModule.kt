@@ -35,7 +35,7 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
-import id.homebase.core.ui.screens.location.livelocation.LiveLocationDebugLogger
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -245,7 +245,7 @@ val appModule = module {
             scope = get(),
         )
     }
-    single { LiveLocationDebugLogger(eventBus = get(), scope = get()) }
+    single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
         LocationTrackUploaderService(
@@ -461,9 +461,10 @@ val appModule = module {
                 get<LocationPointStore>().reset()
                 get<LocationTrackUploaderService>().apply { reset(); start() }
                 get<LocationTrackingCoordinator>().reset()
-                // Live Relay debug-flow: clear any stale live share, (re)start the receive logger.
+                // Live Relay debug-flow: clear any stale live share, (re)start the receive store
+                // (in-memory; rehydrates from the server's flush-on-connect).
                 get<LiveLocationShareService>().reset()
-                get<LiveLocationDebugLogger>().apply { reset(); start() }
+                get<LiveLocationReceiveStore>().apply { reset(); start() }
             }
         )
     }

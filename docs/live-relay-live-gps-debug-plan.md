@@ -106,6 +106,29 @@ delivers each sender's last point automatically.
 
 ---
 
+## Received positions — in-memory only (hydration)
+
+The receive side keeps a **volatile** map of each sender's last known position + receipt time
+(`LiveLocationReceiveStore`: `StateFlow<Map<OdinId, LivePosition>>`, last-value-wins, fed from
+`BackendEvent.LiveRelayReceived`, cleared on logout). A future map/dashboard binds to it. It is
+**never persisted to the DB**, by design:
+
+- **The server is the source of truth and rehydrates us.** Live Relay's server retains each sender's
+  last point (TTL ~5 min) and **auto-flushes every sender's last point on (re)connect/foreground**.
+  So this map starts empty on a cold start and refills from the server within a second of the socket
+  connecting — no local copy needed.
+- **A persisted copy would render data staler than the server will ever serve** — e.g. an hour-old
+  "ghost" position for a feature called *live* location. (So the write-amplification a KV row would
+  need to debounce on a 10-person share is a non-problem: we don't write at all.)
+
+This is the deliberate **asymmetry** with the send side: the **send roster** IS persisted (it's the
+user's own intent and must survive a cold background wake to keep sending); **received positions** are
+not (someone else's ephemeral data, rehydrated from the server). Staleness is derived in the UI from
+`LivePosition.receivedAtMs` (`age = now − receivedAt`) to fade and eventually drop a sender's marker
+once it exceeds the server TTL.
+
+---
+
 ## Files
 
 All new code is `commonMain`/`commonTest` — no platform actuals.
@@ -129,10 +152,11 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
   participants (a persistent toggle, not screen-scoped — it must keep streaming while backgrounded).
 
 **homebase-core**
-- `ui/screens/location/livelocation/LiveLocationDebugLogger.kt` — decodes inbound blobs, logs
-  `RECV-DECODED … lat/lon/ageMs`.
+- `ui/screens/location/livelocation/LiveLocationReceiveStore.kt` — in-memory
+  `StateFlow<Map<OdinId, LivePosition>>` of each sender's last position + receipt time (the map's
+  data source); also logs `RECV-DECODED … lat/lon/ageMs/tracked`.
 - `di/AppModule.kt` — extend `onPointsBuffered` to drive `onGpsBuffered()`; register + lifecycle the
-  two singletons.
+  sender service and the receive store.
 
 **Tests (homebase-api commonTest)**
 - `LiveRelayContractTest` — codec round-trip, server-payload parse, no-appId request body.
@@ -158,6 +182,10 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 
 ## Out of scope (this build)
 
-- Map / dashboard UX, per-sender last-value display, freshness UI, duration picker, per-conversation
-  stop (today `stop()` is stop-all). All deferred to the follow-up UX plan.
+- Map / dashboard UX, freshness UI, duration picker, per-conversation stop (today `stop()` is
+  stop-all). The per-sender last-value **data** exists (`LiveLocationReceiveStore`); only the
+  rendering is deferred to the follow-up UX plan.
+- The "reopen mid-share clears the share" choice (foreground → `reset()`): fine for this build,
+  revisit when share controls are designed (tie the roster's life to expiry + explicit stop, clear
+  only on real logout).
 - Server changes — the backend is complete in odin-core #1572.
