@@ -5,6 +5,8 @@ import id.homebase.api.client.liverelay.LIVE_LOCATION_CHANNEL_KEY
 import id.homebase.api.client.liverelay.LiveLocationCodec
 import id.homebase.api.client.liverelay.LiveLocationPoint
 import id.homebase.api.client.liverelay.LiveRelayProvider
+import id.homebase.api.client.liverelay.LiveShareRoster
+import id.homebase.api.client.liverelay.TimedRecipient
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -21,9 +23,16 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
- * Live-location sender for the Live Relay debug-flow build. While a share is active it relays the
- * device's latest GPS fix to a recipient set over [LiveRelayProvider], throttled to [MIN_INTERVAL_MS]
- * (last-value-wins).
+ * Live-location sender for the Live Relay debug-flow build. While any recipient's share window is
+ * live it relays the device's latest GPS fix to that recipient set over [LiveRelayProvider],
+ * throttled to [MIN_INTERVAL_MS] (last-value-wins).
+ *
+ * **Recipient roster, not an on/off flag.** Recipients are kept as {identity, end-time} pairs
+ * ([TimedRecipient]) so the multi-share case is correct: the same recipient added by two requests
+ * collapses to one entry with the latest end-time, overlapping shares union, and a recipient drops
+ * off automatically once their window passes — no manual stop required. End-times are sender-side
+ * only; they are never sent over the wire (the relay stays ephemeral/last-value-wins). See
+ * [LiveShareRoster].
  *
  * **Where the send fires:** [onGpsBuffered] is invoked from the `onPointsBuffered` seam in
  * `LocationPointStore.submit()` (wired in `AppModule`) — the only hook that runs on OS-delivered
@@ -31,9 +40,9 @@ import kotlin.uuid.Uuid
  * `CLLocationManager` delegate). It deliberately does NOT collect `lastPoint` as a Flow: that
  * StateFlow is only observed by UI, so a collector would silently stop sending once backgrounded.
  *
- * **Persisted state:** `active`/`recipients` are stored in keyValue so a `BroadcastReceiver`-woken
- * cold process (which rebuilds this singleton from scratch) still knows to relay. The fixed
- * [LIVE_LOCATION_CHANNEL_KEY] needs no persistence.
+ * **Persisted state:** the roster (with absolute end-times) is stored in keyValue so a
+ * `BroadcastReceiver`-woken cold process (which rebuilds this singleton from scratch) still knows to
+ * relay. The fixed [LIVE_LOCATION_CHANNEL_KEY] needs no persistence.
  *
  * Ephemeral by design — no drive writes, no outbox; the relay is a direct fire-and-forget POST. The
  * durable hourly track files (`LocationTrackUploaderService`) are unaffected and run alongside this.
@@ -55,50 +64,60 @@ class LiveLocationShareService(
     private val sendLock = Mutex()
     private var lastSentMs = 0L
 
-    fun isActive(): Boolean = state.value.active
+    /** True while at least one recipient's share window is still live. */
+    fun isActive(): Boolean = LiveShareRoster.live(state.value.recipients, nowMs()).isNotEmpty()
 
-    /** Begin sharing live location with [recipients] (connected identities). */
-    suspend fun start(recipients: List<OdinId>) {
-        val domains = recipients.map { it.domainName }
+    /**
+     * Share live location with [recipients] for [durationMs] from now. Merges into any existing
+     * roster (a recipient already present keeps the later end-time), so starting a second share
+     * never drops the first's recipients.
+     */
+    suspend fun start(recipients: List<OdinId>, durationMs: Long = DEFAULT_DURATION_MS) {
+        val now = nowMs()
+        val merged = LiveShareRoster.merge(
+            current = state.value.recipients,
+            add = recipients.map { it.domainName },
+            endTimeMs = now + durationMs,
+            nowMs = now,
+        )
         // Ensure GPS is actually flowing. If the user's tracking master switch is off, the coordinator
-        // never started the tracker — start it ourselves and remember to stop it on [stop].
-        val startedByUs =
-            if (!locationPreferences.trackingEnabled.value && locationTracker.isAvailable) {
-                locationTracker.start(TrackingMode.Foreground)
-                true
-            } else {
-                false
-            }
-        val next = LiveShareState(active = true, recipients = domains, startedTrackerByUs = startedByUs)
-        state.value = next
-        persist(next)
-        logger.i { "START recipients=${domains.size} startedTracker=$startedByUs" }
+        // never started the tracker — start it ourselves and remember to stop it when sharing ends.
+        val startedByUs = state.value.startedTrackerByUs || ensureTrackerStarted()
+        val next = LiveShareState(recipients = merged, startedTrackerByUs = startedByUs)
+        update(next)
+        logger.i { "START +${recipients.size} live=${merged.size} until=${now + durationMs} startedTracker=$startedByUs" }
     }
 
-    /** Stop sharing. If we started the tracker (tracking switch was off), stop it again. */
+    /** Stop ALL live sharing now (manual stop). Per-conversation stop is a UX-plan concern. */
     suspend fun stop() {
-        val cur = state.value
-        if (cur.startedTrackerByUs) locationTracker.stop()
-        val next = LiveShareState()
-        state.value = next
-        persist(next)
+        if (state.value.startedTrackerByUs) locationTracker.stop()
+        update(LiveShareState())
         logger.i { "STOP" }
     }
 
     /**
      * Called from the GPS sink (`onPointsBuffered`) after each accepted batch — background-capable.
-     * Relays the just-accepted latest point if a share is active and the throttle window has elapsed.
-     * Never throws into the sink chain.
+     * Prunes expired recipients, relays the just-accepted latest point to the live set if the
+     * throttle window has elapsed. Never throws into the sink chain.
      */
     suspend fun onGpsBuffered() {
+        val now = nowMs()
         val cur = state.value
-        if (!cur.active) return
-        if (nowMs() - lastSentMs < MIN_INTERVAL_MS) return
+        val live = LiveShareRoster.live(cur.recipients, now)
+        // Roster shrank (something expired) — persist the pruned set; if nothing's left and we started
+        // the tracker, stop it so GPS doesn't stay on forever.
+        if (live.size != cur.recipients.size) {
+            val keepStarted = live.isNotEmpty() && cur.startedTrackerByUs
+            if (live.isEmpty() && cur.startedTrackerByUs) locationTracker.stop()
+            update(LiveShareState(recipients = live, startedTrackerByUs = keepStarted))
+        }
+        if (live.isEmpty()) return
+        if (now - lastSentMs < MIN_INTERVAL_MS) return
         // Skip (don't queue) if a send is already in flight — last-value-wins, the next batch supersedes.
         if (!sendLock.tryLock()) return
         try {
-            val now = nowMs()
-            if (now - lastSentMs < MIN_INTERVAL_MS) return
+            val t = nowMs()
+            if (t - lastSentMs < MIN_INTERVAL_MS) return
             // Read the just-set latest point synchronously (valid in background — submit() sets
             // _lastPoint.value on the line before it calls onPointsBuffered; we read .value, we do
             // NOT collect the Flow).
@@ -106,9 +125,9 @@ class LiveLocationShareService(
             val blob = LiveLocationCodec.encode(
                 LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, cur.recipients, blob) }
+            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, live.map { it.odinId }, blob) }
                 .onFailure { logger.w(it) { "relay failed" } }
-            lastSentMs = now
+            lastSentMs = t
         } finally {
             sendLock.unlock()
         }
@@ -116,11 +135,23 @@ class LiveLocationShareService(
 
     /** Clear in-memory + persisted state on logout. */
     fun reset() {
-        val cur = state.value
-        if (cur.startedTrackerByUs) locationTracker.stop()
+        if (state.value.startedTrackerByUs) locationTracker.stop()
         state.value = LiveShareState()
         lastSentMs = 0L
         scope.launch { persist(LiveShareState()) }
+    }
+
+    private fun ensureTrackerStarted(): Boolean =
+        if (!locationPreferences.trackingEnabled.value && locationTracker.isAvailable) {
+            locationTracker.start(TrackingMode.Foreground)
+            true
+        } else {
+            false
+        }
+
+    private suspend fun update(next: LiveShareState) {
+        state.value = next
+        persist(next)
     }
 
     private fun readPersisted(): LiveShareState =
@@ -139,8 +170,7 @@ class LiveLocationShareService(
 
     @Serializable
     private data class LiveShareState(
-        val active: Boolean = false,
-        val recipients: List<String> = emptyList(),
+        val recipients: List<TimedRecipient> = emptyList(),
         val startedTrackerByUs: Boolean = false,
     )
 
@@ -150,6 +180,9 @@ class LiveLocationShareService(
         /** Coalesce cadence — last-value-wins. Only really exercised in the foreground; background
          *  GPS delivery is itself OS-throttled to roughly 1/min. */
         private const val MIN_INTERVAL_MS = 3_000L
+
+        /** Default share window for the debug toggle (no duration UI yet). */
+        private const val DEFAULT_DURATION_MS = 60 * 60 * 1000L // 1 hour
 
         // Location preferences own the 0a03xx namespace; 0a0307 is the next free slot.
         private val STATE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0307")
