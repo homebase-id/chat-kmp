@@ -61,8 +61,8 @@ ephemeral/last-value-wins):
 - **Dedup at send time only** → on each GPS tick the sender prunes expired entries and fans out to
   the **unique** live identities (`liveRecipientIds`), so the same coordinate is never sent to the
   same identity twice — even when several entries name them.
-- **Auto-expiry** → an entry drops off once its end-time passes; the tracker we started is stopped
-  once the roster fully empties.
+- **Auto-expiry** → an entry drops off once its end-time passes; once the roster fully empties the
+  service tells the coordinator to drop the GPS hold (see "GPS ownership" below).
 
 Implemented as a pure, unit-tested helper — `LiveShareRoster.add(current, add, endTimeMs, nowMs)`,
 `.live(roster, nowMs)`, and `.liveRecipientIds(roster, nowMs)` over `TimedRecipient(odinId,
@@ -102,7 +102,8 @@ empty roster).
 
 **GPS is owned solely by `LocationTrackingCoordinator` — `LiveLocationShareService` never touches the
 tracker.** The coordinator is the single arbiter of `tracker.start/stop/setMode`; it runs GPS when
-the master switch is on **OR** a live share needs it (`wantsGps = trackingEnabled || liveShareActive()`).
+the user's location-tracking switch (`LocationPreferences.trackingEnabled`) is on **OR** a live share
+needs it (`wantsGps = trackingEnabled || liveShareActive()`).
 The share service only declares its need — `hasLiveShare()` (read by the coordinator's `liveShareActive`
 predicate) and `onLiveShareChanged()` (pokes `coordinator.refreshGpsHold()` when a share starts/stops/
 expires). Benefits:
@@ -134,8 +135,9 @@ delivers each sender's last point automatically.
 
 The receive side keeps a **volatile** map of each sender's last known position + receipt time
 (`LiveLocationReceiveStore`: `StateFlow<Map<OdinId, LivePosition>>`, last-value-wins, fed from
-`BackendEvent.LiveRelayReceived`, cleared on logout). A future map/dashboard binds to it. It is
-**never persisted to the DB**, by design:
+`BackendEvent.LiveRelayReceived`; its collector is reset + re-subscribed on each login bootstrap
+(`onPostAuthenticated`), which clears the previous identity's positions). A future map/dashboard binds
+to it. It is **never persisted to the DB**, by design:
 
 - **The server is the source of truth and rehydrates us.** Live Relay's server retains each sender's
   last point (TTL ~5 min) and **auto-flushes every sender's last point on (re)connect/foreground**.
@@ -155,12 +157,13 @@ once it exceeds the server TTL.
 
 ## Files
 
-All new code is `commonMain`/`commonTest` — no platform actuals.
+All code added or changed is in `commonMain`/`commonTest` — no platform source sets touched.
 
 **homebase-api**
 - `client/liverelay/LiveRelayContract.kt` — fixed `LIVE_LOCATION_CHANNEL_KEY`, `LiveLocationPoint`,
   `LiveLocationCodec` (base64-JSON).
-- `client/liverelay/LiveShareRoster.kt` — `TimedRecipient` + pure roster merge/live helpers.
+- `client/liverelay/LiveShareRoster.kt` — `TimedRecipient` + pure roster helpers: `add`
+  (append a share entry, prune expired), `live`, and `liveRecipientIds` (unique fan-out set).
 - `client/liverelay/LiveRelayProvider.kt` — `relay(channelKey, recipients, blob)` →
   `POST /api/v2/live-relay` via `encryptedPostJson`; `LiveRelayRequest` DTO. Registered in `ApiModule`.
 - `client/websockets/ClientNotificationType.kt` — add `liveRelay` (by name).
@@ -173,8 +176,10 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 - `services/livelocation/LiveLocationShareService.kt` — the sender: roster append/expiry, fired from
   the GPS sink, ≥3 s throttle, persisted roster that survives app open/kill until expiry. Owns no
   tracker — declares its GPS need to the coordinator via `hasLiveShare()` / `onLiveShareChanged()`.
-- `widget/ConversationContent.kt` — `onLocationClick` toggles the live share to the conversation's
-  participants (a persistent toggle, not screen-scoped — it must keep streaming while backgrounded).
+- `widget/ConversationContent.kt` — `onLocationClick` keeps the existing one-shot static-location
+  preview (`currentLocationLauncher.launch()`) **and** additionally **toggles** the live share
+  (`isActive()` → `start`/`stop`) to the conversation's participants. The toggle is persistent, not
+  screen-scoped — it keeps streaming while backgrounded.
 
 **homebase-common**
 - `core/location/tracking/LocationTrackingCoordinator.kt` — now the single owner of the GPS tracker
