@@ -118,6 +118,7 @@ import id.homebase.chat.dice.DiceRollComposerSheet
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.poll.PollComposerSheet
@@ -269,6 +270,9 @@ fun ConversationContent(
     // the composer's staging slot. The composer renders/cancels it via the same path as link
     // previews; nothing here knows the bubble shape.
     val locationPreviewProvider: LocationPreviewProvider = koinInject()
+    // Live Relay debug-flow: toggling "share location" also streams live GPS to the conversation's
+    // participants over the relay. The actual send fires from the GPS sink (see LiveLocationShareService).
+    val liveLocationShareService: LiveLocationShareService = koinInject()
     var isFetchingLocation by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
@@ -1627,6 +1631,18 @@ fun ConversationContent(
                         showAttachmentSheet = false
                         isFetchingLocation = true
                         currentLocationLauncher.launch()
+                        // Live Relay debug-flow: toggle the live-location stream to this conversation's
+                        // participants. A persistent toggle (not screen-scoped) so it keeps streaming
+                        // while backgrounded; tap again to stop.
+                        coroutineScope.launch {
+                            if (liveLocationShareService.isActive()) {
+                                liveLocationShareService.stop()
+                            } else {
+                                val recipients = conversation.conversation.participants
+                                    .filter { it != myOdinId }
+                                liveLocationShareService.start(recipients)
+                            }
+                        }
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true

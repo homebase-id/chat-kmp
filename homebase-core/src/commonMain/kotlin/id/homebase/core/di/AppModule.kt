@@ -34,6 +34,8 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationDebugLogger
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -225,9 +227,25 @@ val appModule = module {
             // uploader). Lazy get() avoids the construction-time cycle; resolved
             // at flush time. This is the iOS background-flush fix — the Apple
             // tracker funnels through submit() and now triggers a flush too.
-            onPointsBuffered = { get<LocationTrackUploaderService>().flushIfDue() },
+            onPointsBuffered = {
+                // Live Relay: relay the latest point if a share is active. Rides this same
+                // background-capable seam (NOT a UI Flow) so it fires on cold-woken background points.
+                get<LiveLocationShareService>().onGpsBuffered()
+                get<LocationTrackUploaderService>().flushIfDue()
+            },
         )
     }
+    single {
+        LiveLocationShareService(
+            liveRelayProvider = get(),
+            locationPointStore = get(),
+            locationTracker = get(),
+            locationPreferences = get(),
+            databaseManager = get(),
+            scope = get(),
+        )
+    }
+    single { LiveLocationDebugLogger(eventBus = get(), scope = get()) }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
         LocationTrackUploaderService(
@@ -443,6 +461,9 @@ val appModule = module {
                 get<LocationPointStore>().reset()
                 get<LocationTrackUploaderService>().apply { reset(); start() }
                 get<LocationTrackingCoordinator>().reset()
+                // Live Relay debug-flow: clear any stale live share, (re)start the receive logger.
+                get<LiveLocationShareService>().reset()
+                get<LiveLocationDebugLogger>().apply { reset(); start() }
             }
         )
     }

@@ -567,6 +567,24 @@ class OdinWebSocketClient(
                 )
             }
 
+            ClientNotificationType.liveRelay -> {
+                val d = OdinSystemSerializer.deserialize<LiveRelayReceivedNotification>(
+                    notification.data
+                )
+                Logger.i(tag = "LiveRelay") {
+                    "RECV from=${d.senderOdinId.domainName} ch=${d.channelKey} " +
+                        "bytes=${d.blob.length} receivedAt=${d.receivedAt}"
+                }
+                eventBus.emit(
+                    BackendEvent.LiveRelayReceived(
+                        senderOdinId = d.senderOdinId,
+                        channelKey = d.channelKey,
+                        blob = d.blob,
+                        receivedAt = d.receivedAt,
+                    )
+                )
+            }
+
             ClientNotificationType.appNotificationAdded -> {
             }
 
