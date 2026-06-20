@@ -461,8 +461,9 @@ val appModule = module {
                 get<LocationPointStore>().reset()
                 get<LocationTrackUploaderService>().apply { reset(); start() }
                 get<LocationTrackingCoordinator>().reset()
-                // Live Relay debug-flow: clear any stale live share, (re)start the receive store
-                // (in-memory; rehydrates from the server's flush-on-connect).
+                // Live Relay debug-flow: re-seed the live-share roster from this identity's DB and
+                // re-arm GPS if a share is still live (it must survive app open/kill until expiry);
+                // (re)start the in-memory receive store (rehydrates from the server's flush-on-connect).
                 get<LiveLocationShareService>().reset()
                 get<LiveLocationReceiveStore>().apply { reset(); start() }
             }

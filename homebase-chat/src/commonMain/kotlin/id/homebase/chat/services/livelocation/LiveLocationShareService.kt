@@ -68,9 +68,8 @@ class LiveLocationShareService(
     fun isActive(): Boolean = LiveShareRoster.live(state.value.recipients, nowMs()).isNotEmpty()
 
     /**
-     * Share live location with [recipients] for [durationMs] from now. Merges into any existing
-     * roster (a recipient already present keeps the later end-time), so starting a second share
-     * never drops the first's recipients.
+     * Share live location with [recipients] for [durationMs] from now. Appends to the roster (each
+     * share is a distinct entry), so starting a second share never drops the first's recipients.
      */
     suspend fun start(recipients: List<OdinId>, durationMs: Long = DEFAULT_DURATION_MS) {
         val now = nowMs()
@@ -80,22 +79,18 @@ class LiveLocationShareService(
             endTimeMs = now + durationMs,
             nowMs = now,
         )
-        // Ensure GPS is actually flowing. If the user's tracking master switch is off, the coordinator
-        // never started the tracker — start it ourselves and remember to stop it when sharing ends.
-        val startedByUs = state.value.startedTrackerByUs || ensureTrackerStarted()
-        val next = LiveShareState(recipients = roster, startedTrackerByUs = startedByUs)
-        update(next)
+        update(state.value.copy(recipients = roster))
+        reconcileTracker()
         logger.i {
             "START +${recipients.size} entries=${roster.size} " +
-                "uniqueLive=${LiveShareRoster.liveRecipientIds(roster, now).size} " +
-                "until=${now + durationMs} startedTracker=$startedByUs"
+                "uniqueLive=${LiveShareRoster.liveRecipientIds(roster, now).size} until=${now + durationMs}"
         }
     }
 
     /** Stop ALL live sharing now (manual stop). Per-conversation stop is a UX-plan concern. */
     suspend fun stop() {
-        if (state.value.startedTrackerByUs) locationTracker.stop()
-        update(LiveShareState())
+        update(state.value.copy(recipients = emptyList()))
+        reconcileTracker() // empty roster -> stops the tracker if we started it
         logger.i { "STOP" }
     }
 
@@ -108,12 +103,11 @@ class LiveLocationShareService(
         val now = nowMs()
         val cur = state.value
         val live = LiveShareRoster.live(cur.recipients, now)
-        // Roster shrank (something expired) — persist the pruned set; if nothing's left and we started
-        // the tracker, stop it so GPS doesn't stay on forever.
+        // Roster shrank (something expired) — persist the pruned set and reconcile the tracker (stops
+        // GPS once nothing's left).
         if (live.size != cur.recipients.size) {
-            val keepStarted = live.isNotEmpty() && cur.startedTrackerByUs
-            if (live.isEmpty() && cur.startedTrackerByUs) locationTracker.stop()
-            update(LiveShareState(recipients = live, startedTrackerByUs = keepStarted))
+            update(cur.copy(recipients = live))
+            reconcileTracker()
         }
         if (live.isEmpty()) return
         if (now - lastSentMs < MIN_INTERVAL_MS) return
@@ -141,21 +135,47 @@ class LiveLocationShareService(
         }
     }
 
-    /** Clear in-memory + persisted state on logout. */
+    /**
+     * Re-seed in-memory state from the current identity's DB and reconcile the tracker. Called from
+     * `onPostAuthenticated` (the per-identity foreground bootstrap, mirroring `LocationPreferences.reset`).
+     *
+     * It must **not** stop an ongoing share — a share lives until its end-time or an explicit [stop],
+     * regardless of how the app was started or opened (cold start, manual reopen, background wake). So
+     * a 2-week share just keeps going. If a still-live share is present and we're responsible for GPS,
+     * the tracker is re-armed so it keeps sending. After a logout the keyValue DB is wiped, so the read
+     * returns an empty roster — the share clears, and a tracker we started for the previous identity is
+     * stopped.
+     */
     fun reset() {
-        if (state.value.startedTrackerByUs) locationTracker.stop()
-        state.value = LiveShareState()
+        val prev = state.value
+        state.value = readPersisted()
         lastSentMs = 0L
-        scope.launch { persist(LiveShareState()) }
+        scope.launch {
+            // Identity boundary: drop a tracker we started for a previous identity that the re-seeded
+            // (e.g. logout-wiped) state no longer claims.
+            if (prev.startedTrackerByUs && !state.value.startedTrackerByUs) locationTracker.stop()
+            reconcileTracker()
+        }
     }
 
-    private fun ensureTrackerStarted(): Boolean =
-        if (!locationPreferences.trackingEnabled.value && locationTracker.isAvailable) {
+    /**
+     * (Re)arm or stop the tracker to match whether a live share exists; persists any flag change.
+     * After a cold start the persisted `startedTrackerByUs` flag may be true while the tracker isn't
+     * actually running, so we (re)start unconditionally when a live share needs us — `start()` is
+     * idempotent. When the master tracking switch is on, the coordinator owns the tracker and we leave
+     * it alone.
+     */
+    private suspend fun reconcileTracker() {
+        val hasLiveShare = LiveShareRoster.live(state.value.recipients, nowMs()).isNotEmpty()
+        val weManageGps = !locationPreferences.trackingEnabled.value && locationTracker.isAvailable
+        if (hasLiveShare && weManageGps) {
             locationTracker.start(TrackingMode.Foreground)
-            true
-        } else {
-            false
+            if (!state.value.startedTrackerByUs) update(state.value.copy(startedTrackerByUs = true))
+        } else if (!hasLiveShare && state.value.startedTrackerByUs) {
+            locationTracker.stop()
+            update(state.value.copy(startedTrackerByUs = false))
         }
+    }
 
     private suspend fun update(next: LiveShareState) {
         state.value = next

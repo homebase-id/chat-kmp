@@ -91,9 +91,15 @@ only observed by UI, so a collector would silently stop sending the moment the a
 Inside the sink hook it reads `lastPoint.value` synchronously (valid in background; `submit()` sets
 it on the line before calling `onPointsBuffered`).
 
-**Persisted roster for cold wakes.** A `BroadcastReceiver`-woken cold process rebuilds the singleton
-from scratch, so the roster (with absolute end-times) is persisted in keyValue and re-read on
-construction; otherwise a killed-app share would silently no-op.
+**A share lives until its end-time (or explicit stop / logout) — independent of app lifecycle.** The
+roster (with absolute end-times) is persisted in keyValue and re-read on construction, so a 2-week
+share keeps going no matter how the app is started or opened — cold start, manual reopen, or
+`BroadcastReceiver`/SLC background wake. Opening the app does **not** stop it: `reset()` (run from
+`onPostAuthenticated`, mirroring `LocationPreferences.reset`) **re-seeds** the roster from the current
+identity's DB and, if a still-live share needs GPS and the master tracking switch is off, **re-arms
+the tracker** — it never clears an ongoing share. The only things that end a share are: every entry
+expiring, an explicit `stop()`, or **logout** (the keyValue DB is wiped, so the next re-seed reads an
+empty roster and a tracker we started is stopped).
 
 **Background liveness is OS-throttled, not real-time.** Android background `LocationRequest` is
 `BALANCED_POWER` (~60 s interval, up to 600 s coalescing, 25 m displacement); iOS background uses
@@ -146,8 +152,9 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 - `client/eventbus/BackendEvent.kt` — `LiveRelayReceived` event.
 
 **homebase-chat**
-- `services/livelocation/LiveLocationShareService.kt` — the sender: roster merge/expiry, fired from
-  the GPS sink, ≥3 s throttle, tracker-ensure + auto-stop on full expiry, persisted roster.
+- `services/livelocation/LiveLocationShareService.kt` — the sender: roster append/expiry, fired from
+  the GPS sink, ≥3 s throttle, tracker reconcile (re-arm while a share is live, auto-stop on full
+  expiry), persisted roster that survives app open/kill until expiry.
 - `widget/ConversationContent.kt` — `onLocationClick` toggles the live share to the conversation's
   participants (a persistent toggle, not screen-scoped — it must keep streaming while backgrounded).
 
@@ -160,8 +167,8 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 
 **Tests (homebase-api commonTest)**
 - `LiveRelayContractTest` — codec round-trip, server-payload parse, no-appId request body.
-- `LiveShareRosterTest` — same-recipient-twice keeps max end-time, overlapping shares union, expired
-  pruned.
+- `LiveShareRosterTest` — same-recipient-twice keeps two distinct entries, send dedups to unique
+  identities, overlapping shares union, expired pruned.
 
 ## Verification
 
@@ -185,7 +192,4 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 - Map / dashboard UX, freshness UI, duration picker, per-conversation stop (today `stop()` is
   stop-all). The per-sender last-value **data** exists (`LiveLocationReceiveStore`); only the
   rendering is deferred to the follow-up UX plan.
-- The "reopen mid-share clears the share" choice (foreground → `reset()`): fine for this build,
-  revisit when share controls are designed (tie the roster's life to expiry + explicit stop, clear
-  only on real logout).
 - Server changes — the backend is complete in odin-core #1572.
