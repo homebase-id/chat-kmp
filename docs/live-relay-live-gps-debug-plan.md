@@ -96,10 +96,28 @@ roster (with absolute end-times) is persisted in keyValue and re-read on constru
 share keeps going no matter how the app is started or opened — cold start, manual reopen, or
 `BroadcastReceiver`/SLC background wake. Opening the app does **not** stop it: `reset()` (run from
 `onPostAuthenticated`, mirroring `LocationPreferences.reset`) **re-seeds** the roster from the current
-identity's DB and, if a still-live share needs GPS and the master tracking switch is off, **re-arms
-the tracker** — it never clears an ongoing share. The only things that end a share are: every entry
+identity's DB and never clears an ongoing share. The only things that end a share are: every entry
 expiring, an explicit `stop()`, or **logout** (the keyValue DB is wiped, so the next re-seed reads an
-empty roster and a tracker we started is stopped).
+empty roster).
+
+**GPS is owned solely by `LocationTrackingCoordinator` — `LiveLocationShareService` never touches the
+tracker.** The coordinator is the single arbiter of `tracker.start/stop/setMode`; it runs GPS when
+the master switch is on **OR** a live share needs it (`wantsGps = trackingEnabled || liveShareActive()`).
+The share service only declares its need — `hasLiveShare()` (read by the coordinator's `liveShareActive`
+predicate) and `onLiveShareChanged()` (pokes `coordinator.refreshGpsHold()` when a share starts/stops/
+expires). Benefits:
+
+- **One owner, no contention** — a share and the master switch can't fight over the tracker, and the
+  share ending never stops capture that tracking still wants (and vice-versa).
+- **Correct mode for free** — the coordinator's foreground observer applies Foreground (high accuracy)
+  while visible and Background (low power, ~60 s) when backgrounded; the share no longer forces
+  Foreground.
+- **Reliable cold-start re-arm (incl. iOS)** — `coordinator.onProcessStart()` runs on **every** process
+  start (Android `MainApplication.onCreate`; iOS `initializeApp`, which also fires on the
+  significant-location-change relaunch after a full OS termination) and re-arms GPS whenever
+  `wantsGps()` — so a 2-week share resumes capturing after a kill without needing the UI. This is the
+  reliability fix; it lives in the existing process-start hook, not in `onPostAuthenticated` (which
+  never runs on a headless wake).
 
 **Background liveness is OS-throttled, not real-time.** Android background `LocationRequest` is
 `BALANCED_POWER` (~60 s interval, up to 600 s coalescing, 25 m displacement); iOS background uses
@@ -153,16 +171,22 @@ All new code is `commonMain`/`commonTest` — no platform actuals.
 
 **homebase-chat**
 - `services/livelocation/LiveLocationShareService.kt` — the sender: roster append/expiry, fired from
-  the GPS sink, ≥3 s throttle, tracker reconcile (re-arm while a share is live, auto-stop on full
-  expiry), persisted roster that survives app open/kill until expiry.
+  the GPS sink, ≥3 s throttle, persisted roster that survives app open/kill until expiry. Owns no
+  tracker — declares its GPS need to the coordinator via `hasLiveShare()` / `onLiveShareChanged()`.
 - `widget/ConversationContent.kt` — `onLocationClick` toggles the live share to the conversation's
   participants (a persistent toggle, not screen-scoped — it must keep streaming while backgrounded).
+
+**homebase-common**
+- `core/location/tracking/LocationTrackingCoordinator.kt` — now the single owner of the GPS tracker
+  for live shares too: `liveShareActive` predicate + `wantsGps()` + `refreshGpsHold()`; `onProcessStart`
+  re-arms when a share needs GPS (the cold-start / iOS-relaunch reliability fix).
 
 **homebase-core**
 - `ui/screens/location/livelocation/LiveLocationReceiveStore.kt` — in-memory
   `StateFlow<Map<OdinId, LivePosition>>` of each sender's last position + receipt time (the map's
   data source); also logs `RECV-DECODED … lat/lon/ageMs/tracked`.
-- `di/AppModule.kt` — extend `onPointsBuffered` to drive `onGpsBuffered()`; register + lifecycle the
+- `di/AppModule.kt` — extend `onPointsBuffered` to drive `onGpsBuffered()`; wire the
+  coordinator↔share-service seams (`liveShareActive` / `onLiveShareChanged`); register + lifecycle the
   sender service and the receive store.
 
 **Tests (homebase-api commonTest)**

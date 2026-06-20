@@ -239,10 +239,10 @@ val appModule = module {
         LiveLocationShareService(
             liveRelayProvider = get(),
             locationPointStore = get(),
-            locationTracker = get(),
-            locationPreferences = get(),
             databaseManager = get(),
-            scope = get(),
+            // The coordinator is the single owner of the GPS tracker; the share service only declares
+            // that it needs GPS and pokes the coordinator to re-evaluate.
+            onLiveShareChanged = { get<LocationTrackingCoordinator>().refreshGpsHold() },
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
@@ -271,6 +271,9 @@ val appModule = module {
             // The uploader lives in homebase-core; the coordinator (homebase-common)
             // reaches it through this seam only.
             onFlushDue = { get<LocationTrackUploaderService>().flushIfDue() }
+            // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
+            // cold start / iOS relaunch) without referencing homebase-chat.
+            liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
         }
     }
     // endregion
@@ -460,11 +463,12 @@ val appModule = module {
                 get<LocationPreferences>().reset()
                 get<LocationPointStore>().reset()
                 get<LocationTrackUploaderService>().apply { reset(); start() }
-                get<LocationTrackingCoordinator>().reset()
-                // Live Relay debug-flow: re-seed the live-share roster from this identity's DB and
-                // re-arm GPS if a share is still live (it must survive app open/kill until expiry);
-                // (re)start the in-memory receive store (rehydrates from the server's flush-on-connect).
+                // Live Relay debug-flow: re-seed the live-share roster from this identity's DB FIRST
+                // (it must survive app open/kill until expiry), so the coordinator's reset() below sees
+                // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
+                get<LocationTrackingCoordinator>().reset()
+                // In-memory receive store rehydrates from the server's flush-on-connect.
                 get<LiveLocationReceiveStore>().apply { reset(); start() }
             }
         )
