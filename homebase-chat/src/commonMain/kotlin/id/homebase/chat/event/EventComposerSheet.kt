@@ -259,7 +259,9 @@ private fun EventComposerContent(
     // disabled and the inline error below the end row is shown.
     val timesValid by remember {
         derivedStateOf {
-            !hasEndTime || startDateTime.toInstant(systemTz) < endDateTime.toInstant(systemTz)
+            // LocalDateTime is Comparable; wall-clock ordering is what matters and is
+            // zone-independent, so compare directly instead of round-tripping via a zone.
+            !hasEndTime || startDateTime < endDateTime
         }
     }
     val isValid by remember {
@@ -447,7 +449,15 @@ private fun EventComposerContent(
                         }
                     }
                     TextButton(
-                        onClick = { hasEndTime = !hasEndTime },
+                        // Re-clamp on enable: the start may have moved past the stale
+                        // end while end-time was off, so guarantee end > start the moment
+                        // the row appears (else the user lands straight on the error).
+                        onClick = {
+                            hasEndTime = !hasEndTime
+                            if (hasEndTime) {
+                                endDateTime = clampEndAfterStart(startDateTime, endDateTime, systemTz)
+                            }
+                        },
                         // Negative offset cancels the wider horizontal content
                         // padding, so the label stays left-aligned with the date
                         // above it while the hover/ripple splash reads wider.
