@@ -50,6 +50,7 @@ fun LocationScreen(
     viewModel: LocationViewModel,
     onNavigateToHistory: () -> Unit,
     onNavigateToFindDevice: (Uuid?) -> Unit,
+    onNavigateToLiveMap: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -231,6 +232,7 @@ fun LocationScreen(
                 innerPadding = innerPadding,
                 fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
                 onOpenHistory = onNavigateToHistory,
+                onOpenLiveMap = onNavigateToLiveMap,
                 onOpenDevice = { onNavigateToFindDevice(it) },
                 onOpenSetup = { dashboardOverride = false },
                 onManageEmergencyAccess = {

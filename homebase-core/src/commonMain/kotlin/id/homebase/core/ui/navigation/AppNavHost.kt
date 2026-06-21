@@ -113,6 +113,7 @@ import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
@@ -1277,6 +1278,9 @@ fun AppNavHost(
                                             Route.LocationFindDevice(deviceId?.toString())
                                         )
                                     },
+                                    onNavigateToLiveMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
                                 )
                             }
                         }
@@ -1284,6 +1288,15 @@ fun AppNavHost(
                         composable<Route.LocationHistory> {
                             if (isAuthenticated) {
                                 LocationHistoryScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationLive> {
+                            if (isAuthenticated) {
+                                LiveLocationScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                 )

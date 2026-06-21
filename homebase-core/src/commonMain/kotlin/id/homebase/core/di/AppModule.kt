@@ -158,6 +158,7 @@ import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -729,9 +730,12 @@ val appModule = module {
             contactService = get(),
             credentialsManager = get(),
             tracker = get(),
+            receiveStore = get(),
+            liveShareService = get(),
         )
     }
     viewModelOf(::LocationHistoryViewModel)
+    viewModelOf(::LiveLocationViewModel)
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::ContactBookSettingsViewModel)

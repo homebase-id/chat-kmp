@@ -19,11 +19,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
@@ -51,6 +53,8 @@ import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.location_dashboard_empty_today
 import id.homebase.resources.location_dashboard_history_section
+import id.homebase.resources.location_dashboard_live_open
+import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
 import id.homebase.resources.location_device_no_fix
 import id.homebase.resources.location_device_this_device
@@ -80,6 +84,7 @@ fun LocationDashboardContent(
     innerPadding: PaddingValues,
     fetchTile: suspend (zoom: Int, x: Int, y: Int) -> ByteArray?,
     onOpenHistory: () -> Unit,
+    onOpenLiveMap: () -> Unit,
     onOpenDevice: (Uuid) -> Unit,
     onOpenSetup: () -> Unit,
     onManageEmergencyAccess: () -> Unit,
@@ -117,6 +122,39 @@ fun LocationDashboardContent(
                         text = stringResource(MR.string.location_dashboard_perm_banner),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        }
+
+        // ── Live location sharing (visible when sharing or a recent inbound point exists) → live map ──
+        if (uiState.liveSharingVisible) {
+            Text(
+                text = stringResource(MR.string.location_dashboard_live_section),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLiveMap),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = stringResource(MR.string.location_dashboard_live_open),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
