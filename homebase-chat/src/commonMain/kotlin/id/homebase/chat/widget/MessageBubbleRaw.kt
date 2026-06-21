@@ -28,11 +28,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +94,17 @@ import kotlin.uuid.Uuid
  * layout) — it is never used as an array index or loop bound.
  */
 private const val CollapsedBodyMaxLines = 10
+
+/**
+ * Per-message "Read more" expanded flag, owned ABOVE the LazyColumn (in
+ * `ConversationContent`) and keyed by the message's stable uniqueId. The bubble's own
+ * composition slot is recreated whenever the LazyColumn recomposes (a new message
+ * arrives) or a recycled slot is reused on scroll — a `remember(message.id)` flag held
+ * inside the item is lost on both, so an expanded long body would collapse back to
+ * truncated when a new message arrived. Hoisting the flag here makes it survive that
+ * churn while only the bubbles that read a changed entry recompose (SnapshotStateMap).
+ */
+internal val LocalExpandedMessages = compositionLocalOf<SnapshotStateMap<Uuid, Boolean>?> { null }
 
 /**
  * Core message bubble composable that renders message content with smart layout.
@@ -222,9 +235,17 @@ fun MessageBubbleRaw(
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     // Task F: collapse header-resident long bodies (< 7 KB, hasMore = false) that still
-    // overflow a screenful, on mobile only. Transient (no rememberSaveable) and reset per
-    // message identity so recycled bubbles don't inherit a stale expanded state.
-    var bodyExpanded by remember(message.id) { mutableStateOf(false) }
+    // overflow a screenful, on mobile only. The expanded flag is hoisted above the
+    // LazyColumn (LocalExpandedMessages) and keyed by uniqueId so it survives list
+    // recomposition and scroll recycling — an expanded body stays expanded when a new
+    // message arrives. Falls back to a local per-item flag when no host map is provided
+    // (standalone bubble previews/tests), preserving the old behaviour there.
+    val expandedMessages = LocalExpandedMessages.current
+    var localBodyExpanded by remember(message.id) { mutableStateOf(false) }
+    val bodyExpanded = expandedMessages?.get(message.id) ?: localBodyExpanded
+    fun expandBody() {
+        if (expandedMessages != null) expandedMessages[message.id] = true else localBodyExpanded = true
+    }
     val isMobileDevice = isMobile()
     // Desktop always shows the full body and never an expander.
     val bodyMaxLines = if (isMobileDevice && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
@@ -715,7 +736,7 @@ fun MessageBubbleRaw(
                                         modifier = Modifier
                                             .clickable {
                                                 if (message.hasMore) onShowMoreClick?.invoke()
-                                                bodyExpanded = true
+                                                expandBody()
                                             }
                                             .padding(
                                                 start = 12.dp,
