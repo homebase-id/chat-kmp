@@ -15,3 +15,9 @@ actual fun createInMemoryDatabase(): SqlDriver =
             "If you reached this from a new wasmJs test, run it on JVM / native / Android instead, " +
             "or add a sql.js-based test driver actual to wasmJsTest.",
     )
+
+actual fun createRawInMemoryDriver(): SqlDriver =
+    error(
+        "createRawInMemoryDriver is not supported on wasmJs — no test driver is wired up. " +
+            "Tests using it run on JVM / native / Android and are excluded from the wasmJs job.",
+    )
