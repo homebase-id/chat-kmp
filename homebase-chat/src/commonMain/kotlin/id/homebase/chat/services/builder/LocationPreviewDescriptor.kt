@@ -3,11 +3,12 @@ package id.homebase.chat.services.builder
 import kotlinx.serialization.Serializable
 
 /**
- * Wire-format metadata for a location-share payload. Stored as JSON in
- * `PayloadDescriptor.descriptorContent` for payloads keyed `PAYLOAD_KEY_LOCATION`. The map PNG
- * lives in the encrypted payload bytes; this descriptor only carries the small fields the
- * receiver needs to render the bubble (and the `geo:` deep-link) without first downloading the
- * PNG.
+ * The coordinate metadata for a location message. New messages carry this in the message **header**
+ * (`appData.content`) — location is a typed kind (`MessageContent.Location`), like Event — which makes
+ * it the source of truth and lets a live-share toggle edit it via `updateMessage`. The map PNG lives
+ * in the encrypted `chat_loc` payload bytes; a copy of this JSON is also kept on that payload's
+ * `descriptorContent` (per-payload "image + its own GPS" sidecar) for the "See all → Locations" list
+ * and older clients. The header copy is authoritative; the payload copy is not updated on live-share.
  */
 @Serializable
 data class LocationPreviewDescriptor(
