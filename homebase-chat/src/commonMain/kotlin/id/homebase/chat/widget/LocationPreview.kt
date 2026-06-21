@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
@@ -77,8 +78,9 @@ import kotlin.uuid.Uuid
 private fun LocationPreviewTextContent(
     address: String,
     maxAddressLines: Int = 2,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
-    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them. Muted grey
+    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them. Muted
     // (Event-style) because the address is fixed/auto-generated location metadata, not user content.
     if (address.isNotEmpty()) {
         Text(
@@ -86,7 +88,7 @@ private fun LocationPreviewTextContent(
             style = MaterialTheme.typography.bodyMedium,
             maxLines = maxAddressLines,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = color,
         )
     }
 }
@@ -243,6 +245,8 @@ fun LocationPreviewCard(
     onLongPress: (() -> Unit)? = null,
     /** Live-share side + actions; null only for the pre-send staging preview. */
     liveControls: LiveLocationBubbleControls? = null,
+    /** Bubble foreground color so text/links stay legible on both grey (received) and tinted (sent) bubbles. */
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -302,22 +306,24 @@ fun LocationPreviewCard(
             )
         } else {
             Box(
-                modifier = Modifier.fillMaxWidth().height(100.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                modifier = Modifier.fillMaxWidth().height(100.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
                     contentDescription = stringResource(MR.string.cd_location_pin),
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = contentColor,
                     modifier = Modifier.size(40.dp),
                 )
             }
         }
 
         Column(modifier = Modifier.padding(12.dp)) {
-            // ── Fixed location metadata (muted grey): address, then the share-live affordance ──
-            LocationPreviewTextContent(address = descriptor.address)
+            // ── Fixed location metadata (muted): address, then the share-live affordance ──
+            LocationPreviewTextContent(
+                address = descriptor.address,
+                color = contentColor.copy(alpha = 0.7f),
+            )
             if (liveControls != null) {
                 if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
                 LiveShareActionArea(
@@ -325,15 +331,16 @@ fun LocationPreviewCard(
                     isLive = isLive,
                     isEnded = isEnded,
                     remainingMs = remainingMs,
+                    contentColor = contentColor,
                 )
             }
-            // ── The user's own typed caption, in the regular message text color, below the fixed parts ──
+            // ── The user's own typed caption, in the full bubble text color, below the fixed parts ──
             if (!descriptor.caption.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = descriptor.caption,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = contentColor,
                 )
             }
         }
@@ -352,7 +359,9 @@ private fun LiveShareActionArea(
     isLive: Boolean,
     isEnded: Boolean,
     remainingMs: Long,
+    contentColor: Color,
 ) {
+    val mutedColor = contentColor.copy(alpha = 0.7f)
     Box {
         when {
             isLive -> {
@@ -380,7 +389,7 @@ private fun LiveShareActionArea(
                     Text(
                         text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = mutedColor,
                     )
                 }
             }
@@ -390,12 +399,13 @@ private fun LiveShareActionArea(
                 Text(
                     text = stringResource(MR.string.live_share_ended),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = mutedColor,
                 )
             }
 
             controls.sentByYou -> {
-                // STATIC, my own message: offer to share live.
+                // STATIC, my own message: offer to share live. Uses the bubble's content color so the
+                // link is visible on both the grey (received) and tinted (sent) bubble.
                 var menuExpanded by remember { mutableStateOf(false) }
                 Column {
                     Row(
@@ -405,14 +415,14 @@ private fun LiveShareActionArea(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = contentColor,
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.size(6.dp))
                         Text(
                             text = stringResource(MR.string.share_live_location),
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = contentColor,
                         )
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {

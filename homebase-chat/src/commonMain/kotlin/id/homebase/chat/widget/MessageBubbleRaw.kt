@@ -224,9 +224,12 @@ fun MessageBubbleRaw(
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
                 val pIv = mapPayload?.iv?.let { Base64.decode(it) }
-                val containerColor =
+                val locContainerColor =
                     if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
                     else MaterialTheme.colorScheme.surfaceContainerHigh
+                val locContentColor =
+                    if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                    else MaterialTheme.colorScheme.onSurface
                 LocationPreviewCard(
                     descriptor = d,
                     fileId = message.fileId,
@@ -237,9 +240,10 @@ fun MessageBubbleRaw(
                     modifier = modifier
                         .widthIn(min = 240.dp, max = 320.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(containerColor),
+                        .background(locContainerColor),
                     onLongPress = onLongClick,
                     liveControls = liveControls,
+                    contentColor = locContentColor,
                 )
             }
             return
