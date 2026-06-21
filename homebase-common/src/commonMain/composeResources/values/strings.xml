@@ -726,6 +726,7 @@
     <string name="chat_event_scheduled_in_zone">Scheduled: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
+    <string name="chat_event_error_end_before_start">End time must be after the start time</string>
     <string name="chat_event_title_hint">Add title</string>
     <string name="chat_event_location_hint">Add location</string>
     <string name="chat_event_meeting_url_hint">Add meeting link</string>
