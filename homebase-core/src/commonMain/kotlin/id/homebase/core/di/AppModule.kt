@@ -735,7 +735,17 @@ val appModule = module {
         )
     }
     viewModelOf(::LocationHistoryViewModel)
-    viewModelOf(::LiveLocationViewModel)
+    // Manual block (not viewModelOf): the constructor has a `nowMs: () -> Long` param with a default;
+    // viewModelOf would try to autowire that Function0 from Koin and fail at creation time.
+    viewModel {
+        LiveLocationViewModel(
+            receiveStore = get(),
+            contactService = get(),
+            locationPreferences = get(),
+            pointStore = get(),
+            credentialsManager = get(),
+        )
+    }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::ContactBookSettingsViewModel)

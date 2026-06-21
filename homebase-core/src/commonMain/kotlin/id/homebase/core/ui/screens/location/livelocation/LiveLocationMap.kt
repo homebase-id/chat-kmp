@@ -10,9 +10,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.geometry.Offset
 import id.homebase.api.client.location.WebMercator
 import id.homebase.core.ui.screens.location.map.TiledMapView
+import kotlin.math.cos
+import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * The live-location map: a zoomable OSM basemap ([TiledMapView]) with one avatar dot per [LiveMarker].
@@ -64,7 +68,11 @@ fun LiveLocationMap(
                                 .offset {
                                     val o = project(unit.first, unit.second)
                                     val half = (LiveMarkerSize / 2).toPx()
-                                    IntOffset((o.x - half).roundToInt(), (o.y - half).roundToInt())
+                                    val fan = fanOffset(marker.clusterIndex, marker.clusterSize, half)
+                                    IntOffset(
+                                        (o.x - half + fan.x).roundToInt(),
+                                        (o.y - half + fan.y).roundToInt(),
+                                    )
                                 }
                                 .clearAndSetSemantics { contentDescription = cd },
                         ) {
@@ -75,4 +83,16 @@ fun LiveLocationMap(
             }
         },
     )
+}
+
+/**
+ * Spread for co-located markers: places slot [index] of a group of [size] evenly around a circle of
+ * radius ~[markerHalfPx], so overlapping dots fan out and stay individually visible. No spread for a
+ * lone marker.
+ */
+private fun fanOffset(index: Int, size: Int, markerHalfPx: Float): Offset {
+    if (size <= 1) return Offset.Zero
+    val angle = 2.0 * PI * index / size
+    val radius = markerHalfPx * 1.1f
+    return Offset(radius * cos(angle).toFloat(), radius * sin(angle).toFloat())
 }

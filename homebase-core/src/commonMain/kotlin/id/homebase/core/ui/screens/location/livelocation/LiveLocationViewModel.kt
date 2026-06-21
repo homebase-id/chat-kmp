@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
@@ -18,6 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
 import kotlin.time.Clock
 
 /**
@@ -30,7 +30,6 @@ class LiveLocationViewModel(
     private val receiveStore: LiveLocationReceiveStore,
     private val contactService: ContactService,
     private val locationPreferences: LocationPreferences,
-    private val liveShareService: LiveLocationShareService,
     private val pointStore: LocationPointStore,
     private val credentialsManager: CredentialsManager,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
@@ -53,7 +52,7 @@ class LiveLocationViewModel(
     }
 
     val uiState: StateFlow<LiveLocationUiState> =
-        combine(receiveStore.positions, ownOdinId, ticker) { positions, ownId, _ ->
+        combine(receiveStore.positions, ownOdinId, pointStore.lastPoint, ticker) { positions, ownId, myFix, _ ->
             val now = nowMs()
             val others = positions.values
                 .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
@@ -69,26 +68,50 @@ class LiveLocationViewModel(
                         ageMs = now - lp.receivedAtMs,
                     )
                 }
-            // Include myself when I'm actively sharing and have a fix — a distinct "you" dot.
-            val self = selfMarker(ownId, now)
+            // Always show myself (a distinct "you" dot) whenever this device has a known position —
+            // not only while sharing. Listed first so it stays slot 0 of any co-located cluster.
+            val self = selfMarker(ownId, myFix?.lat, myFix?.lon, myFix?.t, now)
             LiveLocationUiState(
-                markers = listOfNotNull(self) + others,
+                markers = assignClusters(listOfNotNull(self) + others),
                 showMapTiles = locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveLocationUiState())
 
-    private fun selfMarker(ownId: OdinId?, now: Long): LiveMarker? {
-        if (!liveShareService.isActive()) return null
-        val p = pointStore.lastPoint.value ?: return null
+    /**
+     * Tag markers that sit at (near-)identical coordinates so the map can fan them out instead of
+     * stacking them invisibly. Co-location is keyed on lat/lon rounded to ~1.1 m, so this only fires
+     * for genuine overlap (e.g. two people testing from the same spot), not for friends a street
+     * apart. Preserves input order (self stays first).
+     */
+    private fun assignClusters(markers: List<LiveMarker>): List<LiveMarker> {
+        fun key(m: LiveMarker): Pair<Long, Long> =
+            (m.lat * 1e5).roundToLong() to (m.lon * 1e5).roundToLong()
+        val sizes = markers.groupingBy { key(it) }.eachCount()
+        val nextIndex = HashMap<Pair<Long, Long>, Int>()
+        return markers.map { m ->
+            val k = key(m)
+            val idx = nextIndex.getOrElse(k) { 0 }
+            nextIndex[k] = idx + 1
+            m.copy(clusterIndex = idx, clusterSize = sizes[k] ?: 1)
+        }
+    }
+
+    /**
+     * Your own dot — shown whenever this device has a known position ([lat]/[lon] non-null),
+     * regardless of whether you're actively sharing. Returns null when there's no fix (e.g. location
+     * permission not granted, or a viewer device with no GPS), so the map just omits it.
+     */
+    private fun selfMarker(ownId: OdinId?, lat: Double?, lon: Double?, fixTimeMs: Long?, now: Long): LiveMarker? {
+        if (lat == null || lon == null) return null
         val contact = ownId?.let { contactService.resolveByOdinId(it) }
         return LiveMarker(
             key = "self",
-            lat = p.lat,
-            lon = p.lon,
+            lat = lat,
+            lon = lon,
             avatarUrl = contact?.avatarUrl?.ifEmpty { null },
             initials = contact?.avatarInitials?.ifEmpty { null }
                 ?: ownId?.domainName?.initials().orEmpty(),
-            ageMs = now - p.t,
+            ageMs = if (fixTimeMs != null) now - fixTimeMs else 0L,
             isSelf = true,
         )
     }

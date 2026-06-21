@@ -14,6 +14,13 @@ data class LiveMarker(
     /** Age of this position (now − receivedAt) in ms; drives the staleness label. */
     val ageMs: Long,
     val isSelf: Boolean = false,
+    /**
+     * De-overlap fan-out: markers sharing (near-)identical coordinates are spread around a small
+     * circle so each stays visible. [clusterIndex] is this marker's slot in its co-located group of
+     * [clusterSize]; size 1 = no spread.
+     */
+    val clusterIndex: Int = 0,
+    val clusterSize: Int = 1,
 )
 
 data class LiveLocationUiState(
