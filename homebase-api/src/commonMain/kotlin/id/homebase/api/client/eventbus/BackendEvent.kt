@@ -287,4 +287,17 @@ sealed interface BackendEvent {
 
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
+
+    /**
+     * An ephemeral Live Relay blob arrived over the notification websocket (e.g. a live GPS point
+     * from a connected identity). Last-value-wins, nothing durable — if you're offline the data is
+     * just gone. [senderOdinId] is authoritative; [receivedAt] is the server-received time (ms) for
+     * staleness; [blob] is the opaque base64 payload; [channelKey] routes to the right open session.
+     */
+    data class LiveRelayReceived(
+        val senderOdinId: OdinId,
+        val channelKey: String,
+        val blob: String,
+        val receivedAt: Long,
+    ) : BackendEvent
 }
