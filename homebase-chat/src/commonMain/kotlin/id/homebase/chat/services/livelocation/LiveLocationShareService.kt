@@ -13,6 +13,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.location.tracking.LocationPointStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -67,30 +68,72 @@ class LiveLocationShareService(
     fun isActive(): Boolean = hasLiveShare()
 
     /**
-     * Share live location with [recipients] for [durationMs] from now. Appends to the roster (each
-     * share is a distinct entry), so starting a second share never drops the first's recipients.
+     * Share live location with [recipients] until the absolute [endTimeMs] (UTC epoch-ms). Appends to
+     * the roster (each share is a distinct entry), so starting a second share never drops the first's
+     * recipients. The caller MUST pass the SAME absolute end-time it wrote onto the message descriptor
+     * — that `{recipient, end-time}` identity is what lets [stop] later remove exactly this share.
+     *
+     * Immediately relays the current GPS fix (if any) to [recipients] so the server's retained
+     * last-point is fresh from the first second — a recipient opening the map mid-share is hydrated by
+     * the server with that point without waiting for the next OS fix.
      */
-    suspend fun start(recipients: List<OdinId>, durationMs: Long = DEFAULT_DURATION_MS) {
+    suspend fun start(recipients: List<OdinId>, endTimeMs: Long) {
         val now = nowMs()
+        val recipientIds = recipients.map { it.domainName }
         val roster = LiveShareRoster.add(
             current = state.value.recipients,
-            add = recipients.map { it.domainName },
-            endTimeMs = now + durationMs,
+            add = recipientIds,
+            endTimeMs = endTimeMs,
             nowMs = now,
         )
         update(LiveShareState(roster))
         onLiveShareChanged() // coordinator arms GPS for the share
         logger.i {
             "START +${recipients.size} entries=${roster.size} " +
-                "uniqueLive=${LiveShareRoster.liveRecipientIds(roster, now).size} until=${now + durationMs}"
+                "uniqueLive=${LiveShareRoster.liveRecipientIds(roster, now).size} until=$endTimeMs"
         }
+        pushCurrentPointNow(recipientIds)
     }
 
-    /** Stop ALL live sharing now (manual stop). Per-conversation stop is a UX-plan concern. */
-    suspend fun stop() {
+    /**
+     * Stop exactly the share identified by `{[recipients], [endTimeMs]}` — the same absolute end-time
+     * the matching chat bubble stored. Other live shares (to other people, or to the same people with a
+     * different end-time) are left running. No-op if nothing matches.
+     */
+    suspend fun stop(recipients: List<OdinId>, endTimeMs: Long) {
+        val roster = LiveShareRoster.remove(
+            current = state.value.recipients,
+            recipients = recipients.map { it.domainName },
+            endTimeMs = endTimeMs,
+        )
+        update(LiveShareState(roster))
+        onLiveShareChanged() // coordinator stops GPS if nothing else needs it
+        logger.i { "STOP -${recipients.size} until=$endTimeMs entries=${roster.size}" }
+    }
+
+    /** Stop ALL live sharing now. Reserved for logout/reset paths — not the per-bubble stop. */
+    suspend fun stopAll() {
         update(LiveShareState())
         onLiveShareChanged() // coordinator stops GPS if nothing else needs it
-        logger.i { "STOP" }
+        logger.i { "STOP ALL" }
+    }
+
+    /**
+     * Relay the latest GPS fix to [recipientIds] right now, ignoring the throttle window — used on
+     * [start] so the just-added recipients (and the server's retained point) get a position without
+     * waiting for the next OS fix. No-op if no fix is available yet (cold GPS) or the set is empty.
+     */
+    private suspend fun pushCurrentPointNow(recipientIds: List<String>) {
+        if (recipientIds.isEmpty()) return
+        val p = locationPointStore.lastPoint.value ?: return
+        sendLock.withLock {
+            val blob = LiveLocationCodec.encode(
+                LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
+            )
+            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
+                .onFailure { logger.w(it) { "immediate push failed" } }
+            lastSentMs = nowMs()
+        }
     }
 
     /**
@@ -180,9 +223,6 @@ class LiveLocationShareService(
         /** Coalesce cadence — last-value-wins. Only really exercised in the foreground; background
          *  GPS delivery is itself OS-throttled to roughly 1/min. */
         private const val MIN_INTERVAL_MS = 3_000L
-
-        /** Default share window for the debug toggle (no duration UI yet). */
-        private const val DEFAULT_DURATION_MS = 60 * 60 * 1000L // 1 hour
 
         // Location preferences own the 0a03xx namespace; 0a0307 is the next free slot.
         private val STATE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0307")

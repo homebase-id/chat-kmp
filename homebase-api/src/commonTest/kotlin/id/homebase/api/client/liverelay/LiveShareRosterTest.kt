@@ -59,4 +59,26 @@ class LiveShareRosterTest {
         assertEquals(listOf(TimedRecipient("a", 100)), LiveShareRoster.live(roster, nowMs = 75))
         assertTrue(LiveShareRoster.live(roster, nowMs = 200).isEmpty())
     }
+
+    @Test
+    fun remove_dropsOnlyTheMatchingShare() {
+        // Two overlapping shares sharing recipient "b": share1 {a,b}@100, share2 {b,c}@300.
+        val share1 = LiveShareRoster.add(emptyList(), listOf("a", "b"), endTimeMs = 100, nowMs = 0)
+        val roster = LiveShareRoster.add(share1, listOf("b", "c"), endTimeMs = 300, nowMs = 0)
+        // Stop share1 ({a,b}@100): only its entries drop; share2's "b"@300 and "c"@300 stay.
+        val out = LiveShareRoster.remove(roster, recipients = listOf("a", "b"), endTimeMs = 100)
+        assertEquals(listOf(TimedRecipient("b", 300), TimedRecipient("c", 300)), out)
+    }
+
+    @Test
+    fun remove_matchesOnBothRecipientAndEndTime() {
+        val roster = listOf(TimedRecipient("a", 100), TimedRecipient("a", 300))
+        // Right identity, wrong end-time -> no-op; the other "a" entry survives.
+        assertEquals(roster, LiveShareRoster.remove(roster, recipients = listOf("a"), endTimeMs = 200))
+        // Exact {recipient, end-time} match removes just that one.
+        assertEquals(
+            listOf(TimedRecipient("a", 300)),
+            LiveShareRoster.remove(roster, recipients = listOf("a"), endTimeMs = 100),
+        )
+    }
 }
