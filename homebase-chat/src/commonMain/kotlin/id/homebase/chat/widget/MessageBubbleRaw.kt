@@ -683,6 +683,12 @@ fun MessageBubbleRaw(
                                 } else {
                                     // Mirror the conversation-list preview's deleted marker
                                     // (MessageContentLabel: Block icon + the same string).
+                                    // ponytail: safe only because it sits beside the short fixed
+                                    // "deleted" string. The timestamp-tuck Layout below measures
+                                    // lastLineRight from the text's own origin and assumes it starts
+                                    // at textRowPadding; this icon shifts that origin right by ~20dp.
+                                    // If this icon is ever shown next to variable/long body text,
+                                    // add its width to lastLineEnd or the tucked time can overlap.
                                     if (message.isDeleted) {
                                         Icon(
                                             imageVector = Icons.Default.Block,
