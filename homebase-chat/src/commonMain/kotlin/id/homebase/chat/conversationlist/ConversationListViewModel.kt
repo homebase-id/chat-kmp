@@ -146,6 +146,7 @@ class ConversationListViewModel(
     private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
+    private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
 ) : ViewModel() {
 
     companion object {
@@ -840,17 +841,26 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
             }
 
-            // Live share = a header-descriptor edit. Location is a raw-header typed kind, so
-            // updateMessage(content = descriptorJson) sets/clears liveShareUntilMs and syncs to both
-            // sides (sender via optimistic write, receiver via fileModified).
+            // Live share has two linked halves: the synced *declaration* (the message's
+            // liveShareUntilMs header descriptor — Location is a raw-header typed kind, so
+            // updateMessage(content = descriptorJson) sets it and syncs to both sides) AND the local
+            // *relay* roster that actually streams GPS. Both use the SAME absolute end-time so stop can
+            // later remove exactly this share's {recipient, end-time} roster entries.
             is ConversationListUiAction.StartLiveLocationShare -> viewModelScope.launch {
-                updateLocationLiveShare(
-                    action.messageId,
-                    Clock.System.now().toEpochMilliseconds() + action.durationMs,
-                )
+                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
+                liveLocationShareService.start(recipients, untilMs) // local relay → GPS arms + streams
             }
 
             is ConversationListUiAction.StopLiveLocationShare -> viewModelScope.launch {
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                // The share's end-time off the descriptor BEFORE we overwrite it — the key that targets
+                // just this share's roster entries, leaving any other live share running.
+                val untilMs = (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                if (untilMs != null) liveLocationShareService.stop(recipients, untilMs)
                 updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
             }
 

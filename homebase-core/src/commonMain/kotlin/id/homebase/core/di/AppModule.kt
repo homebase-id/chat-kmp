@@ -683,6 +683,7 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
+            liveLocationShareService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
