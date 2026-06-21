@@ -75,19 +75,32 @@ When the user attaches files to the chat, include them in the issue.
 
 - **Images / screenshots / binary files:**
   GitHub's drag-and-drop attachment CDN (`user-attachments`) is **not** reachable
-  from the `gh` CLI, and raw repo URLs do **not** render inline for a private repo.
-  So Claude will:
-  1. Save the attached file into the working tree under
-     `docs/issue-assets/<short-issue-slug>/<filename>`.
-  2. Reference it in the body by repo-relative path, e.g.
-     `See ![screenshot](docs/issue-assets/live-map-crash/crash.png).`
-  3. Tell the user in chat: *"The image is saved at `<path>`. For it to render
-     inline in the issue, drag it into the issue on github.com — GitHub doesn't let
-     the CLI upload to its attachment CDN for a private repo."*
+  from the `gh` CLI. But **`homebase-id/chat-kmp` is a public repo**, so a committed
+  file's `raw.githubusercontent.com` URL **renders inline** in the issue body with no
+  auth. The working method:
 
-  Commit/push of the asset happens **only if the user asks** (per repo norms about
-  not committing without being told). Default is to leave it in the working tree and
-  point at it.
+  1. Copy the attachment into a worktree on a dedicated long-lived **`issue-assets`**
+     branch (keeps `main` and feature branches clean), under
+     `docs/issue-assets/<short-issue-slug>/<filename>`:
+     ```bash
+     # create the branch from main the first time, or check out the existing one
+     git worktree add -B issue-assets /tmp/issue-assets-wt origin/main   # first time
+     # (if it already exists on origin: git worktree add /tmp/issue-assets-wt issue-assets)
+     cp <uploaded-file> /tmp/issue-assets-wt/docs/issue-assets/<slug>/<filename>
+     cd /tmp/issue-assets-wt && git add -A && git commit -m "issue-assets: <slug> ..." && git push -u origin issue-assets
+     git worktree remove /tmp/issue-assets-wt   # clean up; return to the original branch
+     ```
+  2. Embed it in the issue body via the raw URL (verify it returns HTTP 200 with
+     `curl -so /dev/null -w '%{http_code}'` before creating the issue):
+     ```
+     ![description](https://raw.githubusercontent.com/homebase-id/chat-kmp/issue-assets/docs/issue-assets/<slug>/<filename>)
+     ```
+
+  Pushing to the `issue-assets` branch is authorized by the standing "upload any files
+  I attach" instruction — it never touches `main` or the working feature branch. If
+  the repo ever goes private, this stops rendering (raw URLs would then need auth); in
+  that case fall back to telling the user to drag the image into the issue on
+  github.com.
 
 If you're unsure whether an attachment is text or binary, prefer inline embedding for
 anything human-readable.

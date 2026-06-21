@@ -224,12 +224,11 @@ fun MessageBubbleRaw(
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
                 val pIv = mapPayload?.iv?.let { Base64.decode(it) }
-                val locContainerColor =
-                    if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-                    else MaterialTheme.colorScheme.surfaceContainerHigh
-                val locContentColor =
-                    if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-                    else MaterialTheme.colorScheme.onSurface
+                // Match the Event bubble: a neutral card (NOT a blue "sent" bubble) with grey fixed
+                // text + normal-color caption, the same for sender and receiver. Tinting the card blue
+                // for sentByYou put blue text on a blue background in dark theme.
+                val locContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                val locContentColor = MaterialTheme.colorScheme.onSurface
                 LocationPreviewCard(
                     descriptor = d,
                     fileId = message.fileId,
