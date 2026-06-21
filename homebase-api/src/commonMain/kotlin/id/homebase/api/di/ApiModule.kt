@@ -21,6 +21,7 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
@@ -93,6 +94,7 @@ val apiModule = module {
     factory<VideoPrefetchDriveAccess> { get<DriveFileProvider>() }
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
+    factoryOf(::FollowProvider)
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)

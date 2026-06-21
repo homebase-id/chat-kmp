@@ -93,7 +93,10 @@ import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
-import id.homebase.core.ui.screens.feed.FeedScreen
+import id.homebase.core.ui.screens.feed.FeedTimelineScreen
+import id.homebase.core.ui.screens.feed.PostComposeScreen
+import id.homebase.core.ui.screens.feed.PostDetailScreen
+import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
@@ -766,15 +769,50 @@ fun AppNavHost(
 
                         composable<Route.Feed> {
                             if (isAuthenticated) {
-                                FeedScreen(
+                                FeedTimelineScreen(
                                     viewModel = koinViewModel(),
-                                    onNavigateToChat = {
-                                        navController.navigate(Route.ChatList) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                    onNavigateToDetail = {
+                                        navController.navigate(Route.PostDetail(it.toString()))
                                     },
+                                    onNavigateToComposer = {
+                                        navController.navigate(Route.PostCompose)
+                                    },
+                                    onNavigateToFollowing = {
+                                        navController.navigate(Route.Following)
+                                    },
+                                    onAuthorClick = { /* identity/profile nav not yet wired */ },
+                                )
+                            }
+                        }
+
+                        composable<Route.PostDetail> { entry ->
+                            if (isAuthenticated) {
+                                val r = entry.toRoute<Route.PostDetail>()
+                                PostDetailScreen(
+                                    viewModel = koinViewModel(key = "post-detail-" + r.postId) {
+                                        parametersOf(Uuid.parse(r.postId))
+                                    },
+                                    onBack = { navController.popBackStack() },
+                                    onAuthorClick = {},
+                                )
+                            }
+                        }
+
+                        composable<Route.PostCompose> {
+                            if (isAuthenticated) {
+                                PostComposeScreen(
+                                    viewModel = koinViewModel(),
+                                    onClose = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.Following> {
+                            if (isAuthenticated) {
+                                FollowingScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onIdentityClick = {},
                                 )
                             }
                         }

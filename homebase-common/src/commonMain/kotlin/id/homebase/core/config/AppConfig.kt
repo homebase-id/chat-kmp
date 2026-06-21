@@ -92,6 +92,8 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val publicChannelLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -211,8 +213,16 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // profileLabeledDrive here would start additional HTTP polling on every login for
 // content nothing currently reads — wire it in only when a feature actually needs
 // the profile drive synced into the local SQLDelight index.
+// Feed + public-channel drives are mandatory (like Chat) per the native-feed Task 0
+// decision: once mounted, the sync engine drains the transit inbox for free so followed
+// posts land in the local index and FeedTimelineService can stream them.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
+    listOf(
+        chatLabeledDrive,
+        contactLabeledDrive, /*, profileLabeledDrive */
+        feedLabeledDrive,
+        publicChannelLabeledDrive,
+    )
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(

@@ -98,6 +98,15 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.feed.services.ChannelPostQueryService
+import id.homebase.core.feed.services.FeedPostSenderService
+import id.homebase.core.feed.services.FeedTimelineService
+import id.homebase.core.feed.services.PostCommentsService
+import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
+import id.homebase.core.ui.screens.feed.PostComposeViewModel
+import id.homebase.core.ui.screens.feed.PostDetailViewModel
+import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
@@ -205,6 +214,16 @@ val appModule = module {
     singleOf(::MomentCommentsService)
     singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
+
+    // Native Feed services — mirror the Moments service triad. FollowProvider is
+    // registered in ApiModule. CoroutineScope/EventBus/DatabaseManager etc. auto-resolve
+    // as for Moments.
+    singleOf(::FeedTimelineService)
+    singleOf(::ChannelPostQueryService)
+    singleOf(::FeedPostSenderService)
+    singleOf(::PostCommentsService)
+    singleOf(::PostReactionService)
+
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
 
@@ -420,6 +439,11 @@ val appModule = module {
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
+
+                // Native Feed: drop the previous identity's in-memory timeline, then
+                // cold-load + subscribe the FeedDrive + public-channel drive.
+                get<FeedTimelineService>().reset()
+                get<FeedTimelineService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -747,6 +771,21 @@ val appModule = module {
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
+
+    // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
+    viewModelOf(::FeedTimelineViewModel)
+    viewModelOf(::PostComposeViewModel)
+    viewModelOf(::FollowingViewModel)
+    viewModel { params ->
+        PostDetailViewModel(
+            postId = params.get(),
+            timelineService = get(),
+            commentsService = get(),
+            reactionService = get(),
+            senderService = get(),
+            credentialsManager = get(),
+        )
+    }
     viewModel { params ->
         MomentDetailViewModel(
             momentId = params.get(),

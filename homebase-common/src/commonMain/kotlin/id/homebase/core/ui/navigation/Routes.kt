@@ -139,6 +139,18 @@ sealed class Route {
     data object Feed : Route()
 
     @Serializable
+    @SerialName("post_detail")
+    data class PostDetail(val postId: String) : Route()
+
+    @Serializable
+    @SerialName("post_compose")
+    data object PostCompose : Route()
+
+    @Serializable
+    @SerialName("feed_following")
+    data object Following : Route()
+
+    @Serializable
     @SerialName("moments")
     data object Moments : Route()
 

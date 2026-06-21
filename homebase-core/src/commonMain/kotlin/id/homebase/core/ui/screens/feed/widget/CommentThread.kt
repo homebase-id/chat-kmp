@@ -1,0 +1,234 @@
+package id.homebase.core.ui.screens.feed.widget
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.common.OdinId
+import id.homebase.chat.widget.ChatMarkdown
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.feed.services.PostCommentItem
+import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.initials
+import id.homebase.resources.MR
+import id.homebase.resources.delete
+import id.homebase.resources.edit
+import id.homebase.resources.feed_comment_like
+import id.homebase.resources.feed_comment_reply
+import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
+
+/** Default emoji applied by a comment's like affordance. */
+private const val COMMENT_LIKE_EMOJI = "❤️"
+
+/**
+ * Renders [comments] as one-level threads: each top-level comment (`replyToId == null`)
+ * is followed by its replies (`replyToId == comment.id`), indented. A reply button is
+ * only offered on top-level comments — replies cannot themselves be replied to.
+ *
+ * Purely presentational: name resolution is delegated to [displayNameFor]; every action
+ * is a callback. [isMine] decides whether the edit/delete affordances show for a row.
+ *
+ * @param onToggleCommentReaction toggles the given emoji on a comment.
+ * @param onReply starts a reply to a top-level comment.
+ */
+@Composable
+fun CommentThread(
+    comments: List<PostCommentItem>,
+    displayNameFor: (OdinId?) -> String,
+    isMine: (PostCommentItem) -> Boolean,
+    onToggleCommentReaction: (PostCommentItem, String) -> Unit,
+    onReply: (PostCommentItem) -> Unit,
+    onEdit: (PostCommentItem) -> Unit,
+    onDelete: (PostCommentItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val topLevel = comments.filter { it.replyToId == null }
+    val repliesByParent: Map<Uuid, List<PostCommentItem>> =
+        comments.filter { it.replyToId != null }.groupBy { it.replyToId!! }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        topLevel.forEach { comment ->
+            CommentRow(
+                comment = comment,
+                displayName = displayNameFor(comment.originalAuthor ?: comment.senderOdinId),
+                isMine = isMine(comment),
+                canReply = true,
+                onToggleReaction = { emoji -> onToggleCommentReaction(comment, emoji) },
+                onReply = { onReply(comment) },
+                onEdit = { onEdit(comment) },
+                onDelete = { onDelete(comment) },
+            )
+            repliesByParent[comment.id].orEmpty().forEach { reply ->
+                CommentRow(
+                    comment = reply,
+                    displayName = displayNameFor(reply.originalAuthor ?: reply.senderOdinId),
+                    isMine = isMine(reply),
+                    canReply = false,
+                    onToggleReaction = { emoji -> onToggleCommentReaction(reply, emoji) },
+                    onReply = {},
+                    onEdit = { onEdit(reply) },
+                    onDelete = { onDelete(reply) },
+                    modifier = Modifier.padding(start = 40.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentRow(
+    comment: PostCommentItem,
+    displayName: String,
+    isMine: Boolean,
+    canReply: Boolean,
+    onToggleReaction: (String) -> Unit,
+    onReply: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val avatarOdinId = comment.originalAuthor ?: comment.senderOdinId
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        if (avatarOdinId != null) {
+            PublicAvatar(
+                odinId = avatarOdinId,
+                initials = displayName.initials(),
+                options = AvatarOptions(size = 28.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = formatTimestamp(Instant.fromEpochMilliseconds(comment.createdMs)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+
+            if (comment.body.isNotBlank()) {
+                ChatMarkdown(
+                    content = comment.body,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+
+            CommentMedia(comment = comment)
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(onClick = { onToggleReaction(COMMENT_LIKE_EMOJI) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.FavoriteBorder,
+                        contentDescription = stringResource(MR.string.feed_comment_like),
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (canReply) {
+                    TextButton(onClick = onReply) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Reply,
+                            contentDescription = stringResource(MR.string.feed_comment_reply),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(MR.string.feed_comment_reply),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (isMine) {
+                    TextButton(onClick = onEdit) {
+                        Text(
+                            text = stringResource(MR.string.edit),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onDelete) {
+                        Text(
+                            text = stringResource(MR.string.delete),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders a comment's single attached image (the payload whose key matches
+ * [PostCommentItem.mediaPayloadKey]) through the feed-shaped [MomentMediaGallery].
+ * Renders nothing when the comment has no media payload.
+ */
+@Composable
+private fun CommentMedia(comment: PostCommentItem) {
+    val mediaKey = comment.mediaPayloadKey ?: return
+    val mediaPayloads: List<PayloadDescriptor> =
+        comment.payloads.filter { it.key == mediaKey }
+    if (mediaPayloads.isEmpty()) return
+
+    MomentMediaGallery(
+        payloads = mediaPayloads,
+        fileId = comment.fileId,
+        driveId = comment.driveId,
+        previewThumbnail = comment.previewThumbnail,
+        keyHeader = comment.keyHeader,
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(12.dp)),
+        sharedTransitionScope = null,
+        animatedVisibilityScope = null,
+        messageId = comment.id,
+        downloadingFiles = emptySet(),
+    )
+}
