@@ -80,6 +80,8 @@ class StickerCreator(
     private val bgRemovalSupported: () -> Boolean = ::isBackgroundRemovalSupported,
     // removeBackground only — addWhiteOutline caps the working size internally, so no separate downscale here.
     private val cutOut: suspend (ByteArray) -> ByteArray? = { removeBackground(it) },
+    // Crop the full-frame mask to its subject BEFORE outline/512-resize, so the subject fills the frame.
+    private val cropToSubject: suspend (ByteArray) -> ByteArray = { StickerImageProcessor.cropToSubject(it) },
     private val addOutline: suspend (ByteArray) -> ByteArray = { StickerImageProcessor.addWhiteOutline(it) },
     private val normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { bytes, contentType ->
         withContext(Dispatchers.Default) {
@@ -111,7 +113,7 @@ class StickerCreator(
             val outlined: ByteArray? = withContext(workDispatcher) {
                 when {
                     isTransparent(bytes) -> addOutline(bytes)
-                    bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(it) }
+                    bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(cropToSubject(it)) }
                     else -> null
                 }
             }
