@@ -78,15 +78,15 @@ private fun LocationPreviewTextContent(
     address: String,
     maxAddressLines: Int = 2,
 ) {
-    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them.
+    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them. Muted grey
+    // (Event-style) because the address is fixed/auto-generated location metadata, not user content.
     if (address.isNotEmpty()) {
         Text(
             text = address,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium,
             maxLines = maxAddressLines,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -316,24 +316,24 @@ fun LocationPreviewCard(
         }
 
         Column(modifier = Modifier.padding(12.dp)) {
+            // ── Fixed location metadata (muted grey): address, then the share-live affordance ──
             LocationPreviewTextContent(address = descriptor.address)
-            // The user's typed caption (if any), below the address.
-            if (!descriptor.caption.isNullOrBlank()) {
-                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = descriptor.caption,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            // Share-live action is the LAST line of the caption.
             if (liveControls != null) {
-                Spacer(modifier = Modifier.height(6.dp))
+                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
                 LiveShareActionArea(
                     controls = liveControls,
                     isLive = isLive,
                     isEnded = isEnded,
                     remainingMs = remainingMs,
+                )
+            }
+            // ── The user's own typed caption, in the regular message text color, below the fixed parts ──
+            if (!descriptor.caption.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = descriptor.caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -380,7 +380,7 @@ private fun LiveShareActionArea(
                     Text(
                         text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
