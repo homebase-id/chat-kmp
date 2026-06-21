@@ -2,10 +2,8 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -18,7 +16,7 @@ import kotlin.test.assertTrue
  * no such column: fileState
  * ```
  *
- * Cause (platform-agnostic): `DatabaseManager.init {}` runs
+ * Cause (platform-agnostic): `DatabaseManager`'s `init {}` block runs
  * `OdinDatabase.Schema.create(driver)` *before* the `-- Version:` comment check
  * that would otherwise `wipeAndRecreate()` a stale database. `fileState` was added
  * to DriveMainIndex (schema v4→5) and a *new* covering index `idx_unread_cover`
@@ -28,64 +26,78 @@ import kotlin.test.assertTrue
  *     throws `no such column: fileState`. The index is *new*, so `IF NOT EXISTS`
  *     does not short-circuit it — it evaluates its column list against the stale table.
  *
+ * The crash is in the **constructor's `init` block**, which runs *before* the
+ * companion `initialize()`'s version check — so the wipe net never fires.
+ *
  * These tests run on every disk-backed target (JVM, Android host, **iOS** via
  * `nativeTest`/`iosSimulatorArm64Test`), pinning the root cause where the users
  * actually hit it. wasmJs is excluded (no SQLDelight test driver) in build.gradle.kts.
- *
- * [staleSchemaThrowsOnNewFileStateIndex] characterizes the crash; [dropBeforeCreateRecoversCleanly]
- * proves the intended `wipeAndRecreate()` mechanism (DROP every table, then create)
- * is sound — i.e. the defect is purely the create-before-version-check ordering.
  */
 class DriveMainIndexCreateOrderTest {
 
-    private val driver: SqlDriver = createRawInMemoryDriver()
-
-    @AfterTest
-    fun tearDown() {
-        driver.close()
-    }
-
+    /**
+     * Drives the **production open path**: `DatabaseManager({ driver })` is the exact
+     * constructor `DatabaseManager.initialize()` (and the existing OutboxTest /
+     * LocationPointWrapperTest) use. Opening it over a pre-`fileState` DriveMainIndex
+     * must yield a usable, current-schema database.
+     *
+     * RED until the create/version-check ordering is fixed: today the `init {}`
+     * block's `Schema.create()` throws `no such column: fileState` on the stale table
+     * before the version check can wipe it, so the constructor — and the app launch —
+     * crashes. This is the regression that reproduces on the iOS toolchain in CI.
+     */
     @Test
-    fun staleSchemaThrowsOnNewFileStateIndex() {
-        stageOldDriveMainIndex(driver)
+    fun databaseManagerOpensOverStaleSchema() {
+        val raw = createRawInMemoryDriver()
+        stageOldDriveMainIndex(raw)
 
-        // Reproduce the production launch path: apply the current schema over the
-        // pre-fileState DriveMainIndex. The new idx_unread_cover is the only new
-        // index over fileState (the old Idx*/idx_chatmessage names already exist,
-        // so their `IF NOT EXISTS` creates are no-ops and never re-check columns).
-        val error = assertFailsWith<Throwable> {
-            OdinDatabase.Schema.create(driver)
+        // Constructor runs the production init path. Must not crash; the DB must come
+        // up on the current v5 schema (fileState present), via wipe-and-recreate.
+        DatabaseManager({ raw }).use { dbm ->
+            val columns = queryStrings(
+                dbm.driver,
+                "PRAGMA table_info(DriveMainIndex)",
+                column = 1,
+            )
+            assertTrue(
+                columns.contains("fileState"),
+                "Opened DriveMainIndex should carry fileState (v5 schema), has: $columns",
+            )
+            val indexes = queryStrings(
+                dbm.driver,
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+                column = 0,
+            )
+            assertTrue(
+                indexes.contains("idx_unread_cover"),
+                "Opened schema should include idx_unread_cover, has: $indexes",
+            )
         }
-        val message = error.message ?: ""
-        assertTrue(
-            message.contains("no such column", ignoreCase = true) &&
-                message.contains("fileState"),
-            "Expected a 'no such column: fileState' compile error, got: $message",
-        )
     }
 
+    /**
+     * The intended recovery is sound: doing what `wipeAndRecreate()` does — DROP every
+     * table, THEN create — turns a stale pre-`fileState` DriveMainIndex into the clean
+     * v5 schema. Confirms the defect is purely the create-before-version-check ordering,
+     * not the schema or the wipe routine itself. Passes today.
+     */
     @Test
     fun dropBeforeCreateRecoversCleanly() {
-        stageOldDriveMainIndex(driver)
+        val raw = createRawInMemoryDriver()
+        stageOldDriveMainIndex(raw)
 
-        // What wipeAndRecreate() does: DROP every table first, THEN create. The DROP
-        // removes the stale DriveMainIndex (and its indexes) so the fresh CREATE TABLE
-        // builds the v5 shape with fileState before any index references it.
         DatabaseManager.TABLE_NAMES.forEach { table ->
-            driver.execute(null, "DROP TABLE IF EXISTS $table", 0)
+            raw.execute(null, "DROP TABLE IF EXISTS $table", 0)
         }
+        OdinDatabase.Schema.create(raw) // must not throw
 
-        // Must not throw.
-        OdinDatabase.Schema.create(driver)
-
-        val columns = queryStrings(driver, "PRAGMA table_info(DriveMainIndex)", column = 1)
+        val columns = queryStrings(raw, "PRAGMA table_info(DriveMainIndex)", column = 1)
         assertTrue(
             columns.contains("fileState"),
             "Recreated DriveMainIndex should carry fileState, has: $columns",
         )
-
         val indexes = queryStrings(
-            driver,
+            raw,
             "SELECT name FROM sqlite_master WHERE type = 'index'",
             column = 0,
         )
@@ -93,9 +105,9 @@ class DriveMainIndexCreateOrderTest {
             indexes.contains("idx_unread_cover"),
             "Recreated schema should include idx_unread_cover, has: $indexes",
         )
-        // Sanity: a fresh recreate leaves no rows behind.
-        val rowCount = queryStrings(driver, "SELECT COUNT(*) FROM DriveMainIndex", column = 0)
+        val rowCount = queryStrings(raw, "SELECT COUNT(*) FROM DriveMainIndex", column = 0)
         assertEquals(listOf("0"), rowCount, "Recreated DriveMainIndex should be empty")
+        raw.close()
     }
 
     /**
