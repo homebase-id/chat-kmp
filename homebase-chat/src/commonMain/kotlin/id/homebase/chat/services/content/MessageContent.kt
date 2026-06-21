@@ -139,8 +139,10 @@ sealed interface MessageContent {
             allowInlineReactions = true,
             allowReactionDetails = true,
         )
-        override val displayLabel: String get() = descriptor?.address?.ifBlank { UNPARSEABLE_LOCATION_LABEL }
-            ?: UNPARSEABLE_LOCATION_LABEL
+        override val displayLabel: String get() =
+            descriptor?.caption?.ifBlank { null }
+                ?: descriptor?.address?.ifBlank { null }
+                ?: UNPARSEABLE_LOCATION_LABEL
     }
 
     /**

@@ -26,4 +26,10 @@ data class LocationPreviewDescriptor(
      * older clients.
      */
     val liveShareUntilMs: Long? = null,
+    /**
+     * The user's optional caption typed alongside the location. Lives in the descriptor (like Event's
+     * title/description) because a typed location message has no separate text body. Preserved across
+     * live-share edits.
+     */
+    val caption: String? = null,
 )

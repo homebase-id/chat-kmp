@@ -317,9 +317,18 @@ fun LocationPreviewCard(
 
         Column(modifier = Modifier.padding(12.dp)) {
             LocationPreviewTextContent(address = descriptor.address)
+            // The user's typed caption (if any), below the address.
+            if (!descriptor.caption.isNullOrBlank()) {
+                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = descriptor.caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             // Share-live action is the LAST line of the caption.
             if (liveControls != null) {
-                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 LiveShareActionArea(
                     controls = liveControls,
                     isLive = isLive,

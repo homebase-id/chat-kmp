@@ -1028,11 +1028,14 @@ internal class MessageActionsHandler(
                 val locationPreview =
                     payloadRenderers.filterIsInstance<LocationPreviewRenderer>().firstOrNull()?.preview
                 if (locationPreview != null && payloadRenderers.size == 1) {
+                    // Carry the user's typed caption in the descriptor (a typed message has no separate
+                    // text body); cap it so the header descriptor stays well under the 7 KB budget.
+                    val caption = content.trim().ifBlank { null }?.truncateToCodePoints(2000)
                     chatMessageSenderService.sendNewTypedMessage(
                         messageUniqueId = newMessageId,
                         conversationId = conversationId,
                         content = MessageContent.Location(
-                            LocationPreviewPayloadBuilder.descriptorFor(locationPreview)
+                            LocationPreviewPayloadBuilder.descriptorFor(locationPreview).copy(caption = caption)
                         ),
                         previousMessageUniqueId = null,
                         payloadBundle = payloadBundle,
