@@ -78,16 +78,18 @@ class FeedTimelineViewModel(
         }
     }
 
-    /** Pull-to-refresh: re-run the service's cold-load. */
+    /**
+     * Pull-to-refresh: re-run the service's cold-load via [FeedTimelineService.refresh],
+     * which re-queries both source drives and re-emits the timeline. The spinner stays up
+     * for the whole round-trip — [isRefreshing] is held true until `refresh()` returns and
+     * cleared in `finally` so a failure (or the timeline re-emit clearing it early) can't
+     * strand the indicator on or spin it forever.
+     */
     fun refresh() {
         _uiState.update { it.copy(isRefreshing = true) }
         viewModelScope.launch {
             try {
-                // reset() + a fresh subscription cycle is heavy; the service re-cold-loads on
-                // its own DriveEvent.Stopped path. Here we just nudge loadMore (no-op in v1)
-                // and let the live timeline flow settle isRefreshing back to false on its next
-                // emission. Guarded so a stuck refresh can't spin forever.
-                timelineService.loadMore()
+                timelineService.refresh()
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "refresh failed: ${t.message}" }
             } finally {

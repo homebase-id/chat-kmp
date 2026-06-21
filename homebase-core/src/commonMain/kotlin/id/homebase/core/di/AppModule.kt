@@ -440,9 +440,10 @@ val appModule = module {
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
 
-                // Native Feed: drop the previous identity's in-memory timeline, then
-                // cold-load + subscribe the FeedDrive + public-channel drive.
+                // Native Feed: drop the previous identity's in-memory timeline + comments,
+                // then cold-load + subscribe the FeedDrive + public-channel drive.
                 get<FeedTimelineService>().reset()
+                get<PostCommentsService>().reset()
                 get<FeedTimelineService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations

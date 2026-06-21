@@ -14,9 +14,14 @@ import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,10 +37,12 @@ import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.delete
 import id.homebase.resources.edit
 import id.homebase.resources.feed_comment_like
 import id.homebase.resources.feed_comment_reply
+import id.homebase.resources.save
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -53,6 +60,8 @@ private const val COMMENT_LIKE_EMOJI = "❤️"
  *
  * @param onToggleCommentReaction toggles the given emoji on a comment.
  * @param onReply starts a reply to a top-level comment.
+ * @param onEdit commits an edited body for a comment. The widget owns the inline edit
+ *   field (prefilled with the current body) and only invokes this on Save.
  */
 @Composable
 fun CommentThread(
@@ -61,13 +70,17 @@ fun CommentThread(
     isMine: (PostCommentItem) -> Boolean,
     onToggleCommentReaction: (PostCommentItem, String) -> Unit,
     onReply: (PostCommentItem) -> Unit,
-    onEdit: (PostCommentItem) -> Unit,
+    onEdit: (PostCommentItem, String) -> Unit,
     onDelete: (PostCommentItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val topLevel = comments.filter { it.replyToId == null }
     val repliesByParent: Map<Uuid, List<PostCommentItem>> =
         comments.filter { it.replyToId != null }.groupBy { it.replyToId!! }
+
+    // Which comment (if any) is in inline-edit mode. Owned here so the field's draft
+    // and Save/Cancel are local UI state — the VM only hears about the final body.
+    var editingId by remember { mutableStateOf<Uuid?>(null) }
 
     Column(modifier = modifier.fillMaxWidth()) {
         topLevel.forEach { comment ->
@@ -76,9 +89,15 @@ fun CommentThread(
                 displayName = displayNameFor(comment.originalAuthor ?: comment.senderOdinId),
                 isMine = isMine(comment),
                 canReply = true,
+                isEditing = editingId == comment.id,
                 onToggleReaction = { emoji -> onToggleCommentReaction(comment, emoji) },
                 onReply = { onReply(comment) },
-                onEdit = { onEdit(comment) },
+                onStartEdit = { editingId = comment.id },
+                onSaveEdit = { newBody ->
+                    editingId = null
+                    onEdit(comment, newBody)
+                },
+                onCancelEdit = { editingId = null },
                 onDelete = { onDelete(comment) },
             )
             repliesByParent[comment.id].orEmpty().forEach { reply ->
@@ -87,9 +106,15 @@ fun CommentThread(
                     displayName = displayNameFor(reply.originalAuthor ?: reply.senderOdinId),
                     isMine = isMine(reply),
                     canReply = false,
+                    isEditing = editingId == reply.id,
                     onToggleReaction = { emoji -> onToggleCommentReaction(reply, emoji) },
                     onReply = {},
-                    onEdit = { onEdit(reply) },
+                    onStartEdit = { editingId = reply.id },
+                    onSaveEdit = { newBody ->
+                        editingId = null
+                        onEdit(reply, newBody)
+                    },
+                    onCancelEdit = { editingId = null },
                     onDelete = { onDelete(reply) },
                     modifier = Modifier.padding(start = 40.dp),
                 )
@@ -104,9 +129,12 @@ private fun CommentRow(
     displayName: String,
     isMine: Boolean,
     canReply: Boolean,
+    isEditing: Boolean,
     onToggleReaction: (String) -> Unit,
     onReply: () -> Unit,
-    onEdit: () -> Unit,
+    onStartEdit: () -> Unit,
+    onSaveEdit: (String) -> Unit,
+    onCancelEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -145,59 +173,96 @@ private fun CommentRow(
                 )
             }
 
-            if (comment.body.isNotBlank()) {
-                ChatMarkdown(
-                    content = comment.body,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 2.dp),
+            if (isEditing) {
+                // Inline edit — replaces the rendered body + action row until Save/Cancel.
+                // Prefilled with the current body; preserved across recomposition by
+                // keying the draft state on the comment id. No truncation — the body is
+                // user text.
+                var draft by remember(comment.id) { mutableStateOf(comment.body) }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
                 )
-            }
-
-            CommentMedia(comment = comment)
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                TextButton(onClick = { onToggleReaction(COMMENT_LIKE_EMOJI) }) {
-                    Icon(
-                        imageVector = Icons.Outlined.FavoriteBorder,
-                        contentDescription = stringResource(MR.string.feed_comment_like),
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onCancelEdit) {
+                        Text(
+                            text = stringResource(MR.string.cancel),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        onClick = { onSaveEdit(draft) },
+                        enabled = draft.isNotBlank(),
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.save),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            } else {
+                if (comment.body.isNotBlank()) {
+                    ChatMarkdown(
+                        content = comment.body,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                if (canReply) {
-                    TextButton(onClick = onReply) {
+
+                CommentMedia(comment = comment)
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = { onToggleReaction(COMMENT_LIKE_EMOJI) }) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.Reply,
-                            contentDescription = stringResource(MR.string.feed_comment_reply),
+                            imageVector = Icons.Outlined.FavoriteBorder,
+                            contentDescription = stringResource(MR.string.feed_comment_like),
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = stringResource(MR.string.feed_comment_reply),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
-                }
-                if (isMine) {
-                    TextButton(onClick = onEdit) {
-                        Text(
-                            text = stringResource(MR.string.edit),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    if (canReply) {
+                        TextButton(onClick = onReply) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Reply,
+                                contentDescription = stringResource(MR.string.feed_comment_reply),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(MR.string.feed_comment_reply),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    TextButton(onClick = onDelete) {
-                        Text(
-                            text = stringResource(MR.string.delete),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                    if (isMine) {
+                        TextButton(onClick = onStartEdit) {
+                            Text(
+                                text = stringResource(MR.string.edit),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = onDelete) {
+                            Text(
+                                text = stringResource(MR.string.delete),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }

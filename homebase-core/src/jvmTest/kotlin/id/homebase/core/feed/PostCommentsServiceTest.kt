@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -13,6 +14,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.PostCommentContent
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
@@ -23,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -61,7 +64,7 @@ class PostCommentsServiceTest {
     )
 
     /** Write a post row locally so the comment service can resolve the post's drive/audience. */
-    private suspend fun seedPost(postId: Uuid) {
+    private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
         val content = OdinSystemSerializer.serialize(
             PostContent(
                 version = FeedProtocol.PostVersion,
@@ -77,10 +80,33 @@ class PostCommentsServiceTest {
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             unecryptedMetadata = UploadFileMetadata(
                 allowDistribution = true,
-                isEncrypted = false,
+                isEncrypted = encrypted,
                 appData = UploadAppFileMetaData(
                     uniqueId = postId,
                     fileType = FeedProtocol.PostFileType,
+                    content = content,
+                ),
+            ),
+            originalRecipientCount = 0,
+            fileSystemType = FileSystemType.Standard,
+        )
+    }
+
+    /** Write a comment row locally (fileType 801) with the given groupId, for cold-load tests. */
+    private suspend fun seedComment(commentId: Uuid, groupId: Uuid, body: String) {
+        val content = OdinSystemSerializer.serialize(
+            PostCommentContent(version = FeedProtocol.CommentVersion, body = body)
+        )
+        env.optimisticWriter.writeNewFile(
+            driveId = channelDrive,
+            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+            unecryptedMetadata = UploadFileMetadata(
+                allowDistribution = false,
+                isEncrypted = false,
+                appData = UploadAppFileMetaData(
+                    uniqueId = commentId,
+                    groupId = groupId,
+                    fileType = FeedProtocol.CommentFileType,
                     content = content,
                 ),
             ),
@@ -138,6 +164,71 @@ class PostCommentsServiceTest {
             "a reply's groupId is its parent comment id (one-level threading)",
         )
     }
+
+    @Test
+    fun coldLoad_postWithNoComments_doesNotLeakOtherPostsComments() = runFeedTest {
+        // The post under view has ZERO comments...
+        val postId = Uuid.random()
+        seedPost(postId)
+
+        // ...but an UNRELATED post on the same drive has a top-level comment. The old reply pass
+        // queried with an empty groupId set when the host post had no top-level comments, which
+        // QueryBatch turns into "every comment on the drive" — leaking this decoy across posts.
+        val decoyPostId = Uuid.random()
+        seedPost(decoyPostId)
+        seedComment(Uuid.random(), groupId = decoyPostId, body = "comment on the OTHER post")
+        advanceUntilIdle()
+
+        val comments = service().commentsFor(postId)
+        advanceUntilIdle()
+
+        assertEquals(
+            emptyList(), comments.value,
+            "a post with no comments must not surface another post's comments (cross-post leak)",
+        )
+    }
+
+    @Test
+    fun postComment_onUnencryptedPost_isUnencryptedAnonymous_onEncryptedPost_isEncrypted() =
+        runFeedTest {
+            // Public (unencrypted) post → comment must be unencrypted + Anonymous ACL.
+            val publicPostId = Uuid.random()
+            seedPost(publicPostId, encrypted = false)
+            val publicCommentId = Uuid.random()
+            service().postComment(
+                postId = publicPostId,
+                body = "public comment",
+                commentUniqueId = publicCommentId,
+            )
+
+            // Encrypted post → comment must be encrypted.
+            val privatePostId = Uuid.random()
+            seedPost(privatePostId, encrypted = true)
+            val privateCommentId = Uuid.random()
+            service().postComment(
+                postId = privatePostId,
+                body = "private comment",
+                commentUniqueId = privateCommentId,
+            )
+            advanceUntilIdle()
+
+            val publicReq = readRequest(channelDrive, publicCommentId)
+            assertFalse(
+                publicReq.metadata.isEncrypted,
+                "a comment on an unencrypted (public) post must be unencrypted",
+            )
+            assertEquals(
+                SecurityGroupType.Anonymous.value,
+                publicReq.metadata.accessControlList?.requiredSecurityGroup,
+                "a comment on a public post must carry an Anonymous ACL",
+            )
+
+            val privateReq = readRequest(channelDrive, privateCommentId)
+            assertTrue(
+                privateReq.metadata.isEncrypted,
+                "a comment on an encrypted post must be encrypted",
+            )
+        }
 
     private suspend fun readRequest(driveId: Uuid, uniqueId: Uuid): UploadFileRequest {
         val row: Outbox = env.outboxRow(driveId, uniqueId) ?: error("no outbox row for $uniqueId")

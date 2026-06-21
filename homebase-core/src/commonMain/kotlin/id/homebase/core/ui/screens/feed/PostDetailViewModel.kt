@@ -12,6 +12,7 @@ import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.widget.ReactionDisplayItem
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -54,6 +55,13 @@ class PostDetailViewModel(
     private val _selfOdinId = MutableStateFlow<OdinId?>(null)
     private val _replyingTo = MutableStateFlow<PostCommentItem?>(null)
 
+    /**
+     * Reactor roster for the "who reacted" sheet. `list == null` means the sheet is
+     * closed; a non-null list (possibly empty) means it's open. [ReactorsState.loading]
+     * covers the in-flight [PostReactionService.listReactors] fetch before the list lands.
+     */
+    private val _reactors = MutableStateFlow(ReactorsState())
+
     private val _events = MutableSharedFlow<PostDetailEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<PostDetailEvent> = _events.asSharedFlow()
 
@@ -71,15 +79,21 @@ class PostDetailViewModel(
         }
     }
 
+    // Fold self-identity and the reactor-sheet state into one upstream so the main
+    // combine stays at the typed 5-arg overload.
+    private val _selfAndReactors = combine(_selfOdinId, _reactors) { self, reactors ->
+        self to reactors
+    }
+
     val uiState: StateFlow<PostDetailUiState> = combine(
         timelineService.timeline
             .onEach { _timelineEmitted.value = true }
             .map { feed -> feed.firstOrNull { it.id == postId } },
         commentsService.commentsFor(postId),
         _replyingTo,
-        _selfOdinId,
+        _selfAndReactors,
         _timelineEmitted,
-    ) { post, comments, replyingTo, self, timelineEmitted ->
+    ) { post, comments, replyingTo, (self, reactors), timelineEmitted ->
         PostDetailUiState(
             post = post,
             comments = comments,
@@ -90,6 +104,8 @@ class PostDetailViewModel(
             isLoading = !timelineEmitted && post == null,
             replyingTo = replyingTo,
             selfOdinId = self,
+            reactorsSheet = reactors.list,
+            isReactorsLoading = reactors.loading,
             errorMessage = null,
         )
     }.stateIn(
@@ -192,6 +208,41 @@ class PostDetailViewModel(
         }
     }
 
+    /**
+     * Open the "who reacted" sheet for the post and fetch its reactor roster. Opens with
+     * an empty list + loading flag so the sheet appears immediately, then fills in once
+     * [PostReactionService.listReactors] returns. The detail screen has no contact lookup,
+     * so the reactor's domain is both the id and the display name (the sheet's avatar is
+     * derived from the id).
+     */
+    fun showReactors() {
+        val post = uiState.value.post ?: return
+        _reactors.value = ReactorsState(list = emptyList(), loading = true)
+        viewModelScope.launch {
+            try {
+                val reactors = reactionService.listReactors(post, null).map {
+                    ReactionDisplayItem(
+                        odinId = it.odinId.domainName,
+                        displayName = it.odinId.domainName,
+                        emoji = it.emoji,
+                    )
+                }
+                // Drop if the user dismissed the sheet while the fetch was in flight.
+                if (_reactors.value.list != null) {
+                    _reactors.value = ReactorsState(list = reactors, loading = false)
+                }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "showReactors failed: ${e.message}" }
+                _reactors.value = ReactorsState()
+                _events.tryEmit(PostDetailEvent.ShowSnackbar(e.message))
+            }
+        }
+    }
+
+    fun dismissReactors() {
+        _reactors.value = ReactorsState()
+    }
+
     // -------------------- POST --------------------
 
     /**
@@ -220,6 +271,15 @@ class PostDetailViewModel(
         _events.tryEmit(PostDetailEvent.NavigateToAuthor(author))
     }
 }
+
+/**
+ * Reactor-sheet state: [list] null == sheet closed, non-null (possibly empty) == open.
+ * [loading] is the in-flight fetch flag while the roster is being loaded.
+ */
+private data class ReactorsState(
+    val list: List<ReactionDisplayItem>? = null,
+    val loading: Boolean = false,
+)
 
 /** One-time navigation / snackbar events for the post detail screen. */
 sealed interface PostDetailEvent {

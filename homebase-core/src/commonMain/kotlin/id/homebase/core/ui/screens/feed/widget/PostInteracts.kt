@@ -4,10 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Comment
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -81,7 +81,29 @@ fun PostInteracts(
                     onReactionClick = onShowReactors,
                 )
             }
-            AddReactionChip(onClick = { showQuickMenu = !showQuickMenu })
+            // Anchor the quick-reaction menu in a DropdownMenu over the chip so it
+            // floats over content (mirrors MomentDetail's AssistChip + DropdownMenu
+            // shape) instead of an inline Box that pushes the card down on toggle.
+            Box {
+                AddReactionChip(onClick = { showQuickMenu = !showQuickMenu })
+                DropdownMenu(
+                    expanded = showQuickMenu,
+                    onDismissRequest = { showQuickMenu = false },
+                ) {
+                    ReactionMenu(
+                        userDefaultReactions = QUICK_REACTIONS,
+                        ownReactions = ownImmutable,
+                        onSelect = { emoji ->
+                            showQuickMenu = false
+                            onToggleReaction(emoji)
+                        },
+                        onShowAllEmojis = {
+                            showQuickMenu = false
+                            showFullPicker = true
+                        },
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -102,23 +124,6 @@ fun PostInteracts(
                     )
                 }
             }
-        }
-    }
-
-    if (canReact && showQuickMenu) {
-        Box(modifier = Modifier.padding(top = 4.dp)) {
-            ReactionMenu(
-                userDefaultReactions = QUICK_REACTIONS,
-                ownReactions = ownImmutable,
-                onSelect = { emoji ->
-                    showQuickMenu = false
-                    onToggleReaction(emoji)
-                },
-                onShowAllEmojis = {
-                    showQuickMenu = false
-                    showFullPicker = true
-                },
-            )
         }
     }
 

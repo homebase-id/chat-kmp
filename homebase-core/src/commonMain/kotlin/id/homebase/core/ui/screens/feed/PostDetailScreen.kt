@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -45,12 +44,12 @@ import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.ui.screens.feed.widget.CommentComposer
 import id.homebase.core.ui.screens.feed.widget.CommentThread
 import id.homebase.core.ui.screens.feed.widget.PostCard
+import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.resources.MR
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_detail_delete
 import id.homebase.resources.feed_post_detail_more_actions
 import id.homebase.resources.feed_post_detail_not_found
-import id.homebase.resources.feed_post_detail_report
 import id.homebase.resources.feed_post_detail_title
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
@@ -109,7 +108,13 @@ fun PostDetailScreen(
                     }
                 },
                 actions = {
-                    if (post != null) {
+                    // Delete is the only overflow action, and it's owner-only — so the
+                    // whole menu only shows on the user's own post. Ownership mirrors the
+                    // comment idiom below: prefer originalAuthor (survives the server
+                    // stripping senderOdinId on the author's own copy), then senderOdinId.
+                    val isMyPost = post != null && uiState.selfOdinId != null &&
+                        (post.originalAuthor ?: post.senderOdinId) == uiState.selfOdinId
+                    if (isMyPost) {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
@@ -133,19 +138,6 @@ fun PostDetailScreen(
                                 onClick = {
                                     menuOpen = false
                                     viewModel.deletePost()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(MR.string.feed_post_detail_report)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Flag,
-                                        contentDescription = null,
-                                    )
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    viewModel.navigateToAuthor()
                                 },
                             )
                         }
@@ -198,7 +190,7 @@ fun PostDetailScreen(
                                 onMediaClick = {},
                                 onToggleReaction = viewModel::togglePostReaction,
                                 onOpenComments = {},
-                                onShowReactors = {},
+                                onShowReactors = viewModel::showReactors,
                             )
 
                             if (canComment) {
@@ -215,13 +207,9 @@ fun PostDetailScreen(
                                     },
                                     onToggleCommentReaction = viewModel::toggleCommentReaction,
                                     onReply = viewModel::startReply,
-                                    // CommentThread's onEdit only carries the comment, not
-                                    // the new body. The widget owns the inline edit field;
-                                    // when it surfaces the edited text, route it to
-                                    // viewModel.editComment(comment, newBody). Until that
-                                    // callback exists, this is intentionally a no-op rather
-                                    // than re-uploading the unchanged body.
-                                    onEdit = { },
+                                    onEdit = { comment, newBody ->
+                                        viewModel.editComment(comment, newBody)
+                                    },
                                     onDelete = viewModel::deleteComment,
                                 )
                             } else {
@@ -262,5 +250,20 @@ fun PostDetailScreen(
                 }
             }
         }
+    }
+
+    // "Who reacted" sheet for the post — opened from the PostCard's reaction pill.
+    // Non-null reactor list == sheet visible; dismiss clears it back to null. The
+    // detail screen has no contact-lookup dependency, so names fall back to the
+    // reactor's domain (PublicAvatar inside the sheet derives the avatar from the
+    // odinId).
+    uiState.reactorsSheet?.let { reactors ->
+        ReactionsBottomSheet(
+            reactions = reactors,
+            isLoading = uiState.isReactorsLoading,
+            ownerOdinId = uiState.selfOdinId?.domainName,
+            onContactClick = { onAuthorClick(OdinId(it)) },
+            onDismiss = viewModel::dismissReactors,
+        )
     }
 }

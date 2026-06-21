@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.feed
 import id.homebase.api.common.OdinId
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostCommentItem
+import id.homebase.core.widget.ReactionDisplayItem
 
 /**
  * Flat state for the post-detail + comments screen. Mirrors
@@ -26,5 +27,12 @@ data class PostDetailUiState(
      * are still loading; the UI treats that as "not mine" until it lands.
      */
     val selfOdinId: OdinId? = null,
+    /**
+     * Reactor roster for the "who reacted" sheet, or null when the sheet is closed.
+     * Non-null (even empty) means the sheet is showing; [isReactorsLoading] covers the
+     * in-flight fetch before the list arrives.
+     */
+    val reactorsSheet: List<ReactionDisplayItem>? = null,
+    val isReactorsLoading: Boolean = false,
     val errorMessage: String? = null,
 )

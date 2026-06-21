@@ -11,6 +11,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.feedLabeledDrive
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +58,11 @@ class FeedTimelineService(
     /** The two drives this timeline aggregates. */
     private val sourceDrives = setOf(feedDrive, channelDrive)
 
+    // `byId` is mutated from two coroutines on Dispatchers.Default — coldLoad (its own launch) and
+    // the event collector (incremental batch / rollback / reset) — so every read/write/iteration of
+    // it (including the emitSorted snapshot) is guarded by `lock`.
+    private val lock = SynchronizedObject()
+
     // Keyed by uniqueId for O(1) upsert/remove + automatic dedup across drives.
     private val byId = mutableMapOf<Uuid, FeedPostItem>()
 
@@ -94,7 +101,8 @@ class FeedTimelineService(
                     }
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId !in sourceDrives) return@collect
-                        if (byId.remove(event.uniqueId) != null) {
+                        val removed = synchronized(lock) { byId.remove(event.uniqueId) != null }
+                        if (removed) {
                             Logger.d(tag = TAG) {
                                 "OptimisticRollback: removed post=${event.uniqueId}"
                             }
@@ -116,8 +124,9 @@ class FeedTimelineService(
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
 
-            byId.clear()
-            var loaded = 0
+            // Query (suspend) outside the lock; collect every drive's records into a local, then
+            // apply the rebuild atomically so the event collector never observes a half-cleared map.
+            val scanned = mutableListOf<FeedPostItem>()
             for (drive in sourceDrives) {
                 val result = QueryBatch(identityId).queryBatchAsync(
                     dbm = databaseManager,
@@ -129,23 +138,34 @@ class FeedTimelineService(
                     fileSystemType = 0,
                     filetypesAnyOf = listOf(FeedProtocol.PostFileType),
                 )
-                for (file in result.records) {
-                    if (file.isSoftDeleted()) continue
-                    val item = file.toFeedPostItem() ?: continue
+                result.records
+                    .filterNot { it.isSoftDeleted() }
+                    .mapNotNullTo(scanned) { it.toFeedPostItem() }
+            }
+
+            val size = synchronized(lock) {
+                byId.clear()
+                for (item in scanned) {
                     // Dedup across drives by uniqueId; keep whichever copy is newer-published.
                     val existing = byId[item.id]
                     if (existing == null || item.createdMs >= existing.createdMs) {
                         byId[item.id] = item
-                        loaded++
                     }
                 }
+                byId.size
             }
-            Logger.i(tag = TAG) { "coldLoad: feedSize=${byId.size} (scanned=$loaded)" }
+            Logger.i(tag = TAG) { "coldLoad: feedSize=$size (scanned=${scanned.size})" }
             emitSorted()
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Cold-load failed: ${e.message}" }
         }
     }
+
+    /**
+     * Pull-to-refresh: re-run the cold load so the local index is re-read. The UI ViewModel calls
+     * this; the same [coldLoad] also runs automatically on a `DriveEvent.Stopped` with new files.
+     */
+    suspend fun refresh() = coldLoad()
 
     private fun processIncrementalBatch(files: List<HomebaseFile>) {
         val posts = files.filter {
@@ -153,22 +173,26 @@ class FeedTimelineService(
         }
         if (posts.isEmpty()) return
 
-        var changed = false
-        for (file in posts) {
-            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-            if (file.isSoftDeleted()) {
-                if (byId.remove(uniqueId) != null) changed = true
-                continue
+        val changed = synchronized(lock) {
+            var dirty = false
+            for (file in posts) {
+                val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+                if (file.isSoftDeleted()) {
+                    if (byId.remove(uniqueId) != null) dirty = true
+                    continue
+                }
+                val item = file.toFeedPostItem() ?: continue
+                byId[uniqueId] = item
+                dirty = true
             }
-            val item = file.toFeedPostItem() ?: continue
-            byId[uniqueId] = item
-            changed = true
+            dirty
         }
         if (changed) emitSorted()
     }
 
     private fun emitSorted() {
-        _timeline.value = byId.values.sortedByDescending { it.createdMs }
+        val sorted = synchronized(lock) { byId.values.sortedByDescending { it.createdMs } }
+        _timeline.value = sorted
     }
 
     /**
@@ -183,7 +207,7 @@ class FeedTimelineService(
 
     /** Logout: drop the previous identity's feed. `started` stays set (app-scoped collector). */
     fun reset() {
-        byId.clear()
+        synchronized(lock) { byId.clear() }
         _timeline.value = emptyList()
     }
 }

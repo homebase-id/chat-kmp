@@ -2,7 +2,6 @@ package id.homebase.core.feed.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
@@ -55,7 +54,6 @@ class FeedPostSenderService(
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
-    private val credentialsManager: CredentialsManager,
     private val scope: CoroutineScope,
 ) {
 

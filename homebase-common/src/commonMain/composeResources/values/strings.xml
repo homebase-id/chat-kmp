@@ -1457,7 +1457,6 @@
     <string name="feed_post_detail_title">Post</string>
     <string name="feed_post_detail_more_actions">More actions</string>
     <string name="feed_post_detail_delete">Delete post</string>
-    <string name="feed_post_detail_report">Report</string>
     <string name="feed_post_detail_not_found">This post is no longer available.</string>
     <string name="feed_post_detail_comments_disabled">Comments are turned off for this post.</string>
 

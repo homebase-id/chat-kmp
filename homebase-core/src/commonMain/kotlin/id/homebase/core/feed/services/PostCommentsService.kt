@@ -3,12 +3,14 @@ package id.homebase.core.feed.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
@@ -93,6 +95,9 @@ class PostCommentsService(
 
     private val lock = SynchronizedObject()
     private val perPost = mutableMapOf<Uuid, PerPostState>()
+    // Replies whose parent comment hasn't been observed yet, keyed by the reply's groupId
+    // (= the parent comment id). Flushed when that parent top-level comment is inserted.
+    private val pendingByGroupId = mutableMapOf<Uuid, MutableList<HomebaseFile>>()
     private var subscriptionStarted = false
 
     fun commentsFor(postId: Uuid): StateFlow<List<PostCommentItem>> {
@@ -119,10 +124,27 @@ class PostCommentsService(
         }
         scope.launch {
             eventBus.events.collect { event ->
-                if (event !is BackendEvent.DataEvent.BatchReceived) return@collect
-                if (event.driveId !in sourceDrives) return@collect
-                processIncrementalBatch(event.batchData)
+                when (event) {
+                    is BackendEvent.SessionEnded -> reset()
+                    is BackendEvent.DataEvent.BatchReceived -> {
+                        if (event.driveId !in sourceDrives) return@collect
+                        processIncrementalBatch(event.batchData)
+                    }
+                    else -> {}
+                }
             }
+        }
+    }
+
+    /**
+     * Logout: drop the previous identity's comments and any buffered replies.
+     * `subscriptionStarted` stays set — the collector is app-scoped and re-fills per post.
+     */
+    fun reset() {
+        synchronized(lock) {
+            perPost.values.forEach { it.flow.value = emptyList() }
+            perPost.clear()
+            pendingByGroupId.clear()
         }
     }
 
@@ -133,13 +155,16 @@ class PostCommentsService(
 
             // Top-level comments + replies both surface here: replies carry the parent comment id
             // as their groupId, and the parent comment's id is in this post's comment set. We pull
-            // the full comment tree for the post by querying every groupId we know belongs to it —
-            // for the cold-load that is the postId (top-level) plus each loaded comment's id.
-            val groupIds = mutableListOf(postId)
+            // the full comment tree for the post in two passes:
+            //   pass 0 = top-level   (groupId == postId)
+            //   pass 1 = replies     (groupId in the just-discovered top-level comment ids)
+            // We NEVER call queryBatchAsync with an empty group set: an empty groupIdAnyOf is
+            // dropped by QueryBatch and would return every comment on the drive (cross-post leak).
             for (drive in sourceDrives) {
-                var roundGroupIds = groupIds.toList()
-                // Two passes: first top-level (groupId=postId), then replies (groupId=commentId).
+                val seenGroupIds = mutableSetOf(postId)
+                var roundGroupIds = listOf(postId)
                 repeat(2) {
+                    if (roundGroupIds.isEmpty()) return@repeat   // nothing to query this pass — skip
                     val result = QueryBatch(identityId).queryBatchAsync(
                         dbm = databaseManager,
                         driveId = drive,
@@ -151,17 +176,16 @@ class PostCommentsService(
                         filetypesAnyOf = listOf(FeedProtocol.CommentFileType),
                         groupIdAnyOf = roundGroupIds,
                     )
-                    for (file in result.records) {
-                        if (file.isSoftDeleted()) continue
-                        val item = file.toCommentItem(topLevelPostId = postId) ?: continue
-                        state.byId[item.id] = item
+                    val items = result.records
+                        .filterNot { it.isSoftDeleted() }
+                        .mapNotNull { it.toCommentItem(topLevelPostId = postId) }
+                    val newTopLevelIds = synchronized(lock) {
+                        items.forEach { state.byId[it.id] = it }
+                        state.byId.values.filter { it.replyToId == null }.map { it.id }
                     }
-                    // Next pass queries replies whose parent is any top-level comment just found.
-                    roundGroupIds = state.byId.values
-                        .filter { it.replyToId == null }
-                        .map { it.id }
-                        .filterNot { it in groupIds }
-                    if (roundGroupIds.isEmpty()) return@repeat
+                    // Next pass queries replies whose parent is a not-yet-queried top-level comment.
+                    roundGroupIds = newTopLevelIds.filterNot { it in seenGroupIds }
+                    seenGroupIds.addAll(newTopLevelIds)
                 }
             }
             emitSorted(state)
@@ -176,29 +200,65 @@ class PostCommentsService(
         }
         if (comments.isEmpty()) return
 
-        for (file in comments) {
-            val groupId = file.fileMetadata.appData.groupId ?: continue
-            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-            // A comment's groupId is either the post (top-level) or a parent comment (reply). Route
-            // it to whichever observed post owns that group: postId directly, or the post that has
-            // a comment whose id == groupId (the reply's parent).
-            val ownerPostId = perPost.keys.firstOrNull { it == groupId }
-                ?: perPost.entries.firstOrNull { (_, s) -> s.byId.containsKey(groupId) }?.key
-                ?: continue
-            val state = perPost[ownerPostId] ?: continue
+        // Collect the states whose flow needs re-emitting; emit OUTSIDE the lock.
+        val touched = synchronized(lock) {
+            val dirty = mutableSetOf<PerPostState>()
+            for (file in comments) {
+                val groupId = file.fileMetadata.appData.groupId ?: continue
+                val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+                // A comment's groupId is either the post (top-level) or a parent comment (reply).
+                // Route it to whichever observed post owns that group: postId directly, or the post
+                // that has a comment whose id == groupId (the reply's parent).
+                val ownerPostId = perPost.keys.firstOrNull { it == groupId }
+                    ?: perPost.entries.firstOrNull { (_, s) -> s.byId.containsKey(groupId) }?.key
 
-            if (file.isSoftDeleted()) {
-                if (state.byId.remove(uniqueId) != null) emitSorted(state)
-                continue
+                if (ownerPostId == null) {
+                    // Owning post not observed yet. If this is a reply whose parent comment simply
+                    // hasn't arrived, buffer it so a later top-level insert can flush it instead of
+                    // dropping it. (A comment whose groupId is an unobserved POST is genuinely not
+                    // ours and stays buffered until that post is observed and cold-loaded.)
+                    if (!file.isSoftDeleted()) {
+                        pendingByGroupId.getOrPut(groupId) { mutableListOf() }.add(file)
+                        Logger.d(tag = TAG) {
+                            "processIncrementalBatch: buffering comment=$uniqueId with " +
+                                "unresolved parent groupId=$groupId"
+                        }
+                    }
+                    continue
+                }
+                val state = perPost[ownerPostId] ?: continue
+
+                if (file.isSoftDeleted()) {
+                    if (state.byId.remove(uniqueId) != null) dirty.add(state)
+                    continue
+                }
+                val item = file.toCommentItem(topLevelPostId = ownerPostId) ?: continue
+                state.byId[uniqueId] = item
+                dirty.add(state)
+
+                // A top-level comment just landed: flush any replies that were waiting on it.
+                if (item.replyToId == null) {
+                    pendingByGroupId.remove(uniqueId)?.forEach { reply ->
+                        val replyId = reply.fileMetadata.appData.uniqueId ?: return@forEach
+                        if (reply.isSoftDeleted()) {
+                            if (state.byId.remove(replyId) != null) dirty.add(state)
+                        } else {
+                            val replyItem = reply.toCommentItem(topLevelPostId = ownerPostId)
+                                ?: return@forEach
+                            state.byId[replyId] = replyItem
+                            dirty.add(state)
+                        }
+                    }
+                }
             }
-            val item = file.toCommentItem(topLevelPostId = ownerPostId) ?: continue
-            state.byId[uniqueId] = item
-            emitSorted(state)
+            dirty.toList()
         }
+        touched.forEach { emitSorted(it) }
     }
 
     private fun emitSorted(state: PerPostState) {
-        state.flow.value = state.byId.values.sortedBy { it.userDateMs }
+        val sorted = synchronized(lock) { state.byId.values.sortedBy { it.userDateMs } }
+        state.flow.value = sorted
     }
 
     /**
@@ -214,8 +274,25 @@ class PostCommentsService(
         commentUniqueId: Uuid = Uuid.random(),
     ): PostCommentResult {
         val drive = resolvePostDrive(postId)
-        val recipients = resolveCommentRecipients(drive, postId)
+        // The post header drives recipients AND encryption: a comment must mirror the parent post's
+        // encryption + ACL, or a comment on a PUBLIC post would be encrypted + Owner-locked and
+        // invisible to public/anonymous viewers (broken public commenting).
+        val post = readPostHeader(drive, postId)
+        val recipients = recipientsFromPost(post)
         val groupId = replyToCommentId ?: postId
+
+        // Public post (unencrypted) → unencrypted comment with an Anonymous ACL; encrypted post →
+        // encrypted comment readable by AutoConnected. Mirrors FeedPostSenderService.createPost.
+        val isPublic = post?.fileMetadata?.isEncrypted == false
+        val isEncrypted = !isPublic
+        val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
+        val accessControlList = AccessControlList(
+            requiredSecurityGroup = if (isPublic) {
+                SecurityGroupType.Anonymous.value
+            } else {
+                SecurityGroupType.AutoConnected.value
+            },
+        )
 
         val attachments = listOfNotNull(attachment)
         val bundle = MessageAttachmentBuilder.build(
@@ -223,16 +300,20 @@ class PostCommentsService(
             fileOperationsProvider = fileOps,
         ) { _, _ -> FeedProtocol.CommentMediaPayloadKey }
 
-        val keyHeader = KeyHeader.newRandom16()
-        val encrypted = payloadBundleEncryptor.encryptBundle(
-            uniqueId = commentUniqueId,
-            bundle = bundle,
-            aesKey = keyHeader.aesKey,
-            scope = scope,
-        )
+        // Encrypt the bundle only for an encrypted post; a public comment ships plaintext payloads.
+        val outgoing = if (isEncrypted) {
+            payloadBundleEncryptor.encryptBundle(
+                uniqueId = commentUniqueId,
+                bundle = bundle,
+                aesKey = keyHeader.aesKey,
+                scope = scope,
+            )
+        } else {
+            bundle
+        }
 
         val isLocalOnly = recipients.isEmpty()
-        val mediaKey = encrypted.payloads.firstOrNull()?.key
+        val mediaKey = outgoing.payloads.firstOrNull()?.key
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
                 version = FeedProtocol.CommentVersion,
@@ -243,23 +324,24 @@ class PostCommentsService(
 
         val metadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
-            isEncrypted = true,
+            isEncrypted = isEncrypted,
+            accessControlList = accessControlList,
             appData = UploadAppFileMetaData(
                 uniqueId = commentUniqueId,
                 groupId = groupId,
                 fileType = FeedProtocol.CommentFileType,
                 userDate = UnixTimeUtc.now().milliseconds,
                 content = content,
-                previewThumbnail = encrypted.previewThumbs.minByOrNull { it.pixelWidth },
+                previewThumbnail = outgoing.previewThumbs.minByOrNull { it.pixelWidth },
             ),
         )
 
         val request = UploadFileRequest(
             driveId = drive,
             keyHeader = keyHeader,
-            metadata = metadata.encryptContent(keyHeader),
-            payloads = encrypted.payloads,
-            thumbnails = encrypted.thumbnails,
+            metadata = if (isEncrypted) metadata.encryptContent(keyHeader) else metadata,
+            payloads = outgoing.payloads,
+            thumbnails = outgoing.thumbnails,
             transitOptions = TransitOptions(
                 recipients = recipients,
                 sendContents = SendContents.All,
@@ -269,9 +351,11 @@ class PostCommentsService(
 
         val enqueued = outboxSync.tryEnqueue(request)
         if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
-        Logger.d(tag = TAG) { "postComment: enqueued comment=$commentUniqueId groupId=$groupId" }
+        Logger.d(tag = TAG) {
+            "postComment: enqueued comment=$commentUniqueId groupId=$groupId encrypted=$isEncrypted"
+        }
 
-        val payloadDescriptors = encrypted.payloads.map { payload ->
+        val payloadDescriptors = outgoing.payloads.map { payload ->
             PayloadDescriptor(
                 key = payload.key,
                 contentType = payload.contentType.ifEmpty { null },
@@ -312,7 +396,6 @@ class PostCommentsService(
         versionTag: Uuid,
         body: String,
     ): PostCommentResult {
-        val credentials = credentialsManager.requireActiveCredentials()
         val (drive, existing) = findCommentLocally(commentUniqueId)
             ?: throw IllegalArgumentException("comment not found locally: $commentUniqueId")
         if (existing.fileMetadata.versionTag != versionTag) error("VersionTag mismatch")
@@ -323,9 +406,27 @@ class PostCommentsService(
             runCatching { OdinSystemSerializer.deserialize<PostCommentContent>(raw) }.getOrNull()
         }
 
-        val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
-        val recipients = resolveCommentRecipients(drive, groupId)
+        // Recipients + encryption resolve against the OWNING POST (hop a reply's groupId to the
+        // post), never the parent commenter, and must mirror the post's encryption + ACL exactly
+        // like postComment — so an edit to a public comment stays unencrypted/Anonymous.
+        val post = resolveOwningPost(drive, groupId)
+        val recipients = recipientsFromPost(post)
         val isLocalOnly = recipients.isEmpty()
+
+        val isPublic = post?.fileMetadata?.isEncrypted == false
+        val isEncrypted = !isPublic
+        val keyHeader = if (isEncrypted) {
+            KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+        } else {
+            KeyHeader.empty()
+        }
+        val accessControlList = AccessControlList(
+            requiredSecurityGroup = if (isPublic) {
+                SecurityGroupType.Anonymous.value
+            } else {
+                SecurityGroupType.AutoConnected.value
+            },
+        )
 
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
@@ -337,7 +438,8 @@ class PostCommentsService(
 
         val metadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
-            isEncrypted = true,
+            isEncrypted = isEncrypted,
+            accessControlList = accessControlList,
             versionTag = versionTag,
             appData = UploadAppFileMetaData(
                 uniqueId = commentUniqueId,
@@ -366,7 +468,7 @@ class PostCommentsService(
                 useAppNotification = false,
                 appNotificationOptions = null,
             ),
-            metadata = metadata.encryptContent(keyHeader),
+            metadata = if (isEncrypted) metadata.encryptContent(keyHeader) else metadata,
             payloads = emptyList(),
             thumbnails = emptyList(),
         )
@@ -443,21 +545,50 @@ class PostCommentsService(
         return channelDrive
     }
 
-    /**
-     * Resolve who a comment should be sent to: the post's author (`senderOdinId`) minus self.
-     * A feed [PostContent] carries no explicit recipient list (unlike a moment), so the audience is
-     * the post author for an inbound post, or empty for the user's own post (server distributes via
-     * the follower system). Reads the post header locally — never a server round-trip.
-     */
-    private suspend fun resolveCommentRecipients(drive: Uuid, postOrCommentId: Uuid): List<OdinId> {
+    /** Read a header by uniqueId on [drive], or null when it isn't present locally. */
+    private suspend fun readPostHeader(drive: Uuid, uniqueId: Uuid): HomebaseFile? {
         val credentials = credentialsManager.requireActiveCredentials()
-        val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(
-            credentials.getIdentityId(), drive, postOrCommentId,
-        ) ?: return emptyList()
-        val self = credentials.domain
-        val author = file.fileMetadata.senderOdinId
+        return databaseManager.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), drive, uniqueId,
+        )
+    }
+
+    /**
+     * Resolve the OWNING POST header for a comment's `groupId`. The `groupId` is either the post id
+     * (top-level comment) or a parent COMMENT id (a reply). When it's a reply, read the parent
+     * comment and follow its `groupId` to the post — so recipients/encryption are always resolved
+     * against the post, never the parent commenter. Returns null when nothing resolves locally.
+     */
+    private suspend fun resolveOwningPost(drive: Uuid, groupId: Uuid): HomebaseFile? {
+        val direct = readPostHeader(drive, groupId) ?: return null
+        // A reply's groupId points at a parent COMMENT (fileType 801). Hop once to the post.
+        if (direct.fileMetadata.appData.fileType == FeedProtocol.CommentFileType) {
+            val parentGroupId = direct.fileMetadata.appData.groupId ?: return null
+            return readPostHeader(drive, parentGroupId)
+        }
+        return direct
+    }
+
+    /**
+     * Recipients for a comment given the owning POST header: the post's author (`senderOdinId`)
+     * minus self. A feed [PostContent] carries no explicit recipient list (unlike a moment), so the
+     * audience is the post author for an inbound post, or empty for the user's own post (server
+     * distributes via the follower system). Empty when the post isn't known locally.
+     */
+    private suspend fun recipientsFromPost(post: HomebaseFile?): List<OdinId> {
+        if (post == null) return emptyList()
+        val self = credentialsManager.getActiveCredentials()?.domain
+        val author = post.fileMetadata.senderOdinId
         return listOfNotNull(author).filterNot { it == self }
     }
+
+    /**
+     * Resolve who a comment delete should be sent to: the post's author (`senderOdinId`) minus self.
+     * Follows a reply's `groupId` to the post just like the post/edit paths. Reads the post header
+     * locally — never a server round-trip.
+     */
+    private suspend fun resolveCommentRecipients(drive: Uuid, postOrCommentId: Uuid): List<OdinId> =
+        recipientsFromPost(resolveOwningPost(drive, postOrCommentId))
 }
 
 data class PostCommentResult(val uniqueId: Uuid)

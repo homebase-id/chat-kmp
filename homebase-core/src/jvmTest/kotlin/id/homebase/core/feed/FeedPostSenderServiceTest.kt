@@ -57,7 +57,6 @@ class FeedPostSenderServiceTest {
         fileOps = env.fileOps,
         driveFileProvider = driveFileProvider(env.credentialsManager),
         optimisticWriter = env.optimisticWriter,
-        credentialsManager = env.credentialsManager,
         scope = scope,
     )
 
