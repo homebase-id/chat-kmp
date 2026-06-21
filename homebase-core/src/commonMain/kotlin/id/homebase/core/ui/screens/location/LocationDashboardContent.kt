@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.LocationSearching
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
@@ -53,6 +54,7 @@ import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.location_dashboard_empty_today
 import id.homebase.resources.location_dashboard_history_section
+import id.homebase.resources.location_dashboard_live_empty
 import id.homebase.resources.location_dashboard_live_open
 import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
@@ -127,12 +129,12 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Live location sharing (visible when sharing or a recent inbound point exists) → live map ──
+        // ── Live location sharing (title always shown; card opens the map or shows an empty state) ──
+        Text(
+            text = stringResource(MR.string.location_dashboard_live_section),
+            style = MaterialTheme.typography.titleMedium,
+        )
         if (uiState.liveSharingVisible) {
-            Text(
-                text = stringResource(MR.string.location_dashboard_live_section),
-                style = MaterialTheme.typography.titleMedium,
-            )
             Card(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLiveMap),
             ) {
@@ -155,6 +157,25 @@ fun LocationDashboardContent(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationSearching,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(MR.string.location_dashboard_live_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
