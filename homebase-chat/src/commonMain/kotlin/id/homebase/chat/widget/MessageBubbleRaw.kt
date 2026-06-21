@@ -20,9 +20,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -663,6 +667,8 @@ fun MessageBubbleRaw(
                                 modifier = Modifier.padding(
                                     horizontal = 12.dp, vertical = 12.dp
                                 ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 if (emojiOnly) {
                                     // Render emoji-only messages prominently
@@ -675,6 +681,16 @@ fun MessageBubbleRaw(
                                         color = contentColor
                                     )
                                 } else {
+                                    // Mirror the conversation-list preview's deleted marker
+                                    // (MessageContentLabel: Block icon + the same string).
+                                    if (message.isDeleted) {
+                                        Icon(
+                                            imageVector = Icons.Default.Block,
+                                            contentDescription = deletedText,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = contentColor,
+                                        )
+                                    }
                                     ChatMarkdown(
                                         content = bodyText,
                                         color = contentColor,
