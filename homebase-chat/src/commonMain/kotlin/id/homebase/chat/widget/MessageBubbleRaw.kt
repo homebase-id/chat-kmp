@@ -127,6 +127,7 @@ fun MessageBubbleRaw(
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,
@@ -210,8 +211,14 @@ fun MessageBubbleRaw(
             )
             return
         }
+        // Location renders via the media path (chat_loc payload + the header descriptor); fall through.
+        is MessageContent.Location -> Unit
         null -> Unit // fall through to text + media rendering
     }
+
+    // New location messages carry the descriptor in the header; pass it to the media path (MediaItem
+    // reads it for the chat_loc bubble, falling back to the payload descriptor for old messages).
+    val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
     val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
@@ -424,6 +431,8 @@ fun MessageBubbleRaw(
                         previewThumbnail = message.previewThumbnail,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                         sharedTransitionScope = sharedTransitionScope,
@@ -462,6 +471,8 @@ fun MessageBubbleRaw(
                                 previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
                                 shape = RoundedCornerShape(0.dp),
                                 sharedTransitionScope = sharedTransitionScope,
@@ -545,6 +556,8 @@ fun MessageBubbleRaw(
                                 topEnd = Dimens.Message.cornerRadius
                             ) else RoundedCornerShape(0.dp),
                             onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                             onRequestDecryptedFile = onRequestDecryptedFile,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
@@ -651,6 +664,8 @@ fun MessageBubbleRaw(
                                         topEnd = Dimens.Message.cornerRadius
                                     ) else RoundedCornerShape(0.dp),
                                     onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                     onRequestDecryptedFile = onRequestDecryptedFile,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,

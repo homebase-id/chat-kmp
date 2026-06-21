@@ -30,6 +30,8 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -82,6 +84,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -784,6 +787,24 @@ class ConversationListViewModel(
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
+    /**
+     * Set/clear the live-share window on a location message by editing its header descriptor
+     * ([LocationPreviewDescriptor.liveShareUntilMs]). Only applies to new-format (typed) location
+     * messages; a no-op otherwise.
+     */
+    private suspend fun updateLocationLiveShare(messageId: Uuid, untilMs: Long) {
+        val msg = chatMessageStream.getMessage(messageId) ?: return
+        val descriptor = (msg.messageContent as? MessageContent.Location)?.descriptor ?: return
+        val updated = descriptor.copy(liveShareUntilMs = untilMs)
+        runCatching {
+            chatMessageSenderService.updateMessage(
+                messageId = messageId,
+                versionTag = msg.versionTag,
+                content = MessageContentParser.serialize(MessageContent.Location(updated)),
+            )
+        }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
+    }
+
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
@@ -813,6 +834,24 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SearchClicked -> {
                 _uiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.OpenLiveLocationMap -> {
+                sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
+            }
+
+            // Live share = a header-descriptor edit. Location is a raw-header typed kind, so
+            // updateMessage(content = descriptorJson) sets/clears liveShareUntilMs and syncs to both
+            // sides (sender via optimistic write, receiver via fileModified).
+            is ConversationListUiAction.StartLiveLocationShare -> viewModelScope.launch {
+                updateLocationLiveShare(
+                    action.messageId,
+                    Clock.System.now().toEpochMilliseconds() + action.durationMs,
+                )
+            }
+
+            is ConversationListUiAction.StopLiveLocationShare -> viewModelScope.launch {
+                updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
             }
 
             is ConversationListUiAction.SearchBackClicked -> {

@@ -57,6 +57,20 @@ fun MessageItem(
     // disables edit/reply/forward/share/inline-reactions/reactor-details.
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
 
+    // Live-location controls for the location bubble (ignored by non-location media). State (LIVE/
+    // ENDED) is read from the message descriptor in the bubble; this only carries side + actions.
+    val sentByYou = message.isAuthoredBy(odinId)
+    val liveLocationControls = remember(message.id, sentByYou) {
+        LiveLocationBubbleControls(
+            sentByYou = sentByYou,
+            onStart = { durationMs ->
+                onUiAction(ConversationListUiAction.StartLiveLocationShare(message.id, durationMs))
+            },
+            onStop = { onUiAction(ConversationListUiAction.StopLiveLocationShare(message.id)) },
+            onOpenMap = { onUiAction(ConversationListUiAction.OpenLiveLocationMap) },
+        )
+    }
+
     // Memoize all callbacks with message.id as key. Disabled actions get
     // null callbacks; the bubble subcomposables already gate on non-null.
     val onMessageInfo =
@@ -144,6 +158,7 @@ fun MessageItem(
         ) {
             SentMessageBubble(
                 message = message,
+                liveControls = liveLocationControls,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 currentOdinId = currentOdinId,
@@ -198,6 +213,7 @@ fun MessageItem(
         ) {
             ReceivedMessageBubble(
                 message = message,
+                liveControls = liveLocationControls,
                 userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 currentOdinId = currentOdinId,

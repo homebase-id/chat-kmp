@@ -17,4 +17,12 @@ data class LocationPreviewDescriptor(
     val hasImage: Boolean,
     val imageWidth: Int?,
     val imageHeight: Int?,
+    /**
+     * Absolute UTC epoch-ms at which a live-location share window ends, or null for a plain static
+     * location. The bubble derives its state from this: null = STATIC, now < value = LIVE,
+     * now >= value = ENDED. Set/cleared by updating this message's descriptor (see the live-share UX).
+     * Defaults null + `explicitNulls = false` ⇒ omitted from JSON for static shares and ignored by
+     * older clients.
+     */
+    val liveShareUntilMs: Long? = null,
 )

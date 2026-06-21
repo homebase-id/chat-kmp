@@ -882,6 +882,9 @@ fun AppNavHost(
                                     onNavigateToNewConversation = {
                                         navController.navigate(Route.CreateConversation)
                                     },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
                                     onNavigateToContactInfo = {
                                         navController.navigate(Route.ContactInfo(it))
                                     },

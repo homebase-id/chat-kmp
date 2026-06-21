@@ -343,4 +343,22 @@ sealed interface ConversationListUiAction {
     data object EnsureStickerDriveMounted : ConversationListUiAction
 
     // endregion
+
+    // region Live location sharing
+
+    /** Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs = now + duration. */
+    data class StartLiveLocationShare(
+        val messageId: Uuid,
+        val durationMs: Long,
+    ) : ConversationListUiAction
+
+    /** Stop the live share on [messageId]'s location: sets liveShareUntilMs = now (ENDED). */
+    data class StopLiveLocationShare(
+        val messageId: Uuid,
+    ) : ConversationListUiAction
+
+    /** Open the Live Location map (tap a live location bubble's map). */
+    data object OpenLiveLocationMap : ConversationListUiAction
+
+    // endregion
 }

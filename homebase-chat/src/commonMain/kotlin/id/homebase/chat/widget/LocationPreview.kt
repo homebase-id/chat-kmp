@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,23 +16,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlin.time.Clock
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
@@ -44,6 +55,15 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
+import id.homebase.resources.live_share_15m
+import id.homebase.resources.live_share_1h
+import id.homebase.resources.live_share_2h
+import id.homebase.resources.live_share_30m
+import id.homebase.resources.live_share_4h
+import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_ended
+import id.homebase.resources.share_live_location
+import id.homebase.resources.stop_sharing
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -233,6 +253,10 @@ fun LocationPreviewCard(
     keyHeader: KeyHeader,
     previewThumbnail: EmbeddedThumb? = null,
     modifier: Modifier = Modifier,
+    /** Forwarded to the message actions menu — fixes long-press being swallowed by the old `.clickable`. */
+    onLongPress: (() -> Unit)? = null,
+    /** Live-share side + actions; null only for the pre-send staging preview. */
+    liveControls: LiveLocationBubbleControls? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -242,7 +266,37 @@ fun LocationPreviewCard(
         formatLatLon(descriptor.lat, descriptor.lon)
     }
 
-    Column(modifier = modifier.fillMaxWidth().clickable { uriHandler.openUri(geoUri) }) {
+    // Derive STATIC / LIVE / ENDED from the descriptor's window vs now. While live, a coarse ticker
+    // (<=30s) refreshes the "time left" caption; the loop lands exactly on `until` to flip to ENDED.
+    val until = descriptor.liveShareUntilMs
+    var nowMs by remember(until) { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(until) {
+        val u = until ?: return@LaunchedEffect
+        while (true) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            nowMs = now
+            if (now >= u) break
+            delay(minOf(u - now, 30_000L) + 50)
+        }
+    }
+    val isLive = until != null && nowMs < until
+    val isEnded = until != null && nowMs >= until
+    val remainingMs = if (until != null) (until - nowMs).coerceAtLeast(0L) else 0L
+
+    val onCardTap = {
+        if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(isLive, onLongPress) {
+                detectTapGestures(
+                    onTap = { onCardTap() },
+                    onLongPress = { onLongPress?.invoke() },
+                )
+            },
+    ) {
         if (descriptor.hasImage) {
             val imageData = remember(driveId, fileId, payloadKey) {
                 HomebaseImageData(
@@ -282,6 +336,15 @@ fun LocationPreviewCard(
             }
         }
 
+        if (liveControls != null) {
+            LiveShareActionArea(
+                controls = liveControls,
+                isLive = isLive,
+                isEnded = isEnded,
+                remainingMs = remainingMs,
+            )
+        }
+
         Column(modifier = Modifier.padding(12.dp)) {
             LocationPreviewTextContent(
                 address = descriptor.address,
@@ -289,6 +352,116 @@ fun LocationPreviewCard(
             )
         }
     }
+}
+
+/**
+ * The live-share action area shown directly below the map image. Sender (own message) sees a
+ * "Share live location" link with a duration menu, or "Stop sharing" while live. Receiver sees a
+ * read-only "sharing live / ended" caption. State (LIVE/ENDED) comes from the descriptor; this only
+ * renders affordances.
+ */
+@Composable
+private fun LiveShareActionArea(
+    controls: LiveLocationBubbleControls,
+    isLive: Boolean,
+    isEnded: Boolean,
+    remainingMs: Long,
+) {
+    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+        when {
+            isLive -> {
+                // Both sides show the live caption + time left; only the sender gets the Stop link.
+                Column {
+                    if (controls.sentByYou) {
+                        Row(
+                            modifier = Modifier.clickable { controls.onStop() },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = stringResource(MR.string.stop_sharing),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            isEnded -> {
+                // Finished — no re-share option.
+                Text(
+                    text = stringResource(MR.string.live_share_ended),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            controls.sentByYou -> {
+                // STATIC, my own message: offer to share live.
+                var menuExpanded by remember { mutableStateOf(false) }
+                Column {
+                    Row(
+                        modifier = Modifier.clickable { menuExpanded = true },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text(
+                            text = stringResource(MR.string.share_live_location),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                            DropdownMenuItem(
+                                text = { Text(stringResource(labelRes)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    controls.onStart(durationMs)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            // Receiver + STATIC: no action area.
+        }
+    }
+}
+
+private val DURATION_OPTIONS = listOf(
+    MR.string.live_share_15m to 15 * 60_000L,
+    MR.string.live_share_30m to 30 * 60_000L,
+    MR.string.live_share_1h to 60 * 60_000L,
+    MR.string.live_share_2h to 2 * 60 * 60_000L,
+    MR.string.live_share_4h to 4 * 60 * 60_000L,
+)
+
+/** Compact "time left" label: "42m", "1h", "1h 20m". */
+private fun formatRemaining(remainingMs: Long): String {
+    val totalMin = (remainingMs / 60_000L).coerceAtLeast(0L)
+    if (totalMin < 60) return "${totalMin}m"
+    val h = totalMin / 60
+    val m = totalMin % 60
+    return if (m == 0L) "${h}h" else "${h}h ${m}m"
 }
 
 // ─── Compact list row (the "See all" locations tab) ──────────────────────────
