@@ -37,6 +37,7 @@ private fun creator(
     isTransparent: (ByteArray) -> Boolean,
     bgSupported: () -> Boolean = { true },
     cutOut: suspend (ByteArray) -> ByteArray? = { byteArrayOf(7) },
+    crop: suspend (ByteArray) -> ByteArray = { it }, // identity by default; bg-removal branch crops before outline
     outline: suspend (ByteArray) -> ByteArray = { it + 9 },
     saveResult: Uuid? = Uuid.random(),
     normalize: suspend (ByteArray, String) -> Pair<ByteArray, String> = { b, ct -> b to ct },
@@ -49,6 +50,7 @@ private fun creator(
     isTransparent = isTransparent,
     bgRemovalSupported = bgSupported,
     cutOut = cutOut,
+    cropToSubject = crop,
     addOutline = outline,
     normalize = normalize,
     workDispatcher = scope.testDispatcher(),
@@ -66,6 +68,23 @@ class StickerCreatorTest {
         val cut = s.variants.first { it.kind == StickerVariant.CutOut }
         assertTrue(cut.bytes.contentEquals(byteArrayOf(2)))
         assertEquals(StickerVariant.CutOut, s.selected)
+    }
+
+    @Test fun opaque_with_subject_crops_before_outline() = runTest {
+        // bg-removal branch must run cropToSubject on the mask BEFORE addWhiteOutline, so the
+        // outline radius / 512 cap are sized to the cropped subject, not the full frame.
+        val rec = Rec(); var cropInput: ByteArray? = null; var outlineInput: ByteArray? = null
+        val c = creator(
+            this, rec, isTransparent = { false },
+            cutOut = { byteArrayOf(1) },
+            crop = { cropInput = it; byteArrayOf(2) },
+            outline = { outlineInput = it; byteArrayOf(3) },
+        )
+        c.create(byteArrayOf(0), "image/jpeg", convo); advanceUntilIdle()
+        val s = c.state.value as StickerCreateState.Choose
+        assertTrue(cropInput!!.contentEquals(byteArrayOf(1)), "crop receives the raw mask from cutOut")
+        assertTrue(outlineInput!!.contentEquals(byteArrayOf(2)), "outline receives the cropped bytes, not the raw mask")
+        assertTrue(s.variants.first { it.kind == StickerVariant.CutOut }.bytes.contentEquals(byteArrayOf(3)))
     }
 
     @Test fun transparent_source_skips_removal_outlines_source() = runTest {
@@ -175,7 +194,7 @@ class StickerCreatorTest {
             sendInfo = { rec.infos += it },
             awaitDriveGranted = {},
             isTransparent = { false }, bgRemovalSupported = { true },
-            cutOut = { byteArrayOf(1) }, addOutline = { byteArrayOf(2) },
+            cutOut = { byteArrayOf(1) }, cropToSubject = { it }, addOutline = { byteArrayOf(2) },
             normalize = { b, ct -> b to ct },
             workDispatcher = testDispatcher(),
         )
