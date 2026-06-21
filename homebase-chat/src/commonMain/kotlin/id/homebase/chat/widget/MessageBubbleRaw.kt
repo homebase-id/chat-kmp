@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
@@ -80,6 +82,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -211,13 +214,40 @@ fun MessageBubbleRaw(
             )
             return
         }
-        // Location renders via the media path (chat_loc payload + the header descriptor); fall through.
-        is MessageContent.Location -> Unit
+        // Location renders as a self-contained typed bubble (like Event) so the generic text line —
+        // which would duplicate the address (MessageMapper sets it to displayLabel) — is skipped, and
+        // the bubble is Event-sized. Old payload-format messages (messageContent == null) fall through
+        // to the media path instead.
+        is MessageContent.Location -> {
+            content.descriptor?.let { d ->
+                val mapPayload = message.payloads?.firstOrNull {
+                    it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
+                }
+                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                val containerColor =
+                    if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                LocationPreviewCard(
+                    descriptor = d,
+                    fileId = message.fileId,
+                    driveId = chatTargetDrive.alias,
+                    payloadKey = ChatProtocol.PAYLOAD_KEY_LOCATION,
+                    keyHeader = KeyHeader(pIv ?: ByteArray(16), message.keyHeader.aesKey),
+                    previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
+                    modifier = modifier
+                        .widthIn(min = 240.dp, max = 320.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(containerColor),
+                    onLongPress = onLongClick,
+                    liveControls = liveControls,
+                )
+            }
+            return
+        }
         null -> Unit // fall through to text + media rendering
     }
 
-    // New location messages carry the descriptor in the header; pass it to the media path (MediaItem
-    // reads it for the chat_loc bubble, falling back to the payload descriptor for old messages).
+    // Old payload-format location messages (no header descriptor) still render via the media path.
     val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
     val filteredPayloads = message.payloads?.filter {

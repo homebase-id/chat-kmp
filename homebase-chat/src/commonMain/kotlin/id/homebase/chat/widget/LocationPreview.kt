@@ -76,9 +76,9 @@ import kotlin.uuid.Uuid
 @Composable
 private fun LocationPreviewTextContent(
     address: String,
-    coordinatesLabel: String,
     maxAddressLines: Int = 2,
 ) {
+    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them.
     if (address.isNotEmpty()) {
         Text(
             text = address,
@@ -88,16 +88,7 @@ private fun LocationPreviewTextContent(
             overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(modifier = Modifier.height(4.dp))
     }
-
-    Text(
-        text = coordinatesLabel,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 // ─── Sender-side card (base64 image from LocationPreview) ────────────────────
@@ -117,9 +108,6 @@ fun LocationPreviewCard(
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(locationPreview.lat, locationPreview.lon, locationPreview.address) {
         buildGeoUri(locationPreview.lat, locationPreview.lon, locationPreview.address)
-    }
-    val coordinatesLabel = remember(locationPreview.lat, locationPreview.lon) {
-        formatLatLon(locationPreview.lat, locationPreview.lon)
     }
 
     val imageBitmap = remember(locationPreview.imageUrl) {
@@ -142,7 +130,6 @@ fun LocationPreviewCard(
             Column(modifier = Modifier.weight(1f).padding(12.dp)) {
                 LocationPreviewTextContent(
                     address = locationPreview.address,
-                    coordinatesLabel = coordinatesLabel,
                     maxAddressLines = 1,
                 )
             }
@@ -230,7 +217,6 @@ fun LocationPreviewCard(
             Column(modifier = Modifier.padding(12.dp)) {
                 LocationPreviewTextContent(
                     address = locationPreview.address,
-                    coordinatesLabel = coordinatesLabel,
                 )
             }
         }
@@ -261,9 +247,6 @@ fun LocationPreviewCard(
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
         buildGeoUri(descriptor.lat, descriptor.lon, descriptor.address)
-    }
-    val coordinatesLabel = remember(descriptor.lat, descriptor.lon) {
-        formatLatLon(descriptor.lat, descriptor.lon)
     }
 
     // Derive STATIC / LIVE / ENDED from the descriptor's window vs now. While live, a coarse ticker
@@ -310,20 +293,16 @@ fun LocationPreviewCard(
                     loadFullPayload = true,
                 )
             }
+            // Fill the bubble width (no letterbox borders); the outer container rounds the corners.
             HomebaseImage(
                 imageData = imageData,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(
-                    RoundedCornerShape(
-                        topStart = Dimens.Message.cornerRadius,
-                        topEnd = Dimens.Message.cornerRadius,
-                    )
-                ),
-                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+                contentScale = ContentScale.Crop,
                 contentDescription = descriptor.address,
             )
         } else {
             Box(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp)
+                modifier = Modifier.fillMaxWidth().height(100.dp)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
@@ -336,20 +315,18 @@ fun LocationPreviewCard(
             }
         }
 
-        if (liveControls != null) {
-            LiveShareActionArea(
-                controls = liveControls,
-                isLive = isLive,
-                isEnded = isEnded,
-                remainingMs = remainingMs,
-            )
-        }
-
         Column(modifier = Modifier.padding(12.dp)) {
-            LocationPreviewTextContent(
-                address = descriptor.address,
-                coordinatesLabel = coordinatesLabel,
-            )
+            LocationPreviewTextContent(address = descriptor.address)
+            // Share-live action is the LAST line of the caption.
+            if (liveControls != null) {
+                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
+                LiveShareActionArea(
+                    controls = liveControls,
+                    isLive = isLive,
+                    isEnded = isEnded,
+                    remainingMs = remainingMs,
+                )
+            }
         }
     }
 }
@@ -367,7 +344,7 @@ private fun LiveShareActionArea(
     isEnded: Boolean,
     remainingMs: Long,
 ) {
-    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+    Box {
         when {
             isLive -> {
                 // Both sides show the live caption + time left; only the sender gets the Stop link.
